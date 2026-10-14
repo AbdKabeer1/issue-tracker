@@ -17,3 +17,7 @@ npm run dev
 - Set the variables from `.env.example` in Coolify.
 - GitHub secrets: `COOLIFY_WEBHOOK_URL` (and optionally `COOLIFY_TOKEN`). The
   `Deploy (Coolify)` workflow only runs after `Malware Scan (CI Gate)` passes on `main`.
+
+## Live
+
+https://contributors.zedu.chat/bug-tracker
