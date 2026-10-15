@@ -67,7 +67,7 @@ Platform unfurl caches are outside our control; metadata is generated on each re
 | --- | --- |
 | `DATABASE_URL` | Postgres URL |
 | `AUTH_SECRET` | Session secret (`openssl rand -base64 32`) |
-| `AUTH_URL` / `NEXTAUTH_URL` | App origin **including** `/bug-tracker` |
+| `AUTH_URL` / `NEXTAUTH_URL` | Auth.js base path: origin + `/api/auth` (Next.js `basePath` is applied on top) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional Google sign-in |
 | `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | Idempotent super-admin seed (optional; password min 12 chars) |
 | `SUPER_ADMIN_FORCE_UPDATE` | Set `true` to rotate password / promote an existing account |
