@@ -18,15 +18,25 @@ Brand mark: `public/zedu-mark.svg`.
 
 https://contributors.zedu.chat/bug-tracker
 
+## Roles (RBAC)
+
+| Role | Capabilities |
+| --- | --- |
+| `user` | Report bugs, comment, vote |
+| `admin` | Everything `user` can do, plus triage (status / severity / assignee) |
+| `super_admin` | Everything `admin` can do, plus `/admin/users` management (promote users to admin) |
+
+Super-admin credentials come from `SUPER_ADMIN_*` env vars (see below). The seeder is idempotent and does not overwrite an existing super admin unless `SUPER_ADMIN_FORCE_UPDATE=true`.
+
 ## Demo accounts (credentials seed)
 
 | Email | Password |
 | --- | --- |
-| `alice@zendor.dev` | `12345678` |
+| `alice@zendor.dev` | `12345678` (admin) |
 | `bob@zendor.dev` | `12345678` |
 | `cara@zendor.dev` | `12345678` |
 
-> Seed only on an **empty** database. Never reseed a DB that already has real signups.
+> Seed only on an **empty** database (or set `SEED_DEMO_DATA=true`). Never wipe a DB that already has real signups.
 
 ## Local setup
 
@@ -41,6 +51,16 @@ pnpm dev                      # http://localhost:3001/bug-tracker
 
 App is served under **`/bug-tracker`** (see `next.config.ts` `basePath`), matching Coolify.
 
+## Link previews (Open Graph / Twitter)
+
+Bug detail URLs (`/bugs/[id]`) emit OG + Twitter Card metadata so Slack, Discord, X, WhatsApp, and similar clients can unfurl a card with **title**, **status**, **author**, a **description snippet**, the **zedu-mark.svg** thumbnail, and a **canonical URL** under `/bug-tracker`.
+
+### Privacy (auth-gated pages)
+
+All ticket pages require a session for normal browsers. Link-preview bots are allowlisted in middleware so they can fetch metadata without signing in. That path only exposes **safe public fields**: title, status label, reporter display name, and a short description snippet. It does **not** include emails, comments, proof links, votes, assignee details, or triage controls. Unauthenticated crawlers that reach the page see the same limited preview body plus a sign-in link — never the full ticket.
+
+Platform unfurl caches are outside our control; metadata is generated on each request from current DB state (`generateMetadata`), so refreshed crawls pick up title/status edits.
+
 ### Env vars
 
 | Var | Purpose |
@@ -49,6 +69,10 @@ App is served under **`/bug-tracker`** (see `next.config.ts` `basePath`), matchi
 | `AUTH_SECRET` | Session secret (`openssl rand -base64 32`) |
 | `AUTH_URL` / `NEXTAUTH_URL` | Auth.js base path: origin + `/api/auth` (Next.js `basePath` is applied on top) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional Google sign-in |
+| `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | Idempotent super-admin seed (optional; password min 12 chars) |
+| `SUPER_ADMIN_FORCE_UPDATE` | Set `true` to rotate password / promote an existing account |
+| `SEED_DEMO_DATA` | Set `true` to wipe and load demo users/bugs |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | Optional SMTP for password-reset email (logs reset URL to console when unset) |
 
 Google redirect URI: `{AUTH_URL}/api/auth/callback/google`
 

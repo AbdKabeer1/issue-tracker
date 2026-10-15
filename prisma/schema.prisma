@@ -21,47 +21,103 @@ enum Status {
   closed
 }
 
+/// Application roles for RBAC.
+/// - user: default; report bugs, comment, vote
+/// - admin: triage bugs (status / severity / assignee)
+/// - super_admin: all admin powers + manage user roles
+enum Role {
+  user
+  admin
+  super_admin
+}
+
+enum ActivityType {
+  created
+  status_changed
+  severity_changed
+  assignee_changed
+  commented
+  edited
+}
+
 model User {
-  id            String    @id @default(cuid())
+  id            String        @id @default(cuid())
   name          String
-  email         String    @unique
+  email         String        @unique
   /// Null for Google-only accounts; required for credentials login/signup.
   passwordHash  String?
   emailVerified DateTime?
   image         String?
-  createdAt     DateTime  @default(now())
-  reportedBugs  Bug[]     @relation("BugReporter")
-  assignedBugs  Bug[]     @relation("BugAssignee")
-  comments      Comment[]
-  votes         Vote[]
+  role          Role          @default(user)
+  createdAt     DateTime      @default(now())
+  reportedBugs  Bug[]         @relation("BugReporter")
+  assignedBugs  Bug[]         @relation("BugAssignee")
+  comments            Comment[]
+  votes               Vote[]
+  activities          BugActivity[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+/// Single-use password reset tokens (~30 min TTL). Store only the SHA-256 hash.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Bug {
-  id          String   @id @default(cuid())
+  id          String        @id @default(cuid())
   title       String
   description String
-  severity    Severity @default(medium)
-  status      Status   @default(open)
-  voteCount   Int      @default(0)
-  proofLinks  String[] @default([])
+  severity    Severity      @default(medium)
+  status      Status        @default(open)
+  voteCount   Int           @default(0)
+  proofLinks  String[]      @default([])
   reporterId  String
   assigneeId  String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  reporter    User     @relation("BugReporter", fields: [reporterId], references: [id])
-  assignee    User?    @relation("BugAssignee", fields: [assigneeId], references: [id])
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  reporter    User          @relation("BugReporter", fields: [reporterId], references: [id])
+  assignee    User?         @relation("BugAssignee", fields: [assigneeId], references: [id])
   comments    Comment[]
   votes       Vote[]
+  activities  BugActivity[]
+}
+
+model BugActivity {
+  id        String       @id @default(cuid())
+  bugId     String
+  actorId   String
+  type      ActivityType
+  summary   String
+  metadata  Json?
+  createdAt DateTime     @default(now())
+  bug       Bug          @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  actor     User         @relation(fields: [actorId], references: [id])
+
+  @@index([bugId, createdAt])
 }
 
 model Comment {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   bugId     String
   authorId  String
+  parentId  String?
   body      String
-  createdAt DateTime @default(now())
-  bug       Bug      @relation(fields: [bugId], references: [id], onDelete: Cascade)
-  author    User     @relation(fields: [authorId], references: [id])
+  createdAt DateTime  @default(now())
+  bug       Bug       @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  author    User      @relation(fields: [authorId], references: [id])
+  parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Comment[] @relation("CommentReplies")
+
+  @@index([bugId])
+  @@index([parentId])
 }
 
 model Vote {

@@ -1,46 +1,177 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { isAdmin } from "@/lib/roles";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { formatDate } from "@/lib/format";
+import { buildCommentTree } from "@/lib/comments";
+import {
+  bugLinkPreviewDescription,
+  snippetText,
+} from "@/lib/link-preview";
+import { stripMarkdown } from "@/lib/rich-text";
+import { absoluteUrl } from "@/lib/site-url";
 import {
   severityClass,
   severityLabels,
   statusClass,
   statusLabels,
 } from "@/lib/labels";
+import { ActivityTimeline } from "@/components/activity-timeline";
 import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { UpdateBugForm } from "@/components/update-bug-form";
-import { CommentForm } from "@/components/comment-form";
+import { CommentThread } from "@/components/comment-thread";
+import { RichText } from "@/components/rich-text";
+import { UserNameWithBadges } from "@/components/user-name-with-badges";
 
-export default async function BugDetailPage({
-  params,
-}: {
+type BugPageProps = {
   params: Promise<{ id: string }>;
-}) {
+};
+
+export async function generateMetadata({
+  params,
+}: BugPageProps): Promise<Metadata> {
+  const { id } = await params;
+  const bug = await prisma.bug.findUnique({
+    where: { id },
+    select: {
+      title: true,
+      description: true,
+      status: true,
+      updatedAt: true,
+      reporter: { select: { name: true } },
+    },
+  });
+
+  if (!bug) {
+    return {
+      title: "Bug not found",
+      description: "This bug report could not be found.",
+      robots: { index: false, follow: false },
+    };
+  }
+
+  const description = bugLinkPreviewDescription({
+    status: bug.status,
+    authorName: bug.reporter.name,
+    description: stripMarkdown(bug.description),
+  });
+  const canonical = absoluteUrl(`/bugs/${id}`);
+  // Brand mark from public/; most unfurlers accept SVG, raster copy at /Zedu.png.
+  const image = absoluteUrl("/zedu-mark.svg");
+  const title = bug.title;
+
+  return {
+    title,
+    description,
+    alternates: { canonical },
+    robots: { index: false, follow: false },
+    openGraph: {
+      title,
+      description,
+      url: canonical,
+      type: "article",
+      siteName: "Zedu Bugs",
+      authors: [bug.reporter.name],
+      modifiedTime: bug.updatedAt.toISOString(),
+      images: [{ url: image, alt: "Zedu Bugs" }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [image],
+    },
+    other: {
+      "bug:status": statusLabels[bug.status],
+      "bug:author": bug.reporter.name,
+    },
+  };
+}
+
+export default async function BugDetailPage({ params }: BugPageProps) {
   const { id } = await params;
   const resolved = await resolveSessionUserId();
   const userId = "userId" in resolved ? resolved.userId : undefined;
+
+  // Unauthenticated crawlers only get a safe, limited preview (no comments,
+  // emails, or proof links). Interactive UI stays behind auth.
+  if (!userId) {
+    const bug = await prisma.bug.findUnique({
+      where: { id },
+      select: {
+        title: true,
+        description: true,
+        status: true,
+        severity: true,
+        reporter: { select: { name: true } },
+      },
+    });
+    if (!bug) notFound();
+
+    return (
+      <div className="mx-auto max-w-2xl space-y-4 py-10">
+        <p className="text-sm text-slate-500">Zedu Bugs</p>
+        <h1 className="text-2xl font-semibold text-slate-900">{bug.title}</h1>
+        <div className="flex flex-wrap gap-2">
+          <Badge className={statusClass[bug.status]}>
+            {statusLabels[bug.status]}
+          </Badge>
+          <Badge className={severityClass[bug.severity]}>
+            {severityLabels[bug.severity]}
+          </Badge>
+        </div>
+        <p className="text-sm text-slate-600">
+          Reported by {bug.reporter.name}
+        </p>
+        <p className="text-slate-800">{snippetText(bug.description, 280)}</p>
+        <Link
+          href={`/login?callbackUrl=${encodeURIComponent(`/bugs/${id}`)}`}
+          className="inline-flex text-sm font-medium text-teal-700 hover:underline"
+        >
+          Sign in to view full details
+        </Link>
+      </div>
+    );
+  }
+
+  const sessionUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  const canTriage = isAdmin(sessionUser?.role);
 
   const [bug, users] = await Promise.all([
     prisma.bug.findUnique({
       where: { id },
       include: {
-        reporter: { select: { name: true, email: true } },
-        assignee: { select: { id: true, name: true } },
+        reporter: { select: { name: true, email: true, role: true } },
+        assignee: { select: { id: true, name: true, role: true } },
         comments: {
-          include: { author: { select: { name: true } } },
+          include: {
+            author: { select: { name: true, role: true } },
+            parent: {
+              select: {
+                id: true,
+                body: true,
+                author: { select: { name: true, role: true } },
+              },
+            },
+          },
           orderBy: { createdAt: "asc" },
         },
-        votes: userId
-          ? { where: { userId }, select: { id: true }, take: 1 }
-          : false,
+        activities: {
+          include: { actor: { select: { name: true } } },
+          orderBy: { createdAt: "asc" },
+        },
+        votes: { where: { userId }, select: { id: true }, take: 1 },
       },
     }),
     prisma.user.findMany({
       orderBy: { name: "asc" },
-      select: { id: true, name: true },
+      select: { id: true, name: true, role: true },
     }),
   ]);
 
@@ -48,7 +179,10 @@ export default async function BugDetailPage({
     notFound();
   }
 
+  const isAssignee = !!userId && bug.assigneeId === userId;
+  const canUpdateStatus = canTriage || isAssignee;
   const voted = Array.isArray(bug.votes) && bug.votes.length > 0;
+  const commentTree = buildCommentTree(bug.comments);
 
   return (
     <div className="space-y-6">
@@ -86,17 +220,30 @@ export default async function BugDetailPage({
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Description
         </h2>
-        <p className="mt-3 whitespace-pre-wrap text-slate-800">
-          {bug.description}
-        </p>
+        <RichText content={bug.description} />
         <dl className="mt-6 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
           <div>
             <dt className="font-medium text-slate-500">Reporter</dt>
-            <dd>{bug.reporter.name}</dd>
+            <dd>
+              <UserNameWithBadges
+                name={bug.reporter.name}
+                role={bug.reporter.role}
+                showAuthor
+              />
+            </dd>
           </div>
           <div>
             <dt className="font-medium text-slate-500">Assignee</dt>
-            <dd>{bug.assignee?.name ?? "Unassigned"}</dd>
+            <dd>
+              {bug.assignee ? (
+                <UserNameWithBadges
+                  name={bug.assignee.name}
+                  role={bug.assignee.role}
+                />
+              ) : (
+                "Unassigned"
+              )}
+            </dd>
           </div>
           <div>
             <dt className="font-medium text-slate-500">Created</dt>
@@ -135,45 +282,29 @@ export default async function BugDetailPage({
         )}
       </section>
 
-      <UpdateBugForm
-        bugId={bug.id}
-        status={bug.status}
-        severity={bug.severity}
-        assigneeId={bug.assigneeId}
-        users={users}
-      />
+      {canUpdateStatus ? (
+        <UpdateBugForm
+          bugId={bug.id}
+          status={bug.status}
+          severity={bug.severity}
+          assigneeId={bug.assigneeId}
+          users={users}
+          canEditTriage={canTriage}
+        />
+      ) : null}
+
+      <ActivityTimeline activities={bug.activities} />
 
       <section className="rounded-xl border border-slate-200 bg-white p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Comments ({bug.comments.length})
         </h2>
-        <ul className="mt-4 space-y-4">
-          {bug.comments.length === 0 ? (
-            <li className="text-sm text-slate-500">
-              No comments yet. Add triage notes or reproduction steps below.
-            </li>
-          ) : (
-            bug.comments.map((comment) => (
-              <li
-                key={comment.id}
-                className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3"
-              >
-                <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-                  <span className="font-medium text-slate-700">
-                    {comment.author.name}
-                  </span>
-                  <time>{formatDate(comment.createdAt)}</time>
-                </div>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">
-                  {comment.body}
-                </p>
-              </li>
-            ))
-          )}
-        </ul>
-        <div className="mt-6">
-          <CommentForm bugId={bug.id} />
-        </div>
+        <CommentThread
+          bugId={bug.id}
+          reporterId={bug.reporterId}
+          comments={commentTree}
+          users={users}
+        />
       </section>
     </div>
   );

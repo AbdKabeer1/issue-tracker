@@ -5,14 +5,22 @@ import { unstable_rethrow } from "next/navigation";
 import { createBugAction, type ActionResult } from "@/app/actions/bugs";
 import { severities } from "@/lib/validations/bug";
 import { severityLabels } from "@/lib/labels";
+import { formatUserLabel, type AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/rich-text-editor";
 
-type UserOption = { id: string; name: string };
+type UserOption = { id: string; name: string; role: AppRole };
 
-export function CreateBugForm({ users }: { users: UserOption[] }) {
+export function CreateBugForm({
+  users,
+  isAdmin,
+}: {
+  users: UserOption[];
+  isAdmin: boolean;
+}) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [proofLinks, setProofLinks] = useState("");
@@ -31,8 +39,10 @@ export function CreateBugForm({ users }: { users: UserOption[] }) {
         formData.set("title", title);
         formData.set("description", description);
         formData.set("proofLinks", proofLinks);
-        formData.set("severity", severity);
-        formData.set("assigneeId", assigneeId);
+        if (isAdmin) {
+          formData.set("severity", severity);
+          formData.set("assigneeId", assigneeId);
+        }
         startTransition(async () => {
           try {
             const result: ActionResult = await createBugAction(formData);
@@ -65,7 +75,7 @@ export function CreateBugForm({ users }: { users: UserOption[] }) {
         >
           Description
         </label>
-        <Textarea
+        <RichTextEditor
           id="description"
           name="description"
           required
@@ -73,12 +83,15 @@ export function CreateBugForm({ users }: { users: UserOption[] }) {
           rows={6}
           placeholder="Steps to reproduce, expected vs actual, environment…"
           value={description}
-          onChange={(event) => setDescription(event.target.value)}
+          onChange={setDescription}
+          footer={
+            <p className="text-xs text-slate-500">
+              Markdown supported (bold, italic, lists, code, links). Be
+              specific: what should happen, what actually happens, and how to
+              reproduce it.
+            </p>
+          }
         />
-        <p className="text-xs text-slate-500">
-          Be specific: what should happen, what actually happens, and how to
-          reproduce it.
-        </p>
       </div>
       <div className="space-y-1.5">
         <label
@@ -103,51 +116,53 @@ export function CreateBugForm({ users }: { users: UserOption[] }) {
           expected vs actual, and repro context so triage is fast.
         </p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <label
-            htmlFor="severity"
-            className="text-sm font-medium text-slate-700"
-          >
-            Severity
-          </label>
-          <Select
-            id="severity"
-            name="severity"
-            value={severity}
-            onChange={(event) =>
-              setSeverity(event.target.value as (typeof severities)[number])
-            }
-          >
-            {severities.map((value) => (
-              <option key={value} value={value}>
-                {severityLabels[value]}
-              </option>
-            ))}
-          </Select>
+      {isAdmin ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <label
+              htmlFor="severity"
+              className="text-sm font-medium text-slate-700"
+            >
+              Severity
+            </label>
+            <Select
+              id="severity"
+              name="severity"
+              value={severity}
+              onChange={(event) =>
+                setSeverity(event.target.value as (typeof severities)[number])
+              }
+            >
+              {severities.map((value) => (
+                <option key={value} value={value}>
+                  {severityLabels[value]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <label
+              htmlFor="assigneeId"
+              className="text-sm font-medium text-slate-700"
+            >
+              Assignee
+            </label>
+            <Select
+              id="assigneeId"
+              name="assigneeId"
+              value={assigneeId}
+              onChange={(event) => setAssigneeId(event.target.value)}
+            >
+              <option value="">Unassigned</option>
+              {users.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {formatUserLabel(user.name, user.role)}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
-        <div className="space-y-1.5">
-          <label
-            htmlFor="assigneeId"
-            className="text-sm font-medium text-slate-700"
-          >
-            Assignee
-          </label>
-          <Select
-            id="assigneeId"
-            name="assigneeId"
-            value={assigneeId}
-            onChange={(event) => setAssigneeId(event.target.value)}
-          >
-            <option value="">Unassigned</option>
-            {users.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
+      ) : null}
       {error ? (
         <p className="text-sm text-red-600" role="alert">
           {error}

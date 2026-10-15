@@ -5,6 +5,7 @@ import { unstable_rethrow } from "next/navigation";
 import { signupAction } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 
 export function SignupForm({
   callbackUrl = "/bugs",
@@ -82,10 +83,9 @@ export function SignupForm({
         >
           Password
         </label>
-        <Input
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
           autoComplete="new-password"
           required
           minLength={8}
@@ -101,10 +101,10 @@ export function SignupForm({
         >
           Confirm password
         </label>
-        <Input
+        <PasswordInput
           id="confirmPassword"
           name="confirmPassword"
-          type="password"
+          visibilityLabel="confirm password"
           autoComplete="new-password"
           required
           minLength={8}

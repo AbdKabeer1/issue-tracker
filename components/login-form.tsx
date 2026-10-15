@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
 import { googleSignInAction, loginAction } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 
 export function LoginForm({
   callbackUrl = "/bugs",
@@ -13,8 +15,8 @@ export function LoginForm({
   callbackUrl?: string;
   googleEnabled?: boolean;
 }) {
-  const [email, setEmail] = useState("alice@zendor.dev");
-  const [password, setPassword] = useState("12345678");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -53,23 +55,32 @@ export function LoginForm({
           name="email"
           type="email"
           autoComplete="email"
+          placeholder="you@example.com"
           required
           value={email}
           onChange={(event) => setEmail(event.target.value)}
         />
       </div>
       <div className="space-y-1.5">
-        <label
-          htmlFor="password"
-          className="text-sm font-medium text-slate-700"
-        >
-          Password
-        </label>
-        <Input
+        <div className="flex items-center justify-between gap-2">
+          <label
+            htmlFor="password"
+            className="text-sm font-medium text-slate-700"
+          >
+            Password
+          </label>
+          <Link
+            href="/forgot-password"
+            className="text-xs font-medium text-teal-700 hover:underline"
+          >
+            Forgot password?
+          </Link>
+        </div>
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
           autoComplete="current-password"
+          placeholder="••••••••"
           required
           value={password}
           onChange={(event) => setPassword(event.target.value)}

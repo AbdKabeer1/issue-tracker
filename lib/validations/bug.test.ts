@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   commentSchema,
   createBugSchema,
+  forgotPasswordSchema,
   loginSchema,
+  resetPasswordSchema,
   signupSchema,
   updateBugSchema,
 } from "./bug";
@@ -64,6 +66,28 @@ describe("createBugSchema", () => {
 
     expect(result.success).toBe(false);
   });
+
+  it("rejects client-provided status at creation", () => {
+    const result = createBugSchema.safeParse({
+      title: "Valid title here",
+      description: "Long enough description for the schema.",
+      status: "closed",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("does not expose status on a successful create parse", () => {
+    const result = createBugSchema.safeParse({
+      title: "Valid title here",
+      description: "Long enough description for the schema.",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty("status");
+    }
+  });
 });
 
 describe("updateBugSchema", () => {
@@ -91,6 +115,36 @@ describe("commentSchema", () => {
 
   it("rejects an empty comment", () => {
     const result = commentSchema.safeParse({ body: "   " });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts an optional parentId for replies", () => {
+    const result = commentSchema.safeParse({
+      body: "Agree with this triage note.",
+      parentId: validCuid,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.parentId).toBe(validCuid);
+    }
+  });
+
+  it("treats empty parentId as a top-level comment", () => {
+    const result = commentSchema.safeParse({
+      body: "Top-level note.",
+      parentId: "",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.parentId).toBeUndefined();
+    }
+  });
+
+  it("rejects an invalid parentId", () => {
+    const result = commentSchema.safeParse({
+      body: "Bad parent.",
+      parentId: "not-a-cuid",
+    });
     expect(result.success).toBe(false);
   });
 });
@@ -151,6 +205,61 @@ describe("signupSchema", () => {
       email: "dana@zendor.dev",
       password: "short",
       confirmPassword: "short",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("forgotPasswordSchema", () => {
+  it("accepts and lowercases email", () => {
+    const result = forgotPasswordSchema.safeParse({
+      email: "Alice@Zendor.dev",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.email).toBe("alice@zendor.dev");
+    }
+  });
+
+  it("rejects an invalid email", () => {
+    const result = forgotPasswordSchema.safeParse({ email: "not-an-email" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("resetPasswordSchema", () => {
+  it("accepts a valid reset payload", () => {
+    const result = resetPasswordSchema.safeParse({
+      token: "abc123",
+      password: "password123",
+      confirmPassword: "password123",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects mismatched passwords", () => {
+    const result = resetPasswordSchema.safeParse({
+      token: "abc123",
+      password: "password123",
+      confirmPassword: "different1",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a short password", () => {
+    const result = resetPasswordSchema.safeParse({
+      token: "abc123",
+      password: "short",
+      confirmPassword: "short",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a missing token", () => {
+    const result = resetPasswordSchema.safeParse({
+      token: "",
+      password: "password123",
+      confirmPassword: "password123",
     });
     expect(result.success).toBe(false);
   });

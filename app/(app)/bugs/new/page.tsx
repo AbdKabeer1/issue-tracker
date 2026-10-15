@@ -1,12 +1,26 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { isAdmin } from "@/lib/roles";
+import { resolveSessionUserId } from "@/lib/session-user";
 import { CreateBugForm } from "@/components/create-bug-form";
 
 export default async function NewBugPage() {
-  const users = await prisma.user.findMany({
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
-  });
+  const resolved = await resolveSessionUserId();
+  const userId = "userId" in resolved ? resolved.userId : undefined;
+  const sessionUser = userId
+    ? await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      })
+    : null;
+  const admin = isAdmin(sessionUser?.role);
+
+  const users = admin
+    ? await prisma.user.findMany({
+        select: { id: true, name: true, role: true },
+        orderBy: { name: "asc" },
+      })
+    : [];
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -21,7 +35,7 @@ export default async function NewBugPage() {
         </p>
       </div>
       <div className="rounded-xl border border-slate-200 bg-white p-6">
-        <CreateBugForm users={users} />
+        <CreateBugForm users={users} isAdmin={admin} />
       </div>
     </div>
   );
