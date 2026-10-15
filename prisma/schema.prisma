@@ -21,6 +21,16 @@ enum Status {
   closed
 }
 
+/// Application roles for RBAC.
+/// - user: default; report bugs, comment, vote
+/// - admin: triage bugs (status / severity / assignee)
+/// - super_admin: all admin powers + manage user roles
+enum Role {
+  user
+  admin
+  super_admin
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String
@@ -29,6 +39,7 @@ model User {
   passwordHash  String?
   emailVerified DateTime?
   image         String?
+  role          Role      @default(user)
   createdAt     DateTime  @default(now())
   reportedBugs  Bug[]     @relation("BugReporter")
   assignedBugs  Bug[]     @relation("BugAssignee")

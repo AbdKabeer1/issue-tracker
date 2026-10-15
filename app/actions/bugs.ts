@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { isAdmin } from "@/lib/roles";
 import {
   resolveSessionUserId,
   SESSION_EXPIRED_MESSAGE,
@@ -22,6 +23,18 @@ async function requireUserId() {
     redirect("/login");
   }
   return resolved.userId;
+}
+
+async function requireAdminUserId() {
+  const userId = await requireUserId();
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true },
+  });
+  if (!user || !isAdmin(user.role)) {
+    return { error: "Only admins can triage bugs" } as const;
+  }
+  return { userId: user.id } as const;
 }
 
 export async function createBugAction(
@@ -64,7 +77,10 @@ export async function updateBugAction(
   bugId: string,
   formData: FormData,
 ): Promise<ActionResult> {
-  await requireUserId();
+  const admin = await requireAdminUserId();
+  if ("error" in admin) {
+    return { error: admin.error };
+  }
 
   const assigneeRaw = formData.get("assigneeId");
   const parsed = updateBugSchema.safeParse({

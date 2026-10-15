@@ -1,6 +1,17 @@
 import { redirect } from "next/navigation";
+import type { Role } from "@prisma/client";
 import { auth, signOut } from "@/auth";
+import { prisma } from "@/lib/prisma";
+import { isAdmin } from "@/lib/roles";
 import { resolveSessionUserId } from "@/lib/session-user";
+
+export type SessionAppUser = {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  image?: string | null;
+  role: Role;
+};
 
 /**
  * App-layout gate. Uses the same JWT session as edge middleware (auth.config).
@@ -8,7 +19,7 @@ import { resolveSessionUserId } from "@/lib/session-user";
  * Stale JWT (cookie present, user gone from DB) → signOut to clear cookie,
  * then login — avoids middleware bouncing /login ↔ /bugs.
  */
-export async function requireUser() {
+export async function requireUser(): Promise<SessionAppUser> {
   const session = await auth();
   if (!session?.user) {
     redirect("/login");
@@ -21,5 +32,47 @@ export async function requireUser() {
     throw new Error("unreachable: signOut redirects");
   }
 
-  return { ...session.user, id: resolved.userId };
+  const dbUser = await prisma.user.findUnique({
+    where: { id: resolved.userId },
+    select: { id: true, name: true, email: true, image: true, role: true },
+  });
+
+  if (!dbUser) {
+    await signOut({ redirectTo: "/login" });
+    throw new Error("unreachable: signOut redirects");
+  }
+
+  return {
+    id: dbUser.id,
+    name: dbUser.name,
+    email: dbUser.email,
+    image: dbUser.image,
+    role: dbUser.role,
+  };
+}
+
+/** Require one of the given roles. Redirects unauthorized users to /bugs. */
+export async function requireRole(
+  roles: Role | Role[],
+): Promise<SessionAppUser> {
+  const user = await requireUser();
+  const allowed = Array.isArray(roles) ? roles : [roles];
+  if (!allowed.includes(user.role)) {
+    redirect("/bugs");
+  }
+  return user;
+}
+
+/** Admin or super_admin. Redirects non-admins to /bugs. */
+export async function requireAdmin(): Promise<SessionAppUser> {
+  const user = await requireUser();
+  if (!isAdmin(user.role)) {
+    redirect("/bugs");
+  }
+  return user;
+}
+
+/** Super admin only. Redirects everyone else to /bugs. */
+export async function requireSuperAdmin(): Promise<SessionAppUser> {
+  return requireRole("super_admin");
 }

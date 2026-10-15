@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import authConfig from "@/auth.config";
+import { isSuperAdmin } from "@/lib/roles";
 
 /**
  * Edge-only auth wrapper — initialized from auth.config (no Prisma/bcrypt).
@@ -32,6 +33,15 @@ export default auth((req) => {
     const url = req.nextUrl.clone();
     url.pathname = "/bugs";
     return NextResponse.redirect(url);
+  }
+
+  // Super-admin only surface (JWT role; page/actions re-check against DB).
+  if (isLoggedIn && pathname.startsWith("/admin")) {
+    if (!isSuperAdmin(req.auth?.user?.role)) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/bugs";
+      return NextResponse.redirect(url);
+    }
   }
 
   return NextResponse.next();

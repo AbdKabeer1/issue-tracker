@@ -2,8 +2,15 @@ import Link from "next/link";
 import { logoutAction } from "@/app/actions/auth";
 import { BrandLockup } from "@/components/brand-lockup";
 import { Button } from "@/components/ui/button";
+import { isSuperAdmin, type AppRole } from "@/lib/roles";
 
-export function AppHeader({ userName }: { userName?: string | null }) {
+export function AppHeader({
+  userName,
+  role,
+}: {
+  userName?: string | null;
+  role?: AppRole | null;
+}) {
   return (
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
@@ -19,6 +26,14 @@ export function AppHeader({ userName }: { userName?: string | null }) {
             >
               New bug
             </Link>
+            {isSuperAdmin(role) ? (
+              <Link
+                href="/admin/users"
+                className="text-slate-600 hover:text-slate-900"
+              >
+                Admins
+              </Link>
+            ) : null}
           </nav>
         </div>
         <div className="flex items-center gap-3">

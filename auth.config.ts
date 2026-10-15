@@ -18,6 +18,9 @@ export default {
         token.id = user.id;
         token.sub = user.id;
       }
+      if (user?.role) {
+        token.role = user.role;
+      }
       return token;
     },
     session({ session, token }) {
@@ -25,6 +28,11 @@ export default {
         const id = token.id ?? token.sub;
         if (typeof id === "string" && id.length > 0) {
           session.user.id = id;
+        }
+        if (token.role) {
+          session.user.role = token.role;
+        } else {
+          session.user.role = "user";
         }
       }
       return session;

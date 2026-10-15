@@ -1,0 +1,94 @@
+import { requireSuperAdmin } from "@/lib/auth-helpers";
+import { prisma } from "@/lib/prisma";
+import { roleLabels } from "@/lib/roles";
+import { formatDate } from "@/lib/format";
+import { Badge } from "@/components/ui/badge";
+import { PromoteUserButton } from "@/components/promote-user-button";
+
+const roleBadgeClass: Record<string, string> = {
+  user: "bg-slate-100 text-slate-700",
+  admin: "bg-teal-100 text-teal-800",
+  super_admin: "bg-amber-100 text-amber-900",
+};
+
+const roleOrder = { super_admin: 0, admin: 1, user: 2 } as const;
+
+export default async function AdminUsersPage() {
+  await requireSuperAdmin();
+
+  const users = await prisma.user.findMany({
+    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      createdAt: true,
+    },
+  });
+
+  users.sort(
+    (a, b) =>
+      roleOrder[a.role] - roleOrder[b.role] || a.name.localeCompare(b.name),
+  );
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold text-slate-900">
+          Admin management
+        </h1>
+        <p className="mt-1 text-sm text-slate-600">
+          Super admins can promote users to admin. Role changes apply
+          immediately in this list.
+        </p>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <table className="min-w-full divide-y divide-slate-200 text-sm">
+          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="px-4 py-3">User</th>
+              <th className="px-4 py-3">Role</th>
+              <th className="px-4 py-3">Joined</th>
+              <th className="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {users.map((user) => (
+              <tr key={user.id} className="hover:bg-slate-50/80">
+                <td className="px-4 py-3">
+                  <div className="font-medium text-slate-900">{user.name}</div>
+                  <div className="text-slate-500">{user.email}</div>
+                </td>
+                <td className="px-4 py-3">
+                  <Badge className={roleBadgeClass[user.role]}>
+                    {roleLabels[user.role]}
+                  </Badge>
+                </td>
+                <td className="px-4 py-3 text-slate-600">
+                  {formatDate(user.createdAt)}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  {user.role === "user" ? (
+                    <PromoteUserButton
+                      userId={user.id}
+                      userName={user.name}
+                    />
+                  ) : (
+                    <span className="text-xs text-slate-400">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {users.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-slate-500">
+            No users found.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}

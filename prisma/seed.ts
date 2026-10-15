@@ -3,7 +3,75 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-async function main() {
+const MIN_SUPER_ADMIN_PASSWORD_LENGTH = 12;
+
+/**
+ * Idempotent super-admin provisioning from env.
+ * - Creates the account when missing
+ * - Leaves an existing super_admin unchanged unless SUPER_ADMIN_FORCE_UPDATE=true
+ * - With force update, promotes/rotates credentials for the configured email
+ */
+async function ensureSuperAdmin() {
+  const email = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.SUPER_ADMIN_PASSWORD;
+  const forceUpdate = process.env.SUPER_ADMIN_FORCE_UPDATE === "true";
+  const name = process.env.SUPER_ADMIN_NAME?.trim() || "Super Admin";
+
+  if (!email || !password) {
+    console.log(
+      "Skipping super admin seed (set SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD).",
+    );
+    return;
+  }
+
+  if (password.length < MIN_SUPER_ADMIN_PASSWORD_LENGTH) {
+    throw new Error(
+      `SUPER_ADMIN_PASSWORD must be at least ${MIN_SUPER_ADMIN_PASSWORD_LENGTH} characters.`,
+    );
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email } });
+
+  if (existing) {
+    if (existing.role === "super_admin" && !forceUpdate) {
+      console.log(`Super admin already exists (${email}); leaving unchanged.`);
+      return;
+    }
+
+    if (!forceUpdate) {
+      console.log(
+        `User ${email} exists with role=${existing.role}; left unchanged. Set SUPER_ADMIN_FORCE_UPDATE=true to promote and set password.`,
+      );
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: {
+        role: "super_admin",
+        passwordHash,
+        name,
+      },
+    });
+    console.log(`Updated super admin (${email}).`);
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(password, 12);
+  await prisma.user.create({
+    data: {
+      name,
+      email,
+      passwordHash,
+      role: "super_admin",
+      emailVerified: new Date(),
+    },
+  });
+  console.log(`Created super admin (${email}).`);
+}
+
+async function seedDemoData() {
   await prisma.vote.deleteMany();
   await prisma.comment.deleteMany();
   await prisma.bug.deleteMany();
@@ -16,6 +84,7 @@ async function main() {
       name: "Alice Mentor",
       email: "alice@zendor.dev",
       passwordHash,
+      role: "admin",
     },
   });
   const bob = await prisma.user.create({
@@ -152,8 +221,30 @@ async function main() {
     });
   }
 
-  console.log("Seeded 3 users, 8 bugs, and sample votes.");
-  console.log("Demo login: alice@zendor.dev / 12345678");
+  console.log("Seeded 3 demo users, 8 bugs, and sample votes.");
+  console.log("Demo login: alice@zendor.dev / 12345678 (admin)");
+}
+
+async function main() {
+  const wasEmpty = (await prisma.user.count()) === 0;
+
+  // Always idempotent; safe when a DB already has real accounts.
+  await ensureSuperAdmin();
+
+  const seedDemo =
+    process.env.SEED_DEMO_DATA === "true" ||
+    (wasEmpty && process.env.SEED_DEMO_DATA !== "false");
+
+  if (!seedDemo) {
+    console.log(
+      "Demo data seed skipped (DB not empty). Set SEED_DEMO_DATA=true to force sample data (wipes users/bugs).",
+    );
+    return;
+  }
+
+  await seedDemoData();
+  // Demo wipe removes the super admin — restore from env afterward.
+  await ensureSuperAdmin();
 }
 
 main()

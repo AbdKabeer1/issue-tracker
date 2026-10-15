@@ -18,15 +18,25 @@ Brand mark: `public/zedu-mark.svg`.
 
 https://contributors.zedu.chat/bug-tracker
 
+## Roles (RBAC)
+
+| Role | Capabilities |
+| --- | --- |
+| `user` | Report bugs, comment, vote |
+| `admin` | Everything `user` can do, plus triage (status / severity / assignee) |
+| `super_admin` | Everything `admin` can do, plus `/admin/users` management (promote users to admin) |
+
+Super-admin credentials come from `SUPER_ADMIN_*` env vars (see below). The seeder is idempotent and does not overwrite an existing super admin unless `SUPER_ADMIN_FORCE_UPDATE=true`.
+
 ## Demo accounts (credentials seed)
 
 | Email | Password |
 | --- | --- |
-| `alice@zendor.dev` | `12345678` |
+| `alice@zendor.dev` | `12345678` (admin) |
 | `bob@zendor.dev` | `12345678` |
 | `cara@zendor.dev` | `12345678` |
 
-> Seed only on an **empty** database. Never reseed a DB that already has real signups.
+> Seed only on an **empty** database (or set `SEED_DEMO_DATA=true`). Never wipe a DB that already has real signups.
 
 ## Local setup
 
@@ -49,6 +59,9 @@ App is served under **`/bug-tracker`** (see `next.config.ts` `basePath`), matchi
 | `AUTH_SECRET` | Session secret (`openssl rand -base64 32`) |
 | `AUTH_URL` / `NEXTAUTH_URL` | App origin **including** `/bug-tracker` |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional Google sign-in |
+| `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | Idempotent super-admin seed (optional; password min 12 chars) |
+| `SUPER_ADMIN_FORCE_UPDATE` | Set `true` to rotate password / promote an existing account |
+| `SEED_DEMO_DATA` | Set `true` to wipe and load demo users/bugs |
 
 Google redirect URI: `{AUTH_URL}/api/auth/callback/google`
 

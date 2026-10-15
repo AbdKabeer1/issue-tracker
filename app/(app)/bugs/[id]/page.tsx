@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { isAdmin } from "@/lib/roles";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { formatDate } from "@/lib/format";
 import {
@@ -24,6 +25,14 @@ export default async function BugDetailPage({
   const resolved = await resolveSessionUserId();
   const userId = "userId" in resolved ? resolved.userId : undefined;
 
+  const sessionUser = userId
+    ? await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      })
+    : null;
+  const canTriage = isAdmin(sessionUser?.role);
+
   const [bug, users] = await Promise.all([
     prisma.bug.findUnique({
       where: { id },
@@ -39,10 +48,12 @@ export default async function BugDetailPage({
           : false,
       },
     }),
-    prisma.user.findMany({
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
+    canTriage
+      ? prisma.user.findMany({
+          orderBy: { name: "asc" },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   if (!bug) {
@@ -139,13 +150,15 @@ export default async function BugDetailPage({
         )}
       </section>
 
-      <UpdateBugForm
-        bugId={bug.id}
-        status={bug.status}
-        severity={bug.severity}
-        assigneeId={bug.assigneeId}
-        users={users}
-      />
+      {canTriage ? (
+        <UpdateBugForm
+          bugId={bug.id}
+          status={bug.status}
+          severity={bug.severity}
+          assigneeId={bug.assigneeId}
+          users={users}
+        />
+      ) : null}
 
       <section className="rounded-xl border border-slate-200 bg-white p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
