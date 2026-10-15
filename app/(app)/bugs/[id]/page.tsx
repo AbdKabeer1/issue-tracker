@@ -51,7 +51,7 @@ export default async function BugDetailPage({
     }),
     prisma.user.findMany({
       orderBy: { name: "asc" },
-      select: { id: true, name: true },
+      select: { id: true, name: true, role: true },
     }),
   ]);
 
@@ -59,6 +59,8 @@ export default async function BugDetailPage({
     notFound();
   }
 
+  const isAssignee = !!userId && bug.assigneeId === userId;
+  const canUpdateStatus = canTriage || isAssignee;
   const voted = Array.isArray(bug.votes) && bug.votes.length > 0;
 
   return (
@@ -161,13 +163,14 @@ export default async function BugDetailPage({
         )}
       </section>
 
-      {canTriage ? (
+      {canUpdateStatus ? (
         <UpdateBugForm
           bugId={bug.id}
           status={bug.status}
           severity={bug.severity}
           assigneeId={bug.assigneeId}
           users={users}
+          canEditTriage={canTriage}
         />
       ) : null}
 

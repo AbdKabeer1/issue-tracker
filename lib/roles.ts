@@ -1,6 +1,9 @@
 /** Matches Prisma `Role` enum — kept local so helpers stay edge-safe. */
 export type AppRole = "user" | "admin" | "super_admin";
 
+/** Alias used by assignee selectors and similar UI. */
+export type UserRole = AppRole;
+
 export const ROLES = {
   user: "user",
   admin: "admin",
@@ -20,4 +23,12 @@ export function isAdmin(role: AppRole | null | undefined): boolean {
 
 export function isSuperAdmin(role: AppRole | null | undefined): boolean {
   return role === "super_admin";
+}
+
+/** Plain-text label for `<option>` lists where badges cannot render. */
+export function formatUserLabel(
+  name: string,
+  role?: AppRole | null,
+): string {
+  return isAdmin(role) ? `${name} (Admin)` : name;
 }

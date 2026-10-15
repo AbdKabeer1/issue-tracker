@@ -64,6 +64,28 @@ describe("createBugSchema", () => {
 
     expect(result.success).toBe(false);
   });
+
+  it("rejects client-provided status at creation", () => {
+    const result = createBugSchema.safeParse({
+      title: "Valid title here",
+      description: "Long enough description for the schema.",
+      status: "closed",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("does not expose status on a successful create parse", () => {
+    const result = createBugSchema.safeParse({
+      title: "Valid title here",
+      description: "Long enough description for the schema.",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty("status");
+    }
+  });
 });
 
 describe("updateBugSchema", () => {

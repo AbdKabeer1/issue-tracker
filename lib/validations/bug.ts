@@ -34,17 +34,24 @@ export const proofLinksInputSchema = z
     return links;
   });
 
-export const createBugSchema = z.object({
-  title: z.string().trim().min(3, "Title must be at least 3 characters").max(200),
-  description: z
-    .string()
-    .trim()
-    .min(10, "Description must be at least 10 characters")
-    .max(5000),
-  severity: severitySchema.default("medium"),
-  assigneeId: z.string().cuid().optional().or(z.literal("")),
-  proofLinks: proofLinksInputSchema,
-});
+/** Create payload — status is rejected; the server always sets `open`. */
+export const createBugSchema = z
+  .object({
+    title: z
+      .string()
+      .trim()
+      .min(3, "Title must be at least 3 characters")
+      .max(200),
+    description: z
+      .string()
+      .trim()
+      .min(10, "Description must be at least 10 characters")
+      .max(5000),
+    severity: severitySchema.default("medium"),
+    assigneeId: z.string().cuid().optional().or(z.literal("")),
+    proofLinks: proofLinksInputSchema,
+  })
+  .strict();
 
 export const updateBugSchema = z.object({
   status: statusSchema.optional(),
