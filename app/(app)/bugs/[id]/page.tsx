@@ -12,7 +12,6 @@ import {
 } from "@/lib/link-preview";
 import { stripMarkdown } from "@/lib/rich-text";
 import { absoluteUrl } from "@/lib/site-url";
-import {
   severityClass,
   severityLabels,
   statusClass,

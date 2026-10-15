@@ -117,4 +117,10 @@ describe("truncateCommentBody", () => {
     expect(truncateCommentBody("  hello   world  ")).toBe("hello world");
     expect(truncateCommentBody("a".repeat(100), 10)).toBe(`${"a".repeat(9)}…`);
   });
+
+  it("strips markdown before truncating reply previews", () => {
+    expect(truncateCommentBody("see **bold** and [docs](https://x.com)")).toBe(
+      "see bold and docs",
+    );
+  });
 });

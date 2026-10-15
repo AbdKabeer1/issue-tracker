@@ -1,4 +1,5 @@
 import type { AppRole } from "@/lib/roles";
+import { stripMarkdown } from "@/lib/rich-text";
 
 /** Root = 0. Replies may nest up to this depth (3 levels total). */
 export const MAX_COMMENT_DEPTH = 2;
@@ -78,7 +79,7 @@ export function commentDepth(
 }
 
 export function truncateCommentBody(body: string, max = 80): string {
-  const trimmed = body.trim().replace(/\s+/g, " ");
+  const trimmed = stripMarkdown(body).replace(/\s+/g, " ").trim();
   if (trimmed.length <= max) return trimmed;
   return `${trimmed.slice(0, max - 1)}…`;
 }

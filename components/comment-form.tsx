@@ -12,6 +12,10 @@ import {
 import { addCommentAction } from "@/app/actions/bugs";
 import { Button } from "@/components/ui/button";
 import {
+  RichTextEditor,
+  type RichTextEditorHandle,
+} from "@/components/rich-text-editor";
+import {
   filterUsersForMention,
   getMentionQuery,
   insertMention,
@@ -38,7 +42,7 @@ export function CommentForm({
   onSuccess,
 }: CommentFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<RichTextEditorHandle>(null);
   const listboxId = useId();
   const bodyFieldId = parentId ? `body-${parentId}` : "body";
   const [body, setBody] = useState("");
@@ -49,8 +53,7 @@ export function CommentForm({
   const isReply = Boolean(parentId);
 
   const suggestions = useMemo(
-    () =>
-      mention ? filterUsersForMention(users, mention.query) : [],
+    () => (mention ? filterUsersForMention(users, mention.query) : []),
     [mention, users],
   );
 
@@ -63,7 +66,7 @@ export function CommentForm({
 
   const applyMention = useCallback(
     (user: UserOption) => {
-      const textarea = textareaRef.current;
+      const textarea = editorRef.current?.getTextarea();
       if (!textarea || !mention) return;
 
       const caret = textarea.selectionStart ?? body.length;
@@ -135,102 +138,110 @@ export function CommentForm({
           ? `Reply to ${parentAuthorName ?? "comment"}`
           : "Add a comment"}
       </label>
-      <div className="relative">
-        <textarea
-          ref={textareaRef}
-          id={bodyFieldId}
-          name="body"
-          required
-          rows={isReply ? 2 : 3}
-          value={body}
-          onChange={(event) => {
-            const value = event.target.value;
-            setBody(value);
-            syncMentionFromCaret(value, event.target.selectionStart ?? 0);
-          }}
-          onClick={(event) => {
-            syncMentionFromCaret(
-              event.currentTarget.value,
-              event.currentTarget.selectionStart ?? 0,
-            );
-          }}
-          onKeyUp={(event) => {
-            if (
-              event.key === "ArrowDown" ||
-              event.key === "ArrowUp" ||
-              event.key === "Enter" ||
-              event.key === "Tab" ||
-              event.key === "Escape"
-            ) {
-              return;
-            }
-            syncMentionFromCaret(
-              event.currentTarget.value,
-              event.currentTarget.selectionStart ?? 0,
-            );
-          }}
-          onKeyDown={onKeyDown}
-          placeholder={
-            isReply
-              ? "Write your reply… Type @ to mention someone"
-              : "Share triage notes… Type @ to mention someone"
+      <RichTextEditor
+        ref={editorRef}
+        id={bodyFieldId}
+        name="body"
+        required
+        rows={isReply ? 3 : 4}
+        value={body}
+        onChange={(value) => {
+          setBody(value);
+          const textarea = editorRef.current?.getTextarea();
+          syncMentionFromCaret(
+            value,
+            textarea?.selectionStart ?? value.length,
+          );
+        }}
+        onClick={(event) => {
+          syncMentionFromCaret(
+            event.currentTarget.value,
+            event.currentTarget.selectionStart ?? 0,
+          );
+        }}
+        onKeyUp={(event) => {
+          if (
+            event.key === "ArrowDown" ||
+            event.key === "ArrowUp" ||
+            event.key === "Enter" ||
+            event.key === "Tab" ||
+            event.key === "Escape"
+          ) {
+            return;
           }
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          aria-autocomplete="list"
-          aria-controls={showSuggestions ? listboxId : undefined}
-          aria-expanded={showSuggestions}
-          aria-activedescendant={
-            showSuggestions
-              ? `${listboxId}-option-${activeIndex}`
-              : undefined
-          }
-          role="combobox"
-        />
-        {showSuggestions ? (
-          <ul
-            id={listboxId}
-            role="listbox"
-            className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
-          >
-            {suggestions.map((user, index) => {
-              const active = index === activeIndex;
-              return (
-                <li key={user.id} role="option" aria-selected={active}>
-                  <button
-                    id={`${listboxId}-option-${index}`}
-                    type="button"
-                    className={`flex w-full px-3 py-2 text-left text-sm ${
-                      active
-                        ? "bg-teal-50 text-teal-900"
-                        : "text-slate-800 hover:bg-slate-50"
-                    }`}
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      applyMention(user);
-                    }}
-                    onMouseEnter={() => setActiveIndex(index)}
-                  >
-                    {user.name}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        ) : null}
-      </div>
-      {!isReply ? (
-        <p className="text-xs text-slate-500">
-          Mentions are stored in the comment and highlighted for readers. Push
-          notifications are not sent.
-        </p>
-      ) : null}
+          syncMentionFromCaret(
+            event.currentTarget.value,
+            event.currentTarget.selectionStart ?? 0,
+          );
+        }}
+        onKeyDown={onKeyDown}
+        onSelect={(event) => {
+          syncMentionFromCaret(
+            event.currentTarget.value,
+            event.currentTarget.selectionStart ?? 0,
+          );
+        }}
+        placeholder={
+          isReply
+            ? "Write your reply… Type @ to mention someone"
+            : "Share triage notes… Type @ to mention someone"
+        }
+        aria-autocomplete="list"
+        aria-controls={showSuggestions ? listboxId : undefined}
+        aria-expanded={showSuggestions}
+        aria-activedescendant={
+          showSuggestions ? `${listboxId}-option-${activeIndex}` : undefined
+        }
+        role="combobox"
+        overlay={
+          showSuggestions ? (
+            <ul
+              id={listboxId}
+              role="listbox"
+              className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+            >
+              {suggestions.map((user, index) => {
+                const active = index === activeIndex;
+                return (
+                  <li key={user.id} role="option" aria-selected={active}>
+                    <button
+                      id={`${listboxId}-option-${index}`}
+                      type="button"
+                      className={`flex w-full px-3 py-2 text-left text-sm ${
+                        active
+                          ? "bg-teal-50 text-teal-900"
+                          : "text-slate-800 hover:bg-slate-50"
+                      }`}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        applyMention(user);
+                      }}
+                      onMouseEnter={() => setActiveIndex(index)}
+                    >
+                      {user.name}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null
+        }
+        footer={
+          !isReply ? (
+            <p className="text-xs text-slate-500">
+              Markdown formatting and @mentions are supported. Mentions are
+              highlighted for readers; push notifications are not sent.
+            </p>
+          ) : null
+        }
+      />
       {error ? (
         <p className="text-sm text-red-600" role="alert">
           {error}
         </p>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending || !body.trim()}>
           {pending
             ? isReply
               ? "Replying…"
