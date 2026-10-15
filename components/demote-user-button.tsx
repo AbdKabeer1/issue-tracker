@@ -28,9 +28,13 @@ export function DemoteUserButton({
 
           setError(null);
           startTransition(async () => {
-            const result = await demoteUserToUserAction(userId);
-            if (result.error) {
-              setError(result.error);
+            try {
+              const result = await demoteUserToUserAction(userId);
+              if (result.error) {
+                setError(result.error);
+              }
+            } catch {
+              setError("Could not remove admin access. Please try again.");
             }
           });
         }}
