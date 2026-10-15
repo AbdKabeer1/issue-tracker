@@ -1,5 +1,5 @@
 import type { ActivityType } from "@prisma/client";
-import { formatDate } from "@/lib/format";
+import { LocalTime } from "@/components/local-time";
 
 export type ActivityEntry = {
   id: string;
@@ -47,12 +47,10 @@ export function ActivityTimeline({
                 <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
                   {typeLabel[entry.type]}
                 </span>
-                <time
+                <LocalTime
                   className="text-xs text-slate-400"
-                  dateTime={entry.createdAt.toISOString()}
-                >
-                  {formatDate(entry.createdAt)}
-                </time>
+                  date={entry.createdAt}
+                />
               </div>
               <p className="mt-1 text-sm text-slate-800">
                 <span className="font-medium text-slate-900">

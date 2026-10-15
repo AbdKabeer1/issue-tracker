@@ -16,10 +16,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm run build
 
 FROM node:20-alpine AS runner
-RUN apk add --no-cache openssl libc6-compat
+RUN apk add --no-cache openssl libc6-compat tzdata
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.14.0 --activate
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 TZ=Africa/Lagos
 COPY --from=builder /app ./
 EXPOSE 3000
 
