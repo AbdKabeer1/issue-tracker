@@ -45,6 +45,20 @@ model User {
   assignedBugs  Bug[]     @relation("BugAssignee")
   comments      Comment[]
   votes         Vote[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+/// Single-use password reset tokens (~30 min TTL). Store only the SHA-256 hash.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Bug {

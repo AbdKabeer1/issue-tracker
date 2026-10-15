@@ -74,6 +74,11 @@ export const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+const passwordField = z
+  .string()
+  .min(8, "Password must be at least 8 characters")
+  .max(128);
+
 export const signupSchema = z
   .object({
     name: z
@@ -86,10 +91,26 @@ export const signupSchema = z
       .trim()
       .email("Enter a valid email")
       .transform((value) => value.toLowerCase()),
-    password: z
-      .string()
-      .min(8, "Password must be at least 8 characters")
-      .max(128),
+    password: passwordField,
+    confirmPassword: z.string().min(1, "Confirm your password"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
+export const forgotPasswordSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .email("Enter a valid email")
+    .transform((value) => value.toLowerCase()),
+});
+
+export const resetPasswordSchema = z
+  .object({
+    token: z.string().trim().min(1, "Reset link is invalid or expired"),
+    password: passwordField,
     confirmPassword: z.string().min(1, "Confirm your password"),
   })
   .refine((data) => data.password === data.confirmPassword, {

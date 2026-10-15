@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   commentSchema,
   createBugSchema,
+  forgotPasswordSchema,
   loginSchema,
+  resetPasswordSchema,
   signupSchema,
   updateBugSchema,
 } from "./bug";
@@ -203,6 +205,61 @@ describe("signupSchema", () => {
       email: "dana@zendor.dev",
       password: "short",
       confirmPassword: "short",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("forgotPasswordSchema", () => {
+  it("accepts and lowercases email", () => {
+    const result = forgotPasswordSchema.safeParse({
+      email: "Alice@Zendor.dev",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.email).toBe("alice@zendor.dev");
+    }
+  });
+
+  it("rejects an invalid email", () => {
+    const result = forgotPasswordSchema.safeParse({ email: "not-an-email" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("resetPasswordSchema", () => {
+  it("accepts a valid reset payload", () => {
+    const result = resetPasswordSchema.safeParse({
+      token: "abc123",
+      password: "password123",
+      confirmPassword: "password123",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects mismatched passwords", () => {
+    const result = resetPasswordSchema.safeParse({
+      token: "abc123",
+      password: "password123",
+      confirmPassword: "different1",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a short password", () => {
+    const result = resetPasswordSchema.safeParse({
+      token: "abc123",
+      password: "short",
+      confirmPassword: "short",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a missing token", () => {
+    const result = resetPasswordSchema.safeParse({
+      token: "",
+      password: "password123",
+      confirmPassword: "password123",
     });
     expect(result.success).toBe(false);
   });

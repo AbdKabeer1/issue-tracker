@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
 import { googleSignInAction, loginAction } from "@/app/actions/auth";
@@ -60,12 +61,20 @@ export function LoginForm({
         />
       </div>
       <div className="space-y-1.5">
-        <label
-          htmlFor="password"
-          className="text-sm font-medium text-slate-700"
-        >
-          Password
-        </label>
+        <div className="flex items-center justify-between gap-2">
+          <label
+            htmlFor="password"
+            className="text-sm font-medium text-slate-700"
+          >
+            Password
+          </label>
+          <Link
+            href="/forgot-password"
+            className="text-xs font-medium text-teal-700 hover:underline"
+          >
+            Forgot password?
+          </Link>
+        </div>
         <PasswordInput
           id="password"
           name="password"

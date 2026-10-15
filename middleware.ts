@@ -16,8 +16,12 @@ export default auth((req) => {
 
   const isAuthPage =
     pathname.startsWith("/login") || pathname.startsWith("/signup");
+  const isPasswordResetPage =
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/reset-password");
   const isPublic =
     isAuthPage ||
+    isPasswordResetPage ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico";
@@ -29,6 +33,7 @@ export default auth((req) => {
     return NextResponse.redirect(url);
   }
 
+  // Allow reset links even when a session exists; only bounce login/signup.
   if (isLoggedIn && isAuthPage) {
     const url = req.nextUrl.clone();
     url.pathname = "/bugs";
