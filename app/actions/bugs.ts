@@ -41,11 +41,18 @@ export async function createBugAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const userId = await requireUserId();
+  const creator = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  const admin = isAdmin(creator?.role);
+
+  // Non-admins cannot set severity/assignee at creation.
   const parsed = createBugSchema.safeParse({
     title: formData.get("title"),
     description: formData.get("description"),
-    severity: formData.get("severity") || "medium",
-    assigneeId: formData.get("assigneeId") || "",
+    severity: admin ? formData.get("severity") || "medium" : "medium",
+    assigneeId: admin ? formData.get("assigneeId") || "" : "",
     proofLinks: formData.get("proofLinks") || "",
   });
 
@@ -54,7 +61,7 @@ export async function createBugAction(
   }
 
   const assigneeId =
-    parsed.data.assigneeId && parsed.data.assigneeId.length > 0
+    admin && parsed.data.assigneeId && parsed.data.assigneeId.length > 0
       ? parsed.data.assigneeId
       : null;
 
@@ -62,7 +69,7 @@ export async function createBugAction(
     data: {
       title: parsed.data.title,
       description: parsed.data.description,
-      severity: parsed.data.severity,
+      severity: admin ? parsed.data.severity : "medium",
       proofLinks: parsed.data.proofLinks,
       reporterId: userId,
       assigneeId,
