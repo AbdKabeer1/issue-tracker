@@ -17,6 +17,13 @@ describe("getSiteUrl", () => {
     delete process.env.NEXTAUTH_URL;
     expect(getSiteUrl()).toBe("https://contributors.zedu.chat/bug-tracker");
   });
+
+  it("strips /api/auth from NEXTAUTH_URL", () => {
+    delete process.env.AUTH_URL;
+    process.env.NEXTAUTH_URL =
+      "https://contributors.zedu.chat/bug-tracker/api/auth";
+    expect(getSiteUrl()).toBe("https://contributors.zedu.chat/bug-tracker");
+  });
 });
 
 describe("absoluteUrl", () => {

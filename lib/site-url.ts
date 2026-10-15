@@ -4,7 +4,7 @@ export function getSiteUrl(): string {
     process.env.AUTH_URL?.trim() ||
     process.env.NEXTAUTH_URL?.trim() ||
     "http://localhost:3001/bug-tracker";
-  return raw.replace(/\/$/, "");
+  return raw.replace(/\/api\/auth\/?$/, "").replace(/\/$/, "");
 }
 
 export function absoluteUrl(path: string): string {
