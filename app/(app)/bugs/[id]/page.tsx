@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentForm } from "@/components/comment-form";
+import { CommentBody } from "@/components/comment-body";
 
 export default async function BugDetailPage({
   params,
@@ -184,15 +185,13 @@ export default async function BugDetailPage({
                   </span>
                   <time>{formatDate(comment.createdAt)}</time>
                 </div>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">
-                  {comment.body}
-                </p>
+                <CommentBody body={comment.body} />
               </li>
             ))
           )}
         </ul>
         <div className="mt-6">
-          <CommentForm bugId={bug.id} />
+          <CommentForm bugId={bug.id} users={users} />
         </div>
       </section>
     </div>
