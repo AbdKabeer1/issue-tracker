@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
+import { BASE_PATH } from "@/lib/base-path";
 
 /**
  * Edge-safe Auth.js config (no Prisma / bcrypt).
@@ -6,6 +7,7 @@ import type { NextAuthConfig } from "next-auth";
  * bundle exceeds Vercel's 1 MB middleware limit.
  */
 export default {
+  basePath: `${BASE_PATH}/api/auth`,
   providers: [],
   session: { strategy: "jwt" },
   pages: {
