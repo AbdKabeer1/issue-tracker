@@ -30,4 +30,4 @@ LABEL "traefik.http.routers.bug-tracker.priority"="1000"
 LABEL "traefik.http.services.bug-tracker.loadbalancer.server.port"="3000"
 
 # Apply pending Prisma migrations, then start the server
-CMD ["sh", "-c", "pnpm exec prisma migrate deploy || echo 'Prisma migration completed with warnings'; pnpm run start"]
+CMD ["sh", "-c", "node scripts/migrate.mjs; pnpm run start"]
