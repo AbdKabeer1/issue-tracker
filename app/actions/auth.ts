@@ -105,10 +105,24 @@ export async function logoutAction() {
   await signOut({ redirectTo: "/login" });
 }
 
-export async function googleSignInAction(callbackUrl: string = "/bugs") {
-  const safeTarget = safeCallbackUrl(callbackUrl);
+export async function googleSignInAction(
+  callbackUrlOrFormData?: string | FormData,
+) {
+  let target = "/bugs";
+  if (typeof callbackUrlOrFormData === "string") {
+    target = callbackUrlOrFormData;
+  } else if (
+    callbackUrlOrFormData &&
+    typeof callbackUrlOrFormData === "object" &&
+    "get" in callbackUrlOrFormData
+  ) {
+    const raw = callbackUrlOrFormData.get("callbackUrl");
+    if (typeof raw === "string") target = raw;
+  }
+  const safeTarget = safeCallbackUrl(target);
   await signIn("google", { redirectTo: safeTarget });
 }
+
 
 
 export async function forgotPasswordAction(

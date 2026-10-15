@@ -6,9 +6,11 @@ import { prisma } from "@/lib/prisma";
 import { loginSchema } from "@/lib/validations/bug";
 import authConfig from "@/auth.config";
 
-const googleConfigured =
-  Boolean(process.env.GOOGLE_CLIENT_ID) &&
-  Boolean(process.env.GOOGLE_CLIENT_SECRET);
+const googleClientId =
+  process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID;
+const googleClientSecret =
+  process.env.GOOGLE_CLIENT_SECRET || process.env.AUTH_GOOGLE_SECRET;
+const googleConfigured = Boolean(googleClientId) && Boolean(googleClientSecret);
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -16,11 +18,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     ...(googleConfigured
       ? [
           Google({
-            clientId: process.env.GOOGLE_CLIENT_ID!,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+            clientId: googleClientId!,
+            clientSecret: googleClientSecret!,
           }),
         ]
       : []),
+
     Credentials({
       name: "Credentials",
       credentials: {
@@ -74,33 +77,45 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             (typeof profile?.picture === "string" && profile.picture) ||
             (typeof user?.image === "string" ? user.image : undefined);
 
-          try {
-            const dbUser = await prisma.user.upsert({
-              where: { email },
-              create: {
-                email,
-                name,
-                image,
-                emailVerified: new Date(),
-              },
-              update: {
-                name,
-                ...(image ? { image } : {}),
-                emailVerified: new Date(),
-              },
-            });
+          let dbUser = null;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              dbUser = await prisma.user.upsert({
+                where: { email },
+                create: {
+                  email,
+                  name,
+                  image,
+                  emailVerified: new Date(),
+                },
+                update: {
+                  name,
+                  ...(image ? { image } : {}),
+                  emailVerified: new Date(),
+                },
+              });
+              break;
+            } catch (dbError) {
+              console.error(
+                `[auth] Google user upsert attempt ${attempt} failed:`,
+                dbError
+              );
+              if (attempt === 3) throw dbError;
+              await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
+            }
+          }
+
+          if (dbUser) {
             token.id = dbUser.id;
             token.sub = dbUser.id;
             token.role = dbUser.role;
             return token;
-          } catch (dbError) {
-            console.error("[auth] Google user upsert failed:", dbError);
-            throw dbError;
           }
         }
       }
 
       if (user?.id) {
+
         token.id = user.id;
         token.sub = user.id;
       }
