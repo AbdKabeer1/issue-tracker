@@ -61,6 +61,12 @@ export const updateBugSchema = z.object({
 
 export const commentSchema = z.object({
   body: z.string().trim().min(1, "Comment cannot be empty").max(2000),
+  parentId: z
+    .string()
+    .cuid()
+    .optional()
+    .or(z.literal(""))
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
 });
 
 export const loginSchema = z.object({

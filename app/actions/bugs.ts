@@ -9,6 +9,10 @@ import {
   SESSION_EXPIRED_MESSAGE,
 } from "@/lib/session-user";
 import {
+  MAX_COMMENT_DEPTH,
+  commentDepth,
+} from "@/lib/comments";
+import {
   commentSchema,
   createBugSchema,
   updateBugSchema,
@@ -147,10 +151,39 @@ export async function addCommentAction(
   const userId = await requireUserId();
   const parsed = commentSchema.safeParse({
     body: formData.get("body"),
+    parentId: formData.get("parentId") || undefined,
   });
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid comment" };
+  }
+
+  const parentId = parsed.data.parentId;
+
+  if (parentId) {
+    const parent = await prisma.comment.findUnique({
+      where: { id: parentId },
+      select: { id: true, bugId: true, parentId: true },
+    });
+
+    if (!parent || parent.bugId !== bugId) {
+      return { error: "Parent comment not found on this ticket" };
+    }
+
+    const threadComments = await prisma.comment.findMany({
+      where: { bugId },
+      select: { id: true, parentId: true },
+    });
+    const parentById = new Map(
+      threadComments.map((c) => [c.id, c.parentId] as const),
+    );
+    const parentDepth = commentDepth(parent.id, parentById);
+
+    if (parentDepth >= MAX_COMMENT_DEPTH) {
+      return {
+        error: `Replies are limited to ${MAX_COMMENT_DEPTH} levels of nesting`,
+      };
+    }
   }
 
   await prisma.comment.create({
@@ -158,6 +191,7 @@ export async function addCommentAction(
       bugId,
       authorId: userId,
       body: parsed.data.body,
+      parentId: parentId ?? null,
     },
   });
 

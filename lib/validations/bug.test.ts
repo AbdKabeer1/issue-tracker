@@ -115,6 +115,36 @@ describe("commentSchema", () => {
     const result = commentSchema.safeParse({ body: "   " });
     expect(result.success).toBe(false);
   });
+
+  it("accepts an optional parentId for replies", () => {
+    const result = commentSchema.safeParse({
+      body: "Agree with this triage note.",
+      parentId: validCuid,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.parentId).toBe(validCuid);
+    }
+  });
+
+  it("treats empty parentId as a top-level comment", () => {
+    const result = commentSchema.safeParse({
+      body: "Top-level note.",
+      parentId: "",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.parentId).toBeUndefined();
+    }
+  });
+
+  it("rejects an invalid parentId", () => {
+    const result = commentSchema.safeParse({
+      body: "Bad parent.",
+      parentId: "not-a-cuid",
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("loginSchema", () => {

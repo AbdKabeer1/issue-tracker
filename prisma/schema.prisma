@@ -66,13 +66,19 @@ model Bug {
 }
 
 model Comment {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   bugId     String
   authorId  String
+  parentId  String?
   body      String
-  createdAt DateTime @default(now())
-  bug       Bug      @relation(fields: [bugId], references: [id], onDelete: Cascade)
-  author    User     @relation(fields: [authorId], references: [id])
+  createdAt DateTime  @default(now())
+  bug       Bug       @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  author    User      @relation(fields: [authorId], references: [id])
+  parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Comment[] @relation("CommentReplies")
+
+  @@index([bugId])
+  @@index([parentId])
 }
 
 model Vote {

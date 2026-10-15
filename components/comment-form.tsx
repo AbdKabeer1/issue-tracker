@@ -20,21 +20,33 @@ import {
 
 type UserOption = { id: string; name: string };
 
+type CommentFormProps = {
+  bugId: string;
+  users: UserOption[];
+  parentId?: string;
+  parentAuthorName?: string;
+  onCancel?: () => void;
+  onSuccess?: () => void;
+};
+
 export function CommentForm({
   bugId,
   users,
-}: {
-  bugId: string;
-  users: UserOption[];
-}) {
+  parentId,
+  parentAuthorName,
+  onCancel,
+  onSuccess,
+}: CommentFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const listboxId = useId();
+  const bodyFieldId = parentId ? `body-${parentId}` : "body";
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [mention, setMention] = useState<MentionQuery | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const isReply = Boolean(parentId);
 
   const suggestions = useMemo(
     () =>
@@ -107,20 +119,29 @@ export function CommentForm({
             setBody("");
             setMention(null);
             formRef.current?.reset();
+            onSuccess?.();
           }
         });
       }}
     >
-      <label htmlFor="body" className="block text-sm font-medium text-slate-700">
-        Add a comment
+      {parentId ? (
+        <input type="hidden" name="parentId" value={parentId} />
+      ) : null}
+      <label
+        htmlFor={bodyFieldId}
+        className="block text-sm font-medium text-slate-700"
+      >
+        {isReply
+          ? `Reply to ${parentAuthorName ?? "comment"}`
+          : "Add a comment"}
       </label>
       <div className="relative">
         <textarea
           ref={textareaRef}
-          id="body"
+          id={bodyFieldId}
           name="body"
           required
-          rows={3}
+          rows={isReply ? 2 : 3}
           value={body}
           onChange={(event) => {
             const value = event.target.value;
@@ -149,7 +170,11 @@ export function CommentForm({
             );
           }}
           onKeyDown={onKeyDown}
-          placeholder="Share triage notes… Type @ to mention someone"
+          placeholder={
+            isReply
+              ? "Write your reply… Type @ to mention someone"
+              : "Share triage notes… Type @ to mention someone"
+          }
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
           aria-autocomplete="list"
           aria-controls={showSuggestions ? listboxId : undefined}
@@ -193,18 +218,38 @@ export function CommentForm({
           </ul>
         ) : null}
       </div>
-      <p className="text-xs text-slate-500">
-        Mentions are stored in the comment and highlighted for readers. Push
-        notifications are not sent.
-      </p>
+      {!isReply ? (
+        <p className="text-xs text-slate-500">
+          Mentions are stored in the comment and highlighted for readers. Push
+          notifications are not sent.
+        </p>
+      ) : null}
       {error ? (
         <p className="text-sm text-red-600" role="alert">
           {error}
         </p>
       ) : null}
-      <Button type="submit" disabled={pending}>
-        {pending ? "Posting…" : "Post comment"}
-      </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" disabled={pending}>
+          {pending
+            ? isReply
+              ? "Replying…"
+              : "Posting…"
+            : isReply
+              ? "Post reply"
+              : "Post comment"}
+        </Button>
+        {onCancel ? (
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={pending}
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+        ) : null}
+      </div>
     </form>
   );
 }
