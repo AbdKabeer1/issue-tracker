@@ -1,0 +1,180 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { resolveSessionUserId } from "@/lib/session-user";
+import { formatDate } from "@/lib/format";
+import {
+  severityClass,
+  severityLabels,
+  statusClass,
+  statusLabels,
+} from "@/lib/labels";
+import { Badge } from "@/components/ui/badge";
+import { VoteButton } from "@/components/vote-button";
+import { UpdateBugForm } from "@/components/update-bug-form";
+import { CommentForm } from "@/components/comment-form";
+
+export default async function BugDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const resolved = await resolveSessionUserId();
+  const userId = "userId" in resolved ? resolved.userId : undefined;
+
+  const [bug, users] = await Promise.all([
+    prisma.bug.findUnique({
+      where: { id },
+      include: {
+        reporter: { select: { name: true, email: true } },
+        assignee: { select: { id: true, name: true } },
+        comments: {
+          include: { author: { select: { name: true } } },
+          orderBy: { createdAt: "asc" },
+        },
+        votes: userId
+          ? { where: { userId }, select: { id: true }, take: 1 }
+          : false,
+      },
+    }),
+    prisma.user.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
+
+  if (!bug) {
+    notFound();
+  }
+
+  const voted = Array.isArray(bug.votes) && bug.votes.length > 0;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
+          ← Back to bugs
+        </Link>
+        <div className="mt-2 flex flex-wrap items-start gap-4">
+          <VoteButton
+            bugId={bug.id}
+            voteCount={bug.voteCount}
+            voted={voted}
+            size="md"
+          />
+          <div className="min-w-0 flex-1 space-y-2">
+            <h1 className="text-2xl font-semibold text-slate-900">
+              {bug.title}
+            </h1>
+            <div className="flex flex-wrap gap-2">
+              <Badge className={statusClass[bug.status]}>
+                {statusLabels[bug.status]}
+              </Badge>
+              <Badge className={severityClass[bug.severity]}>
+                {severityLabels[bug.severity]}
+              </Badge>
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                {bug.voteCount} vote{bug.voteCount === 1 ? "" : "s"}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Description
+        </h2>
+        <p className="mt-3 whitespace-pre-wrap text-slate-800">
+          {bug.description}
+        </p>
+        <dl className="mt-6 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+          <div>
+            <dt className="font-medium text-slate-500">Reporter</dt>
+            <dd>{bug.reporter.name}</dd>
+          </div>
+          <div>
+            <dt className="font-medium text-slate-500">Assignee</dt>
+            <dd>{bug.assignee?.name ?? "Unassigned"}</dd>
+          </div>
+          <div>
+            <dt className="font-medium text-slate-500">Created</dt>
+            <dd>{formatDate(bug.createdAt)}</dd>
+          </div>
+          <div>
+            <dt className="font-medium text-slate-500">Updated</dt>
+            <dd>{formatDate(bug.updatedAt)}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Proof links
+        </h2>
+        {bug.proofLinks.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">
+            No proof links attached to this report.
+          </p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {bug.proofLinks.map((url) => (
+              <li key={url}>
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="break-all text-sm font-medium text-teal-700 hover:underline"
+                >
+                  {url}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <UpdateBugForm
+        bugId={bug.id}
+        status={bug.status}
+        severity={bug.severity}
+        assigneeId={bug.assigneeId}
+        users={users}
+      />
+
+      <section className="rounded-xl border border-slate-200 bg-white p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Comments ({bug.comments.length})
+        </h2>
+        <ul className="mt-4 space-y-4">
+          {bug.comments.length === 0 ? (
+            <li className="text-sm text-slate-500">
+              No comments yet. Add triage notes or reproduction steps below.
+            </li>
+          ) : (
+            bug.comments.map((comment) => (
+              <li
+                key={comment.id}
+                className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3"
+              >
+                <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+                  <span className="font-medium text-slate-700">
+                    {comment.author.name}
+                  </span>
+                  <time>{formatDate(comment.createdAt)}</time>
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">
+                  {comment.body}
+                </p>
+              </li>
+            ))
+          )}
+        </ul>
+        <div className="mt-6">
+          <CommentForm bugId={bug.id} />
+        </div>
+      </section>
+    </div>
+  );
+}
