@@ -50,4 +50,16 @@ describe("isLinkPreviewBot", () => {
     ).toBe(false);
     expect(isLinkPreviewBot(null)).toBe(false);
   });
+
+  it("rejects search crawlers so tickets stay out of the index", () => {
+    expect(isLinkPreviewBot("Mozilla/5.0 (compatible; Googlebot/2.1)")).toBe(
+      false,
+    );
+    expect(isLinkPreviewBot("Mozilla/5.0 (compatible; bingbot/2.0)")).toBe(
+      false,
+    );
+    expect(isLinkPreviewBot("Mozilla/5.0 (compatible; Applebot/0.1)")).toBe(
+      false,
+    );
+  });
 });

@@ -20,9 +20,13 @@ export function bugLinkPreviewDescription(input: {
   return `${status} · reported by ${input.authorName} — ${snippet}`;
 }
 
-/** Known social / chat unfurl bots that need OG tags without a session. */
+/**
+ * Social / chat unfurl bots that may fetch OG tags without a session.
+ * Intentionally excludes search crawlers (Googlebot, bingbot, Applebot, …)
+ * so private tickets are not indexed via the preview bypass.
+ */
 const PREVIEW_BOT_PATTERN =
-  /Slackbot|Twitterbot|facebookexternalhit|Facebot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|SkypeUriPreview|Slack-ImgProxy|Googlebot|bingbot|Applebot|Embedly|Quora Link Preview|Showyoubot|outbrain|pinterest|redditbot|vkShare|W3C_Validator|Iframely/i;
+  /Slackbot|Twitterbot|facebookexternalhit|Facebot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|SkypeUriPreview|Slack-ImgProxy|Embedly|Quora Link Preview|Showyoubot|outbrain|pinterest|redditbot|vkShare|Iframely/i;
 
 export function isLinkPreviewBot(
   userAgent: string | null | undefined,
