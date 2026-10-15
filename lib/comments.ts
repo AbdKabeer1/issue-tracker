@@ -67,7 +67,7 @@ export function commentDepth(
   let currentId: string | null = commentId;
 
   while (currentId) {
-    const parentId = parentById.get(currentId) ?? null;
+    const parentId: string | null = parentById.get(currentId) ?? null;
     if (!parentId) break;
     depth += 1;
     currentId = parentId;

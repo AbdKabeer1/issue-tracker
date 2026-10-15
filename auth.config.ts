@@ -29,7 +29,11 @@ export default {
         if (typeof id === "string" && id.length > 0) {
           session.user.id = id;
         }
-        if (token.role) {
+        if (
+          token.role === "user" ||
+          token.role === "admin" ||
+          token.role === "super_admin"
+        ) {
           session.user.role = token.role;
         } else {
           session.user.role = "user";
