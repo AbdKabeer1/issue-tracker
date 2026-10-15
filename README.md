@@ -51,6 +51,16 @@ pnpm dev                      # http://localhost:3001/bug-tracker
 
 App is served under **`/bug-tracker`** (see `next.config.ts` `basePath`), matching Coolify.
 
+## Link previews (Open Graph / Twitter)
+
+Bug detail URLs (`/bugs/[id]`) emit OG + Twitter Card metadata so Slack, Discord, X, WhatsApp, and similar clients can unfurl a card with **title**, **status**, **author**, a **description snippet**, the **zedu-mark.svg** thumbnail, and a **canonical URL** under `/bug-tracker`.
+
+### Privacy (auth-gated pages)
+
+All ticket pages require a session for normal browsers. Link-preview bots are allowlisted in middleware so they can fetch metadata without signing in. That path only exposes **safe public fields**: title, status label, reporter display name, and a short description snippet. It does **not** include emails, comments, proof links, votes, assignee details, or triage controls. Unauthenticated crawlers that reach the page see the same limited preview body plus a sign-in link — never the full ticket.
+
+Platform unfurl caches are outside our control; metadata is generated on each request from current DB state (`generateMetadata`), so refreshed crawls pick up title/status edits.
+
 ### Env vars
 
 | Var | Purpose |

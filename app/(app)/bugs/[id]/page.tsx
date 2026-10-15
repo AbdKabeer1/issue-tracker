@@ -1,10 +1,16 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { formatDate } from "@/lib/format";
 import { buildCommentTree } from "@/lib/comments";
+import {
+  bugLinkPreviewDescription,
+  snippetText,
+} from "@/lib/link-preview";
+import { absoluteUrl } from "@/lib/site-url";
 import {
   severityClass,
   severityLabels,
@@ -18,21 +24,120 @@ import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentThread } from "@/components/comment-thread";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 
-export default async function BugDetailPage({
-  params,
-}: {
+type BugPageProps = {
   params: Promise<{ id: string }>;
-}) {
+};
+
+export async function generateMetadata({
+  params,
+}: BugPageProps): Promise<Metadata> {
+  const { id } = await params;
+  const bug = await prisma.bug.findUnique({
+    where: { id },
+    select: {
+      title: true,
+      description: true,
+      status: true,
+      updatedAt: true,
+      reporter: { select: { name: true } },
+    },
+  });
+
+  if (!bug) {
+    return {
+      title: "Bug not found",
+      description: "This bug report could not be found.",
+      robots: { index: false, follow: false },
+    };
+  }
+
+  const description = bugLinkPreviewDescription({
+    status: bug.status,
+    authorName: bug.reporter.name,
+    description: bug.description,
+  });
+  const canonical = absoluteUrl(`/bugs/${id}`);
+  // Brand mark from public/; most unfurlers accept SVG, raster copy at /Zedu.png.
+  const image = absoluteUrl("/zedu-mark.svg");
+  const title = bug.title;
+
+  return {
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: {
+      title,
+      description,
+      url: canonical,
+      type: "article",
+      siteName: "Zedu Bugs",
+      authors: [bug.reporter.name],
+      modifiedTime: bug.updatedAt.toISOString(),
+      images: [{ url: image, alt: "Zedu Bugs" }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [image],
+    },
+    other: {
+      "bug:status": statusLabels[bug.status],
+      "bug:author": bug.reporter.name,
+    },
+  };
+}
+
+export default async function BugDetailPage({ params }: BugPageProps) {
   const { id } = await params;
   const resolved = await resolveSessionUserId();
   const userId = "userId" in resolved ? resolved.userId : undefined;
 
-  const sessionUser = userId
-    ? await prisma.user.findUnique({
-        where: { id: userId },
-        select: { role: true },
-      })
-    : null;
+  // Unauthenticated crawlers only get a safe, limited preview (no comments,
+  // emails, or proof links). Interactive UI stays behind auth.
+  if (!userId) {
+    const bug = await prisma.bug.findUnique({
+      where: { id },
+      select: {
+        title: true,
+        description: true,
+        status: true,
+        severity: true,
+        reporter: { select: { name: true } },
+      },
+    });
+    if (!bug) notFound();
+
+    return (
+      <div className="mx-auto max-w-2xl space-y-4 py-10">
+        <p className="text-sm text-slate-500">Zedu Bugs</p>
+        <h1 className="text-2xl font-semibold text-slate-900">{bug.title}</h1>
+        <div className="flex flex-wrap gap-2">
+          <Badge className={statusClass[bug.status]}>
+            {statusLabels[bug.status]}
+          </Badge>
+          <Badge className={severityClass[bug.severity]}>
+            {severityLabels[bug.severity]}
+          </Badge>
+        </div>
+        <p className="text-sm text-slate-600">
+          Reported by {bug.reporter.name}
+        </p>
+        <p className="text-slate-800">{snippetText(bug.description, 280)}</p>
+        <Link
+          href={`/login?callbackUrl=${encodeURIComponent(`/bugs/${id}`)}`}
+          className="inline-flex text-sm font-medium text-teal-700 hover:underline"
+        >
+          Sign in to view full details
+        </Link>
+      </div>
+    );
+  }
+
+  const sessionUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
   const canTriage = isAdmin(sessionUser?.role);
 
   const [bug, users] = await Promise.all([
@@ -58,9 +163,7 @@ export default async function BugDetailPage({
           include: { actor: { select: { name: true } } },
           orderBy: { createdAt: "asc" },
         },
-        votes: userId
-          ? { where: { userId }, select: { id: true }, take: 1 }
-          : false,
+        votes: { where: { userId }, select: { id: true }, take: 1 },
       },
     }),
     prisma.user.findMany({

@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import authConfig from "@/auth.config";
+import { isLinkPreviewBot } from "@/lib/link-preview";
 import { isSuperAdmin } from "@/lib/roles";
 
 /**
@@ -9,6 +10,9 @@ import { isSuperAdmin } from "@/lib/roles";
  * and leaves production stuck on the old getToken middleware (redirect loops).
  */
 const { auth } = NextAuth(authConfig);
+
+/** Bug detail paths only — enough for unfurl bots to hit generateMetadata. */
+const BUG_DETAIL_PATH = /^\/bugs\/[^/]+\/?$/;
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
@@ -19,9 +23,13 @@ export default auth((req) => {
   const isPasswordResetPage =
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/reset-password");
+  const isBugPreview =
+    BUG_DETAIL_PATH.test(pathname) &&
+    isLinkPreviewBot(req.headers.get("user-agent"));
   const isPublic =
     isAuthPage ||
     isPasswordResetPage ||
+    isBugPreview ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico";
