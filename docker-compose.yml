@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: bugtracker
+      POSTGRES_PASSWORD: bugtracker
+      POSTGRES_DB: bugtracker
+    volumes:
+      - bugtracker_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bugtracker -d bugtracker"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  bugtracker_pg:
