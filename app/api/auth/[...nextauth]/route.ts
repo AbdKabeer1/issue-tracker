@@ -41,50 +41,84 @@ function withNormalizedRequest(req: NextRequest): NextRequest {
 
 function normalizeResponse(response: Response): Response {
   const location = response.headers.get("Location");
-  if (location) {
-    let targetUrl: URL | null = null;
-    try {
-      targetUrl = new URL(location);
-      if (
-        !targetUrl.pathname.startsWith(BASE_PATH) &&
-        (targetUrl.pathname === "/login" || targetUrl.pathname.startsWith("/login/"))
-      ) {
-        targetUrl.pathname = `${BASE_PATH}${targetUrl.pathname}`;
-      }
-    } catch {
-      if (
-        location.startsWith("/login") &&
-        !location.startsWith(`${BASE_PATH}/login`)
-      ) {
-        response.headers.set("Location", `${BASE_PATH}${location}`);
-      }
-    }
+  if (!location) {
+    return response;
+  }
 
-    if (location.includes("error=")) {
-      const recentReason = popRecentAuthError();
-      if (recentReason && targetUrl) {
-        targetUrl.searchParams.set("reason", recentReason);
-      }
-      console.error("[AUTH_REDIRECT_ERROR]", {
-        location: targetUrl?.toString() || response.headers.get("Location"),
-        reason: recentReason,
-        status: response.status,
-      });
+  let targetUrl: URL | null = null;
+  try {
+    targetUrl = new URL(location);
+    if (
+      !targetUrl.pathname.startsWith(BASE_PATH) &&
+      (targetUrl.pathname === "/login" || targetUrl.pathname.startsWith("/login/"))
+    ) {
+      targetUrl.pathname = `${BASE_PATH}${targetUrl.pathname}`;
     }
-
-    if (targetUrl) {
-      response.headers.set("Location", targetUrl.toString());
+  } catch {
+    if (
+      location.startsWith("/login") &&
+      !location.startsWith(`${BASE_PATH}/login`)
+    ) {
+      targetUrl = new URL(`${BASE_PATH}${location}`, "https://contributors.zedu.chat");
     }
   }
-  return response;
+
+  const recentReason = popRecentAuthError();
+  if (location.includes("error=") && recentReason && targetUrl) {
+    targetUrl.searchParams.set("reason", recentReason);
+  }
+
+  const finalLocation = targetUrl ? targetUrl.toString() : location;
+
+  if (location.includes("error=")) {
+    console.error("[AUTH_REDIRECT_ERROR]", {
+      location: finalLocation,
+      reason: recentReason,
+      status: response.status,
+    });
+  }
+
+  if (finalLocation === location) {
+    return response;
+  }
+
+  // Use a new Response to avoid "TypeError: immutable" on guarded headers
+  const newHeaders = new Headers(response.headers);
+  newHeaders.set("Location", finalLocation);
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: newHeaders,
+  });
 }
 
 export async function GET(req: NextRequest) {
-  const res = await handlers.GET(withNormalizedRequest(req));
-  return normalizeResponse(res);
+  try {
+    const res = await handlers.GET(withNormalizedRequest(req));
+    return normalizeResponse(res);
+  } catch (error) {
+    console.error("[auth] GET handler threw exception:", error);
+    const reason = error instanceof Error ? error.message : String(error);
+    const redirectUrl = new URL(
+      `${BASE_PATH}/login?error=Configuration&reason=${encodeURIComponent(reason)}`,
+      req.nextUrl.origin,
+    );
+    return Response.redirect(redirectUrl.toString());
+  }
 }
 
 export async function POST(req: NextRequest) {
-  const res = await handlers.POST(withNormalizedRequest(req));
-  return normalizeResponse(res);
+  try {
+    const res = await handlers.POST(withNormalizedRequest(req));
+    return normalizeResponse(res);
+  } catch (error) {
+    console.error("[auth] POST handler threw exception:", error);
+    const reason = error instanceof Error ? error.message : String(error);
+    const redirectUrl = new URL(
+      `${BASE_PATH}/login?error=Configuration&reason=${encodeURIComponent(reason)}`,
+      req.nextUrl.origin,
+    );
+    return Response.redirect(redirectUrl.toString());
+  }
 }
