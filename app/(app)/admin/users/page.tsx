@@ -4,6 +4,7 @@ import { roleLabels } from "@/lib/roles";
 import { formatDate } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { PromoteUserButton } from "@/components/promote-user-button";
+import { DemoteUserButton } from "@/components/demote-user-button";
 
 const roleBadgeClass: Record<string, string> = {
   user: "bg-slate-100 text-slate-700",
@@ -39,8 +40,8 @@ export default async function AdminUsersPage() {
           Admin management
         </h1>
         <p className="mt-1 text-sm text-slate-600">
-          Super admins can promote users to admin. Role changes apply
-          immediately in this list.
+          Super admins can promote users to admin and remove admin again.
+          Role changes apply immediately in this list.
         </p>
       </div>
 
@@ -72,6 +73,11 @@ export default async function AdminUsersPage() {
                 <td className="px-4 py-3 text-right">
                   {user.role === "user" ? (
                     <PromoteUserButton
+                      userId={user.id}
+                      userName={user.name}
+                    />
+                  ) : user.role === "admin" ? (
+                    <DemoteUserButton
                       userId={user.id}
                       userName={user.name}
                     />
