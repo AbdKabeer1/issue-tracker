@@ -1,23 +1,80 @@
-# Bug Tracker
+# Zedu Bugs
 
-Next.js (App Router) full-stack app with Postgres (Prisma) and Google sign-in (NextAuth).
+Team **Zendor** fork of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug-tracker).
 
-## Setup
+Report bugs, filter the board, triage status/assignee, vote, and leave comments.
+
+Brand mark: `public/zedu-mark.svg`.
+
+## Stack
+
+- Next.js 16 (App Router) + React 19 + TypeScript + Tailwind
+- Auth.js v5 — email/password **and** optional Google OAuth
+- Prisma + PostgreSQL
+- pnpm
+- Docker / Coolify deploy (`basePath` `/bug-tracker`)
+
+## Live (upstream)
+
+https://contributors.zedu.chat/bug-tracker
+
+## Demo accounts (credentials seed)
+
+| Email | Password |
+| --- | --- |
+| `alice@zendor.dev` | `12345678` |
+| `bob@zendor.dev` | `12345678` |
+| `cara@zendor.dev` | `12345678` |
+
+> Seed only on an **empty** database. Never reseed a DB that already has real signups.
+
+## Local setup
 
 ```bash
-cp .env.example .env      # fill in the values
-npm install
-npx prisma migrate deploy # or `npm run db:migrate` in dev
-npm run dev
+pnpm install
+cp .env.example .env
+docker compose up -d          # Postgres on localhost:5433
+pnpm db:migrate
+pnpm db:seed                  # empty DB only
+pnpm dev                      # http://localhost:3001/bug-tracker
 ```
+
+App is served under **`/bug-tracker`** (see `next.config.ts` `basePath`), matching Coolify.
+
+### Env vars
+
+| Var | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Postgres URL |
+| `AUTH_SECRET` | Session secret (`openssl rand -base64 32`) |
+| `AUTH_URL` / `NEXTAUTH_URL` | App origin **including** `/bug-tracker` |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional Google sign-in |
+
+Google redirect URI: `{AUTH_URL}/api/auth/callback/google`
 
 ## Deploy (Coolify)
 
-- Build pack: Dockerfile. The container runs `prisma migrate deploy` on start.
-- Set the variables from `.env.example` in Coolify.
-- GitHub secrets: `COOLIFY_WEBHOOK_URL` (and optionally `COOLIFY_TOKEN`). The
-  `Deploy (Coolify)` workflow only runs after `Malware Scan (CI Gate)` passes on `main`.
+- Build pack: **Dockerfile**. Container runs `prisma migrate deploy` on start.
+- Set variables from `.env.example` in Coolify.
+- GitHub secrets: `COOLIFY_WEBHOOK_URL` (and optionally `COOLIFY_TOKEN`).
+- `Deploy (Coolify)` runs only after `Malware Scan (CI Gate)` passes on `main`.
 
-## Live
+## Scripts
 
-https://contributors.zedu.chat/bug-tracker
+| Script | Purpose |
+| --- | --- |
+| `pnpm dev` | Dev server (port 3001) |
+| `pnpm build` / `pnpm start` | Production build / start (`PORT`) |
+| `pnpm test` | Vitest |
+| `pnpm db:migrate` | Prisma migrate (dev) |
+| `pnpm db:seed` | Seed demo users/bugs (**empty DB only**) |
+
+## Contributing
+
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`AGENTS.md`](./AGENTS.md).
+
+PRs target **`main`** on `Zedu-Endor/bug-tracker` (this fork). Sync from `upstream` (`zeduchat/bug-tracker`) as needed.
+
+## Archive
+
+Earlier standalone MVP history/issues origin: [`Zedu-Endor/bug-tracker-mvp`](https://github.com/Zedu-Endor/bug-tracker-mvp) (issues transferred here).
