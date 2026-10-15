@@ -4,7 +4,7 @@ import { CreateBugForm } from "@/components/create-bug-form";
 
 export default async function NewBugPage() {
   const users = await prisma.user.findMany({
-    select: { id: true, name: true },
+    select: { id: true, name: true, role: true },
     orderBy: { name: "asc" },
   });
 

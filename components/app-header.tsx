@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { logoutAction } from "@/app/actions/auth";
 import { BrandLockup } from "@/components/brand-lockup";
+import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { Button } from "@/components/ui/button";
 import { isSuperAdmin, type AppRole } from "@/lib/roles";
 
@@ -37,9 +38,13 @@ export function AppHeader({
           </nav>
         </div>
         <div className="flex items-center gap-3">
-          <span className="hidden max-w-[10rem] truncate text-sm text-slate-500 sm:inline">
-            {userName}
-          </span>
+          {userName ? (
+            <UserNameWithBadges
+              name={userName}
+              role={role}
+              className="hidden max-w-[14rem] text-sm text-slate-500 sm:inline-flex"
+            />
+          ) : null}
           <form action={logoutAction}>
             <Button type="submit" variant="secondary">
               Sign out

@@ -14,6 +14,7 @@ import {
 } from "@/lib/labels";
 import { formatDate } from "@/lib/format";
 import { severities, statuses } from "@/lib/validations/bug";
+import { UserNameWithBadges } from "@/components/user-name-with-badges";
 
 type SearchParams = Promise<{
   q?: string;
@@ -56,8 +57,8 @@ export default async function BugsPage({
   const bugs = await prisma.bug.findMany({
     where,
     include: {
-      reporter: { select: { name: true } },
-      assignee: { select: { name: true } },
+      reporter: { select: { name: true, role: true } },
+      assignee: { select: { name: true, role: true } },
       votes: userId
         ? { where: { userId }, select: { id: true }, take: 1 }
         : false,
@@ -128,16 +129,31 @@ export default async function BugsPage({
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0 space-y-1">
                       <p className="font-medium text-slate-900">{bug.title}</p>
-                      <p className="text-xs text-slate-500">
-                        Reported by {bug.reporter.name}
-                        {bug.assignee
-                          ? ` · Assigned to ${bug.assignee.name}`
-                          : " · Unassigned"}
-                        {" · "}
-                        {formatDate(bug.updatedAt)}
-                        {bug.proofLinks.length > 0
-                          ? ` · ${bug.proofLinks.length} proof link${bug.proofLinks.length === 1 ? "" : "s"}`
-                          : ""}
+                      <p className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-slate-500">
+                        <span>Reported by</span>
+                        <UserNameWithBadges
+                          name={bug.reporter.name}
+                          role={bug.reporter.role}
+                        />
+                        <span>·</span>
+                        {bug.assignee ? (
+                          <>
+                            <span>Assigned to</span>
+                            <UserNameWithBadges
+                              name={bug.assignee.name}
+                              role={bug.assignee.role}
+                            />
+                          </>
+                        ) : (
+                          <span>Unassigned</span>
+                        )}
+                        <span>· {formatDate(bug.updatedAt)}</span>
+                        {bug.proofLinks.length > 0 ? (
+                          <span>
+                            · {bug.proofLinks.length} proof link
+                            {bug.proofLinks.length === 1 ? "" : "s"}
+                          </span>
+                        ) : null}
                       </p>
                     </div>
                     <div className="flex gap-2">

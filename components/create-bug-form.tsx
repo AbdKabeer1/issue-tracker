@@ -5,12 +5,13 @@ import { unstable_rethrow } from "next/navigation";
 import { createBugAction, type ActionResult } from "@/app/actions/bugs";
 import { severities } from "@/lib/validations/bug";
 import { severityLabels } from "@/lib/labels";
+import { formatUserLabel, type UserRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-type UserOption = { id: string; name: string };
+type UserOption = { id: string; name: string; role: UserRole };
 
 export function CreateBugForm({ users }: { users: UserOption[] }) {
   const [title, setTitle] = useState("");
@@ -142,7 +143,7 @@ export function CreateBugForm({ users }: { users: UserOption[] }) {
             <option value="">Unassigned</option>
             {users.map((user) => (
               <option key={user.id} value={user.id}>
-                {user.name}
+                {formatUserLabel(user.name, user.role)}
               </option>
             ))}
           </Select>
