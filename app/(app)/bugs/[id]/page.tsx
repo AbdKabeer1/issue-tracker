@@ -10,6 +10,7 @@ import {
   bugLinkPreviewDescription,
   snippetText,
 } from "@/lib/link-preview";
+import { stripMarkdown } from "@/lib/rich-text";
 import { absoluteUrl } from "@/lib/site-url";
 import {
   severityClass,
@@ -22,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentThread } from "@/components/comment-thread";
+import { RichText } from "@/components/rich-text";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 
 type BugPageProps = {
@@ -54,7 +56,7 @@ export async function generateMetadata({
   const description = bugLinkPreviewDescription({
     status: bug.status,
     authorName: bug.reporter.name,
-    description: bug.description,
+    description: stripMarkdown(bug.description),
   });
   const canonical = absoluteUrl(`/bugs/${id}`);
   // Brand mark from public/; most unfurlers accept SVG, raster copy at /Zedu.png.
@@ -217,9 +219,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Description
         </h2>
-        <p className="mt-3 whitespace-pre-wrap text-slate-800">
-          {bug.description}
-        </p>
+        <RichText content={bug.description} />
         <dl className="mt-6 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
           <div>
             <dt className="font-medium text-slate-500">Reporter</dt>

@@ -5,13 +5,14 @@ import { unstable_rethrow } from "next/navigation";
 import { createBugAction, type ActionResult } from "@/app/actions/bugs";
 import { severities } from "@/lib/validations/bug";
 import { severityLabels } from "@/lib/labels";
-import { formatUserLabel, type UserRole } from "@/lib/roles";
+import { formatUserLabel, type AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/rich-text-editor";
 
-type UserOption = { id: string; name: string; role: UserRole };
+type UserOption = { id: string; name: string; role: AppRole };
 
 export function CreateBugForm({
   users,
@@ -74,7 +75,7 @@ export function CreateBugForm({
         >
           Description
         </label>
-        <Textarea
+        <RichTextEditor
           id="description"
           name="description"
           required
@@ -82,12 +83,15 @@ export function CreateBugForm({
           rows={6}
           placeholder="Steps to reproduce, expected vs actual, environment…"
           value={description}
-          onChange={(event) => setDescription(event.target.value)}
+          onChange={setDescription}
+          footer={
+            <p className="text-xs text-slate-500">
+              Markdown supported (bold, italic, lists, code, links). Be
+              specific: what should happen, what actually happens, and how to
+              reproduce it.
+            </p>
+          }
         />
-        <p className="text-xs text-slate-500">
-          Be specific: what should happen, what actually happens, and how to
-          reproduce it.
-        </p>
       </div>
       <div className="space-y-1.5">
         <label

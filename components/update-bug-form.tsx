@@ -5,10 +5,10 @@ import type { Severity, Status } from "@prisma/client";
 import { updateBugAction } from "@/app/actions/bugs";
 import { severities, statuses } from "@/lib/validations/bug";
 import { severityLabel, statusLabel } from "@/lib/labels";
-import { formatUserLabel, type UserRole } from "@/lib/roles";
+import { formatUserLabel, type AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 
-type UserOption = { id: string; name: string; role: UserRole };
+type UserOption = { id: string; name: string; role: AppRole };
 
 export function UpdateBugForm({
   bugId,
