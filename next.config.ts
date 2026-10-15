@@ -1,10 +1,8 @@
 import type { NextConfig } from "next";
-
-/** Served at https://contributors.zedu.chat/bug-tracker */
-const basePath = "/bug-tracker";
+import { BASE_PATH } from "./lib/base-path";
 
 const nextConfig: NextConfig = {
-  basePath,
+  basePath: BASE_PATH,
   turbopack: {
     rules: {
       "*.css": {

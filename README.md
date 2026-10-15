@@ -47,7 +47,7 @@ App is served under **`/bug-tracker`** (see `next.config.ts` `basePath`), matchi
 | --- | --- |
 | `DATABASE_URL` | Postgres URL |
 | `AUTH_SECRET` | Session secret (`openssl rand -base64 32`) |
-| `AUTH_URL` / `NEXTAUTH_URL` | App origin **including** `/bug-tracker` |
+| `AUTH_URL` / `NEXTAUTH_URL` | Auth.js base path: origin + `/api/auth` (Next.js `basePath` is applied on top) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional Google sign-in |
 
 Google redirect URI: `{AUTH_URL}/api/auth/callback/google`

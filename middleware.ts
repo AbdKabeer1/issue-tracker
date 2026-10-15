@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import authConfig from "@/auth.config";
+import { BASE_PATH, toAppPath } from "@/lib/base-path";
 
 /**
  * Edge-only auth wrapper — initialized from auth.config (no Prisma/bcrypt).
@@ -10,7 +11,7 @@ import authConfig from "@/auth.config";
 const { auth } = NextAuth(authConfig);
 
 export default auth((req) => {
-  const { pathname } = req.nextUrl;
+  const pathname = toAppPath(req.nextUrl.pathname);
   const isLoggedIn = !!req.auth?.user;
 
   const isAuthPage =
@@ -22,16 +23,15 @@ export default auth((req) => {
     pathname === "/favicon.ico";
 
   if (!isLoggedIn && !isPublic) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/login";
+    const url = new URL(`${BASE_PATH}/login`, req.nextUrl.origin);
     url.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(url);
   }
 
   if (isLoggedIn && isAuthPage) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/bugs";
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(
+      new URL(`${BASE_PATH}/bugs`, req.nextUrl.origin),
+    );
   }
 
   return NextResponse.next();
