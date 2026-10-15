@@ -38,11 +38,45 @@ function withNormalizedRequest(req: NextRequest): NextRequest {
   return new NextRequest(url, req);
 }
 
+function normalizeResponse(response: Response): Response {
+  const location = response.headers.get("Location");
+  if (location) {
+    try {
+      const target = new URL(location);
+      if (
+        !target.pathname.startsWith(BASE_PATH) &&
+        (target.pathname === "/login" || target.pathname.startsWith("/login/"))
+      ) {
+        target.pathname = `${BASE_PATH}${target.pathname}`;
+        response.headers.set("Location", target.toString());
+      }
+    } catch {
+      if (
+        location.startsWith("/login") &&
+        !location.startsWith(`${BASE_PATH}/login`)
+      ) {
+        response.headers.set("Location", `${BASE_PATH}${location}`);
+      }
+    }
+
+    if (location.includes("error=")) {
+      console.error("[AUTH_REDIRECT_ERROR]", {
+        location: response.headers.get("Location"),
+        status: response.status,
+      });
+    }
+  }
+  return response;
+}
+
 export async function GET(req: NextRequest) {
-  return handlers.GET(withNormalizedRequest(req));
+  const res = await handlers.GET(withNormalizedRequest(req));
+  return normalizeResponse(res);
 }
 
 export async function POST(req: NextRequest) {
-  return handlers.POST(withNormalizedRequest(req));
+  const res = await handlers.POST(withNormalizedRequest(req));
+  return normalizeResponse(res);
 }
+
 

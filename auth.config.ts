@@ -11,16 +11,37 @@ const isProd = process.env.NODE_ENV === "production";
 export default {
   basePath: `${BASE_PATH}/api/auth`,
   providers: [],
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
   session: { strategy: "jwt" },
   pages: {
-    signIn: "/login",
-    error: "/login",
+    signIn: `${BASE_PATH}/login`,
+    error: `${BASE_PATH}/login`,
   },
   trustHost: true,
   useSecureCookies:
     isProd && !process.env.AUTH_URL?.startsWith("http://localhost"),
 
   callbacks: {
+    redirect({ url, baseUrl }) {
+      if (url.startsWith("/")) {
+        return url.startsWith(BASE_PATH)
+          ? `${baseUrl}${url}`
+          : `${baseUrl}${BASE_PATH}${url}`;
+      }
+      try {
+        const parsed = new URL(url);
+        if (parsed.origin === baseUrl) {
+          if (!parsed.pathname.startsWith(BASE_PATH)) {
+            parsed.pathname = `${BASE_PATH}${parsed.pathname}`;
+          }
+          return parsed.toString();
+        }
+      } catch {
+        // Fallback to default bugs page below
+      }
+      return `${baseUrl}${BASE_PATH}/bugs`;
+    },
+
     jwt({ token, user }) {
       if (user?.id) {
         token.id = user.id;
