@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { formatDate } from "@/lib/format";
 import {
+  authorBadgeClass,
   severityClass,
   severityLabels,
   statusClass,
@@ -92,7 +93,10 @@ export default async function BugDetailPage({
         <dl className="mt-6 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
           <div>
             <dt className="font-medium text-slate-500">Reporter</dt>
-            <dd>{bug.reporter.name}</dd>
+            <dd className="flex flex-wrap items-center gap-2">
+              {bug.reporter.name}
+              <Badge className={authorBadgeClass}>Author</Badge>
+            </dd>
           </div>
           <div>
             <dt className="font-medium text-slate-500">Assignee</dt>
@@ -159,8 +163,11 @@ export default async function BugDetailPage({
                 className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3"
               >
                 <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-                  <span className="font-medium text-slate-700">
+                  <span className="flex flex-wrap items-center gap-2 font-medium text-slate-700">
                     {comment.author.name}
+                    {comment.authorId === bug.reporterId && (
+                      <Badge className={authorBadgeClass}>Author</Badge>
+                    )}
                   </span>
                   <time>{formatDate(comment.createdAt)}</time>
                 </div>

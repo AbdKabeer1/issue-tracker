@@ -30,3 +30,6 @@ export const statusClass: Record<Status, string> = {
   resolved: "bg-emerald-100 text-emerald-800",
   closed: "bg-zinc-100 text-zinc-600",
 };
+
+/** Marks the bug's reporter wherever their name appears on the bug page. */
+export const authorBadgeClass = "bg-teal-100 text-teal-800";
