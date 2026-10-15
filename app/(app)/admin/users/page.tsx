@@ -1,7 +1,7 @@
 import { requireSuperAdmin } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { roleLabels } from "@/lib/roles";
-import { formatDate } from "@/lib/format";
+import { LocalTime } from "@/components/local-time";
 import { Badge } from "@/components/ui/badge";
 import { PromoteUserButton } from "@/components/promote-user-button";
 import { DemoteUserButton } from "@/components/demote-user-button";
@@ -68,7 +68,7 @@ export default async function AdminUsersPage() {
                   </Badge>
                 </td>
                 <td className="px-4 py-3 text-slate-600">
-                  {formatDate(user.createdAt)}
+                  <LocalTime date={user.createdAt} />
                 </td>
                 <td className="px-4 py-3 text-right">
                   {user.role === "user" ? (

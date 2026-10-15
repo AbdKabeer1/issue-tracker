@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatDate } from "@/lib/format";
+import { LocalTime } from "@/components/local-time";
 import {
   MAX_COMMENT_DEPTH,
   truncateCommentBody,
@@ -42,15 +42,7 @@ function CommentItem({
             showAuthor={comment.authorId === reporterId}
             className="font-medium text-slate-700"
           />
-          <time
-            dateTime={
-              comment.createdAt instanceof Date
-                ? comment.createdAt.toISOString()
-                : String(comment.createdAt)
-            }
-          >
-            {formatDate(comment.createdAt)}
-          </time>
+          <LocalTime date={comment.createdAt} />
         </div>
 
         {comment.parent ? (

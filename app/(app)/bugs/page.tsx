@@ -12,7 +12,7 @@ import {
   statusClass,
   statusLabels,
 } from "@/lib/labels";
-import { formatDate } from "@/lib/format";
+import { LocalTime } from "@/components/local-time";
 import { severities, statuses } from "@/lib/validations/bug";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 
@@ -73,7 +73,7 @@ export default async function BugsPage({
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Bugs</h1>
           <p className="text-sm text-slate-600">
-            {bugs.length} result{bugs.length === 1 ? "" : "s"} · sorted by votes
+            {bugs.length} result{bugs.length === 1 ? "" : "s"} · sorted by likes
           </p>
         </div>
         <Link
@@ -150,7 +150,7 @@ export default async function BugsPage({
                         ) : (
                           <span>Unassigned</span>
                         )}
-                        <span>· {formatDate(bug.updatedAt)}</span>
+                        <span>· <LocalTime date={bug.updatedAt} /></span>
                         {bug.proofLinks.length > 0 ? (
                           <span>
                             · {bug.proofLinks.length} proof link
