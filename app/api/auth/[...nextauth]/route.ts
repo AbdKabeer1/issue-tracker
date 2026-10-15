@@ -1,5 +1,6 @@
 import { handlers } from "@/auth";
 import { BASE_PATH } from "@/lib/base-path";
+import { popRecentAuthError } from "@/lib/auth-diagnostics";
 import { NextRequest } from "next/server";
 
 function withNormalizedRequest(req: NextRequest): NextRequest {
@@ -41,14 +42,14 @@ function withNormalizedRequest(req: NextRequest): NextRequest {
 function normalizeResponse(response: Response): Response {
   const location = response.headers.get("Location");
   if (location) {
+    let targetUrl: URL | null = null;
     try {
-      const target = new URL(location);
+      targetUrl = new URL(location);
       if (
-        !target.pathname.startsWith(BASE_PATH) &&
-        (target.pathname === "/login" || target.pathname.startsWith("/login/"))
+        !targetUrl.pathname.startsWith(BASE_PATH) &&
+        (targetUrl.pathname === "/login" || targetUrl.pathname.startsWith("/login/"))
       ) {
-        target.pathname = `${BASE_PATH}${target.pathname}`;
-        response.headers.set("Location", target.toString());
+        targetUrl.pathname = `${BASE_PATH}${targetUrl.pathname}`;
       }
     } catch {
       if (
@@ -60,10 +61,19 @@ function normalizeResponse(response: Response): Response {
     }
 
     if (location.includes("error=")) {
+      const recentReason = popRecentAuthError();
+      if (recentReason && targetUrl) {
+        targetUrl.searchParams.set("reason", recentReason);
+      }
       console.error("[AUTH_REDIRECT_ERROR]", {
-        location: response.headers.get("Location"),
+        location: targetUrl?.toString() || response.headers.get("Location"),
+        reason: recentReason,
         status: response.status,
       });
+    }
+
+    if (targetUrl) {
+      response.headers.set("Location", targetUrl.toString());
     }
   }
   return response;
@@ -78,5 +88,3 @@ export async function POST(req: NextRequest) {
   const res = await handlers.POST(withNormalizedRequest(req));
   return normalizeResponse(res);
 }
-
-
