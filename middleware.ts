@@ -16,27 +16,30 @@ const BUG_DETAIL_PATH = /^\/bugs\/[^/]+\/?$/;
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
+  const pathWithoutBase = pathname.startsWith("/bug-tracker")
+    ? pathname.slice("/bug-tracker".length) || "/"
+    : pathname;
   const isLoggedIn = !!req.auth?.user;
 
   const isAuthPage =
-    pathname.startsWith("/login") || pathname.startsWith("/signup");
+    pathWithoutBase.startsWith("/login") || pathWithoutBase.startsWith("/signup");
   const isPasswordResetPage =
-    pathname.startsWith("/forgot-password") ||
-    pathname.startsWith("/reset-password");
+    pathWithoutBase.startsWith("/forgot-password") ||
+    pathWithoutBase.startsWith("/reset-password");
   const isBugPreview =
-    BUG_DETAIL_PATH.test(pathname) &&
+    BUG_DETAIL_PATH.test(pathWithoutBase) &&
     isLinkPreviewBot(req.headers.get("user-agent"));
   const isPublic =
     isAuthPage ||
     isPasswordResetPage ||
     isBugPreview ||
-    pathname.startsWith("/api/auth") ||
-    pathname.startsWith("/_next") ||
-    pathname === "/favicon.ico";
+    pathWithoutBase.startsWith("/api/auth") ||
+    pathWithoutBase.startsWith("/_next") ||
+    pathWithoutBase === "/favicon.ico";
 
   if (!isLoggedIn && !isPublic) {
     const url = req.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = "/bug-tracker/login";
     url.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(url);
   }
@@ -44,15 +47,15 @@ export default auth((req) => {
   // Allow reset links even when a session exists; only bounce login/signup.
   if (isLoggedIn && isAuthPage) {
     const url = req.nextUrl.clone();
-    url.pathname = "/bugs";
+    url.pathname = "/bug-tracker/bugs";
     return NextResponse.redirect(url);
   }
 
   // Super-admin only surface (JWT role; page/actions re-check against DB).
-  if (isLoggedIn && pathname.startsWith("/admin")) {
+  if (isLoggedIn && pathWithoutBase.startsWith("/admin")) {
     if (!isSuperAdmin(req.auth?.user?.role)) {
       const url = req.nextUrl.clone();
-      url.pathname = "/bugs";
+      url.pathname = "/bug-tracker/bugs";
       return NextResponse.redirect(url);
     }
   }

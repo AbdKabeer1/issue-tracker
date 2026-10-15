@@ -15,8 +15,8 @@ export function LoginForm({
   callbackUrl?: string;
   googleEnabled?: boolean;
 }) {
-  const [email, setEmail] = useState("alice@zendor.dev");
-  const [password, setPassword] = useState("12345678");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -55,6 +55,7 @@ export function LoginForm({
           name="email"
           type="email"
           autoComplete="email"
+          placeholder="you@example.com"
           required
           value={email}
           onChange={(event) => setEmail(event.target.value)}
@@ -79,6 +80,7 @@ export function LoginForm({
           id="password"
           name="password"
           autoComplete="current-password"
+          placeholder="••••••••"
           required
           value={password}
           onChange={(event) => setPassword(event.target.value)}

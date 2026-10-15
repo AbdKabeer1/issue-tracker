@@ -41,10 +41,6 @@ export default async function LoginPage({
             Create an account
           </Link>
         </p>
-        <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          Demo: <span className="font-medium">alice@zendor.dev</span> /{" "}
-          <span className="font-medium">12345678</span>
-        </p>
       </div>
     </main>
   );
