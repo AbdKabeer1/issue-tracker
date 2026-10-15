@@ -26,7 +26,9 @@ import {
   createBugSchema,
   updateBugSchema,
 } from "@/lib/validations/bug";
+import { calculateVoteChange } from "@/lib/voting";
 import type { ActivityType, Prisma } from "@prisma/client";
+
 
 export type ActionResult = { error?: string; ok?: boolean };
 
@@ -313,11 +315,13 @@ export async function addCommentAction(
 
 export type ToggleVoteResult = ActionResult & {
   voted?: boolean;
+  userVote?: number;
   voteCount?: number;
 };
 
 export async function toggleVoteAction(
   bugId: string,
+  direction: 1 | -1 = 1,
 ): Promise<ToggleVoteResult> {
   // Do not redirect here — VoteButton needs a clear error for stale JWTs
   // after a DB reseed (old cuid no longer exists → Vote_userId_fkey).
@@ -340,35 +344,37 @@ export async function toggleVoteAction(
       where: { userId_bugId: { userId, bugId } },
     });
 
-    if (existing) {
+    const currentVote = existing?.value ?? 0;
+    const { nextVote, countDelta } = calculateVoteChange(currentVote, direction);
+
+    if (nextVote === 0 && existing) {
       await tx.vote.delete({ where: { id: existing.id } });
-      const updated = await tx.bug.update({
-        where: { id: bugId },
-        data: { voteCount: { decrement: 1 } },
-        select: { voteCount: true },
+    } else if (existing) {
+      await tx.vote.update({
+        where: { id: existing.id },
+        data: { value: nextVote },
       });
-      return { voted: false, voteCount: Math.max(0, updated.voteCount) };
+    } else {
+      await tx.vote.create({
+        data: { userId, bugId, value: nextVote },
+      });
     }
 
-    await tx.vote.create({ data: { userId, bugId } });
     const updated = await tx.bug.update({
       where: { id: bugId },
-      data: { voteCount: { increment: 1 } },
+      data: { voteCount: { increment: countDelta } },
       select: { voteCount: true },
     });
-    return { voted: true, voteCount: updated.voteCount };
-  });
 
-  // Keep denormalized count non-negative if a race ever undershoots.
-  if (result.voteCount < 0) {
-    await prisma.bug.update({
-      where: { id: bugId },
-      data: { voteCount: 0 },
-    });
-    result.voteCount = 0;
-  }
+    return {
+      voted: nextVote === 1,
+      userVote: nextVote,
+      voteCount: updated.voteCount,
+    };
+  });
 
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true, ...result };
 }
+

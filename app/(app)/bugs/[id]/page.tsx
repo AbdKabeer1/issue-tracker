@@ -166,7 +166,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           include: { actor: { select: { name: true } } },
           orderBy: { createdAt: "asc" },
         },
-        votes: { where: { userId }, select: { id: true }, take: 1 },
+        votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
       },
     }),
     prisma.user.findMany({
@@ -181,7 +181,10 @@ export default async function BugDetailPage({ params }: BugPageProps) {
 
   const isAssignee = !!userId && bug.assigneeId === userId;
   const canUpdateStatus = canTriage || isAssignee;
-  const voted = Array.isArray(bug.votes) && bug.votes.length > 0;
+  const userVote =
+    Array.isArray(bug.votes) && bug.votes.length > 0
+      ? (bug.votes[0].value ?? 1)
+      : 0;
   const commentTree = buildCommentTree(bug.comments);
 
   return (
@@ -194,9 +197,10 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           <VoteButton
             bugId={bug.id}
             voteCount={bug.voteCount}
-            voted={voted}
+            userVote={userVote}
             size="md"
           />
+
           <div className="min-w-0 flex-1 space-y-2">
             <h1 className="text-2xl font-semibold text-slate-900">
               {bug.title}

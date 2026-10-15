@@ -105,9 +105,11 @@ export async function logoutAction() {
   await signOut({ redirectTo: "/login" });
 }
 
-export async function googleSignInAction() {
-  await signIn("google", { redirectTo: "/bugs" });
+export async function googleSignInAction(callbackUrl: string = "/bugs") {
+  const safeTarget = safeCallbackUrl(callbackUrl);
+  await signIn("google", { redirectTo: safeTarget });
 }
+
 
 export async function forgotPasswordAction(
   _prev: { error?: string; success?: string } | undefined,
