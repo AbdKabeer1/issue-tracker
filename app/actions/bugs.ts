@@ -2,6 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import {
+  activityCreateData,
+  assigneeChangedSummary,
+  commentedSummary,
+  createdSummary,
+  severityChangedSummary,
+  statusChangedSummary,
+  type ActivityMetadata,
+} from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
 import {
@@ -17,6 +26,7 @@ import {
   createBugSchema,
   updateBugSchema,
 } from "@/lib/validations/bug";
+import type { ActivityType, Prisma } from "@prisma/client";
 
 export type ActionResult = { error?: string; ok?: boolean };
 
@@ -62,15 +72,22 @@ export async function createBugAction(
     data: {
       title: parsed.data.title,
       description: parsed.data.description,
-<<<<<<< HEAD
-      severity: parsed.data.severity,
-      status: "open",
-=======
       severity: admin ? parsed.data.severity : "medium",
->>>>>>> endor/main
+      status: "open",
       proofLinks: parsed.data.proofLinks,
       reporterId: userId,
       assigneeId,
+      activities: {
+        create: {
+          actorId: userId,
+          type: "created",
+          summary: createdSummary(parsed.data.title),
+          metadata: {
+            field: "title",
+            to: parsed.data.title,
+          } as Prisma.InputJsonValue,
+        },
+      },
     },
   });
 
@@ -103,6 +120,7 @@ export async function updateBugAction(
       error: "Only the assignee or an admin can update this bug",
     };
   }
+  const userId = admin.userId;
 
   const assigneeRaw = formData.get("assigneeId");
   const parsed = updateBugSchema.safeParse({
@@ -117,6 +135,14 @@ export async function updateBugAction(
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId },
+    include: { assignee: { select: { id: true, name: true } } },
+  });
+  if (!existing) {
+    return { error: "Bug not found" };
   }
 
   const data: {
@@ -134,9 +160,82 @@ export async function updateBugAction(
     }
   }
 
-  await prisma.bug.update({
-    where: { id: bugId },
-    data,
+  type PendingActivity = {
+    type: ActivityType;
+    summary: string;
+    metadata?: ActivityMetadata;
+  };
+  const pending: PendingActivity[] = [];
+
+  if (data.status && data.status !== existing.status) {
+    pending.push({
+      type: "status_changed",
+      summary: statusChangedSummary(existing.status, data.status),
+      metadata: {
+        field: "status",
+        from: existing.status,
+        to: data.status,
+      },
+    });
+  }
+
+  if (data.severity && data.severity !== existing.severity) {
+    pending.push({
+      type: "severity_changed",
+      summary: severityChangedSummary(existing.severity, data.severity),
+      metadata: {
+        field: "severity",
+        from: existing.severity,
+        to: data.severity,
+      },
+    });
+  }
+
+  if (
+    data.assigneeId !== undefined &&
+    data.assigneeId !== existing.assigneeId
+  ) {
+    let toName: string | null = null;
+    if (data.assigneeId) {
+      const nextAssignee = await prisma.user.findUnique({
+        where: { id: data.assigneeId },
+        select: { name: true },
+      });
+      toName = nextAssignee?.name ?? null;
+    }
+    pending.push({
+      type: "assignee_changed",
+      summary: assigneeChangedSummary(existing.assignee?.name ?? null, toName),
+      metadata: {
+        field: "assigneeId",
+        from: existing.assigneeId,
+        to: data.assigneeId,
+      },
+    });
+  }
+
+  if (pending.length === 0 && Object.keys(data).length === 0) {
+    return { ok: true };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (Object.keys(data).length > 0) {
+      await tx.bug.update({
+        where: { id: bugId },
+        data,
+      });
+    }
+    if (pending.length > 0) {
+      await tx.bugActivity.createMany({
+        data: activityCreateData(
+          pending.map((entry) => ({
+            bugId,
+            actorId: userId,
+            ...entry,
+          })),
+        ),
+      });
+    }
   });
 
   revalidatePath("/bugs");
@@ -156,6 +255,14 @@ export async function addCommentAction(
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid comment" };
+  }
+
+  const bug = await prisma.bug.findUnique({
+    where: { id: bugId },
+    select: { id: true },
+  });
+  if (!bug) {
+    return { error: "Bug not found" };
   }
 
   const parentId = parsed.data.parentId;
@@ -186,13 +293,27 @@ export async function addCommentAction(
     }
   }
 
-  await prisma.comment.create({
-    data: {
-      bugId,
-      authorId: userId,
-      body: parsed.data.body,
-      parentId: parentId ?? null,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.comment.create({
+      data: {
+        bugId,
+        authorId: userId,
+        body: parsed.data.body,
+        parentId: parentId ?? null,
+      },
+    });
+    await tx.bugActivity.create({
+      data: {
+        bugId,
+        actorId: userId,
+        type: "commented",
+        summary: commentedSummary(parsed.data.body),
+        metadata: {
+          field: "comment",
+          commentPreview: parsed.data.body.slice(0, 120),
+        } as Prisma.InputJsonValue,
+      },
+    });
   });
 
   revalidatePath(`/bugs/${bugId}`);
