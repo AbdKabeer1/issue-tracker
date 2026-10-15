@@ -5,12 +5,24 @@ import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { loginSchema } from "@/lib/validations/bug";
 import authConfig from "@/auth.config";
+import { cleanEnv } from "@/lib/env-clean";
 
-const googleClientId =
-  process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID;
-const googleClientSecret =
-  process.env.GOOGLE_CLIENT_SECRET || process.env.AUTH_GOOGLE_SECRET;
+const googleClientId = cleanEnv(
+  process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID,
+);
+const googleClientSecret = cleanEnv(
+  process.env.GOOGLE_CLIENT_SECRET || process.env.AUTH_GOOGLE_SECRET,
+);
 const googleConfigured = Boolean(googleClientId) && Boolean(googleClientSecret);
+
+if (process.env.NODE_ENV !== "test") {
+  console.log("[auth:config] Initializing NextAuth with Google OAuth status:", {
+    googleConfigured,
+    clientIdPresent: Boolean(googleClientId),
+    clientSecretPresent: Boolean(googleClientSecret),
+    clientIdPrefix: googleClientId ? `${googleClientId.slice(0, 12)}…` : "none",
+  });
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -98,7 +110,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             } catch (dbError) {
               console.error(
                 `[auth] Google user upsert attempt ${attempt} failed:`,
-                dbError
+                dbError,
               );
               if (attempt === 3) throw dbError;
               await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
@@ -115,7 +127,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       if (user?.id) {
-
         token.id = user.id;
         token.sub = user.id;
       }

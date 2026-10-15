@@ -9,7 +9,11 @@ import { safeCallbackUrl } from "@/lib/safe-callback-url";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ callbackUrl?: string; error?: string }>;
+  searchParams: Promise<{
+    callbackUrl?: string;
+    error?: string;
+    reason?: string;
+  }>;
 }) {
   const params = await searchParams;
   const callbackUrl = safeCallbackUrl(params.callbackUrl);
@@ -27,10 +31,17 @@ export default async function LoginPage({
 
         {params.error ? (
           <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
-            {params.error === "OAuthCallbackError" ||
-            params.error === "Configuration"
-              ? "Unable to complete Google sign-in. Please try again."
-              : "Authentication failed. Please try again."}
+            <p className="font-medium">
+              {params.error === "OAuthCallbackError" ||
+              params.error === "Configuration"
+                ? "Unable to complete Google sign-in. Please try again."
+                : "Authentication failed. Please try again."}
+            </p>
+            {params.reason ? (
+              <p className="mt-1.5 font-mono text-xs text-red-800 break-words">
+                Diagnostic: {params.reason}
+              </p>
+            ) : null}
           </div>
         ) : null}
 

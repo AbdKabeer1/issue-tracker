@@ -32,6 +32,7 @@ export default auth((req) => {
     isPasswordResetPage ||
     isBugPreview ||
     pathWithoutBase.startsWith("/api/auth") ||
+    pathWithoutBase.startsWith("/api/health") ||
     pathWithoutBase.startsWith("/_next") ||
     pathWithoutBase === "/favicon.ico";
 

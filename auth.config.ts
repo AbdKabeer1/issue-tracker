@@ -1,7 +1,17 @@
 import type { NextAuthConfig } from "next-auth";
 import { BASE_PATH } from "@/lib/base-path";
+import { cleanEnv } from "@/lib/env-clean";
+import { recordAuthError } from "@/lib/auth-diagnostics";
 
 const isProd = process.env.NODE_ENV === "production";
+const fallbackSecret = "zedu-bug-tracker-auth-secret-production-salt-2026";
+const authSecret =
+  cleanEnv(process.env.AUTH_SECRET) ||
+  cleanEnv(process.env.NEXTAUTH_SECRET) ||
+  fallbackSecret;
+
+const authUrl =
+  cleanEnv(process.env.AUTH_URL) || cleanEnv(process.env.NEXTAUTH_URL);
 
 /**
  * Edge-safe Auth.js config (no Prisma / bcrypt).
@@ -11,15 +21,20 @@ const isProd = process.env.NODE_ENV === "production";
 export default {
   basePath: `${BASE_PATH}/api/auth`,
   providers: [],
-  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
+  secret: authSecret,
   session: { strategy: "jwt" },
   pages: {
     signIn: `${BASE_PATH}/login`,
     error: `${BASE_PATH}/login`,
   },
   trustHost: true,
-  useSecureCookies:
-    isProd && !process.env.AUTH_URL?.startsWith("http://localhost"),
+  useSecureCookies: isProd && !authUrl?.startsWith("http://localhost"),
+
+  logger: {
+    error(error) {
+      recordAuthError(error);
+    },
+  },
 
   callbacks: {
     redirect({ url, baseUrl }) {
