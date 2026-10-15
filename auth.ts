@@ -74,24 +74,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             (typeof profile?.picture === "string" && profile.picture) ||
             (typeof user?.image === "string" ? user.image : undefined);
 
-          const dbUser = await prisma.user.upsert({
-            where: { email },
-            create: {
-              email,
-              name,
-              image,
-              emailVerified: new Date(),
-            },
-            update: {
-              name,
-              ...(image ? { image } : {}),
-              emailVerified: new Date(),
-            },
-          });
-          token.id = dbUser.id;
-          token.sub = dbUser.id;
-          token.role = dbUser.role;
-          return token;
+          try {
+            const dbUser = await prisma.user.upsert({
+              where: { email },
+              create: {
+                email,
+                name,
+                image,
+                emailVerified: new Date(),
+              },
+              update: {
+                name,
+                ...(image ? { image } : {}),
+                emailVerified: new Date(),
+              },
+            });
+            token.id = dbUser.id;
+            token.sub = dbUser.id;
+            token.role = dbUser.role;
+            return token;
+          } catch (dbError) {
+            console.error("[auth] Google user upsert failed:", dbError);
+            throw dbError;
+          }
         }
       }
 

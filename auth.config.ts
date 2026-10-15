@@ -1,6 +1,8 @@
 import type { NextAuthConfig } from "next-auth";
 import { BASE_PATH } from "@/lib/base-path";
 
+const isProd = process.env.NODE_ENV === "production";
+
 /**
  * Edge-safe Auth.js config (no Prisma / bcrypt).
  * Middleware must import this file only — never `@/auth` — or the Edge
@@ -12,8 +14,12 @@ export default {
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",
+    error: "/login",
   },
   trustHost: true,
+  useSecureCookies:
+    isProd && !process.env.AUTH_URL?.startsWith("http://localhost"),
+
   callbacks: {
     jwt({ token, user }) {
       if (user?.id) {

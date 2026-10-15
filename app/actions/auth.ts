@@ -39,7 +39,8 @@ export async function loginAction(
     if (error instanceof AuthError) {
       return { error: "Invalid email or password" };
     }
-    throw error;
+    console.error("[loginAction] signIn error:", error);
+    return { error: "Invalid email or password" };
   }
 
   redirect(callbackUrl);
@@ -90,8 +91,12 @@ export async function signupAction(
         error: "Account created, but sign-in failed. Try logging in.",
       };
     }
-    throw error;
+    console.error("[signupAction] signIn error after user creation:", error);
+    return {
+      error: "Account created! Please sign in with your email and password.",
+    };
   }
+
 
   redirect(callbackUrl);
 }
