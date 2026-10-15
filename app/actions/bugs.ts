@@ -108,7 +108,7 @@ export async function updateBugAction(
 
   const existing = await prisma.bug.findUnique({
     where: { id: bugId },
-    select: { assigneeId: true },
+    include: { assignee: { select: { id: true, name: true } } },
   });
   if (!existing) {
     return { error: "Bug not found" };
@@ -120,7 +120,6 @@ export async function updateBugAction(
       error: "Only the assignee or an admin can update this bug",
     };
   }
-  const userId = admin.userId;
 
   const assigneeRaw = formData.get("assigneeId");
   const parsed = updateBugSchema.safeParse({
@@ -135,14 +134,6 @@ export async function updateBugAction(
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
-  }
-
-  const existing = await prisma.bug.findUnique({
-    where: { id: bugId },
-    include: { assignee: { select: { id: true, name: true } } },
-  });
-  if (!existing) {
-    return { error: "Bug not found" };
   }
 
   const data: {
