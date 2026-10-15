@@ -60,8 +60,9 @@ export default async function BugsPage({
       reporter: { select: { name: true, role: true } },
       assignee: { select: { name: true, role: true } },
       votes: userId
-        ? { where: { userId }, select: { id: true }, take: 1 }
+        ? { where: { userId }, select: { id: true, value: true }, take: 1 }
         : false,
+
     },
     orderBy: [{ voteCount: "desc" }, { updatedAt: "desc" }],
   });
@@ -113,8 +114,10 @@ export default async function BugsPage({
       ) : (
         <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
           {bugs.map((bug) => {
-            const voted =
-              Array.isArray(bug.votes) && bug.votes.length > 0;
+            const userVote =
+              Array.isArray(bug.votes) && bug.votes.length > 0
+                ? (bug.votes[0].value ?? 1)
+                : 0;
             return (
               <li
                 key={bug.id}
@@ -123,7 +126,7 @@ export default async function BugsPage({
                 <VoteButton
                   bugId={bug.id}
                   voteCount={bug.voteCount}
-                  voted={voted}
+                  userVote={userVote}
                 />
                 <Link href={`/bugs/${bug.id}`} className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-start justify-between gap-2">
