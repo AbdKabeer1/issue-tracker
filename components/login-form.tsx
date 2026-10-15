@@ -5,6 +5,7 @@ import { unstable_rethrow } from "next/navigation";
 import { googleSignInAction, loginAction } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 
 export function LoginForm({
   callbackUrl = "/bugs",
@@ -65,10 +66,9 @@ export function LoginForm({
         >
           Password
         </label>
-        <Input
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
           autoComplete="current-password"
           required
           value={password}
