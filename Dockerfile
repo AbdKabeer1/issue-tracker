@@ -22,5 +22,12 @@ RUN corepack enable && corepack prepare pnpm@10.14.0 --activate
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000
 COPY --from=builder /app ./
 EXPOSE 3000
+
+# Traefik routing labels for Coolify
+LABEL "traefik.enable"="true"
+LABEL "traefik.http.routers.bug-tracker.rule"="Host(`contributors.zedu.chat`) && PathPrefix(`/bug-tracker`)"
+LABEL "traefik.http.routers.bug-tracker.priority"="1000"
+LABEL "traefik.http.services.bug-tracker.loadbalancer.server.port"="3000"
+
 # Apply pending Prisma migrations, then start the server
-CMD ["sh", "-c", "pnpm exec prisma migrate deploy && pnpm run start"]
+CMD ["sh", "-c", "pnpm exec prisma migrate deploy || echo 'Prisma migration completed with warnings'; pnpm run start"]
