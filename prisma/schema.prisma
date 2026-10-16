@@ -42,6 +42,7 @@ enum ActivityType {
   unboosted
   deleted
   restored
+  comment_deleted
 }
 
 model User {
@@ -147,6 +148,10 @@ model Comment {
   parentId  String?
   body      String
   createdAt DateTime  @default(now())
+  /// Set when the author edits the comment; shown as "edited".
+  editedAt  DateTime?
+  /// Soft delete: the body is cleared and replies keep their place.
+  deletedAt DateTime?
   bug       Bug       @relation(fields: [bugId], references: [id], onDelete: Cascade)
   author    User      @relation(fields: [authorId], references: [id])
   parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)

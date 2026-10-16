@@ -170,6 +170,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
               select: {
                 id: true,
                 body: true,
+                deletedAt: true,
                 author: { select: { name: true, role: true } },
               },
             },
@@ -462,6 +463,8 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           reporterId={bug.reporterId}
           comments={commentTree}
           users={users}
+          currentUserId={user.id}
+          currentUserRole={user.role}
         />
       </section>
 

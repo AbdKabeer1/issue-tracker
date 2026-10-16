@@ -425,11 +425,14 @@ export async function addCommentAction(
   if (parentId) {
     const parent = await prisma.comment.findUnique({
       where: { id: parentId },
-      select: { id: true, bugId: true, parentId: true },
+      select: { id: true, bugId: true, parentId: true, deletedAt: true },
     });
 
     if (!parent || parent.bugId !== bugId) {
       return { error: "Parent comment not found on this ticket" };
+    }
+    if (parent.deletedAt) {
+      return { error: "You can't reply to a deleted comment" };
     }
 
     const threadComments = await prisma.comment.findMany({
@@ -451,13 +454,14 @@ export async function addCommentAction(
   const normalizedBody = await normalizeMentionTags(parsed.data.body);
 
   await prisma.$transaction(async (tx) => {
-    await tx.comment.create({
+    const created = await tx.comment.create({
       data: {
         bugId,
         authorId: userId,
         body: normalizedBody,
         parentId: parentId ?? null,
       },
+      select: { id: true },
     });
     await tx.bugActivity.create({
       data: {
@@ -467,6 +471,7 @@ export async function addCommentAction(
         summary: commentedSummary(normalizedBody),
         metadata: {
           field: "comment",
+          commentId: created.id,
           commentPreview: commentPreview(normalizedBody),
         } as Prisma.InputJsonValue,
       },
