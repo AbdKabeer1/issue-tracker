@@ -82,7 +82,7 @@ export default async function BugsPage({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Bugs</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Bugs</h1>
           <p className="text-sm text-slate-600">
             {totalCount} result{totalCount === 1 ? "" : "s"} · sorted by likes
           </p>
@@ -133,7 +133,7 @@ export default async function BugsPage({
             return (
               <li
                 key={bug.id}
-                className="flex items-start gap-3 px-4 py-4 transition hover:bg-slate-50"
+                className="flex items-start gap-3 px-3 py-3.5 sm:px-4 sm:py-4 transition hover:bg-slate-50"
               >
                 <VoteButton
                   bugId={bug.id}
@@ -141,9 +141,9 @@ export default async function BugsPage({
                   userVote={userVote}
                 />
                 <Link href={`/bugs/${bug.id}`} className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-1">
-                      <p className="font-medium text-slate-900">{bug.title}</p>
+                      <p className="font-medium text-slate-900 break-words">{bug.title}</p>
                       <p className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-slate-500">
                         <span>Reported by</span>
                         <UserNameWithBadges
@@ -171,7 +171,7 @@ export default async function BugsPage({
                         ) : null}
                       </p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex shrink-0 flex-wrap gap-1.5 self-start">
                       <Badge className={statusClass[bug.status]}>
                         {statusLabels[bug.status]}
                       </Badge>
