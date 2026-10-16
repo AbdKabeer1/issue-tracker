@@ -55,7 +55,7 @@ export function ActivityTimeline({
                   {typeLabel[entry.type]}
                 </span>
                 <LocalTime
-                  className="text-xs text-slate-400"
+                  className="text-xs text-slate-500"
                   date={entry.createdAt}
                 />
               </div>

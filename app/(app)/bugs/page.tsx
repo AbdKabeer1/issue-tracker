@@ -348,7 +348,7 @@ export default async function BugsPage({
                           variant="ghost"
                           size="sm"
                           label="Delete"
-                          className="text-slate-400 hover:text-red-600 hover:bg-red-50"
+                          className="text-slate-500 hover:text-red-600 hover:bg-red-50"
                         />
                       )
                     ) : null}

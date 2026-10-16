@@ -113,7 +113,7 @@ export default async function AdminUsersPage({
                         userName={user.name}
                       />
                     ) : (
-                      <span className="text-xs text-slate-400">—</span>
+                      <span className="text-xs text-slate-500">—</span>
                     )}
                   </td>
                 </tr>

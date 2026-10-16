@@ -416,6 +416,7 @@ export const MarkdownEditor = forwardRef<
               onBlur?.(event);
             }}
             onPaste={handlePaste}
+            role={users?.length ? "combobox" : undefined}
             aria-autocomplete={users?.length ? "list" : undefined}
             aria-controls={
               users?.length && mention.showSuggestions ? listboxId : undefined
@@ -455,7 +456,7 @@ export const MarkdownEditor = forwardRef<
         {maxLength ? (
           <p
             className={`ml-auto shrink-0 text-xs tabular-nums ${
-              value.length > maxLength ? "text-red-600" : "text-slate-400"
+              value.length > maxLength ? "text-red-600" : "text-slate-500"
             }`}
           >
             {value.length}/{maxLength}
