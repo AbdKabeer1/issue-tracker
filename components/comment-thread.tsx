@@ -58,7 +58,7 @@ function CommentItem({
           </p>
         ) : null}
 
-        <CommentBody body={comment.body} />
+        <CommentBody body={comment.body} users={users} />
 
         {canReply ? (
           <div className="mt-2">
