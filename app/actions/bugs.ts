@@ -6,6 +6,7 @@ import {
   activityCreateData,
   assigneeChangedSummary,
   boostedSummary,
+  categoryChangedSummary,
   commentedSummary,
   commentPreview,
   createdSummary,
@@ -13,6 +14,7 @@ import {
   restoredSummary,
   severityChangedSummary,
   statusChangedSummary,
+  typeChangedSummary,
   unboostedSummary,
   type ActivityMetadata,
 } from "@/lib/activity-log";
@@ -226,6 +228,7 @@ export async function updateBugAction(
     include: {
       assignee: { select: { id: true, name: true } },
       category: { select: { id: true, name: true } },
+      type: { select: { id: true, name: true } },
     },
   });
   if (!existing || existing.isDeleted) {
@@ -368,7 +371,54 @@ export async function updateBugAction(
     });
   }
 
-  if (data.categoryId) {
+  if (data.typeId !== undefined && data.typeId !== existing.typeId) {
+    let toName: string | null = null;
+    if (data.typeId) {
+      const nextType = await prisma.issueType.findUnique({
+        where: { id: data.typeId },
+        select: { id: true, name: true },
+      });
+      if (!nextType) {
+        return { error: "Issue type not found" };
+      }
+      toName = nextType.name;
+    }
+    pending.push({
+      type: "type_changed",
+      summary: typeChangedSummary(existing.type?.name ?? null, toName),
+      metadata: {
+        field: "type",
+        from: existing.type?.name ?? null,
+        to: toName,
+      },
+    });
+  }
+
+  if (
+    data.categoryId !== undefined &&
+    data.categoryId !== existing.categoryId
+  ) {
+    let toName: string | null = null;
+    if (data.categoryId) {
+      const cat = await prisma.category.findUnique({
+        where: { id: data.categoryId },
+        select: { id: true, name: true },
+      });
+      if (!cat) {
+        return { error: "Platform not found" };
+      }
+      toName = cat.name;
+    }
+    pending.push({
+      type: "category_changed",
+      summary: categoryChangedSummary(existing.category?.name ?? null, toName),
+      metadata: {
+        field: "category",
+        from: existing.category?.name ?? null,
+        to: toName,
+      },
+    });
+  } else if (data.categoryId) {
     const cat = await prisma.category.findUnique({
       where: { id: data.categoryId },
       select: { id: true },
