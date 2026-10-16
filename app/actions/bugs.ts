@@ -19,10 +19,7 @@ import {
   resolveSessionUserId,
   SESSION_EXPIRED_MESSAGE,
 } from "@/lib/session-user";
-import {
-  MAX_COMMENT_DEPTH,
-  commentDepth,
-} from "@/lib/comments";
+import { MAX_COMMENT_DEPTH, commentDepth } from "@/lib/comments";
 import {
   extractMentionedUserIds,
   normalizeMentions,
@@ -32,9 +29,8 @@ import {
   createBugSchema,
   updateBugSchema,
 } from "@/lib/validations/bug";
-import { calculateVoteChange } from "@/lib/voting";
+import { calculateVoteChange, isValidVoteDirection } from "@/lib/voting";
 import { Prisma, type ActivityType } from "@prisma/client";
-
 
 export type ActionResult = { error?: string; ok?: boolean };
 
@@ -47,6 +43,7 @@ async function requireUserId() {
   return resolved.userId;
 }
 
+/** Creates a bug as the signed-in user; only admins may set severity/assignee. */
 export async function createBugAction(
   formData: FormData,
 ): Promise<ActionResult> {
@@ -121,6 +118,7 @@ export async function createBugAction(
   redirect(`/bugs/${bug.id}`);
 }
 
+/** Updates status (assignee/admin) and severity/assignee (admin) and logs activity. */
 export async function updateBugAction(
   bugId: string,
   formData: FormData,
@@ -270,6 +268,7 @@ export async function updateBugAction(
   return { ok: true };
 }
 
+/** Adds a (possibly threaded) comment to a bug and records the activity. */
 export async function addCommentAction(
   bugId: string,
   formData: FormData,
@@ -372,11 +371,12 @@ export type ToggleVoteResult = ActionResult & {
   dislikeCount?: number;
 };
 
+/** Toggles the current user's reaction on a bug; rejects any direction other than 1 or -1. */
 export async function toggleVoteAction(
   bugId: string,
-  direction: 1 | -1 = 1,
+  direction: unknown = 1,
 ): Promise<ToggleVoteResult> {
-  if (direction !== 1 && direction !== -1) {
+  if (!isValidVoteDirection(direction)) {
     return { error: "Invalid vote" };
   }
 
@@ -452,4 +452,3 @@ export async function toggleVoteAction(
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true, ...result };
 }
-
