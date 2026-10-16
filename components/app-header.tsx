@@ -30,13 +30,13 @@ export function AppHeader({
           <BrandLockup href="/bugs" size="sm" />
           <nav className="hidden items-center gap-3 text-sm sm:flex">
             <Link href="/bugs" className="text-slate-600 hover:text-slate-900">
-              All bugs
+              All issues
             </Link>
             <Link
               href="/bugs/new"
               className="rounded-md bg-teal-50 px-2 py-1 font-medium text-teal-800 hover:bg-teal-100"
             >
-              New bug
+              New issue
             </Link>
             {isAdmin(role) ? (
               <>
@@ -158,14 +158,14 @@ export function AppHeader({
               onClick={closeMenu}
               className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
-              All bugs
+              All issues
             </Link>
             <Link
               href="/bugs/new"
               onClick={closeMenu}
               className="rounded-lg bg-teal-50 px-3 py-2 text-sm font-medium text-teal-800 hover:bg-teal-100"
             >
-              New bug
+              New issue
             </Link>
             {isAdmin(role) ? (
               <>

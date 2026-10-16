@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     default: "Zedu Issues",
     template: "%s · Zedu Issues",
   },
-  description: "Zedu bug tracking interface — HNG15 mini-project",
+  description: "Zedu issue tracking interface — HNG15 mini-project",
   openGraph: {
     siteName: "Zedu Issues",
     type: "website",

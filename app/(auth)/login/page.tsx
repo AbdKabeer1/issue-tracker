@@ -26,7 +26,7 @@ export default async function LoginPage({
           Sign in to Zedu Issues
         </h1>
         <p className="mt-1.5 text-sm text-slate-600">
-          Sign in with your Google account to report, vote, and track bugs.
+          Sign in with your Google account to report, vote, and track issues.
         </p>
 
         {params.error ? (
