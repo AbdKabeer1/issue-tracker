@@ -27,21 +27,40 @@ export async function createIssueTypeAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  const existing = await prisma.issueType.findUnique({
-    where: { name: parsed.data.name },
+  const normalizedName = parsed.data.name.trim();
+
+  const existing = await prisma.issueType.findFirst({
+    where: {
+      name: {
+        equals: normalizedName,
+        mode: "insensitive",
+      },
+    },
   });
 
   if (existing) {
-    return { error: `A type named "${parsed.data.name}" already exists.` };
+    return { error: `A type named "${existing.name}" already exists.` };
   }
 
-  await prisma.issueType.create({
-    data: {
-      name: parsed.data.name,
-      description: parsed.data.description,
-      isActive: parsed.data.isActive,
-    },
-  });
+  try {
+    await prisma.issueType.create({
+      data: {
+        name: normalizedName,
+        description: parsed.data.description,
+        isActive: parsed.data.isActive,
+      },
+    });
+  } catch (err: unknown) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      err.code === "P2002"
+    ) {
+      return { error: `A type named "${normalizedName}" already exists.` };
+    }
+    throw err;
+  }
 
   revalidatePath("/admin/types");
   revalidatePath("/bugs/new");
@@ -73,25 +92,42 @@ export async function updateIssueTypeAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
+  const normalizedName = parsed.data.name.trim();
+
   const existing = await prisma.issueType.findFirst({
     where: {
-      name: parsed.data.name,
+      name: {
+        equals: normalizedName,
+        mode: "insensitive",
+      },
       NOT: { id },
     },
   });
 
   if (existing) {
-    return { error: `Another type named "${parsed.data.name}" already exists.` };
+    return { error: `Another type named "${existing.name}" already exists.` };
   }
 
-  await prisma.issueType.update({
-    where: { id },
-    data: {
-      name: parsed.data.name,
-      description: parsed.data.description,
-      isActive: parsed.data.isActive,
-    },
-  });
+  try {
+    await prisma.issueType.update({
+      where: { id },
+      data: {
+        name: normalizedName,
+        description: parsed.data.description,
+        isActive: parsed.data.isActive,
+      },
+    });
+  } catch (err: unknown) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      err.code === "P2002"
+    ) {
+      return { error: `Another type named "${normalizedName}" already exists.` };
+    }
+    throw err;
+  }
 
   revalidatePath("/admin/types");
   revalidatePath("/bugs/new");
