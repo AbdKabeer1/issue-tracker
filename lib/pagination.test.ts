@@ -103,6 +103,16 @@ describe("buildPaginationUrl", () => {
     ).toBe("/bugs?q=test&status=OPEN&page=3");
   });
 
+  it("preserves sort query param alongside filters across pagination URLs", () => {
+    expect(
+      buildPaginationUrl("/bugs", 2, {
+        q: "crash",
+        status: "open",
+        sort: "top_votes",
+      }),
+    ).toBe("/bugs?q=crash&status=open&sort=top_votes&page=2");
+  });
+
   it("returns base path when no query params and page is 1", () => {
     expect(buildPaginationUrl("/bugs", 1, {})).toBe("/bugs");
   });

@@ -32,6 +32,8 @@ import {
   getIssueTypeBadgeClass,
 } from "@/lib/issue-types";
 import { fetchVoterSummary } from "@/lib/voter-summaries";
+import { canDeleteTicket } from "@/lib/ticket-deletion";
+import { DeleteBugButton } from "@/components/delete-bug-button";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
@@ -146,6 +148,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
 
   const user = await requireUser();
   const canTriage = isAdmin(user.role);
+  const canDelete = canDeleteTicket(user.role);
 
   const [bug, users, categories, types, voterSummary] = await Promise.all([
     prisma.bug.findUnique({
@@ -202,57 +205,70 @@ export default async function BugDetailPage({ params }: BugPageProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
-          ← Back to bugs
-        </Link>
-        <div className="mt-3 space-y-3">
-          <div className="space-y-2">
-            <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 break-words">
-              {bug.title}
-            </h1>
-            <div className="flex flex-wrap items-center gap-2">
-              {bug.type ? (
-                <span
-                  className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getIssueTypeBadgeClass(
-                    bug.type.name,
-                  )}`}
-                >
-                  {bug.type.name}
-                </span>
-              ) : null}
-              <Badge className={statusClass[bug.status]}>
-                {statusLabels[bug.status]}
-              </Badge>
-              <Badge className={severityClass[bug.severity]}>
-                {severityLabels[bug.severity]}
-              </Badge>
-              {bug.category ? (
-                <Badge className="border border-teal-200 bg-teal-50 text-teal-800">
-                  {bug.category.name}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
+            ← Back to bugs
+          </Link>
+          <div className="mt-3 space-y-3">
+            <div className="space-y-2">
+              <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 break-words">
+                {bug.title}
+              </h1>
+              <div className="flex flex-wrap items-center gap-2">
+                {bug.type ? (
+                  <span
+                    className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getIssueTypeBadgeClass(
+                      bug.type.name,
+                    )}`}
+                  >
+                    {bug.type.name}
+                  </span>
+                ) : null}
+                <Badge className={statusClass[bug.status]}>
+                  {statusLabels[bug.status]}
                 </Badge>
-              ) : null}
-              <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-                {bug.voteCount} score ({voterSummary.likes.count} like{voterSummary.likes.count === 1 ? "" : "s"}, {voterSummary.dislikes.count} dislike{voterSummary.dislikes.count === 1 ? "" : "s"})
-              </span>
+                <Badge className={severityClass[bug.severity]}>
+                  {severityLabels[bug.severity]}
+                </Badge>
+                {bug.category ? (
+                  <Badge className="border border-teal-200 bg-teal-50 text-teal-800">
+                    {bug.category.name}
+                  </Badge>
+                ) : null}
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                  {bug.voteCount} score ({voterSummary.likes.count} like{voterSummary.likes.count === 1 ? "" : "s"}, {voterSummary.dislikes.count} dislike{voterSummary.dislikes.count === 1 ? "" : "s"})
+                </span>
+              </div>
+            </div>
+
+            {/* Reactions and larger avatars sitting under the title */}
+            <div className="pt-1">
+              <VoteButton
+                bugId={bug.id}
+                voteCount={bug.voteCount}
+                userVote={userVote}
+                likeCount={voterSummary.likes.count}
+                dislikeCount={voterSummary.dislikes.count}
+                likeVoters={voterSummary.likes.voters}
+                dislikeVoters={voterSummary.dislikes.voters}
+                size="md"
+                showAvatars
+              />
             </div>
           </div>
+        </div>
 
-          {/* Reactions and larger avatars sitting under the title */}
-          <div className="pt-1">
-            <VoteButton
+        {canDelete ? (
+          <div className="shrink-0 self-start sm:pt-6">
+            <DeleteBugButton
               bugId={bug.id}
-              voteCount={bug.voteCount}
-              userVote={userVote}
-              likeCount={voterSummary.likes.count}
-              dislikeCount={voterSummary.dislikes.count}
-              likeVoters={voterSummary.likes.voters}
-              dislikeVoters={voterSummary.dislikes.voters}
-              size="md"
-              showAvatars
+              bugTitle={bug.title}
+              variant="danger-secondary"
+              size="sm"
             />
           </div>
-        </div>
+        ) : null}
       </div>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
@@ -372,6 +388,26 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           users={users}
         />
       </section>
+
+      {canDelete ? (
+        <section className="rounded-xl border border-red-200 bg-red-50/50 p-4 sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-red-700">
+                Danger zone
+              </h2>
+              <p className="text-sm text-slate-600">
+                Permanently delete this ticket along with all its comments, votes, and activity history.
+              </p>
+            </div>
+            <DeleteBugButton
+              bugId={bug.id}
+              bugTitle={bug.title}
+              variant="danger"
+            />
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

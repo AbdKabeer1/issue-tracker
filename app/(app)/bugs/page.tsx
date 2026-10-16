@@ -22,12 +22,21 @@ import { PaginationControls } from "@/components/pagination-controls";
 import { fetchVoterSummaries } from "@/lib/voter-summaries";
 import { createEmptyVoterSummary } from "@/lib/voters";
 import { VoterAvatars } from "@/components/voter-avatars";
+import {
+  bugSortDescriptions,
+  getBugOrderBy,
+  parseBugSort,
+} from "@/lib/bugs-sort";
+import { canDeleteTicket } from "@/lib/ticket-deletion";
+import { DeleteBugButton } from "@/components/delete-bug-button";
 
 type SearchParams = Promise<{
   q?: string;
   status?: string;
   severity?: string;
+  sort?: string;
   page?: string;
+  [key: string]: string | undefined;
 }>;
 
 function isStatus(value: string | undefined): value is Status {
@@ -45,7 +54,15 @@ export default async function BugsPage({
 }) {
   const resolved = await resolveSessionUserId();
   const userId = "userId" in resolved ? resolved.userId : undefined;
+  const currentUser = userId
+    ? await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      })
+    : null;
+  const canDelete = canDeleteTicket(currentUser?.role);
   const params = await searchParams;
+  const currentSort = parseBugSort(params.sort);
   const where: Prisma.BugWhereInput = {};
 
   if (isStatus(params.status)) {
@@ -79,7 +96,7 @@ export default async function BugsPage({
         ? { where: { userId }, select: { id: true, value: true }, take: 1 }
         : false,
     },
-    orderBy: [{ voteCount: "desc" }, { updatedAt: "desc" }],
+    orderBy: getBugOrderBy(currentSort),
     skip: pagination.skip,
     take: pagination.take,
   });
@@ -93,7 +110,8 @@ export default async function BugsPage({
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Bugs</h1>
           <p className="text-sm text-slate-600">
-            {totalCount} result{totalCount === 1 ? "" : "s"} · sorted by likes
+            {totalCount} result{totalCount === 1 ? "" : "s"} · sorted by{" "}
+            {bugSortDescriptions[currentSort]}
           </p>
         </div>
         <Link
@@ -236,6 +254,18 @@ export default async function BugsPage({
                     </div>
                   </div>
                 </Link>
+                {canDelete ? (
+                  <div className="shrink-0 self-center pl-1">
+                    <DeleteBugButton
+                      bugId={bug.id}
+                      bugTitle={bug.title}
+                      variant="ghost"
+                      size="sm"
+                      label="Delete"
+                      className="text-slate-400 hover:text-red-600 hover:bg-red-50"
+                    />
+                  </div>
+                ) : null}
               </li>
             );
           })}
@@ -247,9 +277,8 @@ export default async function BugsPage({
           from={pagination.from}
           to={pagination.to}
           queryParams={{
-            q: params.q,
-            status: params.status,
-            severity: params.severity,
+            ...params,
+            sort: params.sort,
           }}
         />
         </>
