@@ -290,4 +290,20 @@ describe("createBugSchema proofLinks", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("deduplicates identical proof links", () => {
+    const result = createBugSchema.safeParse({
+      title: "Broken upload button",
+      description: "Upload never completes on Chrome 130.",
+      proofLinks:
+        "https://example.com/a.png\nhttps://example.com/a.png\nhttps://example.com/b.mp4\nhttps://example.com/a.png\n",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.proofLinks).toEqual([
+        "https://example.com/a.png",
+        "https://example.com/b.mp4",
+      ]);
+    }
+  });
 });
