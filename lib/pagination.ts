@@ -1,7 +1,7 @@
 export const DEFAULT_PAGE_SIZE = 25;
 
 export interface PaginationParams {
-  page?: string | number;
+  page?: string | string[] | number;
   pageSize?: number;
   totalCount: number;
 }
@@ -21,8 +21,9 @@ export interface PaginationResult {
   to: number;
 }
 
-export function parsePage(page?: string | number): number {
-  const parsed = typeof page === "number" ? page : parseInt(page ?? "1", 10);
+export function parsePage(page?: string | string[] | number): number {
+  const raw = Array.isArray(page) ? page[0] : page;
+  const parsed = typeof raw === "number" ? raw : parseInt(raw ?? "1", 10);
   if (!Number.isFinite(parsed) || parsed < 1) {
     return 1;
   }

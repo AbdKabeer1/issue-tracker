@@ -30,9 +30,12 @@ export function isBugSortOption(value: unknown): value is BugSortOption {
   );
 }
 
-export function parseBugSort(raw?: string | null): BugSortOption {
-  if (!raw) return DEFAULT_BUG_SORT;
-  const normalized = raw.trim().toLowerCase().replace(/-/g, "_");
+export function parseBugSort(
+  raw?: string | string[] | null,
+): BugSortOption {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (!value) return DEFAULT_BUG_SORT;
+  const normalized = value.trim().toLowerCase().replace(/-/g, "_");
   if (normalized === "newest" || normalized === "new") {
     return "newest";
   }

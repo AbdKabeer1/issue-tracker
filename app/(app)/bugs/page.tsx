@@ -18,7 +18,7 @@ import { LocalTime } from "@/components/local-time";
 import { severities, statuses } from "@/lib/validations/bug";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getIssueTypeBadgeClass } from "@/lib/issue-types";
-import { escapeSearchQuery } from "@/lib/search";
+import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
 import { calculatePagination } from "@/lib/pagination";
 import { PaginationControls } from "@/components/pagination-controls";
 import { fetchVoterSummaries } from "@/lib/voter-summaries";
@@ -35,12 +35,12 @@ import { canBoostTicket } from "@/lib/ticket-boosting";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
 
 type SearchParams = Promise<{
-  q?: string;
-  status?: string;
-  severity?: string;
-  sort?: string;
-  page?: string;
-  [key: string]: string | undefined;
+  q?: string | string[];
+  status?: string | string[];
+  severity?: string | string[];
+  sort?: string | string[];
+  page?: string | string[];
+  [key: string]: string | string[] | undefined;
 }>;
 
 function isStatus(value: string | undefined): value is Status {
@@ -69,17 +69,23 @@ export default async function BugsPage({
   const canDelete = canDeleteTicket(effectiveRole);
   const canBoost = canBoostTicket(effectiveRole);
   const params = await searchParams;
-  const currentSort = parseBugSort(params.sort);
+  const qParam = toSingleQueryParam(params.q);
+  const statusParam = toSingleQueryParam(params.status);
+  const severityParam = toSingleQueryParam(params.severity);
+  const sortParam = toSingleQueryParam(params.sort);
+  const pageParam = toSingleQueryParam(params.page);
+
+  const currentSort = parseBugSort(sortParam);
   const where: Prisma.BugWhereInput = {};
 
-  if (isStatus(params.status)) {
-    where.status = params.status;
+  if (isStatus(statusParam)) {
+    where.status = statusParam;
   }
-  if (isSeverity(params.severity)) {
-    where.severity = params.severity;
+  if (isSeverity(severityParam)) {
+    where.severity = severityParam;
   }
-  if (params.q?.trim()) {
-    const q = escapeSearchQuery(params.q.trim());
+  if (qParam?.trim()) {
+    const q = escapeSearchQuery(qParam.trim());
     where.OR = [
       { title: { contains: q, mode: "insensitive" } },
       { description: { contains: q, mode: "insensitive" } },
@@ -88,7 +94,7 @@ export default async function BugsPage({
 
   const totalCount = await prisma.bug.count({ where });
   const pagination = calculatePagination({
-    page: params.page,
+    page: pageParam,
     totalCount,
   });
 
@@ -299,8 +305,10 @@ export default async function BugsPage({
           from={pagination.from}
           to={pagination.to}
           queryParams={{
-            ...params,
-            sort: params.sort,
+            ...(statusParam ? { status: statusParam } : {}),
+            ...(severityParam ? { severity: severityParam } : {}),
+            ...(qParam ? { q: qParam } : {}),
+            sort: sortParam,
           }}
         />
         </>
