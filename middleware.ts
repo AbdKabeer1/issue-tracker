@@ -2,13 +2,6 @@ import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import authConfig from "@/auth.config";
 import { isLinkPreviewBot } from "@/lib/link-preview";
-import {
-  isAdmin,
-  isSuperAdmin,
-  resolveEffectiveRole,
-  ACTIVE_ROLE_COOKIE_NAME,
-} from "@/lib/roles";
-import { isSuperAdminEmail } from "@/lib/super-admin";
 import { BASE_PATH, toAppPath } from "@/lib/base-path";
 
 /**
@@ -58,34 +51,10 @@ export default auth((req) => {
     );
   }
 
-  // Admin and super-admin surface (JWT role; page/actions re-check against DB).
-  if (isLoggedIn && pathWithoutBase.startsWith("/admin")) {
-    const activeRoleOverride = req.cookies.get(ACTIVE_ROLE_COOKIE_NAME)?.value;
-    const isRealSuper =
-      isSuperAdmin(req.auth?.user?.role) ||
-      isSuperAdminEmail(req.auth?.user?.email);
-
-    const effectiveRole = resolveEffectiveRole({
-      isRealSuperAdmin: isRealSuper,
-      baseRole: req.auth?.user?.role,
-      activeRoleOverride,
-      currentUserId: req.auth?.user?.id,
-    });
-
-    if (pathWithoutBase.startsWith("/admin/users")) {
-      if (!isSuperAdmin(effectiveRole)) {
-        return NextResponse.redirect(
-          new URL(BASE_PATH ? `${BASE_PATH}/bugs` : "/bugs", req.nextUrl.origin),
-        );
-      }
-    } else {
-      if (!isAdmin(effectiveRole)) {
-        return NextResponse.redirect(
-          new URL(BASE_PATH ? `${BASE_PATH}/bugs` : "/bugs", req.nextUrl.origin),
-        );
-      }
-    }
-  }
+  // /admin role checks live in the pages and actions (requireAdmin /
+  // requireSuperAdmin), which read the current role from the database. The
+  // JWT role is only refreshed at sign-in, so checking it here bounced newly
+  // promoted admins until they signed out and back in (#121).
 
   return NextResponse.next();
 });
