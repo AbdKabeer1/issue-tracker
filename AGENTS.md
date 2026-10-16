@@ -2,7 +2,7 @@
 
 Instructions for AI coding agents working on **Zedu Bugs** (HNG15 Task 1).
 
-This repo is the Team Zendor **fork** of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug-tracker). Keep Coolify/`basePath` (`/bug-tracker`) and optional Google OAuth compatible with upstream deploy.
+This repo is the Team Zendor **fork** of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug-tracker). Production runs at `issues.zedu.chat` (served from root), with legacy `/bug-tracker` compatibility preserved.
 
 **Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) first.** It is the source of truth for branches, commits, PRs, and local setup. This file adds agent-specific guidance.
 
@@ -43,7 +43,7 @@ docker compose up -d
 cp .env.example .env   # never commit .env
 pnpm db:migrate
 # pnpm db:seed   # ONLY on empty first-time setup — never if real signups exist
-pnpm dev               # http://localhost:3001/bug-tracker
+pnpm dev               # http://localhost:3001
 pnpm lint
 pnpm test              # Vitest — required before declaring done
 pnpm test:watch
