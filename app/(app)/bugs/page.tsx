@@ -111,7 +111,7 @@ export default async function BugsPage({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Bugs</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Issues</h1>
           <p className="text-sm text-slate-600">
             {totalCount} result{totalCount === 1 ? "" : "s"} · sorted by{" "}
             {bugSortDescriptions[currentSort]}
@@ -121,7 +121,7 @@ export default async function BugsPage({
           href="/bugs/new"
           className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-teal-800"
         >
-          Report bug
+          Report issue
         </Link>
       </div>
 
@@ -133,7 +133,7 @@ export default async function BugsPage({
 
       {bugs.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
-          <p className="font-medium text-slate-800">No bugs match these filters.</p>
+          <p className="font-medium text-slate-800">No issues match these filters.</p>
           <p className="mt-1 text-sm text-slate-600">
             Try clearing filters or report a new issue.
           </p>
@@ -148,7 +148,7 @@ export default async function BugsPage({
               href="/bugs/new"
               className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-teal-800"
             >
-              Report bug
+              Report issue
             </Link>
           </div>
         </div>

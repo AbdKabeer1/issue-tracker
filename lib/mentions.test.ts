@@ -85,6 +85,24 @@ describe("getMentionQuery", () => {
   it("returns null when @ is mid-word", () => {
     expect(getMentionQuery("email@alice", 11)).toBeNull();
   });
+
+  it("returns null inside inline code", () => {
+    const value = "run `@al";
+    expect(getMentionQuery(value, value.length)).toBeNull();
+  });
+
+  it("returns null inside a fenced code block", () => {
+    const value = "```\nuser @al";
+    expect(getMentionQuery(value, value.length)).toBeNull();
+  });
+
+  it("still detects mentions after a closed code span", () => {
+    const value = "`code` then @al";
+    expect(getMentionQuery(value, value.length)).toEqual({
+      start: 12,
+      query: "al",
+    });
+  });
 });
 
 describe("filterUsersForMention", () => {

@@ -33,7 +33,7 @@ export function PaginationControls({
       <div className="text-xs text-slate-600">
         Showing <span className="font-medium text-slate-900">{from}</span>–
         <span className="font-medium text-slate-900">{to}</span> of{" "}
-        <span className="font-medium text-slate-900">{totalCount}</span> bug
+        <span className="font-medium text-slate-900">{totalCount}</span> issue
         {totalCount === 1 ? "" : "s"}
       </div>
 

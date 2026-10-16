@@ -3,6 +3,7 @@ import {
   looksLikeMarkdown,
   safeHref,
   stripMarkdown,
+  stripUnsafeHtmlTags,
   wrapSelection,
 } from "./rich-text";
 
@@ -11,8 +12,21 @@ describe("looksLikeMarkdown", () => {
     expect(looksLikeMarkdown("plain text only")).toBe(false);
     expect(looksLikeMarkdown("**bold**")).toBe(true);
     expect(looksLikeMarkdown("- item")).toBe(true);
+    expect(looksLikeMarkdown("- [ ] item")).toBe(true);
     expect(looksLikeMarkdown("[x](https://a.com)")).toBe(true);
-    expect(looksLikeMarkdown("<u>hi</u>")).toBe(true);
+    expect(looksLikeMarkdown("## heading")).toBe(true);
+    expect(looksLikeMarkdown("> quoted")).toBe(true);
+    expect(looksLikeMarkdown("~~gone~~")).toBe(true);
+    expect(looksLikeMarkdown("<u>hi</u>")).toBe(false);
+  });
+});
+
+describe("stripUnsafeHtmlTags", () => {
+  it("removes raw html so it renders as text", () => {
+    expect(stripUnsafeHtmlTags("<u>hi</u>")).toBe("hi");
+    expect(stripUnsafeHtmlTags('<img src=x onerror="alert(1)">')).toBe("");
+    expect(stripUnsafeHtmlTags("<script>alert(1)</script>ok")).toBe("alert(1)ok");
+    expect(stripUnsafeHtmlTags("a < b")).toBe("a < b");
   });
 });
 
@@ -22,13 +36,24 @@ describe("stripMarkdown", () => {
     expect(stripMarkdown("[docs](https://example.com)")).toBe("docs");
     expect(stripMarkdown("```\ncode\n```")).toBe("");
   });
+
+  it("removes newer markdown constructs", () => {
+    expect(stripMarkdown("## Heading")).toBe("Heading");
+    expect(stripMarkdown("> quoted line")).toBe("quoted line");
+    expect(stripMarkdown("- [ ] task item")).toBe("task item");
+    expect(stripMarkdown("~~removed~~")).toBe("removed");
+    expect(stripMarkdown("before\n\n---\n\nafter")).toBe("before after");
+  });
 });
 
 describe("safeHref", () => {
-  it("allows only http(s)", () => {
+  it("allows only http(s) and mailto", () => {
     expect(safeHref("https://example.com")).toBe("https://example.com");
+    expect(safeHref("mailto:dev@example.com")).toBe("mailto:dev@example.com");
     expect(safeHref("javascript:alert(1)")).toBeNull();
+    expect(safeHref("data:text/html;base64,PHNjcmlwdD4=")).toBeNull();
     expect(safeHref("/relative")).toBeNull();
+    expect(safeHref("java\u0000script:alert(1)")).toBeNull();
   });
 });
 

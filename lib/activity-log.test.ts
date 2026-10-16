@@ -58,6 +58,12 @@ describe("activity summary helpers", () => {
     expect(commentPreview(body)).not.toContain("clx8k2abc000");
   });
 
+  it("summarizes comments that use headings, quotes and task lists", () => {
+    expect(commentPreview("## Root cause\n\n> not reproducible\n\n- [x] tested")).toBe(
+      "Root cause not reproducible tested",
+    );
+  });
+
   it("summarizes edited fields", () => {
     expect(editedSummary([])).toBe("edited this ticket");
     expect(editedSummary(["title"])).toBe("edited title");

@@ -23,10 +23,10 @@ export default async function LoginPage({
       <div className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm">
         <BrandLockup size="md" />
         <h1 className="mt-4 text-xl font-semibold text-slate-900">
-          Sign in to Zedu Bugs
+          Sign in to Zedu Issues
         </h1>
         <p className="mt-1.5 text-sm text-slate-600">
-          Sign in with your Google account to report, vote, and track bugs.
+          Sign in with your Google account to report, vote, and track issues.
         </p>
 
         {params.error ? (

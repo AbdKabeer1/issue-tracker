@@ -40,7 +40,7 @@ export function BrandLockup({
               : "text-lg font-semibold text-slate-900"
           }
         >
-          Zedu Bugs
+          Zedu Issues
         </span>
       ) : null}
     </>
@@ -48,7 +48,7 @@ export function BrandLockup({
 
   if (!href) {
     return (
-      <div className="inline-flex items-center gap-2.5" aria-label="Zedu Bugs">
+      <div className="inline-flex items-center gap-2.5" aria-label="Zedu Issues">
         {content}
       </div>
     );
@@ -58,7 +58,7 @@ export function BrandLockup({
     <Link
       href={href}
       className="inline-flex items-center gap-2.5"
-      aria-label="Zedu Bugs"
+      aria-label="Zedu Issues"
     >
       {content}
     </Link>
