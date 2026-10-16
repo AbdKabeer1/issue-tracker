@@ -335,13 +335,25 @@ function renderInline(
       return <code key={index}>{token.value}</code>;
     }
     if (token.type === "bold") {
-      return <strong key={index}>{token.value}</strong>;
+      return (
+        <strong key={index}>
+          {renderInline(token.value, renderMentions)}
+        </strong>
+      );
     }
     if (token.type === "italic") {
-      return <em key={index}>{token.value}</em>;
+      return (
+        <em key={index}>
+          {renderInline(token.value, renderMentions)}
+        </em>
+      );
     }
     if (token.type === "strikethrough") {
-      return <del key={index}>{token.value}</del>;
+      return (
+        <del key={index}>
+          {renderInline(token.value, renderMentions)}
+        </del>
+      );
     }
     if (token.type === "image") {
       const src = safeHref(token.src);
