@@ -368,12 +368,18 @@ export type ToggleVoteResult = ActionResult & {
   voted?: boolean;
   userVote?: number;
   voteCount?: number;
+  likeCount?: number;
+  dislikeCount?: number;
 };
 
 export async function toggleVoteAction(
   bugId: string,
   direction: 1 | -1 = 1,
 ): Promise<ToggleVoteResult> {
+  if (direction !== 1 && direction !== -1) {
+    return { error: "Invalid vote" };
+  }
+
   // Do not redirect here — VoteButton needs a clear error for stale JWTs
   // after a DB reseed (old cuid no longer exists → Vote_userId_fkey).
   const resolved = await resolveSessionUserId();
@@ -420,10 +426,25 @@ export async function toggleVoteAction(
 
     const voteCount = rows[0]?.voteCount ?? 0;
 
+    const voteCounts = await tx.vote.groupBy({
+      by: ["value"],
+      where: { bugId },
+      _count: { _all: true },
+    });
+
+    let likeCount = 0;
+    let dislikeCount = 0;
+    for (const c of voteCounts) {
+      if (c.value === 1) likeCount = c._count._all;
+      if (c.value === -1) dislikeCount = c._count._all;
+    }
+
     return {
       voted: nextVote === 1,
       userVote: nextVote,
       voteCount,
+      likeCount,
+      dislikeCount,
     };
   });
 
