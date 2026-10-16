@@ -632,7 +632,7 @@ export async function addCommentAction(
     });
 
     if (!parent || parent.bugId !== bugId) {
-      return { error: "Parent comment not found on this ticket" };
+      return { error: "Parent comment not found on this issue" };
     }
     if (parent.deletedAt) {
       return { error: "You can't reply to a deleted comment" };

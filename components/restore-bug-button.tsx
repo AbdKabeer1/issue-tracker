@@ -18,7 +18,7 @@ export function RestoreBugButton({
   bugTitle,
   variant = "primary",
   size = "md",
-  label = "Restore ticket",
+  label = "Restore issue",
   className = "",
 }: RestoreBugButtonProps) {
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +50,7 @@ export function RestoreBugButton({
                 setError(result.error);
               }
             } catch {
-              setError("Could not restore ticket. Please try again.");
+              setError("Could not restore issue. Please try again.");
             }
           });
         }}
