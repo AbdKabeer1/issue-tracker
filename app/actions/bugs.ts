@@ -58,6 +58,7 @@ export async function createBugAction(
     severity: admin ? formData.get("severity") || "medium" : "medium",
     typeId: formData.get("typeId") || "",
     assigneeId: admin ? formData.get("assigneeId") || "" : "",
+    categoryId: formData.get("categoryId") || "",
     proofLinks: formData.get("proofLinks") || "",
   });
 
@@ -85,6 +86,21 @@ export async function createBugAction(
     }
   }
 
+  const categoryId =
+    parsed.data.categoryId && parsed.data.categoryId.length > 0
+      ? parsed.data.categoryId
+      : null;
+
+  if (categoryId) {
+    const category = await prisma.category.findUnique({
+      where: { id: categoryId },
+      select: { id: true, isActive: true },
+    });
+    if (!category || !category.isActive) {
+      return { error: "Category not found or inactive" };
+    }
+  }
+
   // Always open at creation — createBugSchema rejects client status.
   let bug;
   try {
@@ -98,6 +114,7 @@ export async function createBugAction(
         proofLinks: parsed.data.proofLinks,
         reporterId: userId,
         assigneeId,
+        categoryId,
         activities: {
           create: {
             actorId: userId,
@@ -136,7 +153,10 @@ export async function updateBugAction(
 
   const existing = await prisma.bug.findUnique({
     where: { id: bugId },
-    include: { assignee: { select: { id: true, name: true } } },
+    include: {
+      assignee: { select: { id: true, name: true } },
+      category: { select: { id: true, name: true } },
+    },
   });
   if (!existing) {
     return { error: "Bug not found" };
@@ -150,6 +170,7 @@ export async function updateBugAction(
   }
 
   const assigneeRaw = formData.get("assigneeId");
+  const categoryRaw = formData.get("categoryId");
   const typeRaw = formData.get("typeId");
   const parsed = updateBugSchema.safeParse({
     status: formData.get("status") || undefined,
@@ -164,6 +185,11 @@ export async function updateBugAction(
         ? null
         : assigneeRaw || undefined
       : undefined,
+    categoryId: admin
+      ? categoryRaw === "" || categoryRaw === "none"
+        ? null
+        : categoryRaw || undefined
+      : undefined,
   });
 
   if (!parsed.success) {
@@ -175,6 +201,7 @@ export async function updateBugAction(
     severity?: typeof parsed.data.severity;
     typeId?: string | null;
     assigneeId?: string | null;
+    categoryId?: string | null;
   } = {};
 
   if (parsed.data.status) data.status = parsed.data.status;
@@ -186,6 +213,10 @@ export async function updateBugAction(
     if (parsed.data.assigneeId !== undefined) {
       data.assigneeId =
         parsed.data.assigneeId === "" ? null : parsed.data.assigneeId;
+    }
+    if (parsed.data.categoryId !== undefined) {
+      data.categoryId =
+        parsed.data.categoryId === "" ? null : parsed.data.categoryId;
     }
   }
 
@@ -244,6 +275,16 @@ export async function updateBugAction(
         to: data.assigneeId,
       },
     });
+  }
+
+  if (data.categoryId) {
+    const cat = await prisma.category.findUnique({
+      where: { id: data.categoryId },
+      select: { id: true },
+    });
+    if (!cat) {
+      return { error: "Category not found" };
+    }
   }
 
   if (pending.length === 0 && Object.keys(data).length === 0) {

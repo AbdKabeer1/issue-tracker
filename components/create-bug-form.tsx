@@ -13,14 +13,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { RichTextEditor } from "@/components/rich-text-editor";
 
 type UserOption = { id: string; name: string; role: AppRole };
+type CategoryOption = { id: string; name: string };
 type TypeOption = { id: string; name: string; description?: string | null };
 
 export function CreateBugForm({
   users,
+  categories = [],
   types = [],
   isAdmin,
 }: {
   users: UserOption[];
+  categories?: CategoryOption[];
   types?: TypeOption[];
   isAdmin: boolean;
 }) {
@@ -29,6 +32,7 @@ export function CreateBugForm({
   const [title, setTitle] = useState("");
   const [typeId, setTypeId] = useState(defaultTypeId);
   const [description, setDescription] = useState("");
+  const [categoryId, setCategoryId] = useState("");
   const [proofLinks, setProofLinks] = useState("");
   const [severity, setSeverity] = useState<(typeof severities)[number]>("medium");
   const [assigneeId, setAssigneeId] = useState("");
@@ -45,6 +49,7 @@ export function CreateBugForm({
         formData.set("title", title);
         formData.set("typeId", typeId);
         formData.set("description", description);
+        formData.set("categoryId", categoryId);
         formData.set("proofLinks", proofLinks);
         if (isAdmin) {
           formData.set("severity", severity);
@@ -95,6 +100,27 @@ export function CreateBugForm({
             </Select>
           </div>
         ) : null}
+      </div>
+      <div className="space-y-1.5">
+        <label
+          htmlFor="categoryId"
+          className="text-sm font-medium text-slate-700"
+        >
+          Category
+        </label>
+        <Select
+          id="categoryId"
+          name="categoryId"
+          value={categoryId}
+          onChange={(event) => setCategoryId(event.target.value)}
+        >
+          <option value="">Select a category</option>
+          {categories.map((cat) => (
+            <option key={cat.id} value={cat.id}>
+              {cat.name}
+            </option>
+          ))}
+        </Select>
       </div>
       <div className="space-y-1.5">
         <label

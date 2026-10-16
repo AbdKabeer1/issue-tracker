@@ -9,6 +9,7 @@ import { formatUserLabel, type AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 
 type UserOption = { id: string; name: string; role: AppRole };
+type CategoryOption = { id: string; name: string };
 type TypeOption = { id: string; name: string };
 
 export function UpdateBugForm({
@@ -17,7 +18,9 @@ export function UpdateBugForm({
   severity,
   typeId,
   assigneeId,
+  categoryId,
   users,
+  categories = [],
   types = [],
   canEditTriage = true,
 }: {
@@ -26,9 +29,11 @@ export function UpdateBugForm({
   severity: Severity;
   typeId?: string | null;
   assigneeId: string | null;
+  categoryId?: string | null;
   users: UserOption[];
+  categories?: CategoryOption[];
   types?: TypeOption[];
-  /** Admins can edit severity/type/assignee; assignees only change status. */
+  /** Admins can edit severity/type/category/assignee; assignees only change status. */
   canEditTriage?: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -114,6 +119,27 @@ export function UpdateBugForm({
                 {severities.map((value) => (
                   <option key={value} value={value}>
                     {severityLabel[value]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                htmlFor="categoryId"
+                className="mb-1 block text-xs font-medium"
+              >
+                Category
+              </label>
+              <select
+                id="categoryId"
+                name="categoryId"
+                defaultValue={categoryId ?? ""}
+                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+              >
+                <option value="">None</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
                   </option>
                 ))}
               </select>

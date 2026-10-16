@@ -39,12 +39,20 @@ export function AppHeader({
               New bug
             </Link>
             {isAdmin(role) ? (
-              <Link
-                href="/admin/types"
-                className="text-slate-600 hover:text-slate-900"
-              >
-                Types
-              </Link>
+              <>
+                <Link
+                  href="/admin/categories"
+                  className="text-slate-600 hover:text-slate-900"
+                >
+                  Categories
+                </Link>
+                <Link
+                  href="/admin/types"
+                  className="text-slate-600 hover:text-slate-900"
+                >
+                  Types
+                </Link>
+              </>
             ) : null}
             {isSuperAdmin(role) ? (
               <Link
@@ -159,6 +167,24 @@ export function AppHeader({
             >
               New bug
             </Link>
+            {isAdmin(role) ? (
+              <>
+                <Link
+                  href="/admin/categories"
+                  onClick={closeMenu}
+                  className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Categories
+                </Link>
+                <Link
+                  href="/admin/types"
+                  onClick={closeMenu}
+                  className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Types
+                </Link>
+              </>
+            ) : null}
             {isSuperAdmin(role) ? (
               <Link
                 href="/admin/users"

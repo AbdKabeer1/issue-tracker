@@ -227,6 +227,17 @@ async function seedDemoData() {
   console.log("Demo login: alice@zendor.dev / 12345678 (admin)");
 }
 
+async function ensureDefaultCategories() {
+  const defaults = ["Mobile", "Desktop", "Web"];
+  for (const name of defaults) {
+    await prisma.category.upsert({
+      where: { name },
+      update: {},
+      create: { name, isActive: true },
+    });
+  }
+}
+
 async function ensureDefaultTypes() {
   const defaults = [
     { name: "Marketing", description: "Marketing and promotion related tasks" },
@@ -254,6 +265,7 @@ async function main() {
 
   // Always idempotent; safe when a DB already has real accounts.
   await ensureSuperAdmin();
+  await ensureDefaultCategories();
   await ensureDefaultTypes();
 
   const seedDemo =

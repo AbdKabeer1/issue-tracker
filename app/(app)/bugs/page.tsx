@@ -74,6 +74,7 @@ export default async function BugsPage({
       type: { select: { name: true } },
       reporter: { select: { name: true, role: true } },
       assignee: { select: { name: true, role: true } },
+      category: { select: { id: true, name: true } },
       votes: userId
         ? { where: { userId }, select: { id: true, value: true }, take: 1 }
         : false,
@@ -220,6 +221,11 @@ export default async function BugsPage({
                         >
                           {bug.type.name}
                         </span>
+                      ) : null}
+                      {bug.category ? (
+                        <Badge className="border border-teal-200 bg-teal-50 text-teal-800">
+                          {bug.category.name}
+                        </Badge>
                       ) : null}
                       <Badge className={statusClass[bug.status]}>
                         {statusLabels[bug.status]}
