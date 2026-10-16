@@ -119,11 +119,11 @@ function ToolbarButton({
       title={title}
       aria-label={label}
       disabled={disabled}
-      onMouseDown={(event) => {
-        // Keep the textarea selection alive when the button is pressed.
-        event.preventDefault();
-        onClick();
-      }}
+      // Keep the textarea selection alive when the button is pressed. The
+      // action itself runs on onClick so keyboard activation (Enter/Space
+      // fire click, not mousedown) works too.
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onClick}
       className="rounded p-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 sm:p-1.5"
     >
       {icon}
