@@ -19,10 +19,7 @@ import {
   resolveSessionUserId,
   SESSION_EXPIRED_MESSAGE,
 } from "@/lib/session-user";
-import {
-  MAX_COMMENT_DEPTH,
-  commentDepth,
-} from "@/lib/comments";
+import { MAX_COMMENT_DEPTH, commentDepth } from "@/lib/comments";
 import {
   extractMentionedUserIds,
   normalizeMentions,
@@ -32,9 +29,8 @@ import {
   createBugSchema,
   updateBugSchema,
 } from "@/lib/validations/bug";
-import { calculateVoteChange } from "@/lib/voting";
+import { calculateVoteChange, isValidVoteDirection } from "@/lib/voting";
 import { Prisma, type ActivityType } from "@prisma/client";
-
 
 export type ActionResult = { error?: string; ok?: boolean };
 
@@ -47,6 +43,7 @@ async function requireUserId() {
   return resolved.userId;
 }
 
+/** Creates a bug as the signed-in user; only admins may set severity/assignee. */
 export async function createBugAction(
   formData: FormData,
 ): Promise<ActionResult> {
@@ -59,6 +56,7 @@ export async function createBugAction(
     title: formData.get("title"),
     description: formData.get("description"),
     severity: admin ? formData.get("severity") || "medium" : "medium",
+    typeId: formData.get("typeId") || "",
     assigneeId: admin ? formData.get("assigneeId") || "" : "",
     categoryId: formData.get("categoryId") || "",
     proofLinks: formData.get("proofLinks") || "",
@@ -71,6 +69,11 @@ export async function createBugAction(
   const assigneeId =
     admin && parsed.data.assigneeId && parsed.data.assigneeId.length > 0
       ? parsed.data.assigneeId
+      : null;
+
+  const typeId =
+    parsed.data.typeId && parsed.data.typeId.length > 0
+      ? parsed.data.typeId
       : null;
 
   if (assigneeId) {
@@ -107,6 +110,7 @@ export async function createBugAction(
         description: parsed.data.description,
         severity: admin ? parsed.data.severity : "medium",
         status: "open",
+        typeId,
         proofLinks: parsed.data.proofLinks,
         reporterId: userId,
         assigneeId,
@@ -138,6 +142,7 @@ export async function createBugAction(
   redirect(`/bugs/${bug.id}`);
 }
 
+/** Updates status (assignee/admin) and severity/assignee (admin) and logs activity. */
 export async function updateBugAction(
   bugId: string,
   formData: FormData,
@@ -166,9 +171,15 @@ export async function updateBugAction(
 
   const assigneeRaw = formData.get("assigneeId");
   const categoryRaw = formData.get("categoryId");
+  const typeRaw = formData.get("typeId");
   const parsed = updateBugSchema.safeParse({
     status: formData.get("status") || undefined,
     severity: admin ? formData.get("severity") || undefined : undefined,
+    typeId: admin
+      ? typeRaw === "" || typeRaw === "none"
+        ? null
+        : typeRaw || undefined
+      : undefined,
     assigneeId: admin
       ? assigneeRaw === "" || assigneeRaw === "unassigned"
         ? null
@@ -188,6 +199,7 @@ export async function updateBugAction(
   const data: {
     status?: typeof parsed.data.status;
     severity?: typeof parsed.data.severity;
+    typeId?: string | null;
     assigneeId?: string | null;
     categoryId?: string | null;
   } = {};
@@ -195,6 +207,9 @@ export async function updateBugAction(
   if (parsed.data.status) data.status = parsed.data.status;
   if (admin) {
     if (parsed.data.severity) data.severity = parsed.data.severity;
+    if (parsed.data.typeId !== undefined) {
+      data.typeId = parsed.data.typeId === "" ? null : parsed.data.typeId;
+    }
     if (parsed.data.assigneeId !== undefined) {
       data.assigneeId =
         parsed.data.assigneeId === "" ? null : parsed.data.assigneeId;
@@ -311,6 +326,7 @@ export async function updateBugAction(
   return { ok: true };
 }
 
+/** Adds a (possibly threaded) comment to a bug and records the activity. */
 export async function addCommentAction(
   bugId: string,
   formData: FormData,
@@ -409,12 +425,19 @@ export type ToggleVoteResult = ActionResult & {
   voted?: boolean;
   userVote?: number;
   voteCount?: number;
+  likeCount?: number;
+  dislikeCount?: number;
 };
 
+/** Toggles the current user's reaction on a bug; rejects any direction other than 1 or -1. */
 export async function toggleVoteAction(
   bugId: string,
-  direction: 1 | -1 = 1,
+  direction: unknown = 1,
 ): Promise<ToggleVoteResult> {
+  if (!isValidVoteDirection(direction)) {
+    return { error: "Invalid vote" };
+  }
+
   // Do not redirect here — VoteButton needs a clear error for stale JWTs
   // after a DB reseed (old cuid no longer exists → Vote_userId_fkey).
   const resolved = await resolveSessionUserId();
@@ -461,10 +484,25 @@ export async function toggleVoteAction(
 
     const voteCount = rows[0]?.voteCount ?? 0;
 
+    const voteCounts = await tx.vote.groupBy({
+      by: ["value"],
+      where: { bugId },
+      _count: { _all: true },
+    });
+
+    let likeCount = 0;
+    let dislikeCount = 0;
+    for (const c of voteCounts) {
+      if (c.value === 1) likeCount = c._count._all;
+      if (c.value === -1) dislikeCount = c._count._all;
+    }
+
     return {
       voted: nextVote === 1,
       userVote: nextVote,
       voteCount,
+      likeCount,
+      dislikeCount,
     };
   });
 
@@ -472,4 +510,3 @@ export async function toggleVoteAction(
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true, ...result };
 }
-
