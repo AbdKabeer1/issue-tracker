@@ -54,7 +54,7 @@ export default async function AdminUsersPage({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">
+          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">
             Admin management
           </h1>
           <p className="mt-1 text-sm text-slate-600">
@@ -62,24 +62,26 @@ export default async function AdminUsersPage({
             Role changes apply immediately in this list.
           </p>
         </div>
-        <Suspense
-          fallback={
-            <div className="h-9 w-64 animate-pulse rounded-lg bg-slate-100" />
-          }
-        >
-          <UserSearch />
-        </Suspense>
+        <div className="w-full sm:w-auto">
+          <Suspense
+            fallback={
+              <div className="h-9 w-full sm:w-64 animate-pulse rounded-lg bg-slate-100" />
+            }
+          >
+            <UserSearch />
+          </Suspense>
+        </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         {users.length > 0 ? (
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
-                <th className="px-4 py-3">User</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Joined</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="whitespace-nowrap px-4 py-3">User</th>
+                <th className="whitespace-nowrap px-4 py-3">Role</th>
+                <th className="whitespace-nowrap px-4 py-3">Joined</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -87,17 +89,17 @@ export default async function AdminUsersPage({
                 <tr key={user.id} className="hover:bg-slate-50/80">
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{user.name}</div>
-                    <div className="text-slate-500">{user.email}</div>
+                    <div className="text-xs sm:text-sm text-slate-500 break-all">{user.email}</div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-4 py-3">
                     <Badge className={roleBadgeClass[user.role]}>
                       {roleLabels[user.role]}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="whitespace-nowrap px-4 py-3 text-slate-600">
                     <LocalTime date={user.createdAt} />
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="whitespace-nowrap px-4 py-3 text-right">
                     {user.role === "user" ? (
                       <PromoteUserButton
                         userId={user.id}

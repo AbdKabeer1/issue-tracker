@@ -7,6 +7,7 @@ import { loginSchema } from "@/lib/validations/bug";
 import authConfig from "@/auth.config";
 import { cleanEnv } from "@/lib/env-clean";
 import { isSuperAdminEmail } from "@/lib/super-admin";
+import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 
 const googleClientId = cleanEnv(
   process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID,
@@ -15,10 +16,13 @@ const googleClientSecret = cleanEnv(
   process.env.GOOGLE_CLIENT_SECRET || process.env.AUTH_GOOGLE_SECRET,
 );
 const googleConfigured = Boolean(googleClientId) && Boolean(googleClientSecret);
+// Google-only in production; see lib/auth-mode.ts for the AUTH_PASSWORD_LOGIN flag.
+const passwordAuthEnabled = isPasswordAuthEnabled();
 
 if (process.env.NODE_ENV !== "test") {
   console.log("[auth:config] Initializing NextAuth with Google OAuth status:", {
     googleConfigured,
+    passwordAuthEnabled,
     clientIdPresent: Boolean(googleClientId),
     clientSecretPresent: Boolean(googleClientSecret),
     clientIdPrefix: googleClientId ? `${googleClientId.slice(0, 12)}…` : "none",
@@ -37,6 +41,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         ]
       : []),
 
+    ...(passwordAuthEnabled
+      ? [
     Credentials({
       name: "Credentials",
       credentials: {
@@ -44,6 +50,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
+        if (!isPasswordAuthEnabled()) {
+          return null;
+        }
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) {
           return null;
@@ -70,6 +79,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         };
       },
     }),
+        ]
+      : []),
   ],
   callbacks: {
     ...authConfig.callbacks,

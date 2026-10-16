@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isHttpUrl, splitProofLinkLines } from "@/lib/proof-links";
+import { stripGitHubMarkup } from "@/lib/github-paste";
 
 export const severities = ["low", "medium", "high", "critical"] as const;
 export const statuses = ["open", "in_progress", "resolved", "closed"] as const;
@@ -46,22 +47,48 @@ export const createBugSchema = z
     description: z
       .string()
       .trim()
-      .min(10, "Description must be at least 10 characters")
-      .max(5000),
+      .transform((val) => stripGitHubMarkup(val))
+      .refine((val) => val.length >= 10, {
+        message: "Description must be at least 10 characters",
+      })
+      .refine((val) => val.length <= 5000, {
+        message: "Description cannot exceed 5000 characters",
+      }),
     severity: severitySchema.default("medium"),
+    typeId: z.string().optional().nullable().or(z.literal("")),
     assigneeId: z.string().cuid().optional().or(z.literal("")),
+    categoryId: z.string().optional().or(z.literal("")),
     proofLinks: proofLinksInputSchema,
   })
   .strict();
 
 export const updateBugSchema = z.object({
   status: statusSchema.optional(),
+  typeId: z.string().nullable().optional().or(z.literal("")),
   assigneeId: z.string().cuid().nullable().optional().or(z.literal("")),
   severity: severitySchema.optional(),
+  categoryId: z.string().nullable().optional().or(z.literal("")),
+});
+
+export const categorySchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Category name must be at least 2 characters")
+    .max(50, "Category name must be at most 50 characters"),
 });
 
 export const commentSchema = z.object({
-  body: z.string().trim().min(1, "Comment cannot be empty").max(2000),
+  body: z
+    .string()
+    .trim()
+    .transform((val) => stripGitHubMarkup(val))
+    .refine((val) => val.length >= 1, {
+      message: "Comment cannot be empty",
+    })
+    .refine((val) => val.length <= 2000, {
+      message: "Comment cannot exceed 2000 characters",
+    }),
   parentId: z
     .string()
     .cuid()

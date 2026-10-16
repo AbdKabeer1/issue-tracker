@@ -13,16 +13,26 @@ import { Textarea } from "@/components/ui/textarea";
 import { MarkdownEditor } from "@/components/markdown-editor";
 
 type UserOption = { id: string; name: string; role: AppRole };
+type CategoryOption = { id: string; name: string };
+type TypeOption = { id: string; name: string; description?: string | null };
 
 export function CreateBugForm({
   users,
+  categories = [],
+  types = [],
   isAdmin,
 }: {
   users: UserOption[];
+  categories?: CategoryOption[];
+  types?: TypeOption[];
   isAdmin: boolean;
 }) {
+  const defaultTypeId =
+    types.find((t) => t.name.toLowerCase() === "fix")?.id ?? types[0]?.id ?? "";
   const [title, setTitle] = useState("");
+  const [typeId, setTypeId] = useState(defaultTypeId);
   const [description, setDescription] = useState("");
+  const [categoryId, setCategoryId] = useState("");
   const [proofLinks, setProofLinks] = useState("");
   const [severity, setSeverity] = useState<(typeof severities)[number]>("medium");
   const [assigneeId, setAssigneeId] = useState("");
@@ -38,7 +48,9 @@ export function CreateBugForm({
         setError(null);
         const formData = new FormData();
         formData.set("title", title);
+        formData.set("typeId", typeId);
         formData.set("description", description);
+        formData.set("categoryId", categoryId);
         formData.set("proofLinks", proofLinks);
         if (isAdmin) {
           formData.set("severity", severity);
@@ -55,19 +67,61 @@ export function CreateBugForm({
         });
       }}
     >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <label htmlFor="title" className="text-sm font-medium text-slate-700">
+            Title
+          </label>
+          <Input
+            id="title"
+            name="title"
+            required
+            minLength={3}
+            placeholder="Short summary of the issue"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+          />
+        </div>
+        {types.length > 0 ? (
+          <div className="space-y-1.5">
+            <label htmlFor="typeId" className="text-sm font-medium text-slate-700">
+              Type
+            </label>
+            <Select
+              id="typeId"
+              name="typeId"
+              value={typeId}
+              onChange={(event) => setTypeId(event.target.value)}
+            >
+              {types.map((type) => (
+                <option key={type.id} value={type.id}>
+                  {type.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        ) : null}
+      </div>
       <div className="space-y-1.5">
-        <label htmlFor="title" className="text-sm font-medium text-slate-700">
-          Title
+        <label
+          htmlFor="categoryId"
+          className="text-sm font-medium text-slate-700"
+        >
+          Category
         </label>
-        <Input
-          id="title"
-          name="title"
-          required
-          minLength={3}
-          placeholder="Short summary of the issue"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-        />
+        <Select
+          id="categoryId"
+          name="categoryId"
+          value={categoryId}
+          onChange={(event) => setCategoryId(event.target.value)}
+        >
+          <option value="">Select a category</option>
+          {categories.map((cat) => (
+            <option key={cat.id} value={cat.id}>
+              {cat.name}
+            </option>
+          ))}
+        </Select>
       </div>
       <div className="space-y-1.5">
         <label

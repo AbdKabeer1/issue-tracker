@@ -77,6 +77,19 @@ describe("createBugSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("accepts an optional typeId", () => {
+    const result = createBugSchema.safeParse({
+      title: "Marketing banner misplaced",
+      description: "Banner overlaps header on marketing landing page.",
+      typeId: "type_marketing",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.typeId).toBe("type_marketing");
+    }
+  });
+
   it("does not expose status on a successful create parse", () => {
     const result = createBugSchema.safeParse({
       title: "Valid title here",
@@ -88,12 +101,45 @@ describe("createBugSchema", () => {
       expect(result.data).not.toHaveProperty("status");
     }
   });
+
+  it("strips GitHub template comments from description during validation", () => {
+    const result = createBugSchema.safeParse({
+      title: "Valid title here",
+      description:
+        "<!-- Please write description here -->Legitimate bug details that exceed ten characters.",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.description).toBe(
+        "Legitimate bug details that exceed ten characters.",
+      );
+      expect(result.data.description).not.toContain("Please write description");
+    }
+  });
+
+  it("rejects descriptions that only contain GitHub template comments", () => {
+    const result = createBugSchema.safeParse({
+      title: "Valid title here",
+      description: "<!-- Please write description here -->",
+    });
+
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("updateBugSchema", () => {
   it("accepts a partial status update", () => {
     const result = updateBugSchema.safeParse({ status: "resolved" });
     expect(result.success).toBe(true);
+  });
+
+  it("accepts a typeId update", () => {
+    const result = updateBugSchema.safeParse({ typeId: "type_feat" });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.typeId).toBe("type_feat");
+    }
   });
 
   it("rejects an invalid status", () => {

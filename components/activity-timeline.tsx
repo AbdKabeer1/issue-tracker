@@ -24,7 +24,7 @@ export function ActivityTimeline({
   activities: ActivityEntry[];
 }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6">
+    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
         Activity ({activities.length})
       </h2>
@@ -36,12 +36,12 @@ export function ActivityTimeline({
           No activity recorded yet.
         </p>
       ) : (
-        <ol className="relative mt-5 space-y-0 border-l border-slate-200 pl-5">
+        <ol className="relative mt-5 space-y-0 border-l border-slate-200 pl-4 sm:pl-5">
           {activities.map((entry) => (
             <li key={entry.id} className="relative pb-5 last:pb-0">
               <span
                 aria-hidden
-                className="absolute -left-[1.45rem] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-teal-600"
+                className="absolute -left-[1.2rem] sm:-left-[1.45rem] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-teal-600"
               />
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                 <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
