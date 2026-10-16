@@ -15,7 +15,9 @@ export function BugFilters() {
     } else {
       next.delete(key);
     }
-    router.push(`/bugs?${next.toString()}`);
+    next.delete("page");
+    const qs = next.toString();
+    router.push(qs ? `/bugs?${qs}` : "/bugs");
   }
 
   return (
