@@ -38,6 +38,8 @@ enum ActivityType {
   assignee_changed
   commented
   edited
+  boosted
+  unboosted
 }
 
 model User {
@@ -90,6 +92,8 @@ model Bug {
   typeId      String?
   type        IssueType?    @relation(fields: [typeId], references: [id], onDelete: SetNull)
   voteCount   Int           @default(0)
+  isBoosted   Boolean       @default(false)
+  boostedAt   DateTime?
   proofLinks  String[]      @default([])
   reporterId  String
   assigneeId  String?
@@ -105,6 +109,7 @@ model Bug {
 
   @@index([categoryId])
   @@index([typeId])
+  @@index([isBoosted])
 }
 
 model Category {
