@@ -22,6 +22,8 @@ import { PaginationControls } from "@/components/pagination-controls";
 import { fetchVoterSummaries } from "@/lib/voter-summaries";
 import { createEmptyVoterSummary } from "@/lib/voters";
 import { VoterAvatars } from "@/components/voter-avatars";
+import { canDeleteTicket } from "@/lib/ticket-deletion";
+import { DeleteBugButton } from "@/components/delete-bug-button";
 
 type SearchParams = Promise<{
   q?: string;
@@ -45,6 +47,13 @@ export default async function BugsPage({
 }) {
   const resolved = await resolveSessionUserId();
   const userId = "userId" in resolved ? resolved.userId : undefined;
+  const currentUser = userId
+    ? await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      })
+    : null;
+  const canDelete = canDeleteTicket(currentUser?.role);
   const params = await searchParams;
   const where: Prisma.BugWhereInput = {};
 
@@ -236,6 +245,18 @@ export default async function BugsPage({
                     </div>
                   </div>
                 </Link>
+                {canDelete ? (
+                  <div className="shrink-0 self-center pl-1">
+                    <DeleteBugButton
+                      bugId={bug.id}
+                      bugTitle={bug.title}
+                      variant="ghost"
+                      size="sm"
+                      label="Delete"
+                      className="text-slate-400 hover:text-red-600 hover:bg-red-50"
+                    />
+                  </div>
+                ) : null}
               </li>
             );
           })}
