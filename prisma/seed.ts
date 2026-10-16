@@ -228,7 +228,7 @@ async function seedDemoData() {
 }
 
 async function ensureDefaultCategories() {
-  const defaults = ["Mobile", "Desktop", "Web"];
+  const defaults = ["Desktop", "Web", "Mobile"];
   for (const name of defaults) {
     await prisma.category.upsert({
       where: { name },

@@ -147,7 +147,7 @@ export async function createBugAction(
       select: { id: true, isActive: true },
     });
     if (!category || !category.isActive) {
-      return { error: "Category not found or inactive" };
+      return { error: "Platform not found or inactive" };
     }
   }
 
@@ -354,7 +354,7 @@ export async function updateBugAction(
       select: { id: true },
     });
     if (!cat) {
-      return { error: "Category not found" };
+      return { error: "Platform not found" };
     }
   }
 

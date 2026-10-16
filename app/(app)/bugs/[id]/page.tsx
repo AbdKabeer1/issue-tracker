@@ -383,7 +383,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           </div>
           {bug.category ? (
             <div>
-              <dt className="font-medium text-slate-500">Category</dt>
+              <dt className="font-medium text-slate-500">Platform</dt>
               <dd>{bug.category.name}</dd>
             </div>
           ) : null}
