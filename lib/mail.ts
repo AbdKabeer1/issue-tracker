@@ -22,8 +22,17 @@ function encodeSubject(subject: string) {
  */
 export async function sendMail({ to, subject, text }: SendMailInput) {
   if (!smtpConfigured()) {
-    console.info(`[mail:dev] To: ${to}\nSubject: ${subject}\n\n${text}\n`);
-    return;
+    // #210: this used to log the message (including live password-reset URLs)
+    // and return normally, so callers reported success while nobody received
+    // anything. In development we keep the friendly log; anywhere else an
+    // unconfigured mailer is a deployment error and must fail loudly.
+    if (process.env.NODE_ENV !== "production") {
+      console.info(`[mail:dev] To: ${to}\nSubject: ${subject}\n\n${text}\n`);
+      return;
+    }
+    throw new Error(
+      "SMTP is not configured (SMTP_HOST / SMTP_FROM). Refusing to report a successful send.",
+    );
   }
 
   await sendSmtpMail({ to, subject, text });
