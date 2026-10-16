@@ -108,9 +108,21 @@ export default async function BugsPage({
     totalCount,
   });
 
+  // Select only what the list shows: no `description` (up to 5000 chars
+  // each), which the list never displays (#217).
   const bugs = await prisma.bug.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      severity: true,
+      voteCount: true,
+      proofLinks: true,
+      isDeleted: true,
+      isBoosted: true,
+      createdAt: true,
+      updatedAt: true,
       type: { select: { name: true } },
       reporter: { select: { name: true, role: true } },
       assignee: { select: { name: true, role: true } },
