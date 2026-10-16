@@ -68,6 +68,7 @@ export async function requireUser(): Promise<SessionAppUser> {
     isRealSuperAdmin,
     baseRole: dbUser.role,
     activeRoleOverride,
+    currentUserId: dbUser.id,
   });
 
   return {

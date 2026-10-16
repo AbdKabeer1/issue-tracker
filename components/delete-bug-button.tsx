@@ -19,7 +19,7 @@ export function DeleteBugButton({
   bugTitle,
   variant = "danger-secondary",
   size = "md",
-  label = "Delete ticket",
+  label = "Delete issue",
   className = "",
 }: DeleteBugButtonProps) {
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +52,7 @@ export function DeleteBugButton({
               }
             } catch (err) {
               unstable_rethrow(err);
-              setError("Could not delete ticket. Please try again.");
+              setError("Could not delete issue. Please try again.");
             }
           });
         }}

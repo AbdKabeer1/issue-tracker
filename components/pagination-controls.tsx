@@ -61,7 +61,7 @@ export function PaginationControls({
                 return (
                   <span
                     key={`ellipsis-${index}`}
-                    className="px-1.5 text-xs text-slate-400"
+                    className="px-1.5 text-xs text-slate-500"
                   >
                     …
                   </span>

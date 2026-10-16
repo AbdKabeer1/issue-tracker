@@ -12,7 +12,7 @@ type RichTextProps = {
 // Inline-code styles are scoped to `:not(pre) > code`; fenced blocks keep the
 // dark `pre` palette instead of light-on-light text (#113).
 export const DEFAULT_CLASS_NAME =
-  "rich-text mt-3 space-y-2 text-slate-800 [&_a]:font-medium [&_a]:text-teal-700 [&_a]:underline [&_:not(pre)>code]:rounded [&_:not(pre)>code]:bg-slate-100 [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:text-[0.9em] [&_del]:text-slate-500 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-slate-900 [&_pre]:p-3 [&_pre]:text-sm [&_pre]:text-slate-100 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5";
+  "rich-text mt-3 space-y-2 [overflow-wrap:anywhere] break-words text-slate-800 [&_a]:font-medium [&_a]:text-teal-700 [&_a]:underline [&_a]:break-all [&_:not(pre)>code]:break-all [&_:not(pre)>code]:rounded [&_:not(pre)>code]:bg-slate-100 [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:text-[0.9em] [&_del]:text-slate-500 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-slate-900 [&_pre]:p-3 [&_pre]:text-sm [&_pre]:text-slate-100 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5";
 
 /**
  * Safely render Markdown (or plain text) without raw HTML injection.
@@ -31,7 +31,7 @@ export function RichText({ content, className, renderMentions }: RichTextProps) 
   if (!looksLikeMarkdown(safeContent)) {
     const body = renderMentions ? renderMentions(safeContent) : safeContent;
     return (
-      <div className={`mt-3 whitespace-pre-wrap text-slate-800${extra}`}>{body}</div>
+      <div className={`mt-3 whitespace-pre-wrap [overflow-wrap:anywhere] break-words text-slate-800${extra}`}>{body}</div>
     );
   }
 
@@ -51,6 +51,7 @@ const RULE_RE = /^\s*(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/;
 
 type ListItem = {
   ordered: boolean;
+  orderNumber?: number;
   task: boolean;
   checked: boolean;
   lines: string[];
@@ -87,8 +88,11 @@ function parseList(
 
       const parent = stack[stack.length - 1]?.list.slice(-1)[0];
       const target = parent ? parent.children : items;
+      const isOrdered = /\d/.test(marker);
+      const orderNumber = isOrdered ? parseInt(marker, 10) : undefined;
       const item: ListItem = {
-        ordered: /\d/.test(marker),
+        ordered: isOrdered,
+        orderNumber: Number.isFinite(orderNumber) ? orderNumber : undefined,
         task: Boolean(taskMatch),
         checked: (taskMatch?.[1] ?? " ").toLowerCase() === "x",
         lines: [taskMatch?.[2] ?? rest],
@@ -127,10 +131,38 @@ function isBlockStart(line: string): boolean {
 function renderListItems(items: ListItem[], renderMentions?: (text: string) => ReactNode) {
   if (items.length === 0) return null;
   const ordered = items[0]?.ordered ?? false;
-  const ListTag = ordered ? "ol" : "ul";
+  const start = ordered ? items[0]?.orderNumber : undefined;
+
+  if (ordered) {
+    return (
+      <ol start={start}>
+        {items.map((item, index) => (
+          <li key={index} className={item.task ? "list-none" : undefined}>
+            {item.task ? (
+              <span className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={item.checked}
+                  readOnly
+                  disabled
+                  className="mt-1 h-3.5 w-3.5 shrink-0 accent-teal-600"
+                />
+                <span className="min-w-0">
+                  {renderInline(item.lines.join(" "), renderMentions)}
+                </span>
+              </span>
+            ) : (
+              renderInline(item.lines.join(" "), renderMentions)
+            )}
+            {renderListItems(item.children, renderMentions)}
+          </li>
+        ))}
+      </ol>
+    );
+  }
 
   return (
-    <ListTag>
+    <ul>
       {items.map((item, index) => (
         <li key={index} className={item.task ? "list-none" : undefined}>
           {item.task ? (
@@ -152,7 +184,7 @@ function renderListItems(items: ListItem[], renderMentions?: (text: string) => R
           {renderListItems(item.children, renderMentions)}
         </li>
       ))}
-    </ListTag>
+    </ul>
   );
 }
 
@@ -335,13 +367,25 @@ function renderInline(
       return <code key={index}>{token.value}</code>;
     }
     if (token.type === "bold") {
-      return <strong key={index}>{token.value}</strong>;
+      return (
+        <strong key={index}>
+          {renderInline(token.value, renderMentions)}
+        </strong>
+      );
     }
     if (token.type === "italic") {
-      return <em key={index}>{token.value}</em>;
+      return (
+        <em key={index}>
+          {renderInline(token.value, renderMentions)}
+        </em>
+      );
     }
     if (token.type === "strikethrough") {
-      return <del key={index}>{token.value}</del>;
+      return (
+        <del key={index}>
+          {renderInline(token.value, renderMentions)}
+        </del>
+      );
     }
     if (token.type === "image") {
       const src = safeHref(token.src);

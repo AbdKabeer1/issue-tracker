@@ -1,14 +1,14 @@
 import { isAdmin, type AppRole } from "@/lib/roles";
 
 export const TICKET_DELETION_ERRORS = {
-  unauthorized: "Only admins and super admins can delete tickets",
-  unauthorizedRestore: "Only admins and super admins can restore tickets",
-  invalidId: "Invalid ticket ID",
-  notFound: "Ticket not found",
-  alreadyDeleted: "Ticket is already deleted",
-  notDeleted: "Ticket is not deleted",
-  failed: "Could not delete ticket. Please try again.",
-  failedRestore: "Could not restore ticket. Please try again.",
+  unauthorized: "Only admins and super admins can delete issues",
+  unauthorizedRestore: "Only admins and super admins can restore issues",
+  invalidId: "Invalid issue ID",
+  notFound: "Issue not found",
+  alreadyDeleted: "Issue is already deleted",
+  notDeleted: "Issue is not deleted",
+  failed: "Could not delete issue. Please try again.",
+  failedRestore: "Could not restore issue. Please try again.",
 } as const;
 
 export type TicketDeletionError = keyof typeof TICKET_DELETION_ERRORS;

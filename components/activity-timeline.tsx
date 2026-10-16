@@ -21,6 +21,8 @@ const typeLabel: Record<ActivityType, string> = {
   deleted: "Deleted",
   restored: "Restored",
   comment_deleted: "Moderation",
+  type_changed: "Type",
+  category_changed: "Category",
 };
 
 export function ActivityTimeline({
@@ -34,7 +36,7 @@ export function ActivityTimeline({
         Activity ({activities.length})
       </h2>
       <p className="mt-1 text-xs text-slate-500">
-        Read-only history of changes on this ticket.
+        Read-only history of changes on this issue.
       </p>
       {activities.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500">
@@ -53,7 +55,7 @@ export function ActivityTimeline({
                   {typeLabel[entry.type]}
                 </span>
                 <LocalTime
-                  className="text-xs text-slate-400"
+                  className="text-xs text-slate-500"
                   date={entry.createdAt}
                 />
               </div>

@@ -24,3 +24,48 @@ describe("RichText shows tag-like text (#116)", () => {
     expect(html).toContain("&lt;img");
   });
 });
+
+describe("RichText ordered list start attribute (#137)", () => {
+  it('renders <ol start="3"> when list starts at 3', () => {
+    const html = render("3. third step\n4. fourth step");
+    expect(html).toContain('<ol start="3">');
+    expect(html).toContain("third step");
+    expect(html).toContain("fourth step");
+  });
+
+  it("renders standard ordered list when starting at 1", () => {
+    const html = render("1. first step\n2. second step");
+    expect(html).toContain("<ol");
+    expect(html).toContain("first step");
+  });
+});
+
+describe("RichText nested inline formatting (#136)", () => {
+  it("renders mentions inside bold, italic, and strikethrough", () => {
+    const mockRenderMentions = (text: string) => {
+      return text.replace(/@\[([^\]]+)\]\(([^)]+)\)/g, '<span class="mention">@$1</span>');
+    };
+    const html = renderToStaticMarkup(
+      createElement(RichText, {
+        content: "**Ask @[Alice Mentor](user1) to check** and *ping @[Bob](user2)* or ~~@[Charlie](user3)~~",
+        renderMentions: (text) => createElement("span", {
+          dangerouslySetInnerHTML: { __html: mockRenderMentions(text) }
+        }),
+      }),
+    );
+
+    expect(html).toContain("<strong><span><span>Ask <span class=\"mention\">@Alice Mentor</span> to check</span></span></strong>");
+    expect(html).toContain("<em><span><span>ping <span class=\"mention\">@Bob</span></span></span></em>");
+    expect(html).toContain("<del><span><span><span class=\"mention\">@Charlie</span></span></span></del>");
+  });
+
+  it("renders links inside bold text", () => {
+    const html = render("**[the docs](https://example.com/docs)**");
+    expect(html).toContain('<strong><a href="https://example.com/docs" target="_blank" rel="noopener noreferrer">the docs</a></strong>');
+  });
+
+  it("renders italic inside bold text", () => {
+    const html = render("**bold and _italic_**");
+    expect(html).toContain("<strong><span>bold and </span><em><span>italic</span></em></strong>");
+  });
+});

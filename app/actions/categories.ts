@@ -23,20 +23,39 @@ export async function createCategoryAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid platform name" };
   }
 
-  const existing = await prisma.category.findUnique({
-    where: { name: parsed.data.name },
+  const normalizedName = parsed.data.name.trim();
+
+  const existing = await prisma.category.findFirst({
+    where: {
+      name: {
+        equals: normalizedName,
+        mode: "insensitive",
+      },
+    },
   });
 
   if (existing) {
-    return { error: "A platform with this name already exists" };
+    return { error: `A category named "${existing.name}" already exists.` };
   }
 
-  await prisma.category.create({
-    data: {
-      name: parsed.data.name,
-      isActive: true,
-    },
-  });
+  try {
+    await prisma.category.create({
+      data: {
+        name: normalizedName,
+        isActive: true,
+      },
+    });
+  } catch (err: unknown) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      err.code === "P2002"
+    ) {
+      return { error: `A category named "${normalizedName}" already exists.` };
+    }
+    throw err;
+  }
 
   revalidatePath("/admin/categories");
   revalidatePath("/bugs/new");
@@ -66,18 +85,38 @@ export async function updateCategoryAction(
     return { error: "Platform not found" };
   }
 
-  const duplicate = await prisma.category.findUnique({
-    where: { name: parsed.data.name },
+  const normalizedName = parsed.data.name.trim();
+
+  const duplicate = await prisma.category.findFirst({
+    where: {
+      name: {
+        equals: normalizedName,
+        mode: "insensitive",
+      },
+      NOT: { id: categoryId },
+    },
   });
 
-  if (duplicate && duplicate.id !== categoryId) {
-    return { error: "A platform with this name already exists" };
+  if (duplicate) {
+    return { error: `A category named "${duplicate.name}" already exists.` };
   }
 
-  await prisma.category.update({
-    where: { id: categoryId },
-    data: { name: parsed.data.name },
-  });
+  try {
+    await prisma.category.update({
+      where: { id: categoryId },
+      data: { name: normalizedName },
+    });
+  } catch (err: unknown) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      err.code === "P2002"
+    ) {
+      return { error: `A category named "${normalizedName}" already exists.` };
+    }
+    throw err;
+  }
 
   revalidatePath("/admin/categories");
   revalidatePath("/bugs/new");

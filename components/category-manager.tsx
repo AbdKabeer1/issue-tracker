@@ -204,7 +204,7 @@ export function CategoryManager({
                           className={
                             cat.isActive
                               ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-                              : "border border-slate-200 bg-slate-100 text-slate-500"
+                              : "border border-slate-200 bg-slate-100 text-slate-600"
                           }
                         >
                           {cat.isActive ? "Active" : "Inactive"}
@@ -214,7 +214,7 @@ export function CategoryManager({
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs text-slate-600">
                       {cat._count.bugs} issue{cat._count.bugs === 1 ? "" : "s"}
                     </span>
 

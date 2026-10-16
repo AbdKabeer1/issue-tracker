@@ -6,6 +6,7 @@ import {
   activityCreateData,
   assigneeChangedSummary,
   boostedSummary,
+  categoryChangedSummary,
   commentedSummary,
   commentPreview,
   createdSummary,
@@ -13,6 +14,7 @@ import {
   restoredSummary,
   severityChangedSummary,
   statusChangedSummary,
+  typeChangedSummary,
   unboostedSummary,
   type ActivityMetadata,
 } from "@/lib/activity-log";
@@ -51,6 +53,12 @@ import {
 import { Prisma, type ActivityType } from "@prisma/client";
 import { notifyLater } from "@/lib/notify";
 import type { NotificationEvent } from "@/lib/notifications";
+import { getForeignKeyErrorMessage } from "@/lib/foreign-key-errors";
+import {
+  checkRateLimit,
+  ACTION_RATE_LIMITS,
+  RATE_LIMIT_MESSAGE,
+} from "@/lib/rate-limit";
 
 export type ActionResult = { error?: string; ok?: boolean };
 
@@ -86,6 +94,14 @@ export async function createBugAction(
   const user = await requireUser();
   const userId = user.id;
   const admin = isAdmin(user.role);
+
+  const limit = checkRateLimit(
+    `create-bug:${userId}`,
+    ACTION_RATE_LIMITS.createBug,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
 
   const rawAssignee = formData.get("assigneeId");
   const targetAssigneeId =
@@ -143,6 +159,16 @@ export async function createBugAction(
     }
   }
 
+  if (typeId) {
+    const issueType = await prisma.issueType.findUnique({
+      where: { id: typeId },
+      select: { id: true, isActive: true },
+    });
+    if (!issueType || !issueType.isActive) {
+      return { error: "That type no longer exists. Please pick another." };
+    }
+  }
+
   const description = await normalizeMentionTags(parsed.data.description);
 
   const categoryId =
@@ -192,7 +218,11 @@ export async function createBugAction(
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2003"
     ) {
-      return { error: "Assignee not found" };
+      return {
+        error: getForeignKeyErrorMessage(
+          error.meta as Record<string, unknown> | undefined,
+        ),
+      };
     }
     throw error;
   }
@@ -226,6 +256,7 @@ export async function updateBugAction(
     include: {
       assignee: { select: { id: true, name: true } },
       category: { select: { id: true, name: true } },
+      type: { select: { id: true, name: true } },
     },
   });
   if (!existing || existing.isDeleted) {
@@ -368,7 +399,54 @@ export async function updateBugAction(
     });
   }
 
-  if (data.categoryId) {
+  if (data.typeId !== undefined && data.typeId !== existing.typeId) {
+    let toName: string | null = null;
+    if (data.typeId) {
+      const nextType = await prisma.issueType.findUnique({
+        where: { id: data.typeId },
+        select: { id: true, name: true, isActive: true },
+      });
+      if (!nextType || !nextType.isActive) {
+        return { error: "That type no longer exists. Please pick another." };
+      }
+      toName = nextType.name;
+    }
+    pending.push({
+      type: "type_changed",
+      summary: typeChangedSummary(existing.type?.name ?? null, toName),
+      metadata: {
+        field: "type",
+        from: existing.type?.name ?? null,
+        to: toName,
+      },
+    });
+  }
+
+  if (
+    data.categoryId !== undefined &&
+    data.categoryId !== existing.categoryId
+  ) {
+    let toName: string | null = null;
+    if (data.categoryId) {
+      const cat = await prisma.category.findUnique({
+        where: { id: data.categoryId },
+        select: { id: true, name: true },
+      });
+      if (!cat) {
+        return { error: "Platform not found" };
+      }
+      toName = cat.name;
+    }
+    pending.push({
+      type: "category_changed",
+      summary: categoryChangedSummary(existing.category?.name ?? null, toName),
+      metadata: {
+        field: "category",
+        from: existing.category?.name ?? null,
+        to: toName,
+      },
+    });
+  } else if (data.categoryId) {
     const cat = await prisma.category.findUnique({
       where: { id: data.categoryId },
       select: { id: true },
@@ -407,7 +485,11 @@ export async function updateBugAction(
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2003"
     ) {
-      return { error: "Assignee not found" };
+      return {
+        error: getForeignKeyErrorMessage(
+          error.meta as Record<string, unknown> | undefined,
+        ),
+      };
     }
     throw error;
   }
@@ -515,6 +597,15 @@ export async function addCommentAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const userId = await requireUserId();
+
+  const limit = checkRateLimit(
+    `add-comment:${userId}`,
+    ACTION_RATE_LIMITS.addComment,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
+
   const parsed = commentSchema.safeParse({
     body: formData.get("body"),
     parentId: formData.get("parentId") || undefined,
@@ -541,7 +632,7 @@ export async function addCommentAction(
     });
 
     if (!parent || parent.bugId !== bugId) {
-      return { error: "Parent comment not found on this ticket" };
+      return { error: "Parent comment not found on this issue" };
     }
     if (parent.deletedAt) {
       return { error: "You can't reply to a deleted comment" };
@@ -638,6 +729,14 @@ export async function toggleVoteAction(
     return { error: SESSION_EXPIRED_MESSAGE };
   }
   const { userId } = resolved;
+
+  const limit = checkRateLimit(
+    `toggle-vote:${userId}`,
+    ACTION_RATE_LIMITS.toggleVote,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
 
   const bug = await prisma.bug.findUnique({
     where: { id: bugId },

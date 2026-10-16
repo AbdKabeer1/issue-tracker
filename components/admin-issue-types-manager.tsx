@@ -7,7 +7,7 @@ import {
   toggleIssueTypeActiveAction,
   updateIssueTypeAction,
 } from "@/app/actions/issue-types";
-import { getIssueTypeBadgeClass } from "@/lib/issue-types";
+import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -239,7 +239,7 @@ export function AdminIssueTypesManager({
                   </span>
                 </td>
                 <td className="max-w-xs px-4 py-3 text-slate-600">
-                  {type.description || <span className="text-slate-400">—</span>}
+                  {type.description || <span className="text-slate-500">—</span>}
                 </td>
                 <td className="px-4 py-3">
                   <Badge
@@ -281,7 +281,7 @@ export function AdminIssueTypesManager({
                       onClick={() => handleDelete(type)}
                       className={`text-xs font-medium ${
                         type._count.bugs > 0
-                          ? "cursor-not-allowed text-slate-400"
+                          ? "cursor-not-allowed text-slate-500"
                           : "text-red-600 hover:text-red-800 hover:underline"
                       }`}
                       title={
