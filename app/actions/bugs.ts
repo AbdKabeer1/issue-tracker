@@ -33,7 +33,7 @@ import {
   updateBugSchema,
 } from "@/lib/validations/bug";
 import { calculateVoteChange } from "@/lib/voting";
-import type { ActivityType, Prisma } from "@prisma/client";
+import { Prisma, type ActivityType } from "@prisma/client";
 
 
 export type ActionResult = { error?: string; ok?: boolean };
@@ -72,29 +72,50 @@ export async function createBugAction(
       ? parsed.data.assigneeId
       : null;
 
+  if (assigneeId) {
+    const assignee = await prisma.user.findUnique({
+      where: { id: assigneeId },
+      select: { id: true },
+    });
+    if (!assignee) {
+      return { error: "Assignee not found" };
+    }
+  }
+
   // Always open at creation — createBugSchema rejects client status.
-  const bug = await prisma.bug.create({
-    data: {
-      title: parsed.data.title,
-      description: parsed.data.description,
-      severity: admin ? parsed.data.severity : "medium",
-      status: "open",
-      proofLinks: parsed.data.proofLinks,
-      reporterId: userId,
-      assigneeId,
-      activities: {
-        create: {
-          actorId: userId,
-          type: "created",
-          summary: createdSummary(parsed.data.title),
-          metadata: {
-            field: "title",
-            to: parsed.data.title,
-          } as Prisma.InputJsonValue,
+  let bug;
+  try {
+    bug = await prisma.bug.create({
+      data: {
+        title: parsed.data.title,
+        description: parsed.data.description,
+        severity: admin ? parsed.data.severity : "medium",
+        status: "open",
+        proofLinks: parsed.data.proofLinks,
+        reporterId: userId,
+        assigneeId,
+        activities: {
+          create: {
+            actorId: userId,
+            type: "created",
+            summary: createdSummary(parsed.data.title),
+            metadata: {
+              field: "title",
+              to: parsed.data.title,
+            } as Prisma.InputJsonValue,
+          },
         },
       },
-    },
-  });
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2003"
+    ) {
+      return { error: "Assignee not found" };
+    }
+    throw error;
+  }
 
   revalidatePath("/bugs");
   redirect(`/bugs/${bug.id}`);
@@ -194,7 +215,10 @@ export async function updateBugAction(
         where: { id: data.assigneeId },
         select: { name: true },
       });
-      toName = nextAssignee?.name ?? null;
+      if (!nextAssignee) {
+        return { error: "Assignee not found" };
+      }
+      toName = nextAssignee.name ?? null;
     }
     pending.push({
       type: "assignee_changed",
@@ -211,25 +235,35 @@ export async function updateBugAction(
     return { ok: true };
   }
 
-  await prisma.$transaction(async (tx) => {
-    if (Object.keys(data).length > 0) {
-      await tx.bug.update({
-        where: { id: bugId },
-        data,
-      });
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (Object.keys(data).length > 0) {
+        await tx.bug.update({
+          where: { id: bugId },
+          data,
+        });
+      }
+      if (pending.length > 0) {
+        await tx.bugActivity.createMany({
+          data: activityCreateData(
+            pending.map((entry) => ({
+              bugId,
+              actorId: userId,
+              ...entry,
+            })),
+          ),
+        });
+      }
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2003"
+    ) {
+      return { error: "Assignee not found" };
     }
-    if (pending.length > 0) {
-      await tx.bugActivity.createMany({
-        data: activityCreateData(
-          pending.map((entry) => ({
-            bugId,
-            actorId: userId,
-            ...entry,
-          })),
-        ),
-      });
-    }
-  });
+    throw error;
+  }
 
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
