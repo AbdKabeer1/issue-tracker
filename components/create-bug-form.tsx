@@ -82,6 +82,7 @@ export function CreateBugForm({
             name="title"
             required
             minLength={3}
+            maxLength={200}
             placeholder="Short summary of the issue"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
