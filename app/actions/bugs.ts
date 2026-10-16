@@ -22,6 +22,10 @@ import {
   commentDepth,
 } from "@/lib/comments";
 import {
+  extractMentionedUserIds,
+  normalizeMentions,
+} from "@/lib/mentions";
+import {
   commentSchema,
   createBugSchema,
   updateBugSchema,
@@ -286,12 +290,24 @@ export async function addCommentAction(
     }
   }
 
+  const mentionedIds = extractMentionedUserIds(parsed.data.body);
+  let normalizedBody = parsed.data.body;
+
+  if (mentionedIds.length > 0) {
+    const validUsers = await prisma.user.findMany({
+      where: { id: { in: mentionedIds } },
+      select: { id: true, name: true },
+    });
+    const userMap = new Map(validUsers.map((u) => [u.id, u.name]));
+    normalizedBody = normalizeMentions(parsed.data.body, userMap);
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.comment.create({
       data: {
         bugId,
         authorId: userId,
-        body: parsed.data.body,
+        body: normalizedBody,
         parentId: parentId ?? null,
       },
     });
@@ -300,10 +316,10 @@ export async function addCommentAction(
         bugId,
         actorId: userId,
         type: "commented",
-        summary: commentedSummary(parsed.data.body),
+        summary: commentedSummary(normalizedBody),
         metadata: {
           field: "comment",
-          commentPreview: parsed.data.body.slice(0, 120),
+          commentPreview: normalizedBody.slice(0, 120),
         } as Prisma.InputJsonValue,
       },
     });

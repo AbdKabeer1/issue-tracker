@@ -5,6 +5,7 @@ import {
   formatMention,
   getMentionQuery,
   insertMention,
+  normalizeMentions,
   tokenizeMentions,
 } from "./mentions";
 
@@ -111,5 +112,38 @@ describe("insertMention", () => {
     const result = insertMention(value, mention, value.length, "Alice", aliceId);
     expect(result.value).toBe(`Hi @[Alice](${aliceId}) `);
     expect(result.caret).toBe(result.value.length);
+  });
+});
+
+describe("normalizeMentions", () => {
+  const usersMap = new Map([
+    [aliceId, "Alice Smith"],
+    [bobId, "Bob Jones"],
+  ]);
+
+  it("canonicalizes a valid mention with the user's real name", () => {
+    const input = `Hi @[Alice](${aliceId})!`;
+    expect(normalizeMentions(input, usersMap)).toBe(
+      `Hi @[Alice Smith](${aliceId})!`,
+    );
+  });
+
+  it("rewrites an unknown user ID to plain text @Name", () => {
+    const input = "Hi @[Mark Essien](fake123)";
+    expect(normalizeMentions(input, usersMap)).toBe("Hi @Mark Essien");
+  });
+
+  it("corrects a mismatched name to the user's real name from the database", () => {
+    const input = `Assigned to @[Super Admin](${aliceId}) by mistake`;
+    expect(normalizeMentions(input, usersMap)).toBe(
+      `Assigned to @[Alice Smith](${aliceId}) by mistake`,
+    );
+  });
+
+  it("handles mixed valid, unknown, and plain text mentions", () => {
+    const input = `@[Imposter](${aliceId}) met @[Unknown](no-id) and @[Bob](${bobId})`;
+    expect(normalizeMentions(input, usersMap)).toBe(
+      `@[Alice Smith](${aliceId}) met @Unknown and @[Bob Jones](${bobId})`,
+    );
   });
 });

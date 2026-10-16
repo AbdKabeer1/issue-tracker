@@ -2,12 +2,37 @@ import type { ReactNode } from "react";
 import { RichText } from "@/components/rich-text";
 import { tokenizeMentions } from "@/lib/mentions";
 
-function MentionSpans({ text }: { text: string }): ReactNode {
+type UserOption = { id: string; name: string };
+
+function MentionSpans({
+  text,
+  userMap,
+}: {
+  text: string;
+  userMap?: Map<string, string>;
+}): ReactNode {
   const tokens = tokenizeMentions(text);
 
   return tokens.map((token, index) => {
     if (token.type === "text") {
       return <span key={`t-${index}`}>{token.value}</span>;
+    }
+
+    if (userMap) {
+      const realName = userMap.get(token.userId);
+      if (!realName) {
+        return <span key={`t-${index}`}>@{token.name}</span>;
+      }
+      return (
+        <span
+          key={`m-${index}-${token.userId}`}
+          title={realName}
+          data-user-id={token.userId}
+          className="mx-0.5 inline-flex items-center rounded-md bg-teal-50 px-1.5 py-0.5 text-xs font-medium text-teal-800 ring-1 ring-inset ring-teal-200"
+        >
+          @{realName}
+        </span>
+      );
     }
 
     return (
@@ -23,12 +48,24 @@ function MentionSpans({ text }: { text: string }): ReactNode {
   });
 }
 
-export function CommentBody({ body }: { body: string }) {
+export function CommentBody({
+  body,
+  users,
+}: {
+  body: string;
+  users?: UserOption[];
+}) {
+  const userMap = users
+    ? new Map(users.map((u) => [u.id, u.name]))
+    : undefined;
+
   return (
     <RichText
       content={body}
       className="rich-text mt-2 space-y-2 text-sm text-slate-800 [&_a]:font-medium [&_a]:text-teal-700 [&_a]:underline [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.9em] [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-slate-900 [&_pre]:p-3 [&_pre]:text-sm [&_pre]:text-slate-100 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
-      renderMentions={(text) => <MentionSpans text={text} />}
+      renderMentions={(text) => (
+        <MentionSpans text={text} userMap={userMap} />
+      )}
     />
   );
 }
