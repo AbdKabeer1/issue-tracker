@@ -3,7 +3,7 @@ import {
   looksLikeMarkdown,
   safeHref,
   stripMarkdown,
-  stripUnsafeHtmlTags,
+  stripLegacyMarkup,
   wrapSelection,
 } from "./rich-text";
 
@@ -21,12 +21,24 @@ describe("looksLikeMarkdown", () => {
   });
 });
 
-describe("stripUnsafeHtmlTags", () => {
-  it("removes raw html so it renders as text", () => {
-    expect(stripUnsafeHtmlTags("<u>hi</u>")).toBe("hi");
-    expect(stripUnsafeHtmlTags('<img src=x onerror="alert(1)">')).toBe("");
-    expect(stripUnsafeHtmlTags("<script>alert(1)</script>ok")).toBe("alert(1)ok");
-    expect(stripUnsafeHtmlTags("a < b")).toBe("a < b");
+describe("stripLegacyMarkup", () => {
+  it("drops legacy underline tags but keeps their text", () => {
+    expect(stripLegacyMarkup("<u>hi</u> there")).toBe("hi there");
+    expect(stripLegacyMarkup("a&nbsp;b")).toBe("a b");
+  });
+
+  it("keeps tag-like text so it is displayed as typed (#116)", () => {
+    const text = "The <Button> component crashes when List<String> is empty, see <Provider>.";
+    expect(stripLegacyMarkup(text)).toBe(text);
+    // Shown as literal text by React, never executed.
+    expect(stripLegacyMarkup('<img src=x onerror="alert(1)">')).toBe('<img src=x onerror="alert(1)">');
+    expect(stripLegacyMarkup("a < b")).toBe("a < b");
+  });
+
+  it("never touches code, even <u>", () => {
+    const fenced = "```html\n<u>keep</u>\n<div>x</div>\n```";
+    expect(stripLegacyMarkup(fenced)).toBe(fenced);
+    expect(stripLegacyMarkup("use `<u>` for underline")).toBe("use `<u>` for underline");
   });
 });
 
