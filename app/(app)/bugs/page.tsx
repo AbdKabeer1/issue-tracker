@@ -164,7 +164,7 @@ export default async function BugsPage({
               href="/bugs/new"
               className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-teal-800"
             >
-              Report issue
+              New Issue
             </Link>
           ) : null}
         </div>
@@ -193,7 +193,7 @@ export default async function BugsPage({
               href="/bugs/new"
               className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-teal-800"
             >
-              Report issue
+              New Issue
             </Link>
           </div>
         </div>
