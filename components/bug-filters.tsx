@@ -8,6 +8,11 @@ import {
   bugSortLabels,
   parseBugSort,
 } from "@/lib/bugs-sort";
+import {
+  MINE_FILTER_OPTIONS,
+  mineFilterLabels,
+  parseMineFilter,
+} from "@/lib/mine-filter";
 
 export function BugFilters() {
   const router = useRouter();
@@ -26,6 +31,7 @@ export function BugFilters() {
   }
 
   const currentSort = parseBugSort(params.get("sort"));
+  const currentMine = parseMineFilter(params.get("mine")) ?? "";
 
   return (
     <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end">
@@ -46,6 +52,27 @@ export function BugFilters() {
           }}
           onBlur={(event) => update("q", event.target.value.trim())}
         />
+      </div>
+      <div className="w-full sm:w-auto">
+        <label
+          htmlFor="mine"
+          className="mb-1 block text-xs font-medium text-slate-600"
+        >
+          Show
+        </label>
+        <select
+          id="mine"
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:w-auto"
+          value={currentMine}
+          onChange={(event) => update("mine", event.target.value)}
+        >
+          <option value="">All issues</option>
+          {MINE_FILTER_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {mineFilterLabels[option]}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="w-full sm:w-auto">
         <label
