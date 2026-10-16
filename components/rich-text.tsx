@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { looksLikeMarkdown, safeHref, stripUnsafeHtmlTags } from "@/lib/rich-text";
+import { looksLikeMarkdown, safeHref, stripLegacyMarkup } from "@/lib/rich-text";
 
 type RichTextProps = {
   content: string;
@@ -17,13 +17,13 @@ const DEFAULT_CLASS_NAME =
  *
  * Everything is emitted as React elements, so user content is escaped by
  * React itself; the only HTML-ish output is a link/image whose href has been
- * checked by `safeHref` (http/https/mailto only). Raw HTML left in the content
- * (e.g. legacy `<u>` tags) is stripped so it reads as text.
+ * checked by `safeHref` (http/https/mailto only). Tag-like text such as
+ * `<Button>` is displayed as typed; only legacy `<u>` underline tags are dropped.
  */
 export function RichText({ content, className, renderMentions }: RichTextProps) {
   if (!content) return null;
 
-  const safeContent = stripUnsafeHtmlTags(content);
+  const safeContent = stripLegacyMarkup(content);
   const extra = className ? ` ${className}` : "";
 
   if (!looksLikeMarkdown(safeContent)) {
