@@ -21,11 +21,13 @@ export function CreateBugForm({
   categories = [],
   types = [],
   isAdmin,
+  currentUserId,
 }: {
   users: UserOption[];
   categories?: CategoryOption[];
   types?: TypeOption[];
   isAdmin: boolean;
+  currentUserId?: string;
 }) {
   const defaultTypeId =
     types.find((t) => t.name.toLowerCase() === "fix")?.id ?? types[0]?.id ?? "";
@@ -36,6 +38,7 @@ export function CreateBugForm({
   const [proofLinks, setProofLinks] = useState("");
   const [severity, setSeverity] = useState<(typeof severities)[number]>("medium");
   const [assigneeId, setAssigneeId] = useState("");
+  const [assignToMe, setAssignToMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const mentionUsers = users.map((user) => ({ id: user.id, name: user.name }));
@@ -55,6 +58,8 @@ export function CreateBugForm({
         if (isAdmin) {
           formData.set("severity", severity);
           formData.set("assigneeId", assigneeId);
+        } else if (assignToMe && currentUserId) {
+          formData.set("assigneeId", currentUserId);
         }
         startTransition(async () => {
           try {
@@ -217,6 +222,22 @@ export function CreateBugForm({
               ))}
             </Select>
           </div>
+        </div>
+      ) : currentUserId ? (
+        <div className="flex items-center gap-2 pt-1">
+          <input
+            type="checkbox"
+            id="assignToMe"
+            checked={assignToMe}
+            onChange={(e) => setAssignToMe(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+          />
+          <label
+            htmlFor="assignToMe"
+            className="text-sm font-medium text-slate-700 cursor-pointer"
+          >
+            Assign this issue to myself
+          </label>
         </div>
       ) : null}
       {error ? (
