@@ -4,6 +4,7 @@ import { auth, signOut } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
 import { resolveSessionUserId } from "@/lib/session-user";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 export type SessionAppUser = {
   id: string;
@@ -40,6 +41,14 @@ export async function requireUser(): Promise<SessionAppUser> {
   if (!dbUser) {
     await signOut({ redirectTo: "/login" });
     throw new Error("unreachable: signOut redirects");
+  }
+
+  if (dbUser.role !== "super_admin" && isSuperAdminEmail(dbUser.email)) {
+    await prisma.user.update({
+      where: { id: dbUser.id },
+      data: { role: "super_admin" },
+    });
+    dbUser.role = "super_admin";
   }
 
   return {

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import authConfig from "@/auth.config";
 import { isLinkPreviewBot } from "@/lib/link-preview";
 import { isSuperAdmin } from "@/lib/roles";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 import { BASE_PATH, toAppPath } from "@/lib/base-path";
 
 /**
@@ -51,7 +52,10 @@ export default auth((req) => {
 
   // Super-admin only surface (JWT role; page/actions re-check against DB).
   if (isLoggedIn && pathWithoutBase.startsWith("/admin")) {
-    if (!isSuperAdmin(req.auth?.user?.role)) {
+    if (
+      !isSuperAdmin(req.auth?.user?.role) &&
+      !isSuperAdminEmail(req.auth?.user?.email)
+    ) {
       return NextResponse.redirect(
         new URL(`${BASE_PATH}/bugs`, req.nextUrl.origin),
       );

@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { loginSchema } from "@/lib/validations/bug";
 import authConfig from "@/auth.config";
 import { cleanEnv } from "@/lib/env-clean";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 const googleClientId = cleanEnv(
   process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID,
@@ -89,15 +90,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             (typeof profile?.picture === "string" && profile.picture) ||
             (typeof user?.image === "string" ? user.image : undefined);
 
-          const rawSuperAdmin =
-            cleanEnv(process.env.SUPER_ADMIN_EMAIL) ||
-            cleanEnv(process.env.SUPER_ADMIN_EMAILS) ||
-            "";
-          const superAdminEmails = rawSuperAdmin
-            .split(",")
-            .map((e) => e.trim().toLowerCase())
-            .filter(Boolean);
-          const isSuperAdmin = superAdminEmails.includes(email);
+          const isSuperAdmin = isSuperAdminEmail(email);
 
           let dbUser = null;
           for (let attempt = 1; attempt <= 3; attempt++) {
