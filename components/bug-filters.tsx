@@ -43,6 +43,10 @@ export function BugFilters() {
         <input
           id="q"
           name="q"
+          // #204: correct only because the parent keys this component on the
+          // current `q` value, which remounts it whenever the URL query
+          // changes (including via the browser Back button). See
+          // app/(app)/bugs/page.tsx.
           defaultValue={params.get("q") ?? ""}
           placeholder="Search title or description"
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"

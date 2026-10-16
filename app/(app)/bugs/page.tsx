@@ -173,7 +173,11 @@ export default async function BugsPage({
       <Suspense
         fallback={<div className="h-12 animate-pulse rounded-lg bg-slate-100" />}
       >
-        <BugFilters />
+        {/* #204: keyed on the search query so the uncontrolled input inside
+            BugFilters remounts (and re-reads its defaultValue) whenever the
+            URL changes - including via the browser Back button, which
+            previously left stale text in the box over an unfiltered list. */}
+        <BugFilters key={qParam ?? ""} />
       </Suspense>
 
       {bugs.length === 0 ? (
