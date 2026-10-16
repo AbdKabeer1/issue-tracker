@@ -92,7 +92,7 @@ export function CategoryManager({
       return;
     }
 
-    if (!confirm(`Are you sure you want to delete category "${category.name}"?`)) {
+    if (!confirm(`Are you sure you want to delete platform "${category.name}"?`)) {
       return;
     }
 
@@ -109,17 +109,17 @@ export function CategoryManager({
     <div className="space-y-6">
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-base font-semibold text-slate-900">
-          Add new category
+          Add new platform
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          Create platforms or issue categories (e.g., Mobile, Desktop, Web).
+          Create platforms such as Desktop, Web, or Mobile.
         </p>
 
         <form onSubmit={handleCreate} className="mt-4 flex flex-wrap gap-3">
           <Input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Category name (e.g. Cloud)"
+            placeholder="Platform name (e.g. Cloud)"
             className="max-w-xs"
             disabled={pending}
             minLength={2}
@@ -127,7 +127,7 @@ export function CategoryManager({
             required
           />
           <Button type="submit" disabled={pending || !newName.trim()}>
-            {pending ? "Adding…" : "Add category"}
+            {pending ? "Adding…" : "Add platform"}
           </Button>
         </form>
       </div>
@@ -144,18 +144,18 @@ export function CategoryManager({
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
           <h2 className="text-base font-semibold text-slate-900">
-            Existing categories
+            Existing platforms
           </h2>
           <p className="text-xs text-slate-500">
-            Active categories appear on the issue creation form. Inactive
-            categories remain on existing tickets but cannot be selected for new
+            Active platforms appear on the issue creation form. Inactive
+            platforms remain on existing issues but cannot be selected for new
             ones.
           </p>
         </div>
 
         {initialCategories.length === 0 ? (
           <div className="p-6 text-center text-sm text-slate-500">
-            No categories defined yet.
+            No platforms defined yet.
           </div>
         ) : (
           <div className="divide-y divide-slate-200">
@@ -245,8 +245,8 @@ export function CategoryManager({
                       disabled={pending || cat._count.bugs > 0}
                       title={
                         cat._count.bugs > 0
-                          ? "Cannot delete: category has existing issues"
-                          : "Delete category"
+                          ? "Cannot delete: platform has existing issues"
+                          : "Delete platform"
                       }
                     >
                       Delete

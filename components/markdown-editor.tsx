@@ -22,7 +22,6 @@ import {
   CodeBlockIcon,
   CodeIcon,
   EyeIcon,
-  HeadingIcon,
   ItalicIcon,
   LinkIcon,
   MentionIcon,
@@ -60,18 +59,41 @@ type ToolbarButtonSpec = {
 };
 
 const WRITE_TOOLS: ToolbarButtonSpec[] = [
+  // Bold: B glyph.
   { action: "bold", label: "Bold", icon: <BoldIcon /> },
+  // Italic: slanted I glyph.
   { action: "italic", label: "Italic", icon: <ItalicIcon /> },
+  // Strikethrough: S crossed by a horizontal line.
   { action: "strikethrough", label: "Strikethrough", icon: <StrikethroughIcon /> },
-  { action: "heading1", label: "Heading 1", icon: <HeadingIcon /> },
-  { action: "heading2", label: "Heading 2", icon: <HeadingIcon /> },
-  { action: "heading3", label: "Heading 3", icon: <HeadingIcon /> },
+  // Heading levels use their explicit H1, H2, and H3 labels.
+  {
+    action: "heading1",
+    label: "Heading 1",
+    icon: <span className="text-xs font-bold leading-none">H1</span>,
+  },
+  {
+    action: "heading2",
+    label: "Heading 2",
+    icon: <span className="text-xs font-bold leading-none">H2</span>,
+  },
+  {
+    action: "heading3",
+    label: "Heading 3",
+    icon: <span className="text-xs font-bold leading-none">H3</span>,
+  },
+  // Quote: paired quotation marks.
   { action: "quote", label: "Quote", icon: <QuoteIcon /> },
+  // Inline code: angle brackets.
   { action: "code", label: "Inline code", icon: <CodeIcon /> },
+  // Code block: bordered block with angle brackets.
   { action: "codeBlock", label: "Code block", icon: <CodeBlockIcon /> },
+  // Link: two connected loops.
   { action: "link", label: "Link", icon: <LinkIcon /> },
+  // Bulleted list: dots with horizontal lines.
   { action: "ul", label: "Bulleted list", icon: <BulletedListIcon /> },
+  // Numbered list: numerals with horizontal lines.
   { action: "ol", label: "Numbered list", icon: <NumberedListIcon /> },
+  // Task list: checkboxes with horizontal lines.
   { action: "task", label: "Task list", icon: <TaskListIcon /> },
 ];
 
@@ -126,7 +148,9 @@ function ToolbarButton({
       onClick={onClick}
       className="rounded p-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 sm:p-1.5"
     >
-      {icon}
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+        {icon}
+      </span>
     </button>
   );
 }
@@ -333,6 +357,7 @@ export const MarkdownEditor = forwardRef<
                 onClick={() => applyAction(tool.action as FormatAction)}
               />
             ))}
+            {/* Mention: @ inside a speech bubble. */}
             {users?.length ? (
               <ToolbarButton
                 label="Mention"

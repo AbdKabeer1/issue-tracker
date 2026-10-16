@@ -3,11 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import { getActiveIssueTypes } from "@/lib/issue-types";
+import { ensureDefaultPlatforms } from "@/lib/categories";
 import { CreateBugForm } from "@/components/create-bug-form";
 
 export default async function NewBugPage() {
   const user = await requireUser();
   const admin = isAdmin(user.role);
+  await ensureDefaultPlatforms();
 
   // Every signed-in user is needed for @mentions; admins additionally get
   // the assignee picker.
