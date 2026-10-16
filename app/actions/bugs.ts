@@ -30,6 +30,7 @@ import {
   updateBugSchema,
 } from "@/lib/validations/bug";
 import { calculateVoteChange, isValidVoteDirection } from "@/lib/voting";
+import { canDeleteTicket, TICKET_DELETION_ERRORS } from "@/lib/ticket-deletion";
 import { Prisma, type ActivityType } from "@prisma/client";
 
 export type ActionResult = { error?: string; ok?: boolean };
@@ -510,3 +511,43 @@ export async function toggleVoteAction(
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true, ...result };
 }
+
+/**
+ * Permanently deletes a bug and all its dependent data (comments, votes, activity).
+ * Super admins only.
+ */
+export async function deleteBugAction(bugId: string): Promise<ActionResult> {
+  const user = await requireUser();
+  if (!canDeleteTicket(user.role)) {
+    return { error: TICKET_DELETION_ERRORS.unauthorized };
+  }
+
+  if (!bugId || typeof bugId !== "string" || bugId.trim().length === 0) {
+    return { error: TICKET_DELETION_ERRORS.invalidId };
+  }
+
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    return { error: TICKET_DELETION_ERRORS.notFound };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.comment.deleteMany({ where: { bugId } });
+      await tx.vote.deleteMany({ where: { bugId } });
+      await tx.bugActivity.deleteMany({ where: { bugId } });
+      await tx.bug.delete({ where: { id: bugId } });
+    });
+  } catch (error) {
+    console.error("Failed to delete bug:", error);
+    return { error: TICKET_DELETION_ERRORS.failed };
+  }
+
+  revalidatePath("/bugs");
+  redirect("/bugs");
+}
+
