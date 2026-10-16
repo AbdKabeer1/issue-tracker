@@ -79,6 +79,9 @@ export function AppHeader({
               className="max-w-[14rem] text-sm text-slate-500"
             />
           ) : null}
+          <Link href="/settings" className="text-sm text-slate-600 hover:text-slate-900">
+            Settings
+          </Link>
           <form action={logoutAction}>
             <Button type="submit" variant="secondary">
               Sign out
@@ -198,6 +201,13 @@ export function AppHeader({
                 Admin management
               </Link>
             ) : null}
+            <Link
+              href="/settings"
+              onClick={closeMenu}
+              className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Settings
+            </Link>
           </nav>
 
           <div className="mt-4 border-t border-slate-100 pt-3">
