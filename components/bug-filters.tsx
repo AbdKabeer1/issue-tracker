@@ -21,8 +21,8 @@ export function BugFilters() {
   }
 
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-      <div className="min-w-[200px] flex-1">
+    <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end">
+      <div className="col-span-2 min-w-0 sm:min-w-[200px] sm:flex-1">
         <label htmlFor="q" className="mb-1 block text-xs font-medium text-slate-600">
           Search
         </label>
@@ -31,7 +31,7 @@ export function BugFilters() {
           name="q"
           defaultValue={params.get("q") ?? ""}
           placeholder="Search title or description"
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               update("q", (event.target as HTMLInputElement).value.trim());
@@ -40,7 +40,7 @@ export function BugFilters() {
           onBlur={(event) => update("q", event.target.value.trim())}
         />
       </div>
-      <div>
+      <div className="w-full sm:w-auto">
         <label
           htmlFor="status"
           className="mb-1 block text-xs font-medium text-slate-600"
@@ -49,7 +49,7 @@ export function BugFilters() {
         </label>
         <select
           id="status"
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:w-auto"
           value={params.get("status") ?? ""}
           onChange={(event) => update("status", event.target.value)}
         >
@@ -61,7 +61,7 @@ export function BugFilters() {
           ))}
         </select>
       </div>
-      <div>
+      <div className="w-full sm:w-auto">
         <label
           htmlFor="severity"
           className="mb-1 block text-xs font-medium text-slate-600"
@@ -70,7 +70,7 @@ export function BugFilters() {
         </label>
         <select
           id="severity"
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:w-auto"
           value={params.get("severity") ?? ""}
           onChange={(event) => update("severity", event.target.value)}
         >

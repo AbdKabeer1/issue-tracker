@@ -191,19 +191,32 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
           ← Back to bugs
         </Link>
-        <div className="mt-2 flex flex-wrap items-start gap-4">
-          <VoteButton
-            bugId={bug.id}
-            voteCount={bug.voteCount}
-            userVote={userVote}
-            size="md"
-          />
+        <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+          <div className="flex items-center gap-3 sm:block">
+            <VoteButton
+              bugId={bug.id}
+              voteCount={bug.voteCount}
+              userVote={userVote}
+              size="md"
+            />
+            <div className="flex flex-wrap gap-1.5 sm:hidden">
+              <Badge className={statusClass[bug.status]}>
+                {statusLabels[bug.status]}
+              </Badge>
+              <Badge className={severityClass[bug.severity]}>
+                {severityLabels[bug.severity]}
+              </Badge>
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                {Math.max(0, bug.voteCount)} like{Math.max(0, bug.voteCount) === 1 ? "" : "s"}
+              </span>
+            </div>
+          </div>
 
           <div className="min-w-0 flex-1 space-y-2">
-            <h1 className="text-2xl font-semibold text-slate-900">
+            <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 break-words">
               {bug.title}
             </h1>
-            <div className="flex flex-wrap gap-2">
+            <div className="hidden sm:flex sm:flex-wrap sm:gap-2">
               <Badge className={statusClass[bug.status]}>
                 {statusLabels[bug.status]}
               </Badge>
@@ -218,12 +231,12 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         </div>
       </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Description
         </h2>
         <RichText content={bug.description} />
-        <dl className="mt-6 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+        <dl className="mt-6 grid grid-cols-1 gap-3 text-sm text-slate-600 sm:grid-cols-2">
           <div>
             <dt className="font-medium text-slate-500">Reporter</dt>
             <dd>
@@ -258,7 +271,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         </dl>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Proof links
         </h2>
@@ -297,7 +310,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
 
       <ActivityTimeline activities={bug.activities} />
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Comments ({bug.comments.length})
         </h2>
