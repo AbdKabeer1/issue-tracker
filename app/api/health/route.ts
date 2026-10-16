@@ -190,6 +190,10 @@ export async function GET(request: NextRequest) {
         cleanEnv(process.env.AUTH_SECRET) ||
           cleanEnv(process.env.NEXTAUTH_SECRET),
       ),
+      superAdminConfigured: Boolean(
+        cleanEnv(process.env.SUPER_ADMIN_EMAIL) ||
+          cleanEnv(process.env.SUPER_ADMIN_EMAILS),
+      ),
     },
   });
 }
