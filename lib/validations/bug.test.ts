@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   commentSchema,
   createBugSchema,
+  editBugContentSchema,
   forgotPasswordSchema,
   loginSchema,
   resetPasswordSchema,
@@ -358,6 +359,54 @@ describe("createBugSchema proofLinks", () => {
         "https://github.com/org/repo/pull/13",
       ]);
     }
+  });
+});
+
+describe("editBugContentSchema", () => {
+  it("accepts valid title and description", () => {
+    const result = editBugContentSchema.safeParse({
+      title: "Updated issue title",
+      description: "Updated issue description with enough characters.",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.title).toBe("Updated issue title");
+      expect(result.data.description).toBe(
+        "Updated issue description with enough characters.",
+      );
+    }
+  });
+
+  it("rejects title shorter than 3 characters", () => {
+    const result = editBugContentSchema.safeParse({
+      title: "ab",
+      description: "Updated issue description with enough characters.",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects title longer than 200 characters", () => {
+    const result = editBugContentSchema.safeParse({
+      title: "a".repeat(201),
+      description: "Updated issue description with enough characters.",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects description shorter than 10 characters", () => {
+    const result = editBugContentSchema.safeParse({
+      title: "Valid title",
+      description: "short",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects description longer than 5000 characters", () => {
+    const result = editBugContentSchema.safeParse({
+      title: "Valid title",
+      description: "a".repeat(5001),
+    });
+    expect(result.success).toBe(false);
   });
 });
 

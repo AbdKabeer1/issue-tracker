@@ -31,6 +31,7 @@ import {
 import {
   commentSchema,
   createBugSchema,
+  editBugContentSchema,
   updateBugSchema,
 } from "@/lib/validations/bug";
 import { calculateVoteChange, isValidVoteDirection } from "@/lib/voting";
@@ -41,6 +42,12 @@ import {
 } from "@/lib/ticket-deletion";
 import { canBoostTicket, TICKET_BOOST_ERRORS } from "@/lib/ticket-boosting";
 import { canAssignTicket, TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
+import {
+  canEditTicket,
+  formatEditSummary,
+  getChangedEditFields,
+  TICKET_EDIT_ERRORS,
+} from "@/lib/ticket-editing";
 import { Prisma, type ActivityType } from "@prisma/client";
 import { notifyLater } from "@/lib/notify";
 import type { NotificationEvent } from "@/lib/notifications";
@@ -414,6 +421,88 @@ export async function updateBugAction(
     events.push({ ...actor, kind: "status_changed", reporterId: existing.reporterId, from: existing.status, to: data.status });
   }
   if (events.length > 0) notifyLater(...events);
+
+  revalidatePath("/bugs");
+  revalidatePath(`/bugs/${bugId}`);
+  return { ok: true };
+}
+
+/** Allows the reporter or an admin to edit an issue's title and description. */
+export async function editBugContentAction(
+  bugId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await requireUser();
+  const userId = user.id;
+
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      reporterId: true,
+      isDeleted: true,
+    },
+  });
+
+  if (!existing || existing.isDeleted) {
+    return { error: TICKET_EDIT_ERRORS.notFound };
+  }
+
+  if (
+    !canEditTicket({
+      actorId: userId,
+      actorRole: user.role,
+      reporterId: existing.reporterId,
+    })
+  ) {
+    return { error: TICKET_EDIT_ERRORS.unauthorized };
+  }
+
+  const parsed = editBugContentSchema.safeParse({
+    title: formData.get("title"),
+    description: formData.get("description"),
+  });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const normalizedDescription = await normalizeMentionTags(parsed.data.description);
+  const changedFields = getChangedEditFields(existing, {
+    title: parsed.data.title,
+    description: normalizedDescription,
+  });
+
+  if (changedFields.length === 0) {
+    return { ok: true };
+  }
+
+  const summary = formatEditSummary(changedFields);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.bug.update({
+      where: { id: bugId },
+      data: {
+        title: parsed.data.title,
+        description: normalizedDescription,
+        updatedAt: new Date(),
+      },
+    });
+
+    await tx.bugActivity.create({
+      data: {
+        bugId,
+        actorId: userId,
+        type: "edited",
+        summary,
+        metadata: {
+          fields: changedFields,
+        },
+      },
+    });
+  });
 
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);

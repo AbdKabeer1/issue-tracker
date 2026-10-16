@@ -25,8 +25,6 @@ import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentThread } from "@/components/comment-thread";
-import { RichText } from "@/components/rich-text";
-import { MentionText } from "@/components/comment-body";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import {
   getActiveIssueTypes,
@@ -34,10 +32,12 @@ import {
 } from "@/lib/issue-types";
 import { fetchVoterSummary } from "@/lib/voter-summaries";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
+import { canEditTicket } from "@/lib/ticket-editing";
 import { DeleteBugButton } from "@/components/delete-bug-button";
 import { RestoreBugButton } from "@/components/restore-bug-button";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { SelfAssignButton } from "@/components/self-assign-button";
+import { EditableIssueDescription } from "@/components/editable-issue-description";
 import { withCurrentOption } from "@/lib/triage-options";
 
 type BugPageProps = {
@@ -208,6 +208,12 @@ export default async function BugDetailPage({ params }: BugPageProps) {
 
   const isAssignee = !!userId && bug.assigneeId === userId;
   const canUpdateStatus = canTriage || isAssignee;
+  const canEdit =
+    canEditTicket({
+      actorId: userId,
+      actorRole: user.role,
+      reporterId: bug.reporterId,
+    }) && !bug.isDeleted;
   const userVote =
     Array.isArray(bug.votes) && bug.votes.length > 0
       ? (bug.votes[0].value ?? 1)
@@ -331,14 +337,13 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         </div>
       </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Description
-        </h2>
-        <RichText
-          content={bug.description}
-          renderMentions={(text) => <MentionText text={text} users={users} />}
-        />
+      <EditableIssueDescription
+        bugId={bug.id}
+        initialTitle={bug.title}
+        initialDescription={bug.description}
+        canEdit={canEdit}
+        users={users}
+      >
         <dl className="mt-6 grid grid-cols-1 gap-3 text-sm text-slate-600 sm:grid-cols-2">
           {bug.type ? (
             <div>
@@ -398,7 +403,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
             <dd><LocalTime date={bug.updatedAt} /></dd>
           </div>
         </dl>
-      </section>
+      </EditableIssueDescription>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
