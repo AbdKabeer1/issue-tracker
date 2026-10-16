@@ -22,6 +22,11 @@ describe("parsePage", () => {
     expect(parsePage("3")).toBe(3);
     expect(parsePage(5)).toBe(5);
   });
+
+  it("handles repeated query parameter string array", () => {
+    expect(parsePage(["3", "2"])).toBe(3);
+    expect(parsePage([])).toBe(1);
+  });
 });
 
 describe("calculatePagination", () => {

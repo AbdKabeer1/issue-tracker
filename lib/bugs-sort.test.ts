@@ -62,6 +62,13 @@ describe("parseBugSort", () => {
     expect(parseBugSort("lowest")).toBe("lowest_votes");
     expect(parseBugSort("votes_asc")).toBe("lowest_votes");
   });
+
+  it("handles repeated query parameters as string array without throwing", () => {
+    expect(parseBugSort(["newest", "top_votes"])).toBe("newest");
+    expect(parseBugSort(["top_votes", "lowest_votes"])).toBe("top_votes");
+    expect(parseBugSort(["lowest_votes", "newest"])).toBe("lowest_votes");
+    expect(parseBugSort([])).toBe("newest");
+  });
 });
 
 describe("getBugOrderBy", () => {
