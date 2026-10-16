@@ -31,6 +31,14 @@ import {
 const FORGOT_PASSWORD_SUCCESS =
   "If an account exists for that email, we've sent a password reset link.";
 
+/** Raised inside the reset transaction when the token was already consumed. */
+class PasswordResetTokenAlreadyUsedError extends Error {
+  constructor() {
+    super("Password reset token already used");
+    this.name = "PasswordResetTokenAlreadyUsedError";
+  }
+}
+
 export async function loginAction(
   _prev: { error?: string } | undefined,
   formData: FormData,
@@ -288,22 +296,44 @@ export async function resetPasswordAction(
 
   const passwordHash = await hash(password, 10);
 
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: record.userId },
-      data: { passwordHash },
-    }),
-    prisma.passwordResetToken.update({
-      where: { id: record.id },
-      data: { usedAt: new Date() },
-    }),
-    prisma.passwordResetToken.deleteMany({
-      where: {
-        userId: record.userId,
-        id: { not: record.id },
-      },
-    }),
-  ]);
+  // #209: the previous code read the token, checked `usedAt` in application
+  // code, and only marked it used later - so two concurrent requests with the
+  // same valid token both passed the check and both wrote, defeating the
+  // documented single-use guarantee. Claim the token with a conditional update
+  // inside the transaction and abort unless exactly one row was claimed.
+  const outcome = await prisma
+    .$transaction(async (tx) => {
+      const claimed = await tx.passwordResetToken.updateMany({
+        where: { id: record.id, usedAt: null },
+        data: { usedAt: new Date() },
+      });
+
+      if (claimed.count !== 1) {
+        throw new PasswordResetTokenAlreadyUsedError();
+      }
+
+      await tx.user.update({
+        where: { id: record.userId },
+        data: { passwordHash },
+      });
+
+      await tx.passwordResetToken.deleteMany({
+        where: {
+          userId: record.userId,
+          id: { not: record.id },
+        },
+      });
+    })
+    .catch((error) => {
+      if (error instanceof PasswordResetTokenAlreadyUsedError) {
+        return {
+          error: "This reset link is invalid or has expired. Request a new one.",
+        };
+      }
+      throw error;
+    });
+
+  if (outcome) return outcome;
 
   redirect("/login");
 }
