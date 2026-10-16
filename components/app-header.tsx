@@ -1,13 +1,70 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { logoutAction } from "@/app/actions/auth";
 import { BrandLockup } from "@/components/brand-lockup";
-import { UserNameWithBadges } from "@/components/user-name-with-badges";
-import { Button } from "@/components/ui/button";
-import { isAdmin, isSuperAdmin, type AppRole } from "@/lib/roles";
 import { RoleSwitcher } from "@/components/role-switcher";
+import {
+  headerNavItems,
+  initialsOf,
+  isNavItemActive,
+  realRoleOf,
+  roleViewLabels,
+} from "@/lib/header-nav";
+import type { AppRole } from "@/lib/roles";
+
+/** Closes a popover on outside click or Escape, returning focus to its trigger. */
+function useDismiss(
+  open: boolean,
+  close: () => void,
+  containerRef: React.RefObject<HTMLElement | null>,
+  triggerRef: React.RefObject<HTMLElement | null>,
+) {
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) close();
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        close();
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, close, containerRef, triggerRef]);
+}
+
+function PlusIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+      <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
+    </svg>
+  );
+}
+
+function Avatar({ name, size = "md" }: { name?: string | null; size?: "md" | "lg" }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-teal-700 font-semibold text-white ${
+        size === "lg" ? "h-10 w-10 text-sm" : "h-8 w-8 text-xs"
+      }`}
+    >
+      {initialsOf(name)}
+    </span>
+  );
+}
+
+const linkFocus =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2";
 
 export function AppHeader({
   userName,
@@ -20,205 +77,262 @@ export function AppHeader({
   isRealSuperAdmin?: boolean;
   isRealAdmin?: boolean;
 }) {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const pathname = usePathname();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
 
-  const closeMenu = () => setMobileMenuOpen(false);
+  const accountRef = useRef<HTMLDivElement>(null);
+  const accountButtonRef = useRef<HTMLButtonElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+  const closeAccount = () => setAccountOpen(false);
+  const closeMenu = () => setMenuOpen(false);
+  useDismiss(accountOpen, closeAccount, accountRef, accountButtonRef);
+  useDismiss(menuOpen, closeMenu, headerRef, menuButtonRef);
+
+  // Close menus when the page changes (state adjusted during render, not in an effect).
+  const [lastPath, setLastPath] = useState(pathname);
+  if (pathname !== lastPath) {
+    setLastPath(pathname);
+    setMenuOpen(false);
+    setAccountOpen(false);
+  }
+
+  const items = headerNavItems(role);
+  const canSwitchRole = Boolean((isRealSuperAdmin || isRealAdmin) && role);
+  const realRole = realRoleOf({ isRealSuperAdmin, isRealAdmin });
+  const viewingAsOther = canSwitchRole && role !== realRole;
+  const onNewIssue = pathname?.replace(/\/+$/, "") === "/bugs/new";
+  const effectiveRole: AppRole = role ?? "user";
 
   return (
-    <header className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
-        {/* Left: Brand + Desktop Nav */}
-        <div className="flex items-center gap-6">
+    <header
+      ref={headerRef}
+      className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80"
+    >
+      <div className="mx-auto flex h-14 max-w-5xl items-center gap-4 px-4 sm:gap-6">
+        <div className="shrink-0">
           <BrandLockup href="/bugs" size="sm" />
-          <nav className="hidden items-center gap-3 text-sm sm:flex">
-            <Link href="/bugs" className="text-slate-600 hover:text-slate-900">
-              All issues
-            </Link>
-            <Link
-              href="/bugs/new"
-              className="rounded-md bg-teal-50 px-2 py-1 font-medium text-teal-800 hover:bg-teal-100"
-            >
-              New issue
-            </Link>
-            {isAdmin(role) ? (
-              <>
-                <Link
-                  href="/admin/categories"
-                  className="text-slate-600 hover:text-slate-900"
-                >
-                  Platforms
-                </Link>
-                <Link
-                  href="/admin/types"
-                  className="text-slate-600 hover:text-slate-900"
-                >
-                  Types
-                </Link>
-              </>
-            ) : null}
-            {isSuperAdmin(role) ? (
+        </div>
+
+        {/* Desktop navigation: the active page is underlined on the header's edge. */}
+        <nav aria-label="Main" className="hidden h-full items-stretch gap-1 md:flex">
+          {items.map((item) => {
+            const active = isNavItemActive(pathname, item.href);
+            return (
               <Link
-                href="/admin/users"
-                className="text-slate-600 hover:text-slate-900"
+                key={item.href}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={`relative inline-flex items-center rounded-sm px-2.5 text-sm transition-colors ${linkFocus} ${
+                  active
+                    ? "font-medium text-slate-900 after:absolute after:inset-x-2.5 after:-bottom-px after:h-0.5 after:rounded-full after:bg-teal-700"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
               >
-                Admins
+                {item.label}
               </Link>
-            ) : null}
-          </nav>
-        </div>
+            );
+          })}
+        </nav>
 
-        {/* Right: Desktop Controls */}
-        <div className="hidden items-center gap-3 sm:flex">
-          {(isRealSuperAdmin || isRealAdmin) && role ? (
-            <RoleSwitcher activeRole={role} isSuperAdmin={isRealSuperAdmin} />
+        <div className="ml-auto flex items-center gap-2 sm:gap-3">
+          {viewingAsOther ? (
+            <button
+              type="button"
+              onClick={() => setAccountOpen(true)}
+              className={`hidden items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 lg:inline-flex ${linkFocus}`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+              Viewing as {roleViewLabels[effectiveRole].toLowerCase()}
+            </button>
           ) : null}
-          {userName ? (
-            <UserNameWithBadges
-              name={userName}
-              role={role}
-              className="max-w-[14rem] text-sm text-slate-500"
-            />
-          ) : null}
-          <Link href="/settings" className="text-sm text-slate-600 hover:text-slate-900">
-            Settings
-          </Link>
-          <form action={logoutAction}>
-            <Button type="submit" variant="secondary">
-              Sign out
-            </Button>
-          </form>
-        </div>
 
-        {/* Right: Mobile Controls (Quick New Bug + Menu Toggle) */}
-        <div className="flex items-center gap-2 sm:hidden">
           <Link
             href="/bugs/new"
-            className="rounded-md bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-800 hover:bg-teal-100"
+            aria-current={onNewIssue ? "page" : undefined}
+            aria-label="New issue"
+            className={`inline-flex h-9 items-center gap-1.5 rounded-lg bg-teal-700 px-2.5 text-sm font-medium text-white shadow-xs transition-colors hover:bg-teal-800 sm:px-3.5 ${linkFocus}`}
           >
-            + Issue
+            <PlusIcon />
+            <span className="hidden sm:inline">New issue</span>
           </Link>
+
+          {/* Desktop account menu */}
+          <div ref={accountRef} className="relative hidden md:block">
+            <button
+              ref={accountButtonRef}
+              type="button"
+              aria-haspopup="true"
+              aria-expanded={accountOpen}
+              aria-controls="account-menu"
+              onClick={() => setAccountOpen((open) => !open)}
+              className={`relative flex items-center gap-1 rounded-full p-0.5 pr-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 ${linkFocus}`}
+            >
+              <span className="sr-only">Account menu for {userName}</span>
+              <Avatar name={userName} />
+              {viewingAsOther ? (
+                <span
+                  className="absolute left-6 top-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-amber-500 lg:hidden"
+                  aria-hidden="true"
+                />
+              ) : null}
+              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path
+                  fillRule="evenodd"
+                  d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </button>
+
+            {accountOpen ? (
+              <div
+                id="account-menu"
+                className="absolute right-0 top-full mt-2 w-64 origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg ring-1 ring-black/5 motion-safe:animate-[header-pop_120ms_ease-out]"
+              >
+                <AccountSummary userName={userName} role={effectiveRole} realRole={realRole} />
+                {canSwitchRole ? (
+                  <div className="border-t border-slate-100 px-2 py-2.5">
+                    <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
+                  </div>
+                ) : null}
+                <div className="border-t border-slate-100 pt-1.5">
+                  <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")}>
+                    Settings
+                  </MenuLink>
+                  <form action={logoutAction}>
+                    <button
+                      type="submit"
+                      className={`w-full rounded-md px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50 ${linkFocus}`}
+                    >
+                      Sign out
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {/* Mobile menu toggle */}
           <button
+            ref={menuButtonRef}
             type="button"
-            onClick={() => setMobileMenuOpen((prev) => !prev)}
-            aria-expanded={mobileMenuOpen}
-            aria-label="Toggle navigation menu"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-600"
+            onClick={() => setMenuOpen((open) => !open)}
+            aria-expanded={menuOpen}
+            aria-controls="mobile-menu"
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 md:hidden ${linkFocus}`}
           >
-            {mobileMenuOpen ? (
-              <svg
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+            {viewingAsOther ? (
+              <span
+                className="absolute right-1 top-1 h-2 w-2 rounded-full bg-amber-500"
                 aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            ) : (
-              <svg
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 6h16M4 12h16M4 18h16"
-                />
-              </svg>
-            )}
+              />
+            ) : null}
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              {menuOpen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h16M4 17h16" />
+              )}
+            </svg>
           </button>
         </div>
       </div>
 
-      {/* Mobile Collapsible Navigation Menu */}
-      {mobileMenuOpen && (
-        <div className="border-t border-slate-200 bg-white px-4 py-3 sm:hidden">
-          {userName && (
-            <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-2">
-              <span className="text-xs text-slate-500">Signed in as</span>
-              <UserNameWithBadges
-                name={userName}
-                role={role}
-                className="text-xs"
-              />
-            </div>
-          )}
-
-          {(isRealSuperAdmin || isRealAdmin) && role && (
-            <div className="mb-3 border-b border-slate-100 pb-2">
-              <RoleSwitcher activeRole={role} isSuperAdmin={isRealSuperAdmin} />
-            </div>
-          )}
-
-          <nav className="flex flex-col space-y-1">
-            <Link
-              href="/bugs"
-              onClick={closeMenu}
-              className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              All issues
-            </Link>
-            <Link
-              href="/bugs/new"
-              onClick={closeMenu}
-              className="rounded-lg bg-teal-50 px-3 py-2 text-sm font-medium text-teal-800 hover:bg-teal-100"
-            >
-              New issue
-            </Link>
-            {isAdmin(role) ? (
-              <>
-                <Link
-                  href="/admin/categories"
-                  onClick={closeMenu}
-                  className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Platforms
-                </Link>
-                <Link
-                  href="/admin/types"
-                  onClick={closeMenu}
-                  className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Types
-                </Link>
-              </>
-            ) : null}
-            {isSuperAdmin(role) ? (
-              <Link
-                href="/admin/users"
-                onClick={closeMenu}
-                className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+      {/* Mobile menu */}
+      {menuOpen ? (
+        <div
+          id="mobile-menu"
+          className="max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-4 pt-2 md:hidden"
+        >
+          <nav aria-label="Main" className="flex flex-col py-1">
+            {items.map((item) => (
+              <MenuLink
+                key={item.href}
+                href={item.href}
+                active={isNavItemActive(pathname, item.href)}
+                large
               >
-                Admin management
-              </Link>
-            ) : null}
-            <Link
-              href="/settings"
-              onClick={closeMenu}
-              className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
+                {item.label}
+              </MenuLink>
+            ))}
+            <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")} large>
               Settings
-            </Link>
+            </MenuLink>
           </nav>
 
-          <div className="mt-4 border-t border-slate-100 pt-3">
-            <form action={logoutAction} className="w-full">
-              <Button type="submit" variant="secondary" className="w-full">
+          <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50/60">
+            <AccountSummary userName={userName} role={effectiveRole} realRole={realRole} />
+            {canSwitchRole ? (
+              <div className="border-t border-slate-200 px-3 py-3">
+                <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
+              </div>
+            ) : null}
+            <form action={logoutAction} className="border-t border-slate-200 p-2">
+              <button
+                type="submit"
+                className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-white ${linkFocus}`}
+              >
                 Sign out
-              </Button>
+              </button>
             </form>
           </div>
         </div>
-      )}
+      ) : null}
     </header>
+  );
+}
+
+function AccountSummary({
+  userName,
+  role,
+  realRole,
+}: {
+  userName?: string | null;
+  role: AppRole;
+  realRole: AppRole;
+}) {
+  return (
+    <div className="flex items-center gap-3 px-2 py-2.5">
+      <Avatar name={userName} size="lg" />
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-slate-900">{userName}</p>
+        <p className="truncate text-xs text-slate-500">
+          {realRole === "user" ? "Member" : roleViewLabels[realRole]}
+          {role !== realRole ? (
+            <span className="text-amber-700"> · viewing as {roleViewLabels[role].toLowerCase()}</span>
+          ) : null}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function MenuLink({
+  href,
+  active,
+  large = false,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  large?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={`block rounded-md ${large ? "px-3 py-2.5 text-[15px]" : "px-2 py-1.5 text-sm"} ${linkFocus} ${
+        active
+          ? "bg-teal-50 font-medium text-teal-900"
+          : "text-slate-700 hover:bg-slate-50"
+      }`}
+    >
+      {children}
+    </Link>
   );
 }
