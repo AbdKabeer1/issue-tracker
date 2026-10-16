@@ -44,14 +44,20 @@ export function resolveEffectiveRole({
   baseRole?: AppRole | null;
   activeRoleOverride?: string | null;
 }): AppRole {
-  if (
-    isRealSuperAdmin &&
-    (activeRoleOverride === "user" ||
+  if (isRealSuperAdmin) {
+    if (
+      activeRoleOverride === "user" ||
       activeRoleOverride === "admin" ||
-      activeRoleOverride === "super_admin")
-  ) {
-    return activeRoleOverride;
+      activeRoleOverride === "super_admin"
+    ) {
+      return activeRoleOverride;
+    }
+  } else if (baseRole === "admin") {
+    if (activeRoleOverride === "user" || activeRoleOverride === "admin") {
+      return activeRoleOverride;
+    }
   }
   return baseRole ?? "user";
 }
+
 

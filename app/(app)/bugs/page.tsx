@@ -2,7 +2,9 @@ import Link from "next/link";
 import { Suspense } from "react";
 import type { Prisma, Severity, Status } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { resolveSessionUserId } from "@/lib/session-user";
+import { auth } from "@/auth";
+import { requireUser } from "@/lib/auth-helpers";
+import type { AppRole } from "@/lib/roles";
 import { BugFilters } from "@/components/bug-filters";
 import { VoteButton } from "@/components/vote-button";
 import { Badge } from "@/components/ui/badge";
@@ -54,16 +56,18 @@ export default async function BugsPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const resolved = await resolveSessionUserId();
-  const userId = "userId" in resolved ? resolved.userId : undefined;
-  const currentUser = userId
-    ? await prisma.user.findUnique({
-        where: { id: userId },
-        select: { role: true },
-      })
-    : null;
-  const canDelete = canDeleteTicket(currentUser?.role);
-  const canBoost = canBoostTicket(currentUser?.role);
+  const session = await auth();
+  let userId: string | undefined;
+  let effectiveRole: AppRole | null | undefined;
+
+  if (session?.user) {
+    const user = await requireUser();
+    userId = user.id;
+    effectiveRole = user.role;
+  }
+
+  const canDelete = canDeleteTicket(effectiveRole);
+  const canBoost = canBoostTicket(effectiveRole);
   const params = await searchParams;
   const currentSort = parseBugSort(params.sort);
   const where: Prisma.BugWhereInput = {};

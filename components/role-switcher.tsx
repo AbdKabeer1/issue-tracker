@@ -6,9 +6,13 @@ import type { AppRole } from "@/lib/roles";
 
 type RoleSwitcherProps = {
   activeRole: AppRole;
+  isSuperAdmin?: boolean;
 };
 
-export function RoleSwitcher({ activeRole }: RoleSwitcherProps) {
+export function RoleSwitcher({
+  activeRole,
+  isSuperAdmin = false,
+}: RoleSwitcherProps) {
   const [pending, startTransition] = useTransition();
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -42,7 +46,9 @@ export function RoleSwitcher({ activeRole }: RoleSwitcherProps) {
                 : "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
           }`}
         >
-          <option value="super_admin">👑 Super Admin</option>
+          {isSuperAdmin ? (
+            <option value="super_admin">👑 Super Admin</option>
+          ) : null}
           <option value="admin">🛡️ Team Lead (Admin)</option>
           <option value="user">👤 Normal User</option>
         </select>
