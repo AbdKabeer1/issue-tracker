@@ -39,11 +39,14 @@ function Stroke({ children }: { children: ReactNode }) {
 export function BoldIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path
-        fill="currentColor"
-        fillRule="evenodd"
-        d="M4 2h4.1c1.4 0 2.4.8 2.4 2 0 .7-.3 1.3-.9 1.6.8.3 1.3 1 1.3 1.9 0 1.5-1.1 2.5-2.8 2.5H4V2Zm2.4 3.6h1.2c.5 0 .8-.3.8-.8s-.3-.8-.8-.8H6.4v1.6Zm0 3.7h1.4c.6 0 1-.4 1-1.1 0-.7-.4-1.1-1-1.1H6.4v2.2Z"
-      />
+      {/* Bold B: enlarged and vertically centered in the 16px icon frame. */}
+      <g transform="translate(0 0.2) scale(1 1.3)">
+        <path
+          fill="currentColor"
+          fillRule="evenodd"
+          d="M4 2h4.1c1.4 0 2.4.8 2.4 2 0 .7-.3 1.3-.9 1.6.8.3 1.3 1 1.3 1.9 0 1.5-1.1 2.5-2.8 2.5H4V2Zm2.4 3.6h1.2c.5 0 .8-.3.8-.8s-.3-.8-.8-.8H6.4v1.6Zm0 3.7h1.4c.6 0 1-.4 1-1.1 0-.7-.4-1.1-1-1.1H6.4v2.2Z"
+        />
+      </g>
     </Icon>
   );
 }
@@ -62,9 +65,22 @@ export function ItalicIcon(props: IconProps) {
 export function StrikethroughIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path
+      <text
+        x="8"
+        y="12"
         fill="currentColor"
-        d="M3.8 4.2h8.4v1.5H3.8V4.2Zm-1.2 2.8h10.8v1.8H2.6V7Zm1.2 2.8h8.4v1.5H3.8V9.8Z"
+        fontSize="12"
+        fontWeight="600"
+        textAnchor="middle"
+      >
+        S
+      </text>
+      <path
+        d="M2.5 8h11"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
       />
     </Icon>
   );

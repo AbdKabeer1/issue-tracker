@@ -20,6 +20,7 @@ const typeLabel: Record<ActivityType, string> = {
   unboosted: "Unboost",
   deleted: "Deleted",
   restored: "Restored",
+  comment_deleted: "Moderation",
 };
 
 export function ActivityTimeline({

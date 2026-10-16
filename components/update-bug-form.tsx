@@ -128,7 +128,7 @@ export function UpdateBugForm({
                 htmlFor="categoryId"
                 className="mb-1 block text-xs font-medium"
               >
-                Category
+                Platform
               </label>
               <select
                 id="categoryId"

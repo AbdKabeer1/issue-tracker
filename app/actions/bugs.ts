@@ -49,6 +49,8 @@ import {
   TICKET_EDIT_ERRORS,
 } from "@/lib/ticket-editing";
 import { Prisma, type ActivityType } from "@prisma/client";
+import { notifyLater } from "@/lib/notify";
+import type { NotificationEvent } from "@/lib/notifications";
 
 export type ActionResult = { error?: string; ok?: boolean };
 
@@ -154,7 +156,7 @@ export async function createBugAction(
       select: { id: true, isActive: true },
     });
     if (!category || !category.isActive) {
-      return { error: "Category not found or inactive" };
+      return { error: "Platform not found or inactive" };
     }
   }
 
@@ -194,6 +196,17 @@ export async function createBugAction(
     }
     throw error;
   }
+
+  const events: NotificationEvent[] = [];
+  const actor = { actorId: userId, actorName: user.name ?? "Someone", bugId: bug.id, bugTitle: bug.title };
+  const mentioned = extractMentionedUserIds(description);
+  if (mentioned.length > 0) {
+    events.push({ ...actor, kind: "mentioned", place: "description", recipientIds: mentioned });
+  }
+  if (assigneeId) {
+    events.push({ ...actor, kind: "assignee_changed", fromUserId: null, toUserId: assigneeId });
+  }
+  if (events.length > 0) notifyLater(...events);
 
   revalidatePath("/bugs");
   redirect(`/bugs/${bug.id}`);
@@ -361,7 +374,7 @@ export async function updateBugAction(
       select: { id: true },
     });
     if (!cat) {
-      return { error: "Category not found" };
+      return { error: "Platform not found" };
     }
   }
 
@@ -398,6 +411,16 @@ export async function updateBugAction(
     }
     throw error;
   }
+
+  const events: NotificationEvent[] = [];
+  const actor = { actorId: userId, actorName: user.name ?? "Someone", bugId, bugTitle: existing.title };
+  if (data.assigneeId !== undefined && data.assigneeId !== existing.assigneeId) {
+    events.push({ ...actor, kind: "assignee_changed", fromUserId: existing.assigneeId, toUserId: data.assigneeId });
+  }
+  if (data.status && data.status !== existing.status) {
+    events.push({ ...actor, kind: "status_changed", reporterId: existing.reporterId, from: existing.status, to: data.status });
+  }
+  if (events.length > 0) notifyLater(...events);
 
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
@@ -503,7 +526,7 @@ export async function addCommentAction(
 
   const bug = await prisma.bug.findUnique({
     where: { id: bugId },
-    select: { id: true, isDeleted: true },
+    select: { id: true, isDeleted: true, title: true },
   });
   if (!bug || bug.isDeleted) {
     return { error: "Issue not found" };
@@ -514,11 +537,14 @@ export async function addCommentAction(
   if (parentId) {
     const parent = await prisma.comment.findUnique({
       where: { id: parentId },
-      select: { id: true, bugId: true, parentId: true },
+      select: { id: true, bugId: true, parentId: true, deletedAt: true },
     });
 
     if (!parent || parent.bugId !== bugId) {
       return { error: "Parent comment not found on this ticket" };
+    }
+    if (parent.deletedAt) {
+      return { error: "You can't reply to a deleted comment" };
     }
 
     const threadComments = await prisma.comment.findMany({
@@ -540,13 +566,14 @@ export async function addCommentAction(
   const normalizedBody = await normalizeMentionTags(parsed.data.body);
 
   await prisma.$transaction(async (tx) => {
-    await tx.comment.create({
+    const created = await tx.comment.create({
       data: {
         bugId,
         authorId: userId,
         body: normalizedBody,
         parentId: parentId ?? null,
       },
+      select: { id: true },
     });
     await tx.bugActivity.create({
       data: {
@@ -556,6 +583,7 @@ export async function addCommentAction(
         summary: commentedSummary(normalizedBody),
         metadata: {
           field: "comment",
+          commentId: created.id,
           commentPreview: commentPreview(normalizedBody),
         } as Prisma.InputJsonValue,
       },
@@ -565,6 +593,21 @@ export async function addCommentAction(
       data: { updatedAt: new Date() },
     });
   });
+
+  const mentioned = extractMentionedUserIds(normalizedBody);
+  if (mentioned.length > 0) {
+    const author = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+    notifyLater({
+      kind: "mentioned",
+      actorId: userId,
+      actorName: author?.name ?? "Someone",
+      bugId,
+      bugTitle: bug.title,
+      place: "comment",
+      recipientIds: mentioned,
+      excerpt: commentPreview(normalizedBody),
+    });
+  }
 
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
@@ -853,6 +896,7 @@ export async function selfAssignBugAction(
     where: { id: bugId },
     select: {
       id: true,
+      title: true,
       assigneeId: true,
       isDeleted: true,
       assignee: { select: { name: true } },
@@ -910,6 +954,16 @@ export async function selfAssignBugAction(
     console.error("Failed to self-assign issue:", error);
     return { error: TICKET_ASSIGN_ERRORS.failed };
   }
+
+  notifyLater({
+    kind: "assignee_changed",
+    actorId: userId,
+    actorName: user.name ?? "Someone",
+    bugId,
+    bugTitle: existing.title,
+    fromUserId: existing.assigneeId,
+    toUserId: targetAssigneeId,
+  });
 
   revalidatePath(`/bugs/${bugId}`);
   revalidatePath("/bugs");

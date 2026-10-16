@@ -13,6 +13,7 @@ import {
 } from "@/lib/link-preview";
 import { stripMarkdown } from "@/lib/rich-text";
 import { absoluteUrl } from "@/lib/site-url";
+import { SHARE_IMAGE } from "@/lib/share-image";
 import {
   severityClass,
   severityLabels,
@@ -37,6 +38,7 @@ import { RestoreBugButton } from "@/components/restore-bug-button";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { SelfAssignButton } from "@/components/self-assign-button";
 import { EditableIssueDescription } from "@/components/editable-issue-description";
+import { withCurrentOption } from "@/lib/triage-options";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
@@ -72,8 +74,7 @@ export async function generateMetadata({
     description: stripMarkdown(bug.description),
   });
   const canonical = absoluteUrl(`/bugs/${id}`);
-  // Brand mark from public/; most unfurlers accept SVG, raster copy at /Zedu.png.
-  const image = absoluteUrl("/zedu-mark.svg");
+  const image = absoluteUrl(SHARE_IMAGE.url);
   const title = bug.title;
 
   return {
@@ -89,7 +90,7 @@ export async function generateMetadata({
       siteName: "Zedu Issues",
       authors: [bug.reporter.name],
       modifiedTime: bug.updatedAt.toISOString(),
-      images: [{ url: image, alt: "Zedu Issues" }],
+      images: [{ ...SHARE_IMAGE, url: image }],
     },
     twitter: {
       card: "summary_large_image",
@@ -162,7 +163,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         type: true,
         reporter: { select: { name: true, email: true, role: true } },
         assignee: { select: { id: true, name: true, role: true } },
-        category: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true, isActive: true } },
         comments: {
           include: {
             author: { select: { name: true, role: true } },
@@ -170,6 +171,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
               select: {
                 id: true,
                 body: true,
+                deletedAt: true,
                 author: { select: { name: true, role: true } },
               },
             },
@@ -388,7 +390,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           </div>
           {bug.category ? (
             <div>
-              <dt className="font-medium text-slate-500">Category</dt>
+              <dt className="font-medium text-slate-500">Platform</dt>
               <dd>{bug.category.name}</dd>
             </div>
           ) : null}
@@ -450,8 +452,8 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           assigneeId={bug.assigneeId}
           categoryId={bug.categoryId}
           users={users}
-          categories={categories}
-          types={types}
+          categories={withCurrentOption(categories, bug.category)}
+          types={withCurrentOption(types, bug.type)}
           canEditTriage={canTriage}
         />
       ) : null}
@@ -467,6 +469,8 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           reporterId={bug.reporterId}
           comments={commentTree}
           users={users}
+          currentUserId={user.id}
+          currentUserRole={user.role}
         />
       </section>
 

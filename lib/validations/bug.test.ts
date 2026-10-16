@@ -410,3 +410,22 @@ describe("editBugContentSchema", () => {
   });
 });
 
+describe("saving code samples (#114)", () => {
+  const code = "```tsx\n<Provider store={store}>\n  <div className=\"app\" />\n</Provider>\nconst p: Promise<P> = load();\n```";
+
+  it("keeps code blocks in issue descriptions", () => {
+    const parsed = createBugSchema.safeParse({
+      title: "Crash in provider",
+      description: `Steps to reproduce:\n\n${code}`,
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.description).toBe(`Steps to reproduce:\n\n${code}`);
+  });
+
+  it("keeps code blocks in comments", () => {
+    const parsed = commentSchema.safeParse({ body: code });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.body).toBe(code);
+  });
+});
+

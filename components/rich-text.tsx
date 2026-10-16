@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { looksLikeMarkdown, safeHref, stripUnsafeHtmlTags } from "@/lib/rich-text";
+import { looksLikeMarkdown, safeHref, stripLegacyMarkup } from "@/lib/rich-text";
 
 type RichTextProps = {
   content: string;
@@ -9,21 +9,23 @@ type RichTextProps = {
   renderMentions?: (text: string) => ReactNode;
 };
 
-const DEFAULT_CLASS_NAME =
-  "rich-text mt-3 space-y-2 text-slate-800 [&_a]:font-medium [&_a]:text-teal-700 [&_a]:underline [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.9em] [&_del]:text-slate-500 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-slate-900 [&_pre]:p-3 [&_pre]:text-sm [&_pre]:text-slate-100 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5";
+// Inline-code styles are scoped to `:not(pre) > code`; fenced blocks keep the
+// dark `pre` palette instead of light-on-light text (#113).
+export const DEFAULT_CLASS_NAME =
+  "rich-text mt-3 space-y-2 text-slate-800 [&_a]:font-medium [&_a]:text-teal-700 [&_a]:underline [&_:not(pre)>code]:rounded [&_:not(pre)>code]:bg-slate-100 [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:text-[0.9em] [&_del]:text-slate-500 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-slate-900 [&_pre]:p-3 [&_pre]:text-sm [&_pre]:text-slate-100 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5";
 
 /**
  * Safely render Markdown (or plain text) without raw HTML injection.
  *
  * Everything is emitted as React elements, so user content is escaped by
  * React itself; the only HTML-ish output is a link/image whose href has been
- * checked by `safeHref` (http/https/mailto only). Raw HTML left in the content
- * (e.g. legacy `<u>` tags) is stripped so it reads as text.
+ * checked by `safeHref` (http/https/mailto only). Tag-like text such as
+ * `<Button>` is displayed as typed; only legacy `<u>` underline tags are dropped.
  */
 export function RichText({ content, className, renderMentions }: RichTextProps) {
   if (!content) return null;
 
-  const safeContent = stripUnsafeHtmlTags(content);
+  const safeContent = stripLegacyMarkup(content);
   const extra = className ? ` ${className}` : "";
 
   if (!looksLikeMarkdown(safeContent)) {

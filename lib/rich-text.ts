@@ -32,16 +32,47 @@ export function stripMarkdown(text: string): string {
 }
 
 /**
- * Remove any raw HTML left in user content.
+ * Prepare stored content for display (#116).
  *
- * Rendering never injects HTML (React escapes every text node), so this only
- * exists so legacy markup such as `<u>` or `<script>` reads as plain text
- * instead of leaking tags into the page.
+ * Rendering never injects HTML: every text node is escaped by React, so text
+ * such as `<Button>`, `List<String>` or even `<script>` is shown exactly as
+ * typed. The only markup removed is the legacy `<u>…</u>` underline that an
+ * older editor wrote, and only outside code, so its inner text still reads
+ * normally. `&nbsp;` from old pastes becomes a space.
  */
-export function stripUnsafeHtmlTags(text: string): string {
-  return text
-    .replace(/<\/?[a-zA-Z][^>]*>/g, "")
-    .replace(/&nbsp;/g, " ");
+export function stripLegacyMarkup(text: string): string {
+  const out: string[] = [];
+  let prose: string[] = [];
+  let inFence: string | null = null;
+
+  const cleanProse = (chunk: string) =>
+    chunk
+      .split(/(`+[\s\S]*?`+)/)
+      .map((part, i) =>
+        i % 2 === 1 ? part : part.replace(/<\/?u>/g, "").replace(/&nbsp;/g, " "),
+      )
+      .join("");
+
+  for (const line of text.split("\n")) {
+    const fence = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+    if (inFence) {
+      out.push(line);
+      if (fence && fence[0] === inFence[0] && fence.length >= inFence.length && line.trim() === fence) {
+        inFence = null;
+      }
+      continue;
+    }
+    if (fence) {
+      if (prose.length) out.push(cleanProse(prose.join("\n")));
+      prose = [];
+      inFence = fence;
+      out.push(line);
+      continue;
+    }
+    prose.push(line);
+  }
+  if (prose.length) out.push(cleanProse(prose.join("\n")));
+  return out.join("\n");
 }
 
 export type WrapKind =
