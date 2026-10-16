@@ -34,6 +34,7 @@ import {
 import { fetchVoterSummary } from "@/lib/voter-summaries";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
 import { DeleteBugButton } from "@/components/delete-bug-button";
+import { BoostTicketButton } from "@/components/boost-ticket-button";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
@@ -56,8 +57,8 @@ export async function generateMetadata({
 
   if (!bug) {
     return {
-      title: "Bug not found",
-      description: "This bug report could not be found.",
+      title: "Issue not found",
+      description: "This issue could not be found.",
       robots: { index: false, follow: false },
     };
   }
@@ -82,10 +83,10 @@ export async function generateMetadata({
       description,
       url: canonical,
       type: "article",
-      siteName: "Zedu Bugs",
+      siteName: "Zedu Issues",
       authors: [bug.reporter.name],
       modifiedTime: bug.updatedAt.toISOString(),
-      images: [{ url: image, alt: "Zedu Bugs" }],
+      images: [{ url: image, alt: "Zedu Issues" }],
     },
     twitter: {
       card: "summary_large_image",
@@ -122,7 +123,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
 
     return (
       <div className="mx-auto max-w-2xl space-y-4 py-10">
-        <p className="text-sm text-slate-500">Zedu Bugs</p>
+        <p className="text-sm text-slate-500">Zedu Issues</p>
         <h1 className="text-2xl font-semibold text-slate-900">{bug.title}</h1>
         <div className="flex flex-wrap gap-2">
           <Badge className={statusClass[bug.status]}>
@@ -208,7 +209,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
           <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
-            ← Back to bugs
+            ← Back to issues
           </Link>
           <div className="mt-3 space-y-3">
             <div className="space-y-2">
@@ -216,6 +217,11 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                 {bug.title}
               </h1>
               <div className="flex flex-wrap items-center gap-2">
+                {bug.isBoosted ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900 shadow-2xs">
+                    ⚡ Boosted
+                  </span>
+                ) : null}
                 {bug.type ? (
                   <span
                     className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getIssueTypeBadgeClass(
@@ -259,16 +265,23 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           </div>
         </div>
 
-        {canDelete ? (
-          <div className="shrink-0 self-start sm:pt-6">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6">
+          {canTriage ? (
+            <BoostTicketButton
+              bugId={bug.id}
+              isBoosted={bug.isBoosted}
+              size="sm"
+            />
+          ) : null}
+          {canDelete ? (
             <DeleteBugButton
               bugId={bug.id}
               bugTitle={bug.title}
               variant="danger-secondary"
               size="sm"
             />
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">

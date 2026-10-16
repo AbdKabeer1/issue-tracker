@@ -5,11 +5,13 @@ import { redirect } from "next/navigation";
 import {
   activityCreateData,
   assigneeChangedSummary,
+  boostedSummary,
   commentedSummary,
   commentPreview,
   createdSummary,
   severityChangedSummary,
   statusChangedSummary,
+  unboostedSummary,
   type ActivityMetadata,
 } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
@@ -31,6 +33,7 @@ import {
 } from "@/lib/validations/bug";
 import { calculateVoteChange, isValidVoteDirection } from "@/lib/voting";
 import { canDeleteTicket, TICKET_DELETION_ERRORS } from "@/lib/ticket-deletion";
+import { canBoostTicket, TICKET_BOOST_ERRORS } from "@/lib/ticket-boosting";
 import { Prisma, type ActivityType } from "@prisma/client";
 
 export type ActionResult = { error?: string; ok?: boolean };
@@ -178,13 +181,13 @@ export async function updateBugAction(
     },
   });
   if (!existing) {
-    return { error: "Bug not found" };
+    return { error: "Issue not found" };
   }
 
   const isAssignee = existing.assigneeId === userId;
   if (!admin && !isAssignee) {
     return {
-      error: "Only the assignee or an admin can update this bug",
+      error: "Only the assignee or an admin can update this issue",
     };
   }
 
@@ -365,7 +368,7 @@ export async function addCommentAction(
     select: { id: true },
   });
   if (!bug) {
-    return { error: "Bug not found" };
+    return { error: "Issue not found" };
   }
 
   const parentId = parsed.data.parentId;
@@ -460,7 +463,7 @@ export async function toggleVoteAction(
     select: { id: true },
   });
   if (!bug) {
-    return { error: "Bug not found" };
+    return { error: "Issue not found" };
   }
 
   const result = await prisma.$transaction(async (tx) => {
@@ -558,4 +561,66 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
   revalidatePath("/bugs");
   redirect("/bugs");
 }
+
+/**
+ * Toggles the boosted status of a bug. Admins and super admins only.
+ * When boosted, the ticket appears pinned to the top of the list regardless of vote count.
+ */
+export async function toggleBoostBugAction(
+  bugId: string,
+): Promise<ActionResult & { isBoosted?: boolean }> {
+  const user = await requireUser();
+  if (!canBoostTicket(user.role)) {
+    return { error: TICKET_BOOST_ERRORS.unauthorized };
+  }
+
+  if (!bugId || typeof bugId !== "string" || bugId.trim().length === 0) {
+    return { error: TICKET_BOOST_ERRORS.invalidId };
+  }
+
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId },
+    select: { id: true, isBoosted: true },
+  });
+
+  if (!existing) {
+    return { error: TICKET_BOOST_ERRORS.notFound };
+  }
+
+  const nextBoosted = !existing.isBoosted;
+  const now = new Date();
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.bug.update({
+        where: { id: bugId },
+        data: {
+          isBoosted: nextBoosted,
+          boostedAt: nextBoosted ? now : null,
+        },
+      });
+
+      await tx.bugActivity.create({
+        data: {
+          bugId,
+          actorId: user.id,
+          type: nextBoosted ? "boosted" : "unboosted",
+          summary: nextBoosted ? boostedSummary() : unboostedSummary(),
+          metadata: {
+            field: "isBoosted",
+            to: String(nextBoosted),
+          } as Prisma.InputJsonValue,
+        },
+      });
+    });
+  } catch (error) {
+    console.error("Failed to toggle bug boost:", error);
+    return { error: TICKET_BOOST_ERRORS.failed };
+  }
+
+  revalidatePath("/bugs");
+  revalidatePath(`/bugs/${bugId}`);
+  return { ok: true, isBoosted: nextBoosted };
+}
+
 

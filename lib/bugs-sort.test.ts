@@ -65,23 +65,29 @@ describe("parseBugSort", () => {
 });
 
 describe("getBugOrderBy", () => {
-  it("returns createdAt desc and id desc for newest", () => {
+  it("returns isBoosted desc, boostedAt desc, and createdAt desc for newest", () => {
     expect(getBugOrderBy("newest")).toEqual([
+      { isBoosted: "desc" },
+      { boostedAt: "desc" },
       { createdAt: "desc" },
       { id: "desc" },
     ]);
   });
 
-  it("returns voteCount desc, updatedAt desc, createdAt desc for top_votes", () => {
+  it("returns isBoosted desc, boostedAt desc, and voteCount desc for top_votes", () => {
     expect(getBugOrderBy("top_votes")).toEqual([
+      { isBoosted: "desc" },
+      { boostedAt: "desc" },
       { voteCount: "desc" },
       { updatedAt: "desc" },
       { createdAt: "desc" },
     ]);
   });
 
-  it("returns voteCount asc, updatedAt desc, createdAt desc for lowest_votes", () => {
+  it("returns isBoosted desc, boostedAt desc, and voteCount asc for lowest_votes", () => {
     expect(getBugOrderBy("lowest_votes")).toEqual([
+      { isBoosted: "desc" },
+      { boostedAt: "desc" },
       { voteCount: "asc" },
       { updatedAt: "desc" },
       { createdAt: "desc" },
@@ -203,5 +209,28 @@ describe("sortBugs", () => {
   it("sorts by lowest_votes (voteCount ascending with updatedAt tiebreaker)", () => {
     const sorted = sortBugs(sampleBugs, "lowest_votes");
     expect(sorted.map((b) => b.id)).toEqual(["c", "a", "d", "b"]);
+  });
+
+  it("always puts boosted tickets at the top regardless of votes or sort option", () => {
+    const bugsWithBoost = [
+      { id: "regular-high-votes", voteCount: 100, isBoosted: false, createdAt: "2026-01-01T00:00:00.000Z" },
+      { id: "boosted-low-votes", voteCount: 0, isBoosted: true, boostedAt: "2026-01-10T00:00:00.000Z", createdAt: "2026-01-02T00:00:00.000Z" },
+      { id: "regular-recent", voteCount: 5, isBoosted: false, createdAt: "2026-01-20T00:00:00.000Z" },
+    ];
+
+    const sortedByVotes = sortBugs(bugsWithBoost, "top_votes");
+    expect(sortedByVotes[0].id).toBe("boosted-low-votes");
+
+    const sortedByNewest = sortBugs(bugsWithBoost, "newest");
+    expect(sortedByNewest[0].id).toBe("boosted-low-votes");
+  });
+
+  it("orders multiple boosted tickets by boostedAt descending", () => {
+    const multipleBoosted = [
+      { id: "boosted-first", isBoosted: true, boostedAt: "2026-01-01T00:00:00.000Z", voteCount: 10, createdAt: "2026-01-01T00:00:00.000Z" },
+      { id: "boosted-latest", isBoosted: true, boostedAt: "2026-01-05T00:00:00.000Z", voteCount: 2, createdAt: "2026-01-01T00:00:00.000Z" },
+    ];
+    const sorted = sortBugs(multipleBoosted, "top_votes");
+    expect(sorted.map((b) => b.id)).toEqual(["boosted-latest", "boosted-first"]);
   });
 });

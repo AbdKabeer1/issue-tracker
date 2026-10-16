@@ -16,14 +16,14 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),
   title: {
-    default: "Zedu Bugs",
-    template: "%s · Zedu Bugs",
+    default: "Zedu Issues",
+    template: "%s · Zedu Issues",
   },
-  description: "Zedu bug tracking interface — HNG15 mini-project",
+  description: "Zedu issue tracking interface — HNG15 mini-project",
   openGraph: {
-    siteName: "Zedu Bugs",
+    siteName: "Zedu Issues",
     type: "website",
-    images: [{ url: "/zedu-mark.svg", alt: "Zedu Bugs" }],
+    images: [{ url: "/zedu-mark.svg", alt: "Zedu Issues" }],
   },
   twitter: {
     card: "summary_large_image",

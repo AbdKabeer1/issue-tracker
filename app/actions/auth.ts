@@ -219,9 +219,9 @@ export async function forgotPasswordAction(
       const resetUrl = buildPasswordResetUrl(rawToken);
       await sendMail({
         to: email,
-        subject: "Reset your Zedu Bugs password",
+        subject: "Reset your Zedu Issues password",
         text: [
-          "You requested a password reset for your Zedu Bugs account.",
+          "You requested a password reset for your Zedu Issues account.",
           "",
           `Open this link within 30 minutes to set a new password:`,
           resetUrl,

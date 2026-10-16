@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 export const DEFAULT_ISSUE_TYPES = [
   { name: "Marketing", description: "Marketing and promotion related tasks" },
   { name: "Design", description: "UI/UX and visual design tasks" },
-  { name: "Fix", description: "Bug fixes and defect resolutions" },
+  { name: "Fix", description: "Issue fixes and defect resolutions" },
   { name: "Feat", description: "New features and enhancements" },
 ] as const;
 

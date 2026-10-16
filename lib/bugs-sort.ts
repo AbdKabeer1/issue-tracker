@@ -58,22 +58,43 @@ export function parseBugSort(raw?: string | null): BugSortOption {
 export function getBugOrderBy(
   sort: BugSortOption,
 ): Prisma.BugOrderByWithRelationInput[] {
-  switch (sort) {
-    case "newest":
-      return [{ createdAt: "desc" }, { id: "desc" }];
-    case "top_votes":
-      return [
-        { voteCount: "desc" },
-        { updatedAt: "desc" },
-        { createdAt: "desc" },
-      ];
-    case "lowest_votes":
-      return [
-        { voteCount: "asc" },
-        { updatedAt: "desc" },
-        { createdAt: "desc" },
-      ];
+  const baseOrder: Prisma.BugOrderByWithRelationInput[] = (() => {
+    switch (sort) {
+      case "newest":
+        return [{ createdAt: "desc" }, { id: "desc" }];
+      case "top_votes":
+        return [
+          { voteCount: "desc" },
+          { updatedAt: "desc" },
+          { createdAt: "desc" },
+        ];
+      case "lowest_votes":
+        return [
+          { voteCount: "asc" },
+          { updatedAt: "desc" },
+          { createdAt: "desc" },
+        ];
+    }
+  })();
+
+  // Boosted tickets always take precedence at the top, followed by active sort
+  return [{ isBoosted: "desc" }, { boostedAt: "desc" }, ...baseOrder];
+}
+
+export function compareBoosted<
+  T extends { isBoosted?: boolean; boostedAt?: Date | string | null },
+>(a: T, b: T): number {
+  const aBoosted = Boolean(a.isBoosted);
+  const bBoosted = Boolean(b.isBoosted);
+  if (aBoosted !== bBoosted) {
+    return aBoosted ? -1 : 1;
   }
+  if (aBoosted && bBoosted) {
+    const aTime = a.boostedAt ? new Date(a.boostedAt).getTime() : 0;
+    const bTime = b.boostedAt ? new Date(b.boostedAt).getTime() : 0;
+    if (bTime !== aTime) return bTime - aTime;
+  }
+  return 0;
 }
 
 export function compareBugsByPopularity(
@@ -110,6 +131,8 @@ export function compareBugsByNewest(
 export type BugSortableItem = {
   id?: string;
   voteCount: number;
+  isBoosted?: boolean;
+  boostedAt?: Date | string | null;
   createdAt: Date | string;
   updatedAt?: Date | string;
 };
@@ -124,22 +147,22 @@ export function sortBugs<T extends BugSortableItem>(
   bugs: T[],
   sort: BugSortOption,
 ): T[] {
-  switch (sort) {
-    case "newest":
-      return [...bugs].sort(compareBugsByNewest);
-    case "top_votes":
-      return [...bugs].sort((a, b) =>
-        compareBugsByPopularity(
+  return [...bugs].sort((a, b) => {
+    const boostDiff = compareBoosted(a, b);
+    if (boostDiff !== 0) return boostDiff;
+    switch (sort) {
+      case "newest":
+        return compareBugsByNewest(a, b);
+      case "top_votes":
+        return compareBugsByPopularity(
           { voteCount: a.voteCount, updatedAt: a.updatedAt ?? a.createdAt },
           { voteCount: b.voteCount, updatedAt: b.updatedAt ?? b.createdAt },
-        ),
-      );
-    case "lowest_votes":
-      return [...bugs].sort((a, b) =>
-        compareBugsByLowestVotes(
+        );
+      case "lowest_votes":
+        return compareBugsByLowestVotes(
           { voteCount: a.voteCount, updatedAt: a.updatedAt ?? a.createdAt },
           { voteCount: b.voteCount, updatedAt: b.updatedAt ?? b.createdAt },
-        ),
-      );
-  }
+        );
+    }
+  });
 }
