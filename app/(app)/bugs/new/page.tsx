@@ -27,7 +27,7 @@ export default async function NewBugPage() {
           videos) so the team can triage quickly.
         </p>
       </div>
-      <div className="rounded-xl border border-slate-200 bg-white p-6">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <CreateBugForm users={users} isAdmin={admin} />
       </div>
     </div>

@@ -18,6 +18,9 @@ import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { escapeSearchQuery } from "@/lib/search";
 import { calculatePagination } from "@/lib/pagination";
 import { PaginationControls } from "@/components/pagination-controls";
+import { fetchVoterSummaries } from "@/lib/voter-summaries";
+import { createEmptyVoterSummary } from "@/lib/voters";
+import { VoterAvatars } from "@/components/voter-avatars";
 
 type SearchParams = Promise<{
   q?: string;
@@ -78,11 +81,14 @@ export default async function BugsPage({
     take: pagination.take,
   });
 
+  const bugIds = bugs.map((bug) => bug.id);
+  const voterSummaries = await fetchVoterSummaries(bugIds);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Bugs</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Bugs</h1>
           <p className="text-sm text-slate-600">
             {totalCount} result{totalCount === 1 ? "" : "s"} · sorted by likes
           </p>
@@ -130,20 +136,25 @@ export default async function BugsPage({
               Array.isArray(bug.votes) && bug.votes.length > 0
                 ? (bug.votes[0].value ?? 1)
                 : 0;
+            const voterSummary =
+              voterSummaries.get(bug.id) ?? createEmptyVoterSummary();
             return (
               <li
                 key={bug.id}
-                className="flex items-start gap-3 px-4 py-4 transition hover:bg-slate-50"
+                className="flex items-start gap-3 px-3 py-3.5 sm:px-4 sm:py-4 transition hover:bg-slate-50"
               >
                 <VoteButton
                   bugId={bug.id}
                   voteCount={bug.voteCount}
                   userVote={userVote}
+                  likeCount={voterSummary.likes.count}
+                  dislikeCount={voterSummary.dislikes.count}
+                  size="sm"
                 />
                 <Link href={`/bugs/${bug.id}`} className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-1">
-                      <p className="font-medium text-slate-900">{bug.title}</p>
+                      <p className="font-medium text-slate-900 break-words">{bug.title}</p>
                       <p className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-slate-500">
                         <span>Reported by</span>
                         <UserNameWithBadges
@@ -170,8 +181,35 @@ export default async function BugsPage({
                           </span>
                         ) : null}
                       </p>
+
+                      {/* Compact voter avatars under bug details */}
+                      {(voterSummary.likes.count > 0 ||
+                        voterSummary.dislikes.count > 0) && (
+                        <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-slate-500">
+                          {voterSummary.likes.count > 0 && (
+                            <div className="flex items-center gap-1.5">
+                              <span>👍 {voterSummary.likes.count}</span>
+                              <VoterAvatars
+                                voters={voterSummary.likes.voters}
+                                totalCount={voterSummary.likes.count}
+                                size="sm"
+                              />
+                            </div>
+                          )}
+                          {voterSummary.dislikes.count > 0 && (
+                            <div className="flex items-center gap-1.5">
+                              <span>👎 {voterSummary.dislikes.count}</span>
+                              <VoterAvatars
+                                voters={voterSummary.dislikes.voters}
+                                totalCount={voterSummary.dislikes.count}
+                                size="sm"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex shrink-0 flex-wrap gap-1.5 self-start">
                       <Badge className={statusClass[bug.status]}>
                         {statusLabels[bug.status]}
                       </Badge>

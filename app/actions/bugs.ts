@@ -367,9 +367,11 @@ export type ToggleVoteResult = ActionResult & {
   voted?: boolean;
   userVote?: number;
   voteCount?: number;
+  likeCount?: number;
+  dislikeCount?: number;
 };
 
-/** Toggles the current user's like on a bug; rejects any direction other than 1. */
+/** Toggles the current user's reaction on a bug; rejects any direction other than 1 or -1. */
 export async function toggleVoteAction(
   bugId: string,
   direction: unknown = 1,
@@ -424,10 +426,25 @@ export async function toggleVoteAction(
 
     const voteCount = rows[0]?.voteCount ?? 0;
 
+    const voteCounts = await tx.vote.groupBy({
+      by: ["value"],
+      where: { bugId },
+      _count: { _all: true },
+    });
+
+    let likeCount = 0;
+    let dislikeCount = 0;
+    for (const c of voteCounts) {
+      if (c.value === 1) likeCount = c._count._all;
+      if (c.value === -1) dislikeCount = c._count._all;
+    }
+
     return {
       voted: nextVote === 1,
       userVote: nextVote,
       voteCount,
+      likeCount,
+      dislikeCount,
     };
   });
 

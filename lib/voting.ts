@@ -3,9 +3,9 @@ export type VoteChange = {
   countDelta: number;
 };
 
-/** Only likes are supported; anything else from the client is rejected. */
-export function isValidVoteDirection(direction: unknown): direction is 1 {
-  return direction === 1;
+/** Validates vote direction: only 1 (like) and -1 (dislike) are supported; out-of-range or malformed values are rejected. */
+export function isValidVoteDirection(direction: unknown): direction is 1 | -1 {
+  return direction === 1 || direction === -1;
 }
 
 /**
