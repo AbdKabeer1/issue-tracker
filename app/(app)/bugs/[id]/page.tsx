@@ -480,7 +480,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         />
       </section>
 
-      {canDelete ? (
+      {canDelete && !bug.isDeleted ? (
         <section className="rounded-xl border border-red-200 bg-red-50/50 p-4 sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
@@ -488,7 +488,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                 Danger zone
               </h2>
               <p className="text-sm text-slate-600">
-                Permanently delete this ticket along with all its comments, votes, and activity history.
+                Delete this issue. It will be hidden from everyone except admins, who can restore it.
               </p>
             </div>
             <DeleteBugButton
