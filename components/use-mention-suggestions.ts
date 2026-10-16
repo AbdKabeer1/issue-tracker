@@ -13,6 +13,7 @@ import {
   insertMention,
   type MentionQuery,
 } from "@/lib/mentions";
+import { applyTextChange } from "@/lib/editor-dom";
 
 export type MentionUser = { id: string; name: string };
 
@@ -60,12 +61,19 @@ export function useMentionSuggestions({
       if (!mention) return;
       const caret = textarea?.selectionStart ?? value.length;
       const next = insertMention(value, mention, caret, user.name, user.id);
-      onChange(next.value);
       setMention(null);
-      requestAnimationFrame(() => {
-        textarea?.focus();
-        textarea?.setSelectionRange(next.caret, next.caret);
-      });
+      if (textarea) {
+        applyTextChange(
+          textarea,
+          value,
+          next.value,
+          next.caret,
+          next.caret,
+          onChange,
+        );
+      } else {
+        onChange(next.value);
+      }
     },
     [mention, onChange, textareaRef, value],
   );
