@@ -237,6 +237,18 @@ async function main() {
     process.env.SEED_DEMO_DATA === "true" ||
     (wasEmpty && process.env.SEED_DEMO_DATA !== "false");
 
+  // Demo users share the password 12345678 — never load them into production.
+  if (
+    seedDemo &&
+    process.env.NODE_ENV === "production" &&
+    process.env.SEED_DEMO_DATA_IN_PRODUCTION !== "true"
+  ) {
+    console.log(
+      "Demo data seed refused: NODE_ENV=production. Demo accounts use a known password.",
+    );
+    return;
+  }
+
   if (!seedDemo) {
     console.log(
       "Demo data seed skipped (DB not empty). Set SEED_DEMO_DATA=true to force sample data (wipes users/bugs).",

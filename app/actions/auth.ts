@@ -17,6 +17,10 @@ import {
   hashResetToken,
 } from "@/lib/password-reset";
 import { prisma } from "@/lib/prisma";
+import {
+  isPasswordAuthEnabled,
+  PASSWORD_AUTH_DISABLED_MESSAGE,
+} from "@/lib/auth-mode";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
 import {
   forgotPasswordSchema,
@@ -31,6 +35,11 @@ export async function loginAction(
   _prev: { error?: string } | undefined,
   formData: FormData,
 ) {
+  // Server actions stay callable even when no UI renders them.
+  if (!isPasswordAuthEnabled()) {
+    return { error: PASSWORD_AUTH_DISABLED_MESSAGE };
+  }
+
   const callbackUrl = safeCallbackUrl(formData.get("callbackUrl"));
 
   try {
@@ -54,6 +63,11 @@ export async function signupAction(
   _prev: { error?: string } | undefined,
   formData: FormData,
 ) {
+  // Server actions stay callable even when no UI renders them.
+  if (!isPasswordAuthEnabled()) {
+    return { error: PASSWORD_AUTH_DISABLED_MESSAGE };
+  }
+
   const parsed = signupSchema.safeParse({
     name: formData.get("name"),
     email: formData.get("email"),
@@ -170,6 +184,11 @@ export async function forgotPasswordAction(
   _prev: { error?: string; success?: string } | undefined,
   formData: FormData,
 ) {
+  // Server actions stay callable even when no UI renders them.
+  if (!isPasswordAuthEnabled()) {
+    return { error: PASSWORD_AUTH_DISABLED_MESSAGE };
+  }
+
   const parsed = forgotPasswordSchema.safeParse({
     email: formData.get("email"),
   });
@@ -223,6 +242,11 @@ export async function resetPasswordAction(
   _prev: { error?: string } | undefined,
   formData: FormData,
 ) {
+  // Server actions stay callable even when no UI renders them.
+  if (!isPasswordAuthEnabled()) {
+    return { error: PASSWORD_AUTH_DISABLED_MESSAGE };
+  }
+
   const parsed = resetPasswordSchema.safeParse({
     token: formData.get("token"),
     password: formData.get("password"),

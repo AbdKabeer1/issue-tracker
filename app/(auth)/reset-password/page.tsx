@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
+import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 import { BrandLockup } from "@/components/brand-lockup";
 import { ResetPasswordForm } from "@/components/reset-password-form";
 
@@ -7,6 +9,8 @@ export default async function ResetPasswordPage({
 }: {
   searchParams: Promise<{ token?: string }>;
 }) {
+  if (!isPasswordAuthEnabled()) notFound();
+
   const params = await searchParams;
   const token = typeof params.token === "string" ? params.token.trim() : "";
 
