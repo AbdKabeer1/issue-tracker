@@ -41,6 +41,7 @@ import {
   isSelectionInList,
   type FormatAction,
 } from "@/lib/markdown-toolbar";
+import { applyTextChange } from "@/lib/editor-dom";
 
 export type MarkdownEditorHandle = {
   focus: () => void;
@@ -224,13 +225,16 @@ export const MarkdownEditor = forwardRef<
       const start = textarea.selectionStart ?? 0;
       const end = textarea.selectionEnd ?? 0;
       const next = applyFormat(value, start, end, action);
-      onChange(next.value);
       closeMentions();
       setTab("write");
-      requestAnimationFrame(() => {
-        textarea.focus();
-        textarea.setSelectionRange(next.selectionStart, next.selectionEnd);
-      });
+      applyTextChange(
+        textarea,
+        value,
+        next.value,
+        next.selectionStart,
+        next.selectionEnd,
+        onChange,
+      );
     },
     [closeMentions, disabled, onChange, value],
   );
@@ -244,12 +248,8 @@ export const MarkdownEditor = forwardRef<
       const available = maxLength ? maxLength - (value.length - (end - start)) : text.length;
       const inserted = text.slice(0, Math.max(0, available));
       const next = value.slice(0, start) + inserted + value.slice(end);
-      onChange(next);
       const caret = start + inserted.length;
-      requestAnimationFrame(() => {
-        textarea.focus();
-        textarea.setSelectionRange(caret, caret);
-      });
+      applyTextChange(textarea, value, next, caret, caret, onChange);
     },
     [maxLength, onChange, value],
   );
@@ -276,9 +276,8 @@ export const MarkdownEditor = forwardRef<
       event.preventDefault();
       const caret = textarea.selectionStart ?? 0;
       const next = `${value.slice(0, caret)}@${value.slice(caret)}`;
-      onChange(next);
+      applyTextChange(textarea, value, next, caret + 1, caret + 1, onChange);
       mention.sync(next, caret + 1);
-      requestAnimationFrame(() => textarea.setSelectionRange(caret + 1, caret + 1));
       onKeyDown?.(event);
       return;
     }
@@ -417,6 +416,7 @@ export const MarkdownEditor = forwardRef<
               onBlur?.(event);
             }}
             onPaste={handlePaste}
+            role={users?.length ? "combobox" : undefined}
             aria-autocomplete={users?.length ? "list" : undefined}
             aria-controls={
               users?.length && mention.showSuggestions ? listboxId : undefined
@@ -456,7 +456,7 @@ export const MarkdownEditor = forwardRef<
         {maxLength ? (
           <p
             className={`ml-auto shrink-0 text-xs tabular-nums ${
-              value.length > maxLength ? "text-red-600" : "text-slate-400"
+              value.length > maxLength ? "text-red-600" : "text-slate-500"
             }`}
           >
             {value.length}/{maxLength}

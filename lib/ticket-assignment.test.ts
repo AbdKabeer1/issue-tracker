@@ -46,12 +46,23 @@ describe("canAssignTicket", () => {
     ).toBe(true);
   });
 
-  it("allows normal users to claim tickets assigned to someone else", () => {
+  it("prevents normal users from claiming tickets assigned to someone else", () => {
     expect(
       canAssignTicket({
         actorId: "user-1",
         actorRole: "user",
         currentAssigneeId: "user-2",
+        targetAssigneeId: "user-1",
+      }),
+    ).toBe(false);
+  });
+
+  it("allows normal users to keep tickets already assigned to themselves", () => {
+    expect(
+      canAssignTicket({
+        actorId: "user-1",
+        actorRole: "user",
+        currentAssigneeId: "user-1",
         targetAssigneeId: "user-1",
       }),
     ).toBe(true);

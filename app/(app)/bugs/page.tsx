@@ -17,7 +17,7 @@ import {
 import { LocalTime } from "@/components/local-time";
 import { severities, statuses } from "@/lib/validations/bug";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
-import { getIssueTypeBadgeClass } from "@/lib/issue-types";
+import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
 import { calculatePagination } from "@/lib/pagination";
 import { PaginationControls } from "@/components/pagination-controls";
@@ -242,7 +242,16 @@ export default async function BugsPage({
                         ) : (
                           <span>Unassigned</span>
                         )}
-                        <span>· <LocalTime date={bug.updatedAt} /></span>
+                        <span>·</span>
+                        {currentSort === "newest" ? (
+                          <span>
+                            opened <LocalTime date={bug.createdAt} />
+                          </span>
+                        ) : (
+                          <span>
+                            updated <LocalTime date={bug.updatedAt} />
+                          </span>
+                        )}
                         {bug.proofLinks.length > 0 ? (
                           <span>
                             · {bug.proofLinks.length} proof link
@@ -339,7 +348,7 @@ export default async function BugsPage({
                           variant="ghost"
                           size="sm"
                           label="Delete"
-                          className="text-slate-400 hover:text-red-600 hover:bg-red-50"
+                          className="text-slate-500 hover:text-red-600 hover:bg-red-50"
                         />
                       )
                     ) : null}

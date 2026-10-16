@@ -49,6 +49,20 @@ describe("createBugSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects a title longer than 200 characters with friendly message", () => {
+    const result = createBugSchema.safeParse({
+      title: "a".repeat(201),
+      description: "Long enough description for the schema.",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe(
+        "Title must be at most 200 characters",
+      );
+    }
+  });
+
   it("rejects a short description", () => {
     const result = createBugSchema.safeParse({
       title: "Valid title here",
@@ -391,6 +405,11 @@ describe("editBugContentSchema", () => {
       description: "Updated issue description with enough characters.",
     });
     expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe(
+        "Title must be at most 200 characters",
+      );
+    }
   });
 
   it("rejects description shorter than 10 characters", () => {

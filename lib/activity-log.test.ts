@@ -3,6 +3,7 @@ import {
   activityCreateData,
   assigneeChangedSummary,
   boostedSummary,
+  categoryChangedSummary,
   commentedSummary,
   commentPreview,
   createdSummary,
@@ -11,6 +12,7 @@ import {
   restoredSummary,
   severityChangedSummary,
   statusChangedSummary,
+  typeChangedSummary,
   unboostedSummary,
 } from "./activity-log";
 
@@ -40,6 +42,27 @@ describe("activity summary helpers", () => {
     );
     expect(assigneeChangedSummary("Ada", null)).toBe(
       "changed assignee from Ada to Unassigned",
+    );
+  });
+
+  it("summarizes type and category changes including none", () => {
+    expect(typeChangedSummary(null, "Feat")).toBe(
+      "changed type from none to Feat",
+    );
+    expect(typeChangedSummary("Bug", "Feat")).toBe(
+      "changed type from Bug to Feat",
+    );
+    expect(typeChangedSummary("Bug", null)).toBe(
+      "changed type from Bug to none",
+    );
+    expect(categoryChangedSummary(null, "Mobile")).toBe(
+      "changed category from none to Mobile",
+    );
+    expect(categoryChangedSummary("Web", "Mobile")).toBe(
+      "changed category from Web to Mobile",
+    );
+    expect(categoryChangedSummary("Web", null)).toBe(
+      "changed category from Web to none",
     );
   });
 

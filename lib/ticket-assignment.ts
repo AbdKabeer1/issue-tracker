@@ -15,8 +15,9 @@ export type TicketAssignError = keyof typeof TICKET_ASSIGN_ERRORS;
  * Checks whether an actor can assign an issue to a given target assignee.
  * - Admins and super admins can assign to any user, or unassign (targetAssigneeId = null).
  * - Normal users can assign to themselves (targetAssigneeId = actorId),
- *   or unassign themselves if they are the current assignee (targetAssigneeId = null && currentAssigneeId = actorId).
- * - Normal users cannot assign to any other user.
+ *   provided the ticket is unassigned or already assigned to them.
+ * - Normal users can unassign themselves if they are the current assignee (targetAssigneeId = null && currentAssigneeId = actorId).
+ * - Normal users cannot assign to any other user or take over another user's assignment.
  */
 export function canAssignTicket({
   actorId,
@@ -33,9 +34,9 @@ export function canAssignTicket({
     return true;
   }
 
-  // Self-assigning
+  // Self-assigning (only allowed if unassigned or already assigned to actor)
   if (targetAssigneeId === actorId) {
-    return true;
+    return !currentAssigneeId || currentAssigneeId === actorId;
   }
 
   // Self-unassigning (clearing assignment if currently assigned to actor)

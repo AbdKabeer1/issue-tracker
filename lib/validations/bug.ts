@@ -43,7 +43,7 @@ export const createBugSchema = z
       .string()
       .trim()
       .min(3, "Title must be at least 3 characters")
-      .max(200),
+      .max(200, "Title must be at most 200 characters"),
     description: z
       .string()
       .trim()
@@ -76,7 +76,7 @@ export const editBugContentSchema = z
       .string()
       .trim()
       .min(3, "Title must be at least 3 characters")
-      .max(200, "Title cannot exceed 200 characters"),
+      .max(200, "Title must be at most 200 characters"),
     description: z
       .string()
       .trim()

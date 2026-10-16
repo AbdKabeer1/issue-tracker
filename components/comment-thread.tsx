@@ -116,7 +116,7 @@ function CommentItem({
   };
 
   return (
-    <li id={`comment-${comment.id}`} className="space-y-3">
+    <li id={`comment-${comment.id}`} className="scroll-mt-24 space-y-3">
       <article
         className={`rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 ${
           comment.depth > 0 ? "border-l-2 border-l-teal-600" : ""
@@ -134,7 +134,12 @@ function CommentItem({
                 className="font-medium text-slate-700"
               />
               <span className="inline-flex items-center gap-1.5">
-                <LocalTime date={comment.createdAt} />
+                <a
+                  href={`#comment-${comment.id}`}
+                  className="hover:text-slate-700 hover:underline"
+                >
+                  <LocalTime date={comment.createdAt} />
+                </a>
                 {comment.editedAt ? (
                   <span title="This comment was edited">· edited</span>
                 ) : null}
