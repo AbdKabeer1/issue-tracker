@@ -19,6 +19,7 @@ export function BugFilters() {
   const params = useSearchParams();
 
   function update(key: string, value: string) {
+    if ((params.get(key) ?? "") === value) return;
     const next = new URLSearchParams(params.toString());
     if (value) {
       next.set(key, value);
@@ -47,10 +48,18 @@ export function BugFilters() {
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
           onKeyDown={(event) => {
             if (event.key === "Enter") {
-              update("q", (event.target as HTMLInputElement).value.trim());
+              const val = (event.target as HTMLInputElement).value.trim();
+              if (val !== (params.get("q") ?? "")) {
+                update("q", val);
+              }
             }
           }}
-          onBlur={(event) => update("q", event.target.value.trim())}
+          onBlur={(event) => {
+            const val = event.target.value.trim();
+            if (val !== (params.get("q") ?? "")) {
+              update("q", val);
+            }
+          }}
         />
       </div>
       <div className="w-full sm:w-auto">
