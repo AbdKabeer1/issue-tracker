@@ -37,6 +37,7 @@ import { DeleteBugButton } from "@/components/delete-bug-button";
 import { RestoreBugButton } from "@/components/restore-bug-button";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { SelfAssignButton } from "@/components/self-assign-button";
+import { withCurrentOption } from "@/lib/triage-options";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
@@ -162,7 +163,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         type: true,
         reporter: { select: { name: true, email: true, role: true } },
         assignee: { select: { id: true, name: true, role: true } },
-        category: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true, isActive: true } },
         comments: {
           include: {
             author: { select: { name: true, role: true } },
@@ -445,8 +446,8 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           assigneeId={bug.assigneeId}
           categoryId={bug.categoryId}
           users={users}
-          categories={categories}
-          types={types}
+          categories={withCurrentOption(categories, bug.category)}
+          types={withCurrentOption(types, bug.type)}
           canEditTriage={canTriage}
         />
       ) : null}
