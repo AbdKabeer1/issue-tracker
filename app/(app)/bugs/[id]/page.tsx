@@ -26,10 +26,8 @@ import { VoteButton } from "@/components/vote-button";
 import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentThread } from "@/components/comment-thread";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
-import {
-  getActiveIssueTypes,
-  getIssueTypeBadgeClass,
-} from "@/lib/issue-types";
+import { getActiveIssueTypes } from "@/lib/issue-types";
+import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { fetchVoterSummary } from "@/lib/voter-summaries";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
 import { canEditTicket } from "@/lib/ticket-editing";

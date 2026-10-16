@@ -17,7 +17,7 @@ import {
 import { LocalTime } from "@/components/local-time";
 import { severities, statuses } from "@/lib/validations/bug";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
-import { getIssueTypeBadgeClass } from "@/lib/issue-types";
+import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
 import { calculatePagination } from "@/lib/pagination";
 import { PaginationControls } from "@/components/pagination-controls";
