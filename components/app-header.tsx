@@ -88,7 +88,7 @@ export function AppHeader({
             href="/bugs/new"
             className="rounded-md bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-800 hover:bg-teal-100"
           >
-            + Bug
+            + Issue
           </Link>
           <button
             type="button"

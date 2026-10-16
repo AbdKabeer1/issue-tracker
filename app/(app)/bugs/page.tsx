@@ -91,7 +91,7 @@ export default async function BugsPage({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Bugs</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Issues</h1>
           <p className="text-sm text-slate-600">
             {totalCount} result{totalCount === 1 ? "" : "s"} · sorted by likes
           </p>

@@ -159,7 +159,7 @@ export async function updateBugAction(
     },
   });
   if (!existing) {
-    return { error: "Bug not found" };
+    return { error: "Issue not found" };
   }
 
   const isAssignee = existing.assigneeId === userId;
@@ -346,7 +346,7 @@ export async function addCommentAction(
     select: { id: true },
   });
   if (!bug) {
-    return { error: "Bug not found" };
+    return { error: "Issue not found" };
   }
 
   const parentId = parsed.data.parentId;
@@ -451,7 +451,7 @@ export async function toggleVoteAction(
     select: { id: true },
   });
   if (!bug) {
-    return { error: "Bug not found" };
+    return { error: "Issue not found" };
   }
 
   const result = await prisma.$transaction(async (tx) => {
