@@ -1,9 +1,15 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import type { Role } from "@prisma/client";
 import { auth, signOut } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { isAdmin } from "@/lib/roles";
+import {
+  isAdmin,
+  resolveEffectiveRole,
+  ACTIVE_ROLE_COOKIE_NAME,
+} from "@/lib/roles";
 import { resolveSessionUserId } from "@/lib/session-user";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 export type SessionAppUser = {
   id: string;
@@ -11,6 +17,7 @@ export type SessionAppUser = {
   email?: string | null;
   image?: string | null;
   role: Role;
+  isRealSuperAdmin?: boolean;
 };
 
 /**
@@ -42,12 +49,32 @@ export async function requireUser(): Promise<SessionAppUser> {
     throw new Error("unreachable: signOut redirects");
   }
 
+  const isRealSuperAdmin =
+    dbUser.role === "super_admin" || isSuperAdminEmail(dbUser.email);
+
+  if (dbUser.role !== "super_admin" && isSuperAdminEmail(dbUser.email)) {
+    await prisma.user.update({
+      where: { id: dbUser.id },
+      data: { role: "super_admin" },
+    });
+    dbUser.role = "super_admin";
+  }
+
+  const cookieStore = await cookies();
+  const activeRoleOverride = cookieStore.get(ACTIVE_ROLE_COOKIE_NAME)?.value;
+  const effectiveRole = resolveEffectiveRole({
+    isRealSuperAdmin,
+    baseRole: dbUser.role,
+    activeRoleOverride,
+  });
+
   return {
     id: dbUser.id,
     name: dbUser.name,
     email: dbUser.email,
     image: dbUser.image,
-    role: dbUser.role,
+    role: effectiveRole,
+    isRealSuperAdmin,
   };
 }
 

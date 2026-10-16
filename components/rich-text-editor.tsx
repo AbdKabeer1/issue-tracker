@@ -6,11 +6,14 @@ import {
   useId,
   useImperativeHandle,
   useRef,
+  useState,
+  type ClipboardEvent,
   type ReactNode,
   type TextareaHTMLAttributes,
 } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { wrapSelection, type WrapKind } from "@/lib/rich-text";
+import { isGitHubPaste, sanitizeGitHubPaste as cleanGitHubPaste } from "@/lib/github-paste";
 
 export type RichTextEditorHandle = {
   focus: () => void;
@@ -32,6 +35,8 @@ type RichTextEditorProps = {
   /** Content layered under the field (e.g. mention suggestions). */
   overlay?: ReactNode;
   "aria-label"?: string;
+  /** Whether to intercept and sanitize clipboard pastes originating from GitHub (defaults to true). */
+  sanitizeGitHubPaste?: boolean;
 } & Omit<
   TextareaHTMLAttributes<HTMLTextAreaElement>,
   "value" | "onChange" | "children"
@@ -83,6 +88,7 @@ export const RichTextEditor = forwardRef<
     overlay,
     "aria-label": ariaLabel,
     className = "",
+    sanitizeGitHubPaste = true,
     ...rest
   },
   ref,
@@ -90,6 +96,7 @@ export const RichTextEditor = forwardRef<
   const generatedId = useId();
   const fieldId = id ?? generatedId;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [pasteNotice, setPasteNotice] = useState<string | null>(null);
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
@@ -112,8 +119,80 @@ export const RichTextEditor = forwardRef<
     [disabled, onChange, value],
   );
 
+  const handlePaste = useCallback(
+    (event: ClipboardEvent<HTMLTextAreaElement>) => {
+      if (rest.onPaste) {
+        rest.onPaste(event);
+        if (event.defaultPrevented) return;
+      }
+
+      if (!sanitizeGitHubPaste) return;
+
+      const html = event.clipboardData?.getData("text/html");
+      const plainText = event.clipboardData?.getData("text/plain");
+
+      if (!isGitHubPaste(html, plainText)) {
+        return;
+      }
+
+      event.preventDefault();
+      const { sanitizedText, wasSanitized, message } = cleanGitHubPaste(
+        html,
+        plainText,
+      );
+
+      if (message) {
+        setPasteNotice(message);
+      }
+
+      if (!wasSanitized) return;
+
+      const el = textareaRef.current;
+      if (!el) {
+        if (sanitizedText) {
+          onChange(value + sanitizedText);
+        }
+        return;
+      }
+
+      const start = el.selectionStart ?? 0;
+      const end = el.selectionEnd ?? 0;
+      const before = value.slice(0, start);
+      const after = value.slice(end);
+      const nextValue = before + sanitizedText + after;
+      onChange(nextValue);
+
+      requestAnimationFrame(() => {
+        el.focus();
+        const newCursor = start + sanitizedText.length;
+        el.setSelectionRange(newCursor, newCursor);
+      });
+    },
+    [onChange, rest, sanitizeGitHubPaste, value],
+  );
+
   return (
     <div className="space-y-1.5">
+      {pasteNotice && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+        >
+          <div className="flex items-center gap-1.5">
+            <span className="font-semibold text-amber-950">GitHub paste:</span>
+            <span>{pasteNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPasteNotice(null)}
+            className="ml-2 rounded px-1.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100 hover:text-amber-950"
+            aria-label="Dismiss notice"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <div className="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm focus-within:border-teal-600 focus-within:ring-2 focus-within:ring-teal-600/20">
         <div
           className="flex flex-wrap gap-0.5 border-b border-slate-200 bg-slate-50 px-1.5 py-1"
@@ -185,6 +264,7 @@ export const RichTextEditor = forwardRef<
             aria-label={ariaLabel}
             className={`rounded-none border-0 shadow-none focus:border-transparent focus:ring-0 ${className}`}
             onChange={(event) => onChange(event.target.value)}
+            onPaste={handlePaste}
           />
           {overlay}
         </div>

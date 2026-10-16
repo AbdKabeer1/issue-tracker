@@ -62,14 +62,14 @@ export function UpdateBugForm({
         }
       >
         <div>
-          <label htmlFor="status" className="mb-1 block text-xs font-medium">
+          <label htmlFor="status" className="mb-1 block text-xs font-medium text-slate-700">
             Status
           </label>
           <select
             id="status"
             name="status"
             defaultValue={status}
-            className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
           >
             {statuses.map((value) => (
               <option key={value} value={value}>
@@ -101,7 +101,7 @@ export function UpdateBugForm({
             <div>
               <label
                 htmlFor="severity"
-                className="mb-1 block text-xs font-medium"
+                className="mb-1 block text-xs font-medium text-slate-700"
               >
                 Severity
               </label>
@@ -109,7 +109,7 @@ export function UpdateBugForm({
                 id="severity"
                 name="severity"
                 defaultValue={severity}
-                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
               >
                 {severities.map((value) => (
                   <option key={value} value={value}>
@@ -121,7 +121,7 @@ export function UpdateBugForm({
             <div>
               <label
                 htmlFor="assigneeId"
-                className="mb-1 block text-xs font-medium"
+                className="mb-1 block text-xs font-medium text-slate-700"
               >
                 Assignee
               </label>
@@ -129,7 +129,7 @@ export function UpdateBugForm({
                 id="assigneeId"
                 name="assigneeId"
                 defaultValue={assigneeId ?? ""}
-                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
               >
                 <option value="">Unassigned</option>
                 {users.map((user) => (

@@ -1,20 +1,13 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
-import { resolveSessionUserId } from "@/lib/session-user";
+import { requireUser } from "@/lib/auth-helpers";
 import { getActiveIssueTypes } from "@/lib/issue-types";
 import { CreateBugForm } from "@/components/create-bug-form";
 
 export default async function NewBugPage() {
-  const resolved = await resolveSessionUserId();
-  const userId = "userId" in resolved ? resolved.userId : undefined;
-  const sessionUser = userId
-    ? await prisma.user.findUnique({
-        where: { id: userId },
-        select: { role: true },
-      })
-    : null;
-  const admin = isAdmin(sessionUser?.role);
+  const user = await requireUser();
+  const admin = isAdmin(user.role);
 
   const [users, types] = await Promise.all([
     admin
@@ -38,7 +31,7 @@ export default async function NewBugPage() {
           can triage quickly.
         </p>
       </div>
-      <div className="rounded-xl border border-slate-200 bg-white p-6">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <CreateBugForm users={users} types={types} isAdmin={admin} />
       </div>
     </div>

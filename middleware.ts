@@ -2,7 +2,12 @@ import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import authConfig from "@/auth.config";
 import { isLinkPreviewBot } from "@/lib/link-preview";
-import { isSuperAdmin } from "@/lib/roles";
+import {
+  isSuperAdmin,
+  resolveEffectiveRole,
+  ACTIVE_ROLE_COOKIE_NAME,
+} from "@/lib/roles";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 import { BASE_PATH, toAppPath } from "@/lib/base-path";
 
 /**
@@ -51,7 +56,18 @@ export default auth((req) => {
 
   // Super-admin only surface (JWT role; page/actions re-check against DB).
   if (isLoggedIn && pathWithoutBase.startsWith("/admin")) {
-    if (!isSuperAdmin(req.auth?.user?.role)) {
+    const activeRoleOverride = req.cookies.get(ACTIVE_ROLE_COOKIE_NAME)?.value;
+    const isRealSuper =
+      isSuperAdmin(req.auth?.user?.role) ||
+      isSuperAdminEmail(req.auth?.user?.email);
+
+    const effectiveRole = resolveEffectiveRole({
+      isRealSuperAdmin: isRealSuper,
+      baseRole: req.auth?.user?.role,
+      activeRoleOverride,
+    });
+
+    if (!isSuperAdmin(effectiveRole)) {
       return NextResponse.redirect(
         new URL(`${BASE_PATH}/bugs`, req.nextUrl.origin),
       );

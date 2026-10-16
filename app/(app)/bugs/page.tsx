@@ -16,11 +16,18 @@ import { LocalTime } from "@/components/local-time";
 import { severities, statuses } from "@/lib/validations/bug";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getIssueTypeBadgeClass } from "@/lib/issue-types";
+import { escapeSearchQuery } from "@/lib/search";
+import { calculatePagination } from "@/lib/pagination";
+import { PaginationControls } from "@/components/pagination-controls";
+import { fetchVoterSummaries } from "@/lib/voter-summaries";
+import { createEmptyVoterSummary } from "@/lib/voters";
+import { VoterAvatars } from "@/components/voter-avatars";
 
 type SearchParams = Promise<{
   q?: string;
   status?: string;
   severity?: string;
+  page?: string;
 }>;
 
 function isStatus(value: string | undefined): value is Status {
@@ -48,12 +55,18 @@ export default async function BugsPage({
     where.severity = params.severity;
   }
   if (params.q?.trim()) {
-    const q = params.q.trim();
+    const q = escapeSearchQuery(params.q.trim());
     where.OR = [
       { title: { contains: q, mode: "insensitive" } },
       { description: { contains: q, mode: "insensitive" } },
     ];
   }
+
+  const totalCount = await prisma.bug.count({ where });
+  const pagination = calculatePagination({
+    page: params.page,
+    totalCount,
+  });
 
   const bugs = await prisma.bug.findMany({
     where,
@@ -64,18 +77,22 @@ export default async function BugsPage({
       votes: userId
         ? { where: { userId }, select: { id: true, value: true }, take: 1 }
         : false,
-
     },
     orderBy: [{ voteCount: "desc" }, { updatedAt: "desc" }],
+    skip: pagination.skip,
+    take: pagination.take,
   });
+
+  const bugIds = bugs.map((bug) => bug.id);
+  const voterSummaries = await fetchVoterSummaries(bugIds);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Bugs</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Bugs</h1>
           <p className="text-sm text-slate-600">
-            {bugs.length} result{bugs.length === 1 ? "" : "s"} · sorted by likes
+            {totalCount} result{totalCount === 1 ? "" : "s"} · sorted by likes
           </p>
         </div>
         <Link
@@ -114,26 +131,32 @@ export default async function BugsPage({
           </div>
         </div>
       ) : (
-        <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <>
+          <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
           {bugs.map((bug) => {
             const userVote =
               Array.isArray(bug.votes) && bug.votes.length > 0
                 ? (bug.votes[0].value ?? 1)
                 : 0;
+            const voterSummary =
+              voterSummaries.get(bug.id) ?? createEmptyVoterSummary();
             return (
               <li
                 key={bug.id}
-                className="flex items-start gap-3 px-4 py-4 transition hover:bg-slate-50"
+                className="flex items-start gap-3 px-3 py-3.5 sm:px-4 sm:py-4 transition hover:bg-slate-50"
               >
                 <VoteButton
                   bugId={bug.id}
                   voteCount={bug.voteCount}
                   userVote={userVote}
+                  likeCount={voterSummary.likes.count}
+                  dislikeCount={voterSummary.dislikes.count}
+                  size="sm"
                 />
                 <Link href={`/bugs/${bug.id}`} className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-1">
-                      <p className="font-medium text-slate-900">{bug.title}</p>
+                      <p className="font-medium text-slate-900 break-words">{bug.title}</p>
                       <p className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-slate-500">
                         <span>Reported by</span>
                         <UserNameWithBadges
@@ -160,8 +183,35 @@ export default async function BugsPage({
                           </span>
                         ) : null}
                       </p>
+
+                      {/* Compact voter avatars under bug details */}
+                      {(voterSummary.likes.count > 0 ||
+                        voterSummary.dislikes.count > 0) && (
+                        <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-slate-500">
+                          {voterSummary.likes.count > 0 && (
+                            <div className="flex items-center gap-1.5">
+                              <span>👍 {voterSummary.likes.count}</span>
+                              <VoterAvatars
+                                voters={voterSummary.likes.voters}
+                                totalCount={voterSummary.likes.count}
+                                size="sm"
+                              />
+                            </div>
+                          )}
+                          {voterSummary.dislikes.count > 0 && (
+                            <div className="flex items-center gap-1.5">
+                              <span>👎 {voterSummary.dislikes.count}</span>
+                              <VoterAvatars
+                                voters={voterSummary.dislikes.voters}
+                                totalCount={voterSummary.dislikes.count}
+                                size="sm"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex shrink-0 flex-wrap gap-1.5 self-start">
                       {bug.type ? (
                         <span
                           className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getIssueTypeBadgeClass(
@@ -184,6 +234,19 @@ export default async function BugsPage({
             );
           })}
         </ul>
+        <PaginationControls
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          totalCount={totalCount}
+          from={pagination.from}
+          to={pagination.to}
+          queryParams={{
+            q: params.q,
+            status: params.status,
+            severity: params.severity,
+          }}
+        />
+        </>
       )}
     </div>
   );

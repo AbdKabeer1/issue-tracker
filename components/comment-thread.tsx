@@ -35,7 +35,7 @@ function CommentItem({
           comment.depth > 0 ? "border-l-2 border-l-teal-600" : ""
         }`}
       >
-        <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs text-slate-500">
           <UserNameWithBadges
             name={comment.author.name}
             role={comment.author.role}
@@ -46,7 +46,7 @@ function CommentItem({
         </div>
 
         {comment.parent ? (
-          <p className="mt-2 rounded-md bg-white/80 px-2.5 py-1.5 text-xs text-slate-500">
+          <p className="mt-2 rounded-md bg-white/80 px-2.5 py-1.5 text-xs text-slate-500 break-words">
             Replying to{" "}
             <span className="font-medium text-slate-700">
               {comment.parent.author.name}
@@ -58,7 +58,7 @@ function CommentItem({
           </p>
         ) : null}
 
-        <CommentBody body={comment.body} />
+        <CommentBody body={comment.body} users={users} />
 
         {canReply ? (
           <div className="mt-2">
@@ -86,7 +86,7 @@ function CommentItem({
       </article>
 
       {comment.children.length > 0 ? (
-        <ul className="ml-4 space-y-3 border-l border-slate-200 pl-4 sm:ml-6">
+        <ul className="ml-2.5 space-y-3 border-l border-slate-200 pl-2.5 sm:ml-6 sm:pl-4">
           {comment.children.map((child) => (
             <CommentItem
               key={child.id}

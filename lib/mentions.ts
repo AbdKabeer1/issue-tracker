@@ -27,6 +27,29 @@ export function extractMentionedUserIds(body: string): string[] {
 }
 
 /**
+ * Verifies mentions against known users.
+ * Replaces unknown user IDs with plain text `@name`.
+ * Canonicalizes known user mentions to their real name from the database.
+ */
+export function normalizeMentions(
+  body: string,
+  userMap: Map<string, string> | Record<string, string>,
+): string {
+  const getName = (id: string) =>
+    userMap instanceof Map ? userMap.get(id) : userMap[id];
+
+  const re = new RegExp(MENTION_TAG_RE.source, "g");
+  return body.replace(re, (_match, typedName, userId) => {
+    const trimmedId = String(userId).trim();
+    const realName = getName(trimmedId);
+    if (!realName) {
+      return `@${String(typedName).trim()}`;
+    }
+    return formatMention(realName, trimmedId);
+  });
+}
+
+/**
  * Split comment text into plain segments and mention tags.
  * Malformed `@…` sequences stay in text tokens and never throw.
  */
