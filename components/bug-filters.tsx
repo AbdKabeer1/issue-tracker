@@ -3,6 +3,11 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { severities, statuses } from "@/lib/validations/bug";
 import { severityLabel, statusLabel } from "@/lib/labels";
+import {
+  BUG_SORT_OPTIONS,
+  bugSortLabels,
+  parseBugSort,
+} from "@/lib/bugs-sort";
 
 export function BugFilters() {
   const router = useRouter();
@@ -19,6 +24,8 @@ export function BugFilters() {
     const qs = next.toString();
     router.push(qs ? `/bugs?${qs}` : "/bugs");
   }
+
+  const currentSort = parseBugSort(params.get("sort"));
 
   return (
     <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end">
@@ -78,6 +85,26 @@ export function BugFilters() {
           {severities.map((severity) => (
             <option key={severity} value={severity}>
               {severityLabel[severity]}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="w-full sm:w-auto">
+        <label
+          htmlFor="sort"
+          className="mb-1 block text-xs font-medium text-slate-600"
+        >
+          Sort
+        </label>
+        <select
+          id="sort"
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:w-auto"
+          value={currentSort}
+          onChange={(event) => update("sort", event.target.value)}
+        >
+          {BUG_SORT_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {bugSortLabels[option]}
             </option>
           ))}
         </select>
