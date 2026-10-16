@@ -51,6 +51,7 @@ const RULE_RE = /^\s*(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/;
 
 type ListItem = {
   ordered: boolean;
+  orderNumber?: number;
   task: boolean;
   checked: boolean;
   lines: string[];
@@ -87,8 +88,11 @@ function parseList(
 
       const parent = stack[stack.length - 1]?.list.slice(-1)[0];
       const target = parent ? parent.children : items;
+      const isOrdered = /\d/.test(marker);
+      const orderNumber = isOrdered ? parseInt(marker, 10) : undefined;
       const item: ListItem = {
-        ordered: /\d/.test(marker),
+        ordered: isOrdered,
+        orderNumber: Number.isFinite(orderNumber) ? orderNumber : undefined,
         task: Boolean(taskMatch),
         checked: (taskMatch?.[1] ?? " ").toLowerCase() === "x",
         lines: [taskMatch?.[2] ?? rest],
@@ -127,10 +131,38 @@ function isBlockStart(line: string): boolean {
 function renderListItems(items: ListItem[], renderMentions?: (text: string) => ReactNode) {
   if (items.length === 0) return null;
   const ordered = items[0]?.ordered ?? false;
-  const ListTag = ordered ? "ol" : "ul";
+  const start = ordered ? items[0]?.orderNumber : undefined;
+
+  if (ordered) {
+    return (
+      <ol start={start}>
+        {items.map((item, index) => (
+          <li key={index} className={item.task ? "list-none" : undefined}>
+            {item.task ? (
+              <span className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={item.checked}
+                  readOnly
+                  disabled
+                  className="mt-1 h-3.5 w-3.5 shrink-0 accent-teal-600"
+                />
+                <span className="min-w-0">
+                  {renderInline(item.lines.join(" "), renderMentions)}
+                </span>
+              </span>
+            ) : (
+              renderInline(item.lines.join(" "), renderMentions)
+            )}
+            {renderListItems(item.children, renderMentions)}
+          </li>
+        ))}
+      </ol>
+    );
+  }
 
   return (
-    <ListTag>
+    <ul>
       {items.map((item, index) => (
         <li key={index} className={item.task ? "list-none" : undefined}>
           {item.task ? (
@@ -152,7 +184,7 @@ function renderListItems(items: ListItem[], renderMentions?: (text: string) => R
           {renderListItems(item.children, renderMentions)}
         </li>
       ))}
-    </ListTag>
+    </ul>
   );
 }
 
