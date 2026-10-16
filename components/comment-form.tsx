@@ -1,26 +1,13 @@
 "use client";
 
-import {
-  useCallback,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-  type KeyboardEvent,
-} from "react";
+import { useRef, useState, useTransition } from "react";
 import { addCommentAction } from "@/app/actions/bugs";
 import { Button } from "@/components/ui/button";
 import {
-  RichTextEditor,
-  type RichTextEditorHandle,
-} from "@/components/rich-text-editor";
-import {
-  filterUsersForMention,
-  getMentionQuery,
-  insertMention,
-  type MentionQuery,
-} from "@/lib/mentions";
+  MarkdownEditor,
+  type MarkdownEditorHandle,
+} from "@/components/markdown-editor";
+import { MentionText } from "@/components/comment-body";
 
 type UserOption = { id: string; name: string };
 
@@ -42,71 +29,11 @@ export function CommentForm({
   onSuccess,
 }: CommentFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
-  const editorRef = useRef<RichTextEditorHandle>(null);
-  const listboxId = useId();
-  const bodyFieldId = parentId ? `body-${parentId}` : "body";
+  const editorRef = useRef<MarkdownEditorHandle>(null);
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const [mention, setMention] = useState<MentionQuery | null>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
   const isReply = Boolean(parentId);
-
-  const suggestions = useMemo(
-    () => (mention ? filterUsersForMention(users, mention.query) : []),
-    [mention, users],
-  );
-
-  const showSuggestions = mention !== null && suggestions.length > 0;
-
-  const syncMentionFromCaret = useCallback((value: string, caret: number) => {
-    setMention(getMentionQuery(value, caret));
-    setActiveIndex(0);
-  }, []);
-
-  const applyMention = useCallback(
-    (user: UserOption) => {
-      const textarea = editorRef.current?.getTextarea();
-      if (!textarea || !mention) return;
-
-      const caret = textarea.selectionStart ?? body.length;
-      const next = insertMention(body, mention, caret, user.name, user.id);
-      setBody(next.value);
-      setMention(null);
-      requestAnimationFrame(() => {
-        textarea.focus();
-        textarea.setSelectionRange(next.caret, next.caret);
-      });
-    },
-    [body, mention],
-  );
-
-  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (!showSuggestions) return;
-
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setActiveIndex((index) => (index + 1) % suggestions.length);
-      return;
-    }
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setActiveIndex(
-        (index) => (index - 1 + suggestions.length) % suggestions.length,
-      );
-      return;
-    }
-    if (event.key === "Enter" || event.key === "Tab") {
-      event.preventDefault();
-      const user = suggestions[activeIndex];
-      if (user) applyMention(user);
-      return;
-    }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      setMention(null);
-    }
-  }
 
   return (
     <form
@@ -120,7 +47,6 @@ export function CommentForm({
             setError(result.error);
           } else {
             setBody("");
-            setMention(null);
             formRef.current?.reset();
             onSuccess?.();
           }
@@ -131,106 +57,34 @@ export function CommentForm({
         <input type="hidden" name="parentId" value={parentId} />
       ) : null}
       <label
-        htmlFor={bodyFieldId}
+        htmlFor={parentId ? `body-${parentId}` : "body"}
         className="block text-sm font-medium text-slate-700"
       >
         {isReply
           ? `Reply to ${parentAuthorName ?? "comment"}`
           : "Add a comment"}
       </label>
-      <RichTextEditor
+      <MarkdownEditor
         ref={editorRef}
-        id={bodyFieldId}
+        id={parentId ? `body-${parentId}` : "body"}
         name="body"
         required
         rows={isReply ? 3 : 4}
+        maxLength={2000}
         value={body}
-        onChange={(value) => {
-          setBody(value);
-          const textarea = editorRef.current?.getTextarea();
-          syncMentionFromCaret(
-            value,
-            textarea?.selectionStart ?? value.length,
-          );
-        }}
-        onClick={(event) => {
-          syncMentionFromCaret(
-            event.currentTarget.value,
-            event.currentTarget.selectionStart ?? 0,
-          );
-        }}
-        onKeyUp={(event) => {
-          if (
-            event.key === "ArrowDown" ||
-            event.key === "ArrowUp" ||
-            event.key === "Enter" ||
-            event.key === "Tab" ||
-            event.key === "Escape"
-          ) {
-            return;
-          }
-          syncMentionFromCaret(
-            event.currentTarget.value,
-            event.currentTarget.selectionStart ?? 0,
-          );
-        }}
-        onKeyDown={onKeyDown}
-        onSelect={(event) => {
-          syncMentionFromCaret(
-            event.currentTarget.value,
-            event.currentTarget.selectionStart ?? 0,
-          );
-        }}
+        onChange={setBody}
+        users={users}
+        renderMentions={(text) => <MentionText text={text} users={users} />}
         placeholder={
           isReply
             ? "Write your reply… Type @ to mention someone"
             : "Share triage notes… Type @ to mention someone"
         }
-        aria-autocomplete="list"
-        aria-controls={showSuggestions ? listboxId : undefined}
-        aria-expanded={showSuggestions}
-        aria-activedescendant={
-          showSuggestions ? `${listboxId}-option-${activeIndex}` : undefined
-        }
-        role="combobox"
-        overlay={
-          showSuggestions ? (
-            <ul
-              id={listboxId}
-              role="listbox"
-              className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
-            >
-              {suggestions.map((user, index) => {
-                const active = index === activeIndex;
-                return (
-                  <li key={user.id} role="option" aria-selected={active}>
-                    <button
-                      id={`${listboxId}-option-${index}`}
-                      type="button"
-                      className={`flex w-full px-3 py-2 text-left text-sm ${
-                        active
-                          ? "bg-teal-50 text-teal-900"
-                          : "text-slate-800 hover:bg-slate-50"
-                      }`}
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        applyMention(user);
-                      }}
-                      onMouseEnter={() => setActiveIndex(index)}
-                    >
-                      {user.name}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null
-        }
         footer={
           !isReply ? (
             <p className="text-xs text-slate-500">
-              Markdown formatting and @mentions are supported. Mentions are
-              highlighted for readers; push notifications are not sent.
+              Markdown is supported. Mentions are highlighted for readers; push
+              notifications are not sent.
             </p>
           ) : null
         }

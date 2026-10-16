@@ -123,4 +123,10 @@ describe("truncateCommentBody", () => {
       "see bold and docs",
     );
   });
+
+  it("strips editor markdown such as headings, quotes and task lists", () => {
+    expect(
+      truncateCommentBody("## Steps\n\n> expected\n\n- [x] done\n- [ ] todo"),
+    ).toBe("Steps expected done todo");
+  });
 });

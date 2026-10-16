@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { RichTextEditor } from "@/components/rich-text-editor";
+import { MarkdownEditor } from "@/components/markdown-editor";
 
 type UserOption = { id: string; name: string; role: AppRole };
 type CategoryOption = { id: string; name: string };
@@ -38,6 +38,7 @@ export function CreateBugForm({
   const [assigneeId, setAssigneeId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const mentionUsers = users.map((user) => ({ id: user.id, name: user.name }));
 
   return (
     <form
@@ -129,20 +130,21 @@ export function CreateBugForm({
         >
           Description
         </label>
-        <RichTextEditor
+        <MarkdownEditor
           id="description"
           name="description"
           required
           minLength={10}
+          maxLength={5000}
           rows={6}
           placeholder="Steps to reproduce, expected vs actual, environment…"
           value={description}
           onChange={setDescription}
+          users={mentionUsers}
           footer={
             <p className="text-xs text-slate-500">
-              Markdown supported (bold, italic, lists, code, links). Be
-              specific: what should happen, what actually happens, and how to
-              reproduce it.
+              Markdown is supported. Be specific: what should happen, what
+              actually happens, and how to reproduce it.
             </p>
           }
         />

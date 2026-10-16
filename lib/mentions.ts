@@ -91,13 +91,15 @@ export type MentionQuery = {
 
 /**
  * Detect an open @mention query at `caret`. Returns null when the caret is
- * not inside a mention draft (including inside a completed `@[…](…)` tag).
+ * not inside a mention draft (including inside a completed `@[…](…)` tag,
+ * inside a fenced code block, or inside inline code).
  */
 export function getMentionQuery(
   value: string,
   caret: number,
 ): MentionQuery | null {
   if (caret < 0 || caret > value.length) return null;
+  if (isInsideCode(value, caret)) return null;
 
   const before = value.slice(0, caret);
   const match = before.match(/(^|[\s])@([^\s@[\]]*)$/);
@@ -106,6 +108,14 @@ export function getMentionQuery(
   const query = match[2] ?? "";
   const start = caret - query.length - 1;
   return { start, query };
+}
+
+/** True when `caret` sits inside a fenced or inline code span. */
+function isInsideCode(value: string, caret: number): boolean {
+  const before = value.slice(0, caret);
+  const fence = before.match(/```[\s\S]*?(?:```|$)/g)?.pop();
+  if (fence && fence.startsWith("```") && !fence.endsWith("```")) return true;
+  return (before.match(/`/g)?.length ?? 0) % 2 === 1;
 }
 
 export function filterUsersForMention<T extends { name: string }>(

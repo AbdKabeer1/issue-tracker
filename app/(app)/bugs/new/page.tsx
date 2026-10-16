@@ -9,13 +9,13 @@ export default async function NewBugPage() {
   const user = await requireUser();
   const admin = isAdmin(user.role);
 
+  // Every signed-in user is needed for @mentions; admins additionally get
+  // the assignee picker.
   const [users, categories, types] = await Promise.all([
-    admin
-      ? prisma.user.findMany({
-          select: { id: true, name: true, role: true },
-          orderBy: { name: "asc" },
-        })
-      : Promise.resolve([]),
+    prisma.user.findMany({
+      select: { id: true, name: true, role: true },
+      orderBy: { name: "asc" },
+    }),
     prisma.category.findMany({
       where: { isActive: true },
       select: { id: true, name: true },

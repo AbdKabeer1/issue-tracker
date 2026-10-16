@@ -48,6 +48,18 @@ function MentionSpans({
   });
 }
 
+/** Renders `@[Name](userId)` tags as mention pills (used by the editor preview). */
+export function MentionText({
+  text,
+  users,
+}: {
+  text: string;
+  users?: UserOption[];
+}): ReactNode {
+  const userMap = users ? new Map(users.map((u) => [u.id, u.name])) : undefined;
+  return <MentionSpans text={text} userMap={userMap} />;
+}
+
 export function CommentBody({
   body,
   users,
@@ -62,7 +74,7 @@ export function CommentBody({
   return (
     <RichText
       content={body}
-      className="rich-text mt-2 space-y-2 text-sm text-slate-800 [&_a]:font-medium [&_a]:text-teal-700 [&_a]:underline [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.9em] [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-slate-900 [&_pre]:p-3 [&_pre]:text-sm [&_pre]:text-slate-100 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+      className="mt-2 text-sm"
       renderMentions={(text) => (
         <MentionSpans text={text} userMap={userMap} />
       )}
