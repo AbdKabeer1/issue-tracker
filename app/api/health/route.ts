@@ -1,12 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { cleanEnv } from "@/lib/env-clean";
 import { calculateVoteChange } from "@/lib/voting";
 import { createdSummary } from "@/lib/activity-log";
+import { isSuperAdmin } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
+/** Thrown inside the self-test transaction to force a rollback while carrying results. */
+class RollbackSignal extends Error {
+  constructor(readonly result: Record<string, unknown>) {
+    super("rollback");
+  }
+}
+
+/** True when the current session belongs to a super admin. */
+async function isSuperAdminRequest(): Promise<boolean> {
+  const session = await auth();
+  const id = session?.user?.id;
+  const email = session?.user?.email?.toLowerCase();
+  if (!id && !email) return false;
+  const user = id
+    ? await prisma.user.findUnique({ where: { id }, select: { role: true } })
+    : await prisma.user.findUnique({
+        where: { email: email! },
+        select: { role: true },
+      });
+  return isSuperAdmin(user?.role);
+}
+
+/** Public: minimal `{status:"ok"}`. Super admin: full diagnostics and `?test=crud` self-test. */
 export async function GET(request: NextRequest) {
+  if (!(await isSuperAdminRequest())) {
+    return NextResponse.json({ status: "ok" });
+  }
+
   const googleClientId = cleanEnv(
     process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID,
   );
@@ -22,12 +51,11 @@ export async function GET(request: NextRequest) {
     await prisma.$queryRaw`SELECT 1`;
     dbOk = true;
 
-    // Verify key columns exist in Postgres
     const columns: Array<{ table_name: string; column_name: string }> =
       await prisma.$queryRaw`
-        SELECT table_name, column_name 
-        FROM information_schema.columns 
-        WHERE table_schema = 'public' 
+        SELECT table_name, column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
           AND (
             (table_name = 'User' AND column_name IN ('role', 'passwordHash', 'emailVerified')) OR
             (table_name = 'Vote' AND column_name IN ('value', 'userId', 'bugId')) OR
@@ -51,109 +79,102 @@ export async function GET(request: NextRequest) {
   if (dbOk && searchParams.get("test") === "crud") {
     const testId = `health-check-${Date.now()}`;
     const testEmail = `${testId}@test.internal`;
-    try {
-      // 1. Create test user
-      const user = await prisma.user.create({
-        data: {
-          email: testEmail,
-          name: "Health Check User",
-          role: "user",
-        },
-      });
 
-      // 2. Create test bug with activity
-      const bug = await prisma.bug.create({
-        data: {
-          title: `Health Check Bug ${testId}`,
-          description:
-            "Testing bug creation and voting lifecycle in production DB",
-          severity: "low",
-          status: "open",
-          proofLinks: ["https://example.com/health-proof"],
-          reporterId: user.id,
-          activities: {
-            create: {
-              actorId: user.id,
-              type: "created",
-              summary: createdSummary(`Health Check Bug ${testId}`),
+    try {
+      await prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            email: testEmail,
+            name: "Health Check User",
+            role: "user",
+          },
+        });
+
+        const bug = await tx.bug.create({
+          data: {
+            title: `Health Check Bug ${testId}`,
+            description:
+              "Testing bug creation and voting lifecycle in production DB",
+            severity: "low",
+            status: "open",
+            proofLinks: ["https://example.com/health-proof"],
+            reporterId: user.id,
+            activities: {
+              create: {
+                actorId: user.id,
+                type: "created",
+                summary: createdSummary(`Health Check Bug ${testId}`),
+              },
             },
           },
-        },
-      });
+        });
 
-      // 3. Upvote
-      const { nextVote: upVoteVal, countDelta: upDelta } = calculateVoteChange(
-        0,
-        1,
-      );
-      await prisma.vote.create({
-        data: { userId: user.id, bugId: bug.id, value: upVoteVal },
-      });
-      const bugUpvoted = await prisma.bug.update({
-        where: { id: bug.id },
-        data: { voteCount: { increment: upDelta } },
-      });
+        const { nextVote: upVoteVal, countDelta: upDelta } =
+          calculateVoteChange(0, 1);
+        await tx.vote.create({
+          data: { userId: user.id, bugId: bug.id, value: upVoteVal },
+        });
+        const bugUpvoted = await tx.bug.update({
+          where: { id: bug.id },
+          data: { voteCount: { increment: upDelta } },
+        });
 
-      // 4. Downvote (flip vote from 1 to -1)
-      const { nextVote: downVoteVal, countDelta: downDelta } =
-        calculateVoteChange(1, -1);
-      await prisma.vote.update({
-        where: { userId_bugId: { userId: user.id, bugId: bug.id } },
-        data: { value: downVoteVal },
-      });
-      const bugDownvoted = await prisma.bug.update({
-        where: { id: bug.id },
-        data: { voteCount: { increment: downDelta } },
-      });
+        const { nextVote: downVoteVal, countDelta: downDelta } =
+          calculateVoteChange(1, -1);
+        await tx.vote.update({
+          where: { userId_bugId: { userId: user.id, bugId: bug.id } },
+          data: { value: downVoteVal },
+        });
+        const bugDownvoted = await tx.bug.update({
+          where: { id: bug.id },
+          data: { voteCount: { increment: downDelta } },
+        });
 
-      // 5. Remove vote (from -1 back to 0)
-      const { countDelta: unDelta } = calculateVoteChange(-1, -1);
-      await prisma.vote.delete({
-        where: { userId_bugId: { userId: user.id, bugId: bug.id } },
-      });
-      const bugUnvoted = await prisma.bug.update({
-        where: { id: bug.id },
-        data: { voteCount: { increment: unDelta } },
-      });
+        const { countDelta: unDelta } = calculateVoteChange(-1, -1);
+        await tx.vote.delete({
+          where: { userId_bugId: { userId: user.id, bugId: bug.id } },
+        });
+        const bugUnvoted = await tx.bug.update({
+          where: { id: bug.id },
+          data: { voteCount: { increment: unDelta } },
+        });
 
-      // 6. Threaded Comment
-      const rootComment = await prisma.comment.create({
-        data: {
-          bugId: bug.id,
-          authorId: user.id,
-          body: "Root comment test",
-        },
-      });
-      const replyComment = await prisma.comment.create({
-        data: {
-          bugId: bug.id,
-          authorId: user.id,
-          body: "Threaded reply test",
-          parentId: rootComment.id,
-        },
-      });
+        const rootComment = await tx.comment.create({
+          data: {
+            bugId: bug.id,
+            authorId: user.id,
+            body: "Root comment test",
+          },
+        });
+        const replyComment = await tx.comment.create({
+          data: {
+            bugId: bug.id,
+            authorId: user.id,
+            body: "Threaded reply test",
+            parentId: rootComment.id,
+          },
+        });
 
-      // 7. Cleanup
-      await prisma.comment.deleteMany({ where: { bugId: bug.id } });
-      await prisma.bugActivity.deleteMany({ where: { bugId: bug.id } });
-      await prisma.bug.delete({ where: { id: bug.id } });
-      await prisma.user.delete({ where: { id: user.id } });
-
-      crudVerification = {
-        success: true,
-        userCreated: user.role === "user",
-        bugCreated: bug.proofLinks.length === 1,
-        upvoteSuccess: bugUpvoted.voteCount === 1,
-        downvoteSuccess: bugDownvoted.voteCount === 1 - 2,
-        unvoteSuccess: bugUnvoted.voteCount === 0,
-        threadedCommentSuccess: replyComment.parentId === rootComment.id,
-        cleanedUp: true,
-      };
+        throw new RollbackSignal({
+          success: true,
+          userCreated: user.role === "user",
+          bugCreated: bug.proofLinks.length === 1,
+          upvoteSuccess: bugUpvoted.voteCount === 1,
+          downvoteSuccess: bugDownvoted.voteCount === -1,
+          unvoteSuccess: bugUnvoted.voteCount === 0,
+          threadedCommentSuccess: replyComment.parentId === rootComment.id,
+          rolledBack: true,
+        });
+      });
     } catch (crudErr) {
-      crudVerification = {
-        success: false,
-        error: crudErr instanceof Error ? crudErr.message : String(crudErr),
-      };
+      crudVerification =
+        crudErr instanceof RollbackSignal
+          ? crudErr.result
+          : {
+              success: false,
+              error:
+                crudErr instanceof Error ? crudErr.message : String(crudErr),
+            };
     }
   }
 

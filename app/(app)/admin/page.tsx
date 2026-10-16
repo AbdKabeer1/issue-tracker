@@ -1,7 +1,12 @@
 import { redirect } from "next/navigation";
-import { requireSuperAdmin } from "@/lib/auth-helpers";
+import { requireAdmin } from "@/lib/auth-helpers";
+import { isSuperAdmin } from "@/lib/roles";
 
 export default async function AdminIndexPage() {
-  await requireSuperAdmin();
-  redirect("/admin/users");
+  const user = await requireAdmin();
+  if (isSuperAdmin(user.role)) {
+    redirect("/admin/users");
+  } else {
+    redirect("/admin/types");
+  }
 }

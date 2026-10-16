@@ -227,11 +227,46 @@ async function seedDemoData() {
   console.log("Demo login: alice@zendor.dev / 12345678 (admin)");
 }
 
+async function ensureDefaultCategories() {
+  const defaults = ["Mobile", "Desktop", "Web"];
+  for (const name of defaults) {
+    await prisma.category.upsert({
+      where: { name },
+      update: {},
+      create: { name, isActive: true },
+    });
+  }
+}
+
+async function ensureDefaultTypes() {
+  const defaults = [
+    { name: "Marketing", description: "Marketing and promotion related tasks" },
+    { name: "Design", description: "UI/UX and visual design tasks" },
+    { name: "Fix", description: "Bug fixes and defect resolutions" },
+    { name: "Feat", description: "New features and enhancements" },
+  ];
+
+  for (const item of defaults) {
+    await prisma.issueType.upsert({
+      where: { name: item.name },
+      update: {},
+      create: {
+        name: item.name,
+        description: item.description,
+        isActive: true,
+      },
+    });
+  }
+  console.log("Ensured default issue types (Marketing, Design, Fix, Feat).");
+}
+
 async function main() {
   const wasEmpty = (await prisma.user.count()) === 0;
 
   // Always idempotent; safe when a DB already has real accounts.
   await ensureSuperAdmin();
+  await ensureDefaultCategories();
+  await ensureDefaultTypes();
 
   const seedDemo =
     process.env.SEED_DEMO_DATA === "true" ||
