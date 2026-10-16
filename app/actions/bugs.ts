@@ -303,8 +303,13 @@ export async function addCommentAction(
         } as Prisma.InputJsonValue,
       },
     });
+    await tx.bug.update({
+      where: { id: bugId },
+      data: { updatedAt: new Date() },
+    });
   });
 
+  revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
 }
@@ -356,16 +361,19 @@ export async function toggleVoteAction(
       });
     }
 
-    const updated = await tx.bug.update({
-      where: { id: bugId },
-      data: { voteCount: { increment: countDelta } },
-      select: { voteCount: true },
-    });
+    const rows = await tx.$queryRaw<Array<{ voteCount: number }>>`
+      UPDATE "Bug"
+      SET "voteCount" = "voteCount" + ${countDelta}
+      WHERE "id" = ${bugId}
+      RETURNING "voteCount"
+    `;
+
+    const voteCount = rows[0]?.voteCount ?? 0;
 
     return {
       voted: nextVote === 1,
       userVote: nextVote,
-      voteCount: updated.voteCount,
+      voteCount,
     };
   });
 
