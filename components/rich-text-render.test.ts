@@ -25,6 +25,21 @@ describe("RichText shows tag-like text (#116)", () => {
   });
 });
 
+describe("RichText ordered list start attribute (#137)", () => {
+  it('renders <ol start="3"> when list starts at 3', () => {
+    const html = render("3. third step\n4. fourth step");
+    expect(html).toContain('<ol start="3">');
+    expect(html).toContain("third step");
+    expect(html).toContain("fourth step");
+  });
+
+  it("renders standard ordered list when starting at 1", () => {
+    const html = render("1. first step\n2. second step");
+    expect(html).toContain("<ol");
+    expect(html).toContain("first step");
+  });
+});
+
 describe("RichText nested inline formatting (#136)", () => {
   it("renders mentions inside bold, italic, and strikethrough", () => {
     const mockRenderMentions = (text: string) => {
