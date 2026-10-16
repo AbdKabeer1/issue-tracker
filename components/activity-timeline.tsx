@@ -21,6 +21,8 @@ const typeLabel: Record<ActivityType, string> = {
   deleted: "Deleted",
   restored: "Restored",
   comment_deleted: "Moderation",
+  type_changed: "Type",
+  category_changed: "Category",
 };
 
 export function ActivityTimeline({
