@@ -13,6 +13,7 @@ import {
 } from "@/lib/link-preview";
 import { stripMarkdown } from "@/lib/rich-text";
 import { absoluteUrl } from "@/lib/site-url";
+import { SHARE_IMAGE } from "@/lib/share-image";
 import {
   severityClass,
   severityLabels,
@@ -73,8 +74,7 @@ export async function generateMetadata({
     description: stripMarkdown(bug.description),
   });
   const canonical = absoluteUrl(`/bugs/${id}`);
-  // Brand mark from public/; most unfurlers accept SVG, raster copy at /Zedu.png.
-  const image = absoluteUrl("/zedu-mark.svg");
+  const image = absoluteUrl(SHARE_IMAGE.url);
   const title = bug.title;
 
   return {
@@ -90,7 +90,7 @@ export async function generateMetadata({
       siteName: "Zedu Issues",
       authors: [bug.reporter.name],
       modifiedTime: bug.updatedAt.toISOString(),
-      images: [{ url: image, alt: "Zedu Issues" }],
+      images: [{ ...SHARE_IMAGE, url: image }],
     },
     twitter: {
       card: "summary_large_image",
