@@ -1,5 +1,6 @@
 import { handlers } from "@/auth";
 import { BASE_PATH } from "@/lib/base-path";
+import { getSiteUrl } from "@/lib/site-url";
 import { popRecentAuthError } from "@/lib/auth-diagnostics";
 import { NextRequest } from "next/server";
 
@@ -61,7 +62,10 @@ function normalizeResponse(response: Response): Response {
       location.startsWith("/login") &&
       !location.startsWith(`${BASE_PATH}/login`)
     ) {
-      targetUrl = new URL(`${BASE_PATH}${location}`, "https://issues.zedu.chat");
+      targetUrl = new URL(
+        `${BASE_PATH}${location}`,
+        new URL(getSiteUrl()).origin,
+      );
     }
   }
 

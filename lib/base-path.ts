@@ -6,15 +6,20 @@
  * it can be configured via BASE_PATH / NEXT_PUBLIC_BASE_PATH.
  */
 export function resolveBasePath(
-  env: Partial<NodeJS.ProcessEnv> = process.env,
+  input?: string | Partial<NodeJS.ProcessEnv>,
 ): string {
+  if (typeof input === "string") {
+    const trimmed = input.trim().replace(/\/+$/, "");
+    if (trimmed === "" || trimmed === "/") return "";
+    return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  }
+
+  const env = input ?? process.env;
   const explicit = env.NEXT_PUBLIC_BASE_PATH ?? env.BASE_PATH;
   if (explicit !== undefined) {
-    const trimmed = explicit.trim();
-    if (!trimmed || trimmed === "/") return "";
-    return trimmed.startsWith("/")
-      ? trimmed.replace(/\/+$/, "")
-      : `/${trimmed.replace(/\/+$/, "")}`;
+    const trimmed = explicit.trim().replace(/\/+$/, "");
+    if (trimmed === "" || trimmed === "/") return "";
+    return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
   }
 
   const siteOrAuthUrl =
