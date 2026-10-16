@@ -17,18 +17,14 @@ import {
   resolveSessionUserId,
   SESSION_EXPIRED_MESSAGE,
 } from "@/lib/session-user";
-import {
-  MAX_COMMENT_DEPTH,
-  commentDepth,
-} from "@/lib/comments";
+import { MAX_COMMENT_DEPTH, commentDepth } from "@/lib/comments";
 import {
   commentSchema,
   createBugSchema,
   updateBugSchema,
 } from "@/lib/validations/bug";
-import { calculateVoteChange } from "@/lib/voting";
+import { calculateVoteChange, isValidVoteDirection } from "@/lib/voting";
 import type { ActivityType, Prisma } from "@prisma/client";
-
 
 export type ActionResult = { error?: string; ok?: boolean };
 
@@ -321,8 +317,12 @@ export type ToggleVoteResult = ActionResult & {
 
 export async function toggleVoteAction(
   bugId: string,
-  direction: 1 | -1 = 1,
+  direction: unknown = 1,
 ): Promise<ToggleVoteResult> {
+  if (!isValidVoteDirection(direction)) {
+    return { error: "Invalid vote" };
+  }
+
   // Do not redirect here — VoteButton needs a clear error for stale JWTs
   // after a DB reseed (old cuid no longer exists → Vote_userId_fkey).
   const resolved = await resolveSessionUserId();
@@ -377,4 +377,3 @@ export async function toggleVoteAction(
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true, ...result };
 }
-

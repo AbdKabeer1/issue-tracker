@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { calculateVoteChange } from "./voting";
+import { calculateVoteChange, isValidVoteDirection } from "./voting";
+
+describe("isValidVoteDirection", () => {
+  it("accepts only a single like", () => {
+    expect(isValidVoteDirection(1)).toBe(true);
+  });
+
+  it("rejects out-of-range or malformed directions", () => {
+    for (const bad of [100, -1, 0, 2, 1.5, "1", null, undefined, NaN]) {
+      expect(isValidVoteDirection(bad)).toBe(false);
+    }
+  });
+});
 
 describe("calculateVoteChange", () => {
   it("upvotes from neutral (0 -> +1)", () => {

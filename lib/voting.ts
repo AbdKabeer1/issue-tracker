@@ -3,6 +3,11 @@ export type VoteChange = {
   countDelta: number;
 };
 
+/** Only likes are supported; anything else from the client is rejected. */
+export function isValidVoteDirection(direction: unknown): direction is 1 {
+  return direction === 1;
+}
+
 /**
  * Pure helper for calculating score changes and next vote state
  * when upvoting (direction = 1) or downvoting (direction = -1).
