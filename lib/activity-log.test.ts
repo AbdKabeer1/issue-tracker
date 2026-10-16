@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   activityCreateData,
   assigneeChangedSummary,
+  boostedSummary,
   commentedSummary,
   commentPreview,
   createdSummary,
   editedSummary,
   severityChangedSummary,
   statusChangedSummary,
+  unboostedSummary,
 } from "./activity-log";
 
 describe("activity summary helpers", () => {
@@ -65,6 +67,11 @@ describe("activity summary helpers", () => {
     expect(editedSummary(["title", "description", "severity"])).toBe(
       "edited title, description, and severity",
     );
+  });
+
+  it("summarizes boosted and unboosted actions", () => {
+    expect(boostedSummary()).toBe("boosted this ticket to the top");
+    expect(unboostedSummary()).toBe("removed boost from this ticket");
   });
 });
 
