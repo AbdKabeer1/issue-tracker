@@ -22,7 +22,7 @@ export function DemoteUserButton({
         disabled={pending}
         onClick={() => {
           const confirmed = window.confirm(
-            `Remove admin from ${userName}? They will no longer be able to triage bugs.`,
+            `Remove admin from ${userName}? They will no longer be able to triage issues.`,
           );
           if (!confirmed) return;
 

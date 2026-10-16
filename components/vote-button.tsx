@@ -173,7 +173,7 @@ export function VoteButton({
               type="button"
               disabled={pending}
               aria-pressed={isLiked}
-              aria-label={isLiked ? "Unlike this bug" : "Like this bug"}
+              aria-label={isLiked ? "Unlike this issue" : "Like this issue"}
               title={isLiked ? "Unlike" : "Like"}
               onClick={(e) => handleVote(1, e)}
               className={`group inline-flex items-center justify-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50 ${
@@ -212,7 +212,7 @@ export function VoteButton({
               type="button"
               disabled={pending}
               aria-pressed={isDisliked}
-              aria-label={isDisliked ? "Remove dislike" : "Dislike this bug"}
+              aria-label={isDisliked ? "Remove dislike" : "Dislike this issue"}
               title={isDisliked ? "Remove dislike" : "Dislike"}
               onClick={(e) => handleVote(-1, e)}
               className={`group inline-flex items-center justify-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50 ${
@@ -263,7 +263,7 @@ export function VoteButton({
           type="button"
           disabled={pending}
           aria-pressed={isLiked}
-          aria-label={isLiked ? "Unlike this bug" : "Like this bug"}
+          aria-label={isLiked ? "Unlike this issue" : "Like this issue"}
           title={isLiked ? "Unlike" : "Like"}
           onClick={(e) => handleVote(1, e)}
           className={`group inline-flex min-w-[2.75rem] flex-col items-center justify-center rounded-lg border px-2 py-1 text-xs font-semibold shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50 ${
@@ -283,7 +283,7 @@ export function VoteButton({
           type="button"
           disabled={pending}
           aria-pressed={isDisliked}
-          aria-label={isDisliked ? "Remove dislike" : "Dislike this bug"}
+          aria-label={isDisliked ? "Remove dislike" : "Dislike this issue"}
           title={isDisliked ? "Remove dislike" : "Dislike"}
           onClick={(e) => handleVote(-1, e)}
           className={`group inline-flex min-w-[2.75rem] flex-col items-center justify-center rounded-lg border px-2 py-1 text-xs font-semibold shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50 ${

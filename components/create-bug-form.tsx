@@ -223,7 +223,7 @@ export function CreateBugForm({
         </p>
       ) : null}
       <Button type="submit" disabled={pending}>
-        {pending ? "Creating…" : "Create bug"}
+        {pending ? "Creating…" : "Create issue"}
       </Button>
     </form>
   );

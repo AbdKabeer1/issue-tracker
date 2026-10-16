@@ -22,7 +22,7 @@ export function PromoteUserButton({
         disabled={pending}
         onClick={() => {
           const confirmed = window.confirm(
-            `Promote ${userName} to admin? They will be able to triage bugs.`,
+            `Promote ${userName} to admin? They will be able to triage issues.`,
           );
           if (!confirmed) return;
 
