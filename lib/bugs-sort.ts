@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 export const BUG_SORT_OPTIONS = ["newest", "top_votes", "lowest_votes"] as const;
 export type BugSortOption = (typeof BUG_SORT_OPTIONS)[number];
 
-export const DEFAULT_BUG_SORT: BugSortOption = "newest";
+export const DEFAULT_BUG_SORT: BugSortOption = "top_votes";
 
 export const bugSortLabels: Record<BugSortOption, string> = {
   newest: "Newest",
