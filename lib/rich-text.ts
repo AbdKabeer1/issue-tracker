@@ -4,7 +4,7 @@
  */
 
 const MARKDOWN_HINT =
-  /(\*\*|__|`|^\s*[-*+] |\^\s*\d+\. |\[.+\]\(.+\)|^#{1,3}\s|<u>)/m;
+  /(\*\*|__|`|~~|https?:\/\/|^\s*[-*+] |^\s*[-*+] \[[ xX]\] |^\s*\d+\. |\[.+\]\((?:https?:\/\/|mailto:)|^\s*> |^#{1,6}\s|^\s*(?:-\s*){3,}$|\*[^*\s][^*]*\*|(?<![\w])_[^_\s][^_]*_(?![\w]))/m;
 
 /** True when text likely contains Markdown we should render (vs plain wrap). */
 export function looksLikeMarkdown(text: string): boolean {
@@ -18,14 +18,30 @@ export function stripMarkdown(text: string): string {
     .replace(/`([^`]+)`/g, "$1")
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/<\/?u>/gi, "")
     .replace(/^#{1,6}\s+/gm, "")
-    .replace(/(\*\*|__)(.*?)\1/g, "$2")
-    .replace(/(\*|_)(.*?)\1/g, "$2")
+    .replace(/^\s*[-*+]\s+\[[ xX]\]\s?/gm, "")
+    .replace(/^\s*>\s?/gm, "")
+    .replace(/^\s*(?:[-*_]\s*){3,}$/gm, " ")
     .replace(/^\s*[-*+]\s+/gm, "")
     .replace(/^\s*\d+\.\s+/gm, "")
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/~~(.*?)~~/g, "$1")
+    .replace(/(\*|_)(.*?)\1/g, "$2")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * Remove any raw HTML left in user content.
+ *
+ * Rendering never injects HTML (React escapes every text node), so this only
+ * exists so legacy markup such as `<u>` or `<script>` reads as plain text
+ * instead of leaking tags into the page.
+ */
+export function stripUnsafeHtmlTags(text: string): string {
+  return text
+    .replace(/<\/?[a-zA-Z][^>]*>/g, "")
+    .replace(/&nbsp;/g, " ");
 }
 
 export type WrapKind =
@@ -152,9 +168,10 @@ export function wrapSelection(
   };
 }
 
-/** Only allow http(s) URLs in rendered links. */
+/** Only allow http(s) and mailto URLs in rendered links. */
 export function safeHref(url: string): string | null {
-  const trimmed = url.trim();
+  const trimmed = url.trim().replace(/[\u0000-\u001f\u007f]/g, "");
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^mailto:[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(trimmed)) return trimmed;
   return null;
 }

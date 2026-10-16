@@ -8,12 +8,10 @@ export default async function NewBugPage() {
   const user = await requireUser();
   const admin = isAdmin(user.role);
 
-  const users = admin
-    ? await prisma.user.findMany({
-        select: { id: true, name: true, role: true },
-        orderBy: { name: "asc" },
-      })
-    : [];
+  const users = await prisma.user.findMany({
+    select: { id: true, name: true, role: true },
+    orderBy: { name: "asc" },
+  });
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">

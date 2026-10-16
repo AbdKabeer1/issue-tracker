@@ -25,6 +25,7 @@ import { VoteButton } from "@/components/vote-button";
 import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentThread } from "@/components/comment-thread";
 import { RichText } from "@/components/rich-text";
+import { MentionText } from "@/components/comment-body";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 
 type BugPageProps = {
@@ -222,7 +223,10 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Description
         </h2>
-        <RichText content={bug.description} />
+        <RichText
+          content={bug.description}
+          renderMentions={(text) => <MentionText text={text} users={users} />}
+        />
         <dl className="mt-6 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
           <div>
             <dt className="font-medium text-slate-500">Reporter</dt>

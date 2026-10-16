@@ -38,6 +38,22 @@ import { Prisma, type ActivityType } from "@prisma/client";
 
 export type ActionResult = { error?: string; ok?: boolean };
 
+/**
+ * Resolves `@[Name](userId)` tags against real accounts: known ids are
+ * rewritten to the current name, unknown ids degrade to plain `@Name`.
+ */
+async function normalizeMentionTags(text: string): Promise<string> {
+  const mentionedIds = extractMentionedUserIds(text);
+  if (mentionedIds.length === 0) return text;
+
+  const validUsers = await prisma.user.findMany({
+    where: { id: { in: mentionedIds } },
+    select: { id: true, name: true },
+  });
+  const userMap = new Map(validUsers.map((user) => [user.id, user.name]));
+  return normalizeMentions(text, userMap);
+}
+
 /** Redirects to login when the JWT is missing or no longer maps to a User row. */
 async function requireUserId() {
   const resolved = await resolveSessionUserId();
@@ -82,13 +98,15 @@ export async function createBugAction(
     }
   }
 
+  const description = await normalizeMentionTags(parsed.data.description);
+
   // Always open at creation — createBugSchema rejects client status.
   let bug;
   try {
     bug = await prisma.bug.create({
       data: {
         title: parsed.data.title,
-        description: parsed.data.description,
+        description,
         severity: admin ? parsed.data.severity : "medium",
         status: "open",
         proofLinks: parsed.data.proofLinks,
@@ -320,17 +338,7 @@ export async function addCommentAction(
     }
   }
 
-  const mentionedIds = extractMentionedUserIds(parsed.data.body);
-  let normalizedBody = parsed.data.body;
-
-  if (mentionedIds.length > 0) {
-    const validUsers = await prisma.user.findMany({
-      where: { id: { in: mentionedIds } },
-      select: { id: true, name: true },
-    });
-    const userMap = new Map(validUsers.map((u) => [u.id, u.name]));
-    normalizedBody = normalizeMentions(parsed.data.body, userMap);
-  }
+  const normalizedBody = await normalizeMentionTags(parsed.data.body);
 
   await prisma.$transaction(async (tx) => {
     await tx.comment.create({
