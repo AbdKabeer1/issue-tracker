@@ -1,0 +1,17 @@
+import { describe, expect, it } from "vitest";
+import { DEFAULT_CLASS_NAME } from "./rich-text";
+
+describe("RichText default styles", () => {
+  it("never applies inline-code styling to code inside <pre> (#113)", () => {
+    const classes = DEFAULT_CLASS_NAME.split(/\s+/);
+    // A bare `[&_code]:` variant also matches `pre > code`, giving fenced
+    // blocks a light background under light text.
+    expect(classes.filter((c) => c.startsWith("[&_code]:"))).toEqual([]);
+    expect(classes).toContain("[&_:not(pre)>code]:bg-slate-100");
+  });
+
+  it("keeps the dark palette on fenced code blocks", () => {
+    expect(DEFAULT_CLASS_NAME).toContain("[&_pre]:bg-slate-900");
+    expect(DEFAULT_CLASS_NAME).toContain("[&_pre]:text-slate-100");
+  });
+});

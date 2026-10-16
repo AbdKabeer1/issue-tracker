@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { escapeSearchQuery } from "./search";
+import { escapeSearchQuery, toSingleQueryParam } from "./search";
 
 describe("escapeSearchQuery", () => {
   it("leaves standard alphanumeric text untouched", () => {
@@ -32,3 +32,22 @@ describe("escapeSearchQuery", () => {
     expect(escapeSearchQuery("")).toBe("");
   });
 });
+
+describe("toSingleQueryParam", () => {
+  it("returns single string value untouched", () => {
+    expect(toSingleQueryParam("hello")).toBe("hello");
+    expect(toSingleQueryParam("")).toBe("");
+  });
+
+  it("returns the first element when given an array of strings", () => {
+    expect(toSingleQueryParam(["first", "second"])).toBe("first");
+    expect(toSingleQueryParam(["single"])).toBe("single");
+  });
+
+  it("returns undefined for null, undefined, or empty array", () => {
+    expect(toSingleQueryParam(undefined)).toBeUndefined();
+    expect(toSingleQueryParam(null)).toBeUndefined();
+    expect(toSingleQueryParam([])).toBeUndefined();
+  });
+});
+

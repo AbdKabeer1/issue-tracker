@@ -3,11 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import { getActiveIssueTypes } from "@/lib/issue-types";
+import { ensureDefaultPlatforms } from "@/lib/categories";
 import { CreateBugForm } from "@/components/create-bug-form";
 
 export default async function NewBugPage() {
   const user = await requireUser();
   const admin = isAdmin(user.role);
+  await ensureDefaultPlatforms();
 
   // Every signed-in user is needed for @mentions; admins additionally get
   // the assignee picker.
@@ -32,7 +34,7 @@ export default async function NewBugPage() {
         </Link>
         <h1 className="text-2xl font-semibold text-slate-900">Report an issue</h1>
         <p className="text-sm text-slate-600">
-          Include a type, clear description, and optional proof links so the team
+          Include a type, clear description, and optional GitHub proof links so the team
           can triage quickly.
         </p>
       </div>
@@ -42,6 +44,7 @@ export default async function NewBugPage() {
           categories={categories}
           types={types}
           isAdmin={admin}
+          currentUserId={user.id}
         />
       </div>
     </div>

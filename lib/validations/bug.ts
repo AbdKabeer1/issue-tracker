@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isHttpUrl, splitProofLinkLines } from "@/lib/proof-links";
+import { isGitHubUrl, splitProofLinkLines } from "@/lib/proof-links";
 import { stripGitHubMarkup } from "@/lib/github-paste";
 
 export const severities = ["low", "medium", "high", "critical"] as const;
@@ -10,7 +10,7 @@ export const statusSchema = z.enum(statuses);
 
 const MAX_PROOF_LINKS = 20;
 
-/** Optional newline-separated http(s) URLs for screenshots / videos. */
+/** Optional newline-separated GitHub URLs for issues / PRs. */
 export const proofLinksInputSchema = z
   .string()
   .optional()
@@ -25,10 +25,10 @@ export const proofLinksInputSchema = z
       return z.NEVER;
     }
     for (const link of links) {
-      if (!isHttpUrl(link)) {
+      if (!isGitHubUrl(link)) {
         ctx.addIssue({
           code: "custom",
-          message: `Each proof link must be a valid http(s) URL (got: ${link})`,
+          message: `Each proof link must be a valid GitHub URL (e.g. https://github.com/org/repo/issues/123) (got: ${link})`,
         });
         return z.NEVER;
       }
@@ -70,12 +70,32 @@ export const updateBugSchema = z.object({
   categoryId: z.string().nullable().optional().or(z.literal("")),
 });
 
+export const editBugContentSchema = z
+  .object({
+    title: z
+      .string()
+      .trim()
+      .min(3, "Title must be at least 3 characters")
+      .max(200, "Title cannot exceed 200 characters"),
+    description: z
+      .string()
+      .trim()
+      .transform((val) => stripGitHubMarkup(val))
+      .refine((val) => val.length >= 10, {
+        message: "Description must be at least 10 characters",
+      })
+      .refine((val) => val.length <= 5000, {
+        message: "Description cannot exceed 5000 characters",
+      }),
+  })
+  .strict();
+
 export const categorySchema = z.object({
   name: z
     .string()
     .trim()
-    .min(2, "Category name must be at least 2 characters")
-    .max(50, "Category name must be at most 50 characters"),
+    .min(2, "Platform name must be at least 2 characters")
+    .max(50, "Platform name must be at most 50 characters"),
 });
 
 export const commentSchema = z.object({

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import authConfig from "@/auth.config";
 import { isLinkPreviewBot } from "@/lib/link-preview";
 import {
+  isAdmin,
   isSuperAdmin,
   resolveEffectiveRole,
   ACTIVE_ROLE_COOKIE_NAME,
@@ -42,7 +43,10 @@ export default auth((req) => {
     pathWithoutBase === "/favicon.ico";
 
   if (!isLoggedIn && !isPublic) {
-    const url = new URL(`${BASE_PATH}/login`, req.nextUrl.origin);
+    const url = new URL(
+      BASE_PATH ? `${BASE_PATH}/login` : "/login",
+      req.nextUrl.origin,
+    );
     url.searchParams.set("callbackUrl", pathWithoutBase);
     return NextResponse.redirect(url);
   }
@@ -50,11 +54,11 @@ export default auth((req) => {
   // Allow reset links even when a session exists; only bounce login/signup.
   if (isLoggedIn && isAuthPage) {
     return NextResponse.redirect(
-      new URL(`${BASE_PATH}/bugs`, req.nextUrl.origin),
+      new URL(BASE_PATH ? `${BASE_PATH}/bugs` : "/bugs", req.nextUrl.origin),
     );
   }
 
-  // Super-admin only surface (JWT role; page/actions re-check against DB).
+  // Admin and super-admin surface (JWT role; page/actions re-check against DB).
   if (isLoggedIn && pathWithoutBase.startsWith("/admin")) {
     const activeRoleOverride = req.cookies.get(ACTIVE_ROLE_COOKIE_NAME)?.value;
     const isRealSuper =
@@ -67,10 +71,18 @@ export default auth((req) => {
       activeRoleOverride,
     });
 
-    if (!isSuperAdmin(effectiveRole)) {
-      return NextResponse.redirect(
-        new URL(`${BASE_PATH}/bugs`, req.nextUrl.origin),
-      );
+    if (pathWithoutBase.startsWith("/admin/users")) {
+      if (!isSuperAdmin(effectiveRole)) {
+        return NextResponse.redirect(
+          new URL(BASE_PATH ? `${BASE_PATH}/bugs` : "/bugs", req.nextUrl.origin),
+        );
+      }
+    } else {
+      if (!isAdmin(effectiveRole)) {
+        return NextResponse.redirect(
+          new URL(BASE_PATH ? `${BASE_PATH}/bugs` : "/bugs", req.nextUrl.origin),
+        );
+      }
     }
   }
 

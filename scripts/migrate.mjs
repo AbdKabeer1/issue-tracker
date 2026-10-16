@@ -1,6 +1,17 @@
 import { execSync } from "child_process";
 import { existsSync } from "fs";
 
+/**
+ * Container start step: apply pending Prisma migrations, nothing else (#112).
+ *
+ * Production schema changes must go through reviewed migrations. This script
+ * used to follow `migrate deploy` with `prisma db push --accept-data-loss`,
+ * which silently drops columns/tables that schema.prisma no longer has.
+ *
+ * Exits non-zero when migrations fail so the Dockerfile's `&&` keeps the new
+ * container from starting against a half-migrated database.
+ */
+
 let url = process.env.DATABASE_URL;
 if (url) {
   url = url.trim();
@@ -24,38 +35,17 @@ const prismaBin = existsSync("./node_modules/.bin/prisma")
   ? "./node_modules/.bin/prisma"
   : "pnpm exec prisma";
 
-console.log("[db:migrate] Syncing database schema with Prisma...");
-
-// 1. Attempt prisma migrate deploy to record formal migrations
 try {
   console.log(`[db:migrate] Running ${prismaBin} migrate deploy...`);
   execSync(`${prismaBin} migrate deploy`, {
     stdio: "inherit",
     env: process.env,
   });
-  console.log("[db:migrate] prisma migrate deploy succeeded.");
+  console.log("[db:migrate] Migrations applied.");
 } catch (error) {
-  console.warn(
-    "[db:migrate] prisma migrate deploy encountered warnings or drift:",
+  console.error(
+    "[db:migrate] prisma migrate deploy failed; refusing to start the app.",
     error instanceof Error ? error.message : String(error),
   );
-}
-
-// 2. Run prisma db push to guarantee missing columns/enums exist (essential when switching databases)
-try {
-  console.log(
-    `[db:migrate] Running ${prismaBin} db push --accept-data-loss --skip-generate...`,
-  );
-  execSync(`${prismaBin} db push --accept-data-loss --skip-generate`, {
-    stdio: "inherit",
-    env: process.env,
-  });
-  console.log(
-    "[db:migrate] prisma db push completed. Database schema is fully in sync.",
-  );
-} catch (pushError) {
-  console.error(
-    "[db:migrate] prisma db push encountered error:",
-    pushError instanceof Error ? pushError.message : String(pushError),
-  );
+  process.exit(1);
 }

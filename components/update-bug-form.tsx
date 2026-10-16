@@ -63,7 +63,7 @@ export function UpdateBugForm({
         className={
           canEditTriage
             ? "grid gap-3 sm:grid-cols-4"
-            : "grid gap-3 sm:grid-cols-1 sm:max-w-xs"
+            : "grid gap-3 sm:grid-cols-2 sm:max-w-md"
         }
       >
         <div>
@@ -128,7 +128,7 @@ export function UpdateBugForm({
                 htmlFor="categoryId"
                 className="mb-1 block text-xs font-medium"
               >
-                Category
+                Platform
               </label>
               <select
                 id="categoryId"
@@ -166,6 +166,24 @@ export function UpdateBugForm({
               </select>
             </div>
           </>
+        ) : assigneeId ? (
+          <div>
+            <label
+              htmlFor="assigneeId"
+              className="mb-1 block text-xs font-medium text-slate-700"
+            >
+              Assignee
+            </label>
+            <select
+              id="assigneeId"
+              name="assigneeId"
+              defaultValue={assigneeId}
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+            >
+              <option value={assigneeId}>Assigned to you</option>
+              <option value="">Unassign myself</option>
+            </select>
+          </div>
         ) : null}
       </div>
       {error ? (

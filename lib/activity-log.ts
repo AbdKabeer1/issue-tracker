@@ -7,6 +7,7 @@ export type ActivityMetadata = {
   from?: string | null;
   to?: string | null;
   commentPreview?: string;
+  commentId?: string;
 };
 
 type ActivityInput = {
@@ -66,6 +67,11 @@ export function commentedSummary(body: string): string {
   return `added a comment: “${commentPreview(body)}”`;
 }
 
+/** Logged when an admin removes someone else's comment (#150). */
+export function commentDeletedSummary(authorName: string): string {
+  return `removed a comment by ${authorName}`;
+}
+
 export function editedSummary(fields: string[]): string {
   if (fields.length === 0) return "edited this ticket";
   if (fields.length === 1) return `edited ${fields[0]}`;
@@ -79,6 +85,14 @@ export function boostedSummary(): string {
 
 export function unboostedSummary(): string {
   return "removed boost from this ticket";
+}
+
+export function deletedSummary(): string {
+  return "deleted this ticket";
+}
+
+export function restoredSummary(): string {
+  return "restored this ticket";
 }
 
 function truncate(value: string, max: number): string {

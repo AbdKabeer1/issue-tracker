@@ -6,9 +6,10 @@ import { escapeSearchQuery } from "@/lib/search";
  * Safely escapes SQL LIKE wildcards (%, _) and backslashes.
  */
 export function buildUserSearchWhere(
-  query?: string | null,
+  query?: string | string[] | null,
 ): Prisma.UserWhereInput {
-  const trimmed = query?.trim();
+  const raw = Array.isArray(query) ? (query.length > 0 ? query[0] : undefined) : query;
+  const trimmed = raw?.trim();
   if (!trimmed) {
     return {};
   }

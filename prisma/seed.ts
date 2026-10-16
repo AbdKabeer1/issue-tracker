@@ -12,9 +12,7 @@ const MIN_SUPER_ADMIN_PASSWORD_LENGTH = 12;
  * - With force update, promotes/rotates credentials for the configured email
  */
 async function ensureSuperAdmin() {
-  const email = (
-    process.env.SUPER_ADMIN_EMAIL?.trim() || "amicablembakara50@gmail.com"
-  ).toLowerCase();
+  const email = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.SUPER_ADMIN_PASSWORD;
   const forceUpdate = process.env.SUPER_ADMIN_FORCE_UPDATE === "true";
   const name = process.env.SUPER_ADMIN_NAME?.trim() || "Super Admin";
@@ -228,7 +226,7 @@ async function seedDemoData() {
 }
 
 async function ensureDefaultCategories() {
-  const defaults = ["Mobile", "Desktop", "Web"];
+  const defaults = ["Desktop", "Web", "Mobile"];
   for (const name of defaults) {
     await prisma.category.upsert({
       where: { name },

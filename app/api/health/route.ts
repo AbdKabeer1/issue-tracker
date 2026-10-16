@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { cleanEnv } from "@/lib/env-clean";
 import { calculateVoteChange } from "@/lib/voting";
 import { createdSummary } from "@/lib/activity-log";
-import { isSuperAdmin } from "@/lib/roles";
+import {
+  isSuperAdmin,
+  resolveEffectiveRole,
+  ACTIVE_ROLE_COOKIE_NAME,
+} from "@/lib/roles";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -15,19 +21,31 @@ class RollbackSignal extends Error {
   }
 }
 
-/** True when the current session belongs to a super admin. */
+/** True when the current session belongs to an effective super admin. */
 async function isSuperAdminRequest(): Promise<boolean> {
   const session = await auth();
   const id = session?.user?.id;
   const email = session?.user?.email?.toLowerCase();
   if (!id && !email) return false;
   const user = id
-    ? await prisma.user.findUnique({ where: { id }, select: { role: true } })
+    ? await prisma.user.findUnique({
+        where: { id },
+        select: { role: true, email: true },
+      })
     : await prisma.user.findUnique({
         where: { email: email! },
-        select: { role: true },
+        select: { role: true, email: true },
       });
-  return isSuperAdmin(user?.role);
+  const isRealSuper =
+    user?.role === "super_admin" || isSuperAdminEmail(user?.email);
+  const cookieStore = await cookies();
+  const activeRoleOverride = cookieStore.get(ACTIVE_ROLE_COOKIE_NAME)?.value;
+  const effectiveRole = resolveEffectiveRole({
+    isRealSuperAdmin: isRealSuper,
+    baseRole: user?.role,
+    activeRoleOverride,
+  });
+  return isSuperAdmin(effectiveRole);
 }
 
 /** Public: minimal `{status:"ok"}`. Super admin: full diagnostics and `?test=crud` self-test. */
@@ -97,7 +115,7 @@ export async function GET(request: NextRequest) {
               "Testing bug creation and voting lifecycle in production DB",
             severity: "low",
             status: "open",
-            proofLinks: ["https://example.com/health-proof"],
+            proofLinks: ["https://github.com/Zedu-Endor/bug-tracker/issues/99"],
             reporterId: user.id,
             activities: {
               create: {

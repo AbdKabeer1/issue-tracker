@@ -1,9 +1,11 @@
-/** App origin including basePath (e.g. https://contributors.zedu.chat/bug-tracker). */
+import { BASE_PATH } from "./base-path";
+
+/** App origin including basePath (e.g. https://issues.zedu.chat). */
 export function getSiteUrl(): string {
   const raw =
     process.env.AUTH_URL?.trim() ||
     process.env.NEXTAUTH_URL?.trim() ||
-    "http://localhost:3001/bug-tracker";
+    (BASE_PATH ? `http://localhost:3001${BASE_PATH}` : "http://localhost:3000");
   return raw.replace(/\/api\/auth\/?$/, "").replace(/\/$/, "");
 }
 

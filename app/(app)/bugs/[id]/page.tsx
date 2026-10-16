@@ -13,6 +13,7 @@ import {
 } from "@/lib/link-preview";
 import { stripMarkdown } from "@/lib/rich-text";
 import { absoluteUrl } from "@/lib/site-url";
+import { SHARE_IMAGE } from "@/lib/share-image";
 import {
   severityClass,
   severityLabels,
@@ -24,8 +25,6 @@ import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentThread } from "@/components/comment-thread";
-import { RichText } from "@/components/rich-text";
-import { MentionText } from "@/components/comment-body";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import {
   getActiveIssueTypes,
@@ -33,8 +32,13 @@ import {
 } from "@/lib/issue-types";
 import { fetchVoterSummary } from "@/lib/voter-summaries";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
+import { canEditTicket } from "@/lib/ticket-editing";
 import { DeleteBugButton } from "@/components/delete-bug-button";
+import { RestoreBugButton } from "@/components/restore-bug-button";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
+import { SelfAssignButton } from "@/components/self-assign-button";
+import { EditableIssueDescription } from "@/components/editable-issue-description";
+import { withCurrentOption } from "@/lib/triage-options";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
@@ -51,11 +55,12 @@ export async function generateMetadata({
       description: true,
       status: true,
       updatedAt: true,
+      isDeleted: true,
       reporter: { select: { name: true } },
     },
   });
 
-  if (!bug) {
+  if (!bug || bug.isDeleted) {
     return {
       title: "Issue not found",
       description: "This issue could not be found.",
@@ -69,8 +74,7 @@ export async function generateMetadata({
     description: stripMarkdown(bug.description),
   });
   const canonical = absoluteUrl(`/bugs/${id}`);
-  // Brand mark from public/; most unfurlers accept SVG, raster copy at /Zedu.png.
-  const image = absoluteUrl("/zedu-mark.svg");
+  const image = absoluteUrl(SHARE_IMAGE.url);
   const title = bug.title;
 
   return {
@@ -86,7 +90,7 @@ export async function generateMetadata({
       siteName: "Zedu Issues",
       authors: [bug.reporter.name],
       modifiedTime: bug.updatedAt.toISOString(),
-      images: [{ url: image, alt: "Zedu Issues" }],
+      images: [{ ...SHARE_IMAGE, url: image }],
     },
     twitter: {
       card: "summary_large_image",
@@ -116,10 +120,11 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         description: true,
         status: true,
         severity: true,
+        isDeleted: true,
         reporter: { select: { name: true } },
       },
     });
-    if (!bug) notFound();
+    if (!bug || bug.isDeleted) notFound();
 
     return (
       <div className="mx-auto max-w-2xl space-y-4 py-10">
@@ -158,7 +163,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         type: true,
         reporter: { select: { name: true, email: true, role: true } },
         assignee: { select: { id: true, name: true, role: true } },
-        category: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true, isActive: true } },
         comments: {
           include: {
             author: { select: { name: true, role: true } },
@@ -166,6 +171,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
               select: {
                 id: true,
                 body: true,
+                deletedAt: true,
                 author: { select: { name: true, role: true } },
               },
             },
@@ -196,8 +202,18 @@ export default async function BugDetailPage({ params }: BugPageProps) {
     notFound();
   }
 
+  if (bug.isDeleted && !canDelete) {
+    notFound();
+  }
+
   const isAssignee = !!userId && bug.assigneeId === userId;
   const canUpdateStatus = canTriage || isAssignee;
+  const canEdit =
+    canEditTicket({
+      actorId: userId,
+      actorRole: user.role,
+      reporterId: bug.reporterId,
+    }) && !bug.isDeleted;
   const userVote =
     Array.isArray(bug.votes) && bug.votes.length > 0
       ? (bug.votes[0].value ?? 1)
@@ -206,6 +222,25 @@ export default async function BugDetailPage({ params }: BugPageProps) {
 
   return (
     <div className="space-y-6">
+      {bug.isDeleted ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 sm:p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span className="text-xl">🗑️</span>
+              <div>
+                <h3 className="text-sm font-semibold text-red-900">
+                  This issue was deleted
+                </h3>
+                <p className="text-xs text-red-700">
+                  It is currently hidden from regular users. Admins and super admins can restore it at any time.
+                </p>
+              </div>
+            </div>
+            <RestoreBugButton bugId={bug.id} bugTitle={bug.title} size="sm" />
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
           <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
@@ -217,7 +252,12 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                 {bug.title}
               </h1>
               <div className="flex flex-wrap items-center gap-2">
-                {bug.isBoosted ? (
+                {bug.isDeleted ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-900 shadow-2xs">
+                    🗑️ Deleted
+                  </span>
+                ) : null}
+                {bug.isBoosted && !bug.isDeleted ? (
                   <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900 shadow-2xs">
                     ⚡ Boosted
                   </span>
@@ -266,7 +306,12 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6">
-          {canTriage ? (
+          <SelfAssignButton
+            bugId={bug.id}
+            isAssignedToMe={isAssignee}
+            size="sm"
+          />
+          {canTriage && !bug.isDeleted ? (
             <BoostTicketButton
               bugId={bug.id}
               isBoosted={bug.isBoosted}
@@ -274,24 +319,31 @@ export default async function BugDetailPage({ params }: BugPageProps) {
             />
           ) : null}
           {canDelete ? (
-            <DeleteBugButton
-              bugId={bug.id}
-              bugTitle={bug.title}
-              variant="danger-secondary"
-              size="sm"
-            />
+            bug.isDeleted ? (
+              <RestoreBugButton
+                bugId={bug.id}
+                bugTitle={bug.title}
+                size="sm"
+              />
+            ) : (
+              <DeleteBugButton
+                bugId={bug.id}
+                bugTitle={bug.title}
+                variant="danger-secondary"
+                size="sm"
+              />
+            )
           ) : null}
         </div>
       </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Description
-        </h2>
-        <RichText
-          content={bug.description}
-          renderMentions={(text) => <MentionText text={text} users={users} />}
-        />
+      <EditableIssueDescription
+        bugId={bug.id}
+        initialTitle={bug.title}
+        initialDescription={bug.description}
+        canEdit={canEdit}
+        users={users}
+      >
         <dl className="mt-6 grid grid-cols-1 gap-3 text-sm text-slate-600 sm:grid-cols-2">
           {bug.type ? (
             <div>
@@ -319,20 +371,26 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           </div>
           <div>
             <dt className="font-medium text-slate-500">Assignee</dt>
-            <dd>
+            <dd className="flex items-center gap-2">
               {bug.assignee ? (
                 <UserNameWithBadges
                   name={bug.assignee.name}
                   role={bug.assignee.role}
                 />
               ) : (
-                "Unassigned"
+                <span className="text-slate-500">Unassigned</span>
               )}
+              <SelfAssignButton
+                bugId={bug.id}
+                isAssignedToMe={isAssignee}
+                variant="ghost"
+                size="xs"
+              />
             </dd>
           </div>
           {bug.category ? (
             <div>
-              <dt className="font-medium text-slate-500">Category</dt>
+              <dt className="font-medium text-slate-500">Platform</dt>
               <dd>{bug.category.name}</dd>
             </div>
           ) : null}
@@ -345,7 +403,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
             <dd><LocalTime date={bug.updatedAt} /></dd>
           </div>
         </dl>
-      </section>
+      </EditableIssueDescription>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -363,9 +421,21 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="break-all text-sm font-medium text-teal-700 hover:underline"
+                  className="inline-flex items-center gap-1.5 break-all text-sm font-medium text-teal-700 hover:underline"
                 >
-                  {url}
+                  <svg
+                    className="h-4 w-4 shrink-0 text-slate-600"
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      clipRule="evenodd"
+                      d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
+                    />
+                  </svg>
+                  <span>{url}</span>
                 </a>
               </li>
             ))}
@@ -373,7 +443,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         )}
       </section>
 
-      {canUpdateStatus ? (
+      {canUpdateStatus && !bug.isDeleted ? (
         <UpdateBugForm
           bugId={bug.id}
           status={bug.status}
@@ -382,8 +452,8 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           assigneeId={bug.assigneeId}
           categoryId={bug.categoryId}
           users={users}
-          categories={categories}
-          types={types}
+          categories={withCurrentOption(categories, bug.category)}
+          types={withCurrentOption(types, bug.type)}
           canEditTriage={canTriage}
         />
       ) : null}
@@ -399,6 +469,8 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           reporterId={bug.reporterId}
           comments={commentTree}
           users={users}
+          currentUserId={user.id}
+          currentUserRole={user.role}
         />
       </section>
 
