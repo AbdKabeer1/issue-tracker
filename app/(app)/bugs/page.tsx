@@ -242,7 +242,16 @@ export default async function BugsPage({
                         ) : (
                           <span>Unassigned</span>
                         )}
-                        <span>· <LocalTime date={bug.updatedAt} /></span>
+                        <span>·</span>
+                        {currentSort === "newest" ? (
+                          <span>
+                            opened <LocalTime date={bug.createdAt} />
+                          </span>
+                        ) : (
+                          <span>
+                            updated <LocalTime date={bug.updatedAt} />
+                          </span>
+                        )}
                         {bug.proofLinks.length > 0 ? (
                           <span>
                             · {bug.proofLinks.length} proof link
