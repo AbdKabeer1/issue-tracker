@@ -9,7 +9,7 @@ Brand mark: `public/zedu-mark.svg`.
 ## Stack
 
 - Next.js 16 (App Router) + React 19 + TypeScript + Tailwind
-- Auth.js v5 — email/password **and** optional Google OAuth
+- Auth.js v5 — Google OAuth; email/password for local dev only (off in production, see `AUTH_PASSWORD_LOGIN`)
 - Prisma + PostgreSQL
 - pnpm
 - Docker / Coolify deploy (`basePath` `/bug-tracker`)
@@ -29,6 +29,8 @@ https://contributors.zedu.chat/bug-tracker
 Super-admin credentials come from `SUPER_ADMIN_*` env vars (see below). The seeder is idempotent and does not overwrite an existing super admin unless `SUPER_ADMIN_FORCE_UPDATE=true`.
 
 ## Demo accounts (credentials seed)
+
+Local development only. Password sign-in is **off in production** (`AUTH_PASSWORD_LOGIN`), and the seeder refuses to load demo data when `NODE_ENV=production`.
 
 | Email | Password |
 | --- | --- |
@@ -68,7 +70,8 @@ Platform unfurl caches are outside our control; metadata is generated on each re
 | `DATABASE_URL` | Postgres URL |
 | `AUTH_SECRET` | Session secret (`openssl rand -base64 32`) |
 | `AUTH_URL` / `NEXTAUTH_URL` | Auth.js base path: origin + `/api/auth` (Next.js `basePath` is applied on top) |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional Google sign-in |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google sign-in (required in production) |
+| `AUTH_PASSWORD_LOGIN` | `true`/`false` to force email/password sign-in and the reset flow on/off. Default: off in production, on elsewhere |
 | `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | Idempotent super-admin seed (optional; password min 12 chars) |
 | `SUPER_ADMIN_FORCE_UPDATE` | Set `true` to rotate password / promote an existing account |
 | `SEED_DEMO_DATA` | Set `true` to wipe and load demo users/bugs |
