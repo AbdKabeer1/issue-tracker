@@ -88,6 +88,31 @@ describe("createBugSchema", () => {
       expect(result.data).not.toHaveProperty("status");
     }
   });
+
+  it("strips GitHub template comments from description during validation", () => {
+    const result = createBugSchema.safeParse({
+      title: "Valid title here",
+      description:
+        "<!-- Please write description here -->Legitimate bug details that exceed ten characters.",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.description).toBe(
+        "Legitimate bug details that exceed ten characters.",
+      );
+      expect(result.data.description).not.toContain("Please write description");
+    }
+  });
+
+  it("rejects descriptions that only contain GitHub template comments", () => {
+    const result = createBugSchema.safeParse({
+      title: "Valid title here",
+      description: "<!-- Please write description here -->",
+    });
+
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("updateBugSchema", () => {
