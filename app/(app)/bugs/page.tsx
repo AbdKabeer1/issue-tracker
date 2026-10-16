@@ -22,6 +22,11 @@ import { PaginationControls } from "@/components/pagination-controls";
 import { fetchVoterSummaries } from "@/lib/voter-summaries";
 import { createEmptyVoterSummary } from "@/lib/voters";
 import { VoterAvatars } from "@/components/voter-avatars";
+import {
+  bugSortDescriptions,
+  getBugOrderBy,
+  parseBugSort,
+} from "@/lib/bugs-sort";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
 import { DeleteBugButton } from "@/components/delete-bug-button";
 
@@ -29,7 +34,9 @@ type SearchParams = Promise<{
   q?: string;
   status?: string;
   severity?: string;
+  sort?: string;
   page?: string;
+  [key: string]: string | undefined;
 }>;
 
 function isStatus(value: string | undefined): value is Status {
@@ -55,6 +62,7 @@ export default async function BugsPage({
     : null;
   const canDelete = canDeleteTicket(currentUser?.role);
   const params = await searchParams;
+  const currentSort = parseBugSort(params.sort);
   const where: Prisma.BugWhereInput = {};
 
   if (isStatus(params.status)) {
@@ -88,7 +96,7 @@ export default async function BugsPage({
         ? { where: { userId }, select: { id: true, value: true }, take: 1 }
         : false,
     },
-    orderBy: [{ voteCount: "desc" }, { updatedAt: "desc" }],
+    orderBy: getBugOrderBy(currentSort),
     skip: pagination.skip,
     take: pagination.take,
   });
@@ -102,7 +110,8 @@ export default async function BugsPage({
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Bugs</h1>
           <p className="text-sm text-slate-600">
-            {totalCount} result{totalCount === 1 ? "" : "s"} · sorted by likes
+            {totalCount} result{totalCount === 1 ? "" : "s"} · sorted by{" "}
+            {bugSortDescriptions[currentSort]}
           </p>
         </div>
         <Link
@@ -268,9 +277,8 @@ export default async function BugsPage({
           from={pagination.from}
           to={pagination.to}
           queryParams={{
-            q: params.q,
-            status: params.status,
-            severity: params.severity,
+            ...params,
+            sort: params.sort,
           }}
         />
         </>
