@@ -13,6 +13,7 @@ import {
 } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
+import { requireUser } from "@/lib/auth-helpers";
 import {
   resolveSessionUserId,
   SESSION_EXPIRED_MESSAGE,
@@ -44,12 +45,9 @@ async function requireUserId() {
 export async function createBugAction(
   formData: FormData,
 ): Promise<ActionResult> {
-  const userId = await requireUserId();
-  const creator = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-  const admin = isAdmin(creator?.role);
+  const user = await requireUser();
+  const userId = user.id;
+  const admin = isAdmin(user.role);
 
   // Non-admins cannot set severity/assignee at creation.
   const parsed = createBugSchema.safeParse({
@@ -101,12 +99,9 @@ export async function updateBugAction(
   bugId: string,
   formData: FormData,
 ): Promise<ActionResult> {
-  const userId = await requireUserId();
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-  const admin = isAdmin(user?.role);
+  const user = await requireUser();
+  const userId = user.id;
+  const admin = isAdmin(user.role);
 
   const existing = await prisma.bug.findUnique({
     where: { id: bugId },
