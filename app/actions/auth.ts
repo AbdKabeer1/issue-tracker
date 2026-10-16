@@ -3,8 +3,12 @@
 import { AuthError } from "next-auth";
 import { hash } from "bcryptjs";
 import { Prisma } from "@prisma/client";
+import { cookies } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { signIn, signOut } from "@/auth";
+import { auth, signIn, signOut } from "@/auth";
+import { ACTIVE_ROLE_COOKIE_NAME } from "@/lib/roles";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 import { sendMail } from "@/lib/mail";
 import {
   PASSWORD_RESET_TTL_MS,
@@ -103,6 +107,43 @@ export async function signupAction(
 
 export async function logoutAction() {
   await signOut({ redirectTo: "/login" });
+}
+
+export async function switchActiveRoleAction(
+  newRole: "super_admin" | "admin" | "user",
+) {
+  const session = await auth();
+  if (!session?.user?.email) {
+    return { error: "Unauthorized" };
+  }
+
+  // Only verified super admins can switch viewing roles
+  const isSuper = isSuperAdminEmail(session.user.email);
+  if (!isSuper) {
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { role: true },
+    });
+    if (user?.role !== "super_admin") {
+      return { error: "Only super admins can switch roles" };
+    }
+  }
+
+  const cookieStore = await cookies();
+  if (newRole === "super_admin") {
+    cookieStore.delete(ACTIVE_ROLE_COOKIE_NAME);
+  } else {
+    cookieStore.set(ACTIVE_ROLE_COOKIE_NAME, newRole, {
+      path: "/",
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: false,
+      maxAge: 60 * 60 * 24 * 7,
+    });
+  }
+
+  revalidatePath("/");
+  return { ok: true, activeRole: newRole };
 }
 
 export async function googleSignInAction(

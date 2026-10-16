@@ -15,6 +15,7 @@ import {
 import { LocalTime } from "@/components/local-time";
 import { severities, statuses } from "@/lib/validations/bug";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
+import { escapeSearchQuery } from "@/lib/search";
 
 type SearchParams = Promise<{
   q?: string;
@@ -47,7 +48,7 @@ export default async function BugsPage({
     where.severity = params.severity;
   }
   if (params.q?.trim()) {
-    const q = params.q.trim();
+    const q = escapeSearchQuery(params.q.trim());
     where.OR = [
       { title: { contains: q, mode: "insensitive" } },
       { description: { contains: q, mode: "insensitive" } },

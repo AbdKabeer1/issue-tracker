@@ -30,7 +30,11 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
-      <AppHeader userName={user.name ?? user.email} role={user.role} />
+      <AppHeader
+        userName={user.name ?? user.email}
+        role={user.role}
+        isRealSuperAdmin={user.isRealSuperAdmin}
+      />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
         {children}
       </main>

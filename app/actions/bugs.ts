@@ -6,6 +6,7 @@ import {
   activityCreateData,
   assigneeChangedSummary,
   commentedSummary,
+  commentPreview,
   createdSummary,
   severityChangedSummary,
   statusChangedSummary,
@@ -13,6 +14,7 @@ import {
 } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
+import { requireUser } from "@/lib/auth-helpers";
 import {
   resolveSessionUserId,
   SESSION_EXPIRED_MESSAGE,
@@ -21,6 +23,10 @@ import {
   MAX_COMMENT_DEPTH,
   commentDepth,
 } from "@/lib/comments";
+import {
+  extractMentionedUserIds,
+  normalizeMentions,
+} from "@/lib/mentions";
 import {
   commentSchema,
   createBugSchema,
@@ -44,12 +50,9 @@ async function requireUserId() {
 export async function createBugAction(
   formData: FormData,
 ): Promise<ActionResult> {
-  const userId = await requireUserId();
-  const creator = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-  const admin = isAdmin(creator?.role);
+  const user = await requireUser();
+  const userId = user.id;
+  const admin = isAdmin(user.role);
 
   // Non-admins cannot set severity/assignee at creation.
   const parsed = createBugSchema.safeParse({
@@ -122,12 +125,9 @@ export async function updateBugAction(
   bugId: string,
   formData: FormData,
 ): Promise<ActionResult> {
-  const userId = await requireUserId();
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-  const admin = isAdmin(user?.role);
+  const user = await requireUser();
+  const userId = user.id;
+  const admin = isAdmin(user.role);
 
   const existing = await prisma.bug.findUnique({
     where: { id: bugId },
@@ -320,12 +320,24 @@ export async function addCommentAction(
     }
   }
 
+  const mentionedIds = extractMentionedUserIds(parsed.data.body);
+  let normalizedBody = parsed.data.body;
+
+  if (mentionedIds.length > 0) {
+    const validUsers = await prisma.user.findMany({
+      where: { id: { in: mentionedIds } },
+      select: { id: true, name: true },
+    });
+    const userMap = new Map(validUsers.map((u) => [u.id, u.name]));
+    normalizedBody = normalizeMentions(parsed.data.body, userMap);
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.comment.create({
       data: {
         bugId,
         authorId: userId,
-        body: parsed.data.body,
+        body: normalizedBody,
         parentId: parentId ?? null,
       },
     });
@@ -334,15 +346,20 @@ export async function addCommentAction(
         bugId,
         actorId: userId,
         type: "commented",
-        summary: commentedSummary(parsed.data.body),
+        summary: commentedSummary(normalizedBody),
         metadata: {
           field: "comment",
-          commentPreview: parsed.data.body.slice(0, 120),
+          commentPreview: commentPreview(normalizedBody),
         } as Prisma.InputJsonValue,
       },
     });
+    await tx.bug.update({
+      where: { id: bugId },
+      data: { updatedAt: new Date() },
+    });
   });
 
+  revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
 }
@@ -394,16 +411,19 @@ export async function toggleVoteAction(
       });
     }
 
-    const updated = await tx.bug.update({
-      where: { id: bugId },
-      data: { voteCount: { increment: countDelta } },
-      select: { voteCount: true },
-    });
+    const rows = await tx.$queryRaw<Array<{ voteCount: number }>>`
+      UPDATE "Bug"
+      SET "voteCount" = "voteCount" + ${countDelta}
+      WHERE "id" = ${bugId}
+      RETURNING "voteCount"
+    `;
+
+    const voteCount = rows[0]?.voteCount ?? 0;
 
     return {
       voted: nextVote === 1,
       userVote: nextVote,
-      voteCount: updated.voteCount,
+      voteCount,
     };
   });
 
