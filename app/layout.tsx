@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { getSiteUrl } from "@/lib/site-url";
+import { SHARE_IMAGE } from "@/lib/share-image";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -23,11 +24,11 @@ export const metadata: Metadata = {
   openGraph: {
     siteName: "Zedu Issues",
     type: "website",
-    images: [{ url: "/zedu-mark.svg", alt: "Zedu Issues" }],
+    images: [{ ...SHARE_IMAGE }],
   },
   twitter: {
     card: "summary_large_image",
-    images: ["/zedu-mark.svg"],
+    images: [SHARE_IMAGE.url],
   },
 };
 
