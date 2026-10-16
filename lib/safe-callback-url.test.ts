@@ -11,6 +11,13 @@ describe("safeCallbackUrl", () => {
   it("blocks external open redirects", () => {
     expect(safeCallbackUrl("https://evil.com")).toBe("/bugs");
     expect(safeCallbackUrl("//evil.com")).toBe("/bugs");
+    expect(safeCallbackUrl("/\\evil.com")).toBe("/bugs");
+    expect(safeCallbackUrl("/\\evil.example")).toBe("/bugs");
+    expect(safeCallbackUrl("/\\/evil.com")).toBe("/bugs");
+    expect(safeCallbackUrl("/path\\with\\backslash")).toBe("/bugs");
+    expect(safeCallbackUrl("/\t/evil.example")).toBe("/bugs");
+    expect(safeCallbackUrl("/\n/evil.example")).toBe("/bugs");
+    expect(safeCallbackUrl("/\r/evil.example")).toBe("/bugs");
     expect(safeCallbackUrl("javascript:alert(1)")).toBe("/bugs");
   });
 

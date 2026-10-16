@@ -7,6 +7,7 @@ export type ActivityMetadata = {
   from?: string | null;
   to?: string | null;
   commentPreview?: string;
+  commentId?: string;
 };
 
 type ActivityInput = {
@@ -54,6 +55,24 @@ export function assigneeChangedSummary(
   return `changed assignee from ${from} to ${to}`;
 }
 
+export function typeChangedSummary(
+  fromName: string | null,
+  toName: string | null,
+): string {
+  const from = fromName ?? "none";
+  const to = toName ?? "none";
+  return `changed type from ${from} to ${to}`;
+}
+
+export function categoryChangedSummary(
+  fromName: string | null,
+  toName: string | null,
+): string {
+  const from = fromName ?? "none";
+  const to = toName ?? "none";
+  return `changed category from ${from} to ${to}`;
+}
+
 /**
  * Plain-text version of a comment for the activity log: Markdown removed and
  * `@[Name](userId)` mentions shown as `@Name`, so user ids never leak.
@@ -64,6 +83,11 @@ export function commentPreview(body: string, max = 120): string {
 
 export function commentedSummary(body: string): string {
   return `added a comment: “${commentPreview(body)}”`;
+}
+
+/** Logged when an admin removes someone else's comment (#150). */
+export function commentDeletedSummary(authorName: string): string {
+  return `removed a comment by ${authorName}`;
 }
 
 export function editedSummary(fields: string[]): string {

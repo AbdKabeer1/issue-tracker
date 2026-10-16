@@ -1,4 +1,4 @@
 {
   "framework": "nextjs",
-  "buildCommand": "prisma generate && prisma db push && next build --webpack"
+  "buildCommand": "prisma generate && prisma migrate deploy && next build --webpack"
 }

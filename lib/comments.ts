@@ -10,12 +10,15 @@ export type FlatComment = {
   id: string;
   body: string;
   createdAt: Date | string;
+  editedAt?: Date | string | null;
+  deletedAt?: Date | string | null;
   parentId: string | null;
   authorId: string;
   author: CommentAuthor;
   parent: {
     id: string;
     body: string;
+    deletedAt?: Date | string | null;
     author: CommentAuthor;
   } | null;
 };

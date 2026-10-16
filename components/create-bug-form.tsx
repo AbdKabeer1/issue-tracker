@@ -82,6 +82,7 @@ export function CreateBugForm({
             name="title"
             required
             minLength={3}
+            maxLength={200}
             placeholder="Short summary of the issue"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
@@ -112,7 +113,7 @@ export function CreateBugForm({
           htmlFor="categoryId"
           className="text-sm font-medium text-slate-700"
         >
-          Category
+          Platform
         </label>
         <Select
           id="categoryId"
@@ -120,7 +121,7 @@ export function CreateBugForm({
           value={categoryId}
           onChange={(event) => setCategoryId(event.target.value)}
         >
-          <option value="">Select a category</option>
+          <option value="">Select a platform</option>
           {categories.map((cat) => (
             <option key={cat.id} value={cat.id}>
               {cat.name}

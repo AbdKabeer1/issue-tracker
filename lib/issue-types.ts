@@ -20,19 +20,10 @@ export const issueTypeInputSchema = z.object({
 
 export type IssueTypeInput = z.infer<typeof issueTypeInputSchema>;
 
-export const issueTypeBadgeClass: Record<string, string> = {
-  Marketing: "bg-pink-100 text-pink-800 border-pink-200",
-  Design: "bg-purple-100 text-purple-800 border-purple-200",
-  Fix: "bg-amber-100 text-amber-800 border-amber-200",
-  Feat: "bg-emerald-100 text-emerald-800 border-emerald-200",
-};
-
-export function getIssueTypeBadgeClass(name: string): string {
-  return (
-    issueTypeBadgeClass[name] ??
-    "bg-indigo-100 text-indigo-800 border-indigo-200"
-  );
-}
+export {
+  issueTypeBadgeClass,
+  getIssueTypeBadgeClass,
+} from "./issue-type-styles";
 
 /**
  * Checks whether an issue type can be safely deleted.
@@ -52,9 +43,12 @@ export function canDeleteIssueType(bugCount: number): {
 }
 
 /**
- * Ensures default issue types (Marketing, Design, Fix, Feat) exist in the database idempotently.
+ * Ensures default issue types (Marketing, Design, Fix, Feat) exist in the database only when empty.
  */
 export async function ensureDefaultIssueTypes(): Promise<void> {
+  const count = await prisma.issueType.count();
+  if (count > 0) return;
+
   for (const item of DEFAULT_ISSUE_TYPES) {
     await prisma.issueType.upsert({
       where: { name: item.name },
@@ -69,10 +63,9 @@ export async function ensureDefaultIssueTypes(): Promise<void> {
 }
 
 /**
- * Retrieves all active issue types for issue creation, ensuring defaults exist first.
+ * Retrieves all active issue types for issue creation.
  */
 export async function getActiveIssueTypes() {
-  await ensureDefaultIssueTypes();
   return prisma.issueType.findMany({
     where: { isActive: true },
     orderBy: { name: "asc" },

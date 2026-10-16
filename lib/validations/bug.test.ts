@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   commentSchema,
   createBugSchema,
+  editBugContentSchema,
   forgotPasswordSchema,
   loginSchema,
   resetPasswordSchema,
@@ -46,6 +47,20 @@ describe("createBugSchema", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("rejects a title longer than 200 characters with friendly message", () => {
+    const result = createBugSchema.safeParse({
+      title: "a".repeat(201),
+      description: "Long enough description for the schema.",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe(
+        "Title must be at most 200 characters",
+      );
+    }
   });
 
   it("rejects a short description", () => {
@@ -360,3 +375,76 @@ describe("createBugSchema proofLinks", () => {
     }
   });
 });
+
+describe("editBugContentSchema", () => {
+  it("accepts valid title and description", () => {
+    const result = editBugContentSchema.safeParse({
+      title: "Updated issue title",
+      description: "Updated issue description with enough characters.",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.title).toBe("Updated issue title");
+      expect(result.data.description).toBe(
+        "Updated issue description with enough characters.",
+      );
+    }
+  });
+
+  it("rejects title shorter than 3 characters", () => {
+    const result = editBugContentSchema.safeParse({
+      title: "ab",
+      description: "Updated issue description with enough characters.",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects title longer than 200 characters", () => {
+    const result = editBugContentSchema.safeParse({
+      title: "a".repeat(201),
+      description: "Updated issue description with enough characters.",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe(
+        "Title must be at most 200 characters",
+      );
+    }
+  });
+
+  it("rejects description shorter than 10 characters", () => {
+    const result = editBugContentSchema.safeParse({
+      title: "Valid title",
+      description: "short",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects description longer than 5000 characters", () => {
+    const result = editBugContentSchema.safeParse({
+      title: "Valid title",
+      description: "a".repeat(5001),
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("saving code samples (#114)", () => {
+  const code = "```tsx\n<Provider store={store}>\n  <div className=\"app\" />\n</Provider>\nconst p: Promise<P> = load();\n```";
+
+  it("keeps code blocks in issue descriptions", () => {
+    const parsed = createBugSchema.safeParse({
+      title: "Crash in provider",
+      description: `Steps to reproduce:\n\n${code}`,
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.description).toBe(`Steps to reproduce:\n\n${code}`);
+  });
+
+  it("keeps code blocks in comments", () => {
+    const parsed = commentSchema.safeParse({ body: code });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.body).toBe(code);
+  });
+});
+

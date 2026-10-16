@@ -226,7 +226,7 @@ async function seedDemoData() {
 }
 
 async function ensureDefaultCategories() {
-  const defaults = ["Mobile", "Desktop", "Web"];
+  const defaults = ["Desktop", "Web", "Mobile"];
   for (const name of defaults) {
     await prisma.category.upsert({
       where: { name },
@@ -237,6 +237,11 @@ async function ensureDefaultCategories() {
 }
 
 async function ensureDefaultTypes() {
+  const count = await prisma.issueType.count();
+  if (count > 0) {
+    return;
+  }
+
   const defaults = [
     { name: "Marketing", description: "Marketing and promotion related tasks" },
     { name: "Design", description: "UI/UX and visual design tasks" },

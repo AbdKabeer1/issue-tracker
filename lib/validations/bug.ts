@@ -43,7 +43,7 @@ export const createBugSchema = z
       .string()
       .trim()
       .min(3, "Title must be at least 3 characters")
-      .max(200),
+      .max(200, "Title must be at most 200 characters"),
     description: z
       .string()
       .trim()
@@ -70,12 +70,32 @@ export const updateBugSchema = z.object({
   categoryId: z.string().nullable().optional().or(z.literal("")),
 });
 
+export const editBugContentSchema = z
+  .object({
+    title: z
+      .string()
+      .trim()
+      .min(3, "Title must be at least 3 characters")
+      .max(200, "Title must be at most 200 characters"),
+    description: z
+      .string()
+      .trim()
+      .transform((val) => stripGitHubMarkup(val))
+      .refine((val) => val.length >= 10, {
+        message: "Description must be at least 10 characters",
+      })
+      .refine((val) => val.length <= 5000, {
+        message: "Description cannot exceed 5000 characters",
+      }),
+  })
+  .strict();
+
 export const categorySchema = z.object({
   name: z
     .string()
     .trim()
-    .min(2, "Category name must be at least 2 characters")
-    .max(50, "Category name must be at most 50 characters"),
+    .min(2, "Platform name must be at least 2 characters")
+    .max(50, "Platform name must be at most 50 characters"),
 });
 
 export const commentSchema = z.object({

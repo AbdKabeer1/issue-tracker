@@ -20,6 +20,9 @@ const typeLabel: Record<ActivityType, string> = {
   unboosted: "Unboost",
   deleted: "Deleted",
   restored: "Restored",
+  comment_deleted: "Moderation",
+  type_changed: "Type",
+  category_changed: "Category",
 };
 
 export function ActivityTimeline({
@@ -52,7 +55,7 @@ export function ActivityTimeline({
                   {typeLabel[entry.type]}
                 </span>
                 <LocalTime
-                  className="text-xs text-slate-400"
+                  className="text-xs text-slate-500"
                   date={entry.createdAt}
                 />
               </div>

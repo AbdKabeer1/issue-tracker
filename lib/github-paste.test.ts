@@ -63,6 +63,45 @@ describe("stripGitHubMarkup", () => {
     expect(result).toBe("Actual bug description text");
   });
 
+  it("keeps fenced code blocks exactly as written (#114)", () => {
+    const code = [
+      "```tsx",
+      "<Provider store={store}>",
+      '  <div className="app"><span>Hi</span></div>',
+      "  <table><tr><td>x</td></tr></table>",
+      "</Provider>",
+      "const p: Promise<P> = load();",
+      "",
+      "",
+      "",
+      "<!-- not a template comment, it's code -->",
+      "```",
+    ].join("\n");
+    expect(stripGitHubMarkup(`Steps:\n\n${code}\n\nThanks`)).toBe(`Steps:\n\n${code}\n\nThanks`);
+  });
+
+  it("keeps ~~~ fences and unclosed fences untouched", () => {
+    const tilde = "~~~html\n<div><p>x</p></div>\n~~~";
+    expect(stripGitHubMarkup(tilde)).toBe(tilde);
+    const unclosed = "```\n<div>still code</div>";
+    expect(stripGitHubMarkup(unclosed)).toBe(unclosed);
+  });
+
+  it("keeps inline code spans", () => {
+    const input = "Crashes when `List<String>` is empty and `<div>` wraps `<p>`.";
+    expect(stripGitHubMarkup(input)).toBe(input);
+  });
+
+  it("keeps JSX components and generics in prose (case-sensitive, exact tags)", () => {
+    const input = "The <Provider> and <Popover> wrap <Page/>, typed as Promise<P> and <Divider>.";
+    expect(stripGitHubMarkup(input)).toBe(input);
+  });
+
+  it("still strips leaked wrapper tags and comments outside code", () => {
+    const input = '<div class="markdown-body"><p>Real text</p></div>\n<!-- template -->\n```\n<div>code</div>\n```';
+    expect(stripGitHubMarkup(input)).toBe("Real text\n\n```\n<div>code</div>\n```");
+  });
+
   it("normalizes excessive blank lines", () => {
     const input = "Paragraph 1\n\n\n\n\nParagraph 2";
     expect(stripGitHubMarkup(input)).toBe("Paragraph 1\n\nParagraph 2");

@@ -46,7 +46,7 @@ export function AppHeader({
                   href="/admin/categories"
                   className="text-slate-600 hover:text-slate-900"
                 >
-                  Categories
+                  Platforms
                 </Link>
                 <Link
                   href="/admin/types"
@@ -181,7 +181,7 @@ export function AppHeader({
                   onClick={closeMenu}
                   className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  Categories
+                  Platforms
                 </Link>
                 <Link
                   href="/admin/types"

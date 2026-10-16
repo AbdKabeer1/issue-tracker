@@ -13,6 +13,7 @@ import {
 } from "@/lib/link-preview";
 import { stripMarkdown } from "@/lib/rich-text";
 import { absoluteUrl } from "@/lib/site-url";
+import { SHARE_IMAGE } from "@/lib/share-image";
 import {
   severityClass,
   severityLabels,
@@ -24,19 +25,18 @@ import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentThread } from "@/components/comment-thread";
-import { RichText } from "@/components/rich-text";
-import { MentionText } from "@/components/comment-body";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
-import {
-  getActiveIssueTypes,
-  getIssueTypeBadgeClass,
-} from "@/lib/issue-types";
+import { getActiveIssueTypes } from "@/lib/issue-types";
+import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { fetchVoterSummary } from "@/lib/voter-summaries";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
+import { canEditTicket } from "@/lib/ticket-editing";
 import { DeleteBugButton } from "@/components/delete-bug-button";
 import { RestoreBugButton } from "@/components/restore-bug-button";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
+import { canAssignTicket } from "@/lib/ticket-assignment";
 import { SelfAssignButton } from "@/components/self-assign-button";
+import { EditableIssueDescription } from "@/components/editable-issue-description";
 import { withCurrentOption } from "@/lib/triage-options";
 
 type BugPageProps = {
@@ -73,8 +73,7 @@ export async function generateMetadata({
     description: stripMarkdown(bug.description),
   });
   const canonical = absoluteUrl(`/bugs/${id}`);
-  // Brand mark from public/; most unfurlers accept SVG, raster copy at /Zedu.png.
-  const image = absoluteUrl("/zedu-mark.svg");
+  const image = absoluteUrl(SHARE_IMAGE.url);
   const title = bug.title;
 
   return {
@@ -90,7 +89,7 @@ export async function generateMetadata({
       siteName: "Zedu Issues",
       authors: [bug.reporter.name],
       modifiedTime: bug.updatedAt.toISOString(),
-      images: [{ url: image, alt: "Zedu Issues" }],
+      images: [{ ...SHARE_IMAGE, url: image }],
     },
     twitter: {
       card: "summary_large_image",
@@ -171,6 +170,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
               select: {
                 id: true,
                 body: true,
+                deletedAt: true,
                 author: { select: { name: true, role: true } },
               },
             },
@@ -207,6 +207,20 @@ export default async function BugDetailPage({ params }: BugPageProps) {
 
   const isAssignee = !!userId && bug.assigneeId === userId;
   const canUpdateStatus = canTriage || isAssignee;
+  const canEdit =
+    canEditTicket({
+      actorId: userId,
+      actorRole: user.role,
+      reporterId: bug.reporterId,
+    }) && !bug.isDeleted;
+  const canSelfAssign =
+    !bug.isDeleted &&
+    canAssignTicket({
+      actorId: userId,
+      actorRole: user.role,
+      currentAssigneeId: bug.assigneeId,
+      targetAssigneeId: isAssignee ? null : userId,
+    });
   const userVote =
     Array.isArray(bug.votes) && bug.votes.length > 0
       ? (bug.votes[0].value ?? 1)
@@ -299,11 +313,6 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6">
-          <SelfAssignButton
-            bugId={bug.id}
-            isAssignedToMe={isAssignee}
-            size="sm"
-          />
           {canTriage && !bug.isDeleted ? (
             <BoostTicketButton
               bugId={bug.id}
@@ -330,14 +339,13 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         </div>
       </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Description
-        </h2>
-        <RichText
-          content={bug.description}
-          renderMentions={(text) => <MentionText text={text} users={users} />}
-        />
+      <EditableIssueDescription
+        bugId={bug.id}
+        initialTitle={bug.title}
+        initialDescription={bug.description}
+        canEdit={canEdit}
+        users={users}
+      >
         <dl className="mt-6 grid grid-cols-1 gap-3 text-sm text-slate-600 sm:grid-cols-2">
           {bug.type ? (
             <div>
@@ -374,17 +382,19 @@ export default async function BugDetailPage({ params }: BugPageProps) {
               ) : (
                 <span className="text-slate-500">Unassigned</span>
               )}
-              <SelfAssignButton
-                bugId={bug.id}
-                isAssignedToMe={isAssignee}
-                variant="ghost"
-                size="xs"
-              />
+              {canSelfAssign ? (
+                <SelfAssignButton
+                  bugId={bug.id}
+                  isAssignedToMe={isAssignee}
+                  variant="ghost"
+                  size="xs"
+                />
+              ) : null}
             </dd>
           </div>
           {bug.category ? (
             <div>
-              <dt className="font-medium text-slate-500">Category</dt>
+              <dt className="font-medium text-slate-500">Platform</dt>
               <dd>{bug.category.name}</dd>
             </div>
           ) : null}
@@ -397,7 +407,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
             <dd><LocalTime date={bug.updatedAt} /></dd>
           </div>
         </dl>
-      </section>
+      </EditableIssueDescription>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -463,10 +473,12 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           reporterId={bug.reporterId}
           comments={commentTree}
           users={users}
+          currentUserId={user.id}
+          currentUserRole={user.role}
         />
       </section>
 
-      {canDelete ? (
+      {canDelete && !bug.isDeleted ? (
         <section className="rounded-xl border border-red-200 bg-red-50/50 p-4 sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
@@ -474,7 +486,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                 Danger zone
               </h2>
               <p className="text-sm text-slate-600">
-                Permanently delete this issue along with all its comments, votes, and activity history.
+                Delete this issue. It will be hidden from everyone except admins, who can restore it.
               </p>
             </div>
             <DeleteBugButton
