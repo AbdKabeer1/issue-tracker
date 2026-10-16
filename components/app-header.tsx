@@ -13,10 +13,12 @@ export function AppHeader({
   userName,
   role,
   isRealSuperAdmin,
+  isRealAdmin,
 }: {
   userName?: string | null;
   role?: AppRole | null;
   isRealSuperAdmin?: boolean;
+  isRealAdmin?: boolean;
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -67,7 +69,9 @@ export function AppHeader({
 
         {/* Right: Desktop Controls */}
         <div className="hidden items-center gap-3 sm:flex">
-          {isRealSuperAdmin && role ? <RoleSwitcher activeRole={role} /> : null}
+          {(isRealSuperAdmin || isRealAdmin) && role ? (
+            <RoleSwitcher activeRole={role} isSuperAdmin={isRealSuperAdmin} />
+          ) : null}
           {userName ? (
             <UserNameWithBadges
               name={userName}
@@ -146,9 +150,9 @@ export function AppHeader({
             </div>
           )}
 
-          {isRealSuperAdmin && role && (
+          {(isRealSuperAdmin || isRealAdmin) && role && (
             <div className="mb-3 border-b border-slate-100 pb-2">
-              <RoleSwitcher activeRole={role} />
+              <RoleSwitcher activeRole={role} isSuperAdmin={isRealSuperAdmin} />
             </div>
           )}
 

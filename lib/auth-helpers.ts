@@ -18,6 +18,7 @@ export type SessionAppUser = {
   image?: string | null;
   role: Role;
   isRealSuperAdmin?: boolean;
+  isRealAdmin?: boolean;
 };
 
 /**
@@ -51,6 +52,7 @@ export async function requireUser(): Promise<SessionAppUser> {
 
   const isRealSuperAdmin =
     dbUser.role === "super_admin" || isSuperAdminEmail(dbUser.email);
+  const isRealAdmin = isRealSuperAdmin || dbUser.role === "admin";
 
   if (dbUser.role !== "super_admin" && isSuperAdminEmail(dbUser.email)) {
     await prisma.user.update({
@@ -75,6 +77,7 @@ export async function requireUser(): Promise<SessionAppUser> {
     image: dbUser.image,
     role: effectiveRole,
     isRealSuperAdmin,
+    isRealAdmin,
   };
 }
 

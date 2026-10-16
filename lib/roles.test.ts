@@ -86,6 +86,42 @@ describe("resolveEffectiveRole", () => {
     expect(role).toBe("super_admin");
   });
 
+  it("allows real admin to switch to user", () => {
+    const role = resolveEffectiveRole({
+      isRealSuperAdmin: false,
+      baseRole: "admin",
+      activeRoleOverride: "user",
+    });
+    expect(role).toBe("user");
+  });
+
+  it("allows real admin to keep or switch back to admin", () => {
+    const role = resolveEffectiveRole({
+      isRealSuperAdmin: false,
+      baseRole: "admin",
+      activeRoleOverride: "admin",
+    });
+    expect(role).toBe("admin");
+  });
+
+  it("prevents real admin from switching to super_admin", () => {
+    const role = resolveEffectiveRole({
+      isRealSuperAdmin: false,
+      baseRole: "admin",
+      activeRoleOverride: "super_admin",
+    });
+    expect(role).toBe("admin");
+  });
+
+  it("prevents normal user from switching to admin", () => {
+    const role = resolveEffectiveRole({
+      isRealSuperAdmin: false,
+      baseRole: "user",
+      activeRoleOverride: "admin",
+    });
+    expect(role).toBe("user");
+  });
+
   it("defaults to baseRole when no override is set", () => {
     const role = resolveEffectiveRole({
       isRealSuperAdmin: true,
@@ -95,4 +131,5 @@ describe("resolveEffectiveRole", () => {
     expect(role).toBe("super_admin");
   });
 });
+
 
