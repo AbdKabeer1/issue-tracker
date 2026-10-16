@@ -55,6 +55,24 @@ export function assigneeChangedSummary(
   return `changed assignee from ${from} to ${to}`;
 }
 
+export function typeChangedSummary(
+  fromName: string | null,
+  toName: string | null,
+): string {
+  const from = fromName ?? "none";
+  const to = toName ?? "none";
+  return `changed type from ${from} to ${to}`;
+}
+
+export function categoryChangedSummary(
+  fromName: string | null,
+  toName: string | null,
+): string {
+  const from = fromName ?? "none";
+  const to = toName ?? "none";
+  return `changed category from ${from} to ${to}`;
+}
+
 /**
  * Plain-text version of a comment for the activity log: Markdown removed and
  * `@[Name](userId)` mentions shown as `@Name`, so user ids never leak.

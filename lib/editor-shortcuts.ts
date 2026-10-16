@@ -98,15 +98,5 @@ export function matchShortcut(
     };
   }
 
-  if (event.shiftKey) {
-    const action = SHIFT_KEYS[key];
-    if (!action) return null;
-    return {
-      action,
-      shortcut: shortcutLabel({ key, shiftKey: true }, isApple),
-      requiresControl: false,
-    };
-  }
-
   return null;
 }

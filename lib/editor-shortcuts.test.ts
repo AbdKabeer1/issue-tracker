@@ -30,10 +30,11 @@ describe("matchShortcut", () => {
     expect(matchShortcut({ key: ".", metaKey: true, shiftKey: true })?.action).toBe("quote");
   });
 
-  it("maps bare shift combos", () => {
-    expect(matchShortcut({ key: "8", shiftKey: true })?.action).toBe("ul");
-    expect(matchShortcut({ key: ".", shiftKey: true })?.action).toBe("quote");
-    expect(matchShortcut({ key: "2", shiftKey: true })?.action).toBe("heading2");
+  it("ignores bare shift combos so international layouts can type digits and punctuation (#124)", () => {
+    expect(matchShortcut({ key: "1", shiftKey: true })).toBeNull();
+    expect(matchShortcut({ key: "2", shiftKey: true })).toBeNull();
+    expect(matchShortcut({ key: "8", shiftKey: true })).toBeNull();
+    expect(matchShortcut({ key: ".", shiftKey: true })).toBeNull();
   });
 
   it("ignores printable keys without a shortcut", () => {
