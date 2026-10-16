@@ -17,6 +17,8 @@ type VoteButtonProps = {
   dislikeVoters?: VoterInfo[];
   size?: "sm" | "md";
   showAvatars?: boolean;
+  /** Deleted issues: show counts, but likes and dislikes can't be changed. */
+  readOnly?: boolean;
 };
 
 function FacebookThumbsUp({
@@ -88,6 +90,7 @@ export function VoteButton({
   dislikeVoters = [],
   size = "sm",
   showAvatars = false,
+  readOnly = false,
 }: VoteButtonProps) {
   const initialVote =
     typeof userVote === "number" ? userVote : voted ? 1 : 0;
@@ -171,7 +174,7 @@ export function VoteButton({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              disabled={pending}
+              disabled={pending || readOnly}
               aria-pressed={isLiked}
               aria-label={isLiked ? "Unlike this issue" : "Like this issue"}
               title={isLiked ? "Unlike" : "Like"}
@@ -210,7 +213,7 @@ export function VoteButton({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              disabled={pending}
+              disabled={pending || readOnly}
               aria-pressed={isDisliked}
               aria-label={isDisliked ? "Remove dislike" : "Dislike this issue"}
               title={isDisliked ? "Remove dislike" : "Dislike"}
@@ -261,7 +264,7 @@ export function VoteButton({
       <div className="flex flex-col items-center gap-1 sm:flex-row sm:gap-1.5">
         <button
           type="button"
-          disabled={pending}
+          disabled={pending || readOnly}
           aria-pressed={isLiked}
           aria-label={isLiked ? "Unlike this issue" : "Like this issue"}
           title={isLiked ? "Unlike" : "Like"}
@@ -281,7 +284,7 @@ export function VoteButton({
 
         <button
           type="button"
-          disabled={pending}
+          disabled={pending || readOnly}
           aria-pressed={isDisliked}
           aria-label={isDisliked ? "Remove dislike" : "Dislike this issue"}
           title={isDisliked ? "Remove dislike" : "Dislike"}

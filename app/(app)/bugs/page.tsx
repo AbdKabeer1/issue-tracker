@@ -219,6 +219,7 @@ export default async function BugsPage({
                   likeCount={voterSummary.likes.count}
                   dislikeCount={voterSummary.dislikes.count}
                   size="sm"
+                  readOnly={isDeletedView}
                 />
                 <Link href={`/bugs/${bug.id}`} className="min-w-0 flex-1">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">

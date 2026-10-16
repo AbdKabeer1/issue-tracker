@@ -307,6 +307,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                 dislikeVoters={voterSummary.dislikes.voters}
                 size="md"
                 showAvatars
+                readOnly={bug.isDeleted}
               />
             </div>
           </div>
@@ -475,6 +476,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           users={users}
           currentUserId={user.id}
           currentUserRole={user.role}
+          readOnly={bug.isDeleted}
         />
       </section>
 
