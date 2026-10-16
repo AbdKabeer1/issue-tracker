@@ -32,7 +32,7 @@ function withNormalizedRequest(req: NextRequest): NextRequest {
   }
 
   // Restore subpath if stripped by Next.js router
-  if (!url.pathname.startsWith(BASE_PATH)) {
+  if (BASE_PATH && !url.pathname.startsWith(BASE_PATH)) {
     url.pathname = `${BASE_PATH}${url.pathname}`;
   }
 
@@ -49,6 +49,7 @@ function normalizeResponse(response: Response): Response {
   try {
     targetUrl = new URL(location);
     if (
+      BASE_PATH &&
       !targetUrl.pathname.startsWith(BASE_PATH) &&
       (targetUrl.pathname === "/login" || targetUrl.pathname.startsWith("/login/"))
     ) {
@@ -56,10 +57,11 @@ function normalizeResponse(response: Response): Response {
     }
   } catch {
     if (
+      BASE_PATH &&
       location.startsWith("/login") &&
       !location.startsWith(`${BASE_PATH}/login`)
     ) {
-      targetUrl = new URL(`${BASE_PATH}${location}`, "https://contributors.zedu.chat");
+      targetUrl = new URL(`${BASE_PATH}${location}`, "https://issues.zedu.chat");
     }
   }
 

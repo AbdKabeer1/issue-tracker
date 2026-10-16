@@ -42,7 +42,10 @@ export default auth((req) => {
     pathWithoutBase === "/favicon.ico";
 
   if (!isLoggedIn && !isPublic) {
-    const url = new URL(`${BASE_PATH}/login`, req.nextUrl.origin);
+    const url = new URL(
+      BASE_PATH ? `${BASE_PATH}/login` : "/login",
+      req.nextUrl.origin,
+    );
     url.searchParams.set("callbackUrl", pathWithoutBase);
     return NextResponse.redirect(url);
   }
@@ -50,7 +53,7 @@ export default auth((req) => {
   // Allow reset links even when a session exists; only bounce login/signup.
   if (isLoggedIn && isAuthPage) {
     return NextResponse.redirect(
-      new URL(`${BASE_PATH}/bugs`, req.nextUrl.origin),
+      new URL(BASE_PATH ? `${BASE_PATH}/bugs` : "/bugs", req.nextUrl.origin),
     );
   }
 
@@ -69,7 +72,7 @@ export default auth((req) => {
 
     if (!isSuperAdmin(effectiveRole)) {
       return NextResponse.redirect(
-        new URL(`${BASE_PATH}/bugs`, req.nextUrl.origin),
+        new URL(BASE_PATH ? `${BASE_PATH}/bugs` : "/bugs", req.nextUrl.origin),
       );
     }
   }

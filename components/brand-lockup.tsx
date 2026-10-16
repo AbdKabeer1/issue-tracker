@@ -24,7 +24,7 @@ export function BrandLockup({
   const content = (
     <>
       <Image
-        src={`${BASE_PATH}/zedu-mark.svg`}
+        src={BASE_PATH ? `${BASE_PATH}/zedu-mark.svg` : "/zedu-mark.svg"}
         alt=""
         width={dim.px}
         height={dim.px}
