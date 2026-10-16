@@ -83,8 +83,8 @@ export function CommentForm({
         footer={
           !isReply ? (
             <p className="text-xs text-slate-500">
-              Markdown is supported. Mentions are highlighted for readers; push
-              notifications are not sent.
+              Markdown is supported. People you @mention get an email (they
+              can turn these off in Settings).
             </p>
           ) : null
         }

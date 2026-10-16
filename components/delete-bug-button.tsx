@@ -19,7 +19,7 @@ export function DeleteBugButton({
   bugTitle,
   variant = "danger-secondary",
   size = "md",
-  label = "Delete ticket",
+  label = "Delete issue",
   className = "",
 }: DeleteBugButtonProps) {
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +39,7 @@ export function DeleteBugButton({
           event.preventDefault();
           event.stopPropagation();
           const confirmed = window.confirm(
-            `Are you sure you want to permanently delete "${bugTitle}"?\n\nThis cannot be undone and will delete all associated comments, votes, and activity history.`,
+            `Are you sure you want to delete "${bugTitle}"?\n\nThe issue will be hidden from regular users, but admins can restore it if needed.`,
           );
           if (!confirmed) return;
 
@@ -52,7 +52,7 @@ export function DeleteBugButton({
               }
             } catch (err) {
               unstable_rethrow(err);
-              setError("Could not delete ticket. Please try again.");
+              setError("Could not delete issue. Please try again.");
             }
           });
         }}

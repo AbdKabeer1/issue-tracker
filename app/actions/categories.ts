@@ -20,23 +20,42 @@ export async function createCategoryAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid category name" };
+    return { error: parsed.error.issues[0]?.message ?? "Invalid platform name" };
   }
 
-  const existing = await prisma.category.findUnique({
-    where: { name: parsed.data.name },
+  const normalizedName = parsed.data.name.trim();
+
+  const existing = await prisma.category.findFirst({
+    where: {
+      name: {
+        equals: normalizedName,
+        mode: "insensitive",
+      },
+    },
   });
 
   if (existing) {
-    return { error: "A category with this name already exists" };
+    return { error: `A category named "${existing.name}" already exists.` };
   }
 
-  await prisma.category.create({
-    data: {
-      name: parsed.data.name,
-      isActive: true,
-    },
-  });
+  try {
+    await prisma.category.create({
+      data: {
+        name: normalizedName,
+        isActive: true,
+      },
+    });
+  } catch (err: unknown) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      err.code === "P2002"
+    ) {
+      return { error: `A category named "${normalizedName}" already exists.` };
+    }
+    throw err;
+  }
 
   revalidatePath("/admin/categories");
   revalidatePath("/bugs/new");
@@ -55,7 +74,7 @@ export async function updateCategoryAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid category name" };
+    return { error: parsed.error.issues[0]?.message ?? "Invalid platform name" };
   }
 
   const category = await prisma.category.findUnique({
@@ -63,21 +82,41 @@ export async function updateCategoryAction(
   });
 
   if (!category) {
-    return { error: "Category not found" };
+    return { error: "Platform not found" };
   }
 
-  const duplicate = await prisma.category.findUnique({
-    where: { name: parsed.data.name },
+  const normalizedName = parsed.data.name.trim();
+
+  const duplicate = await prisma.category.findFirst({
+    where: {
+      name: {
+        equals: normalizedName,
+        mode: "insensitive",
+      },
+      NOT: { id: categoryId },
+    },
   });
 
-  if (duplicate && duplicate.id !== categoryId) {
-    return { error: "A category with this name already exists" };
+  if (duplicate) {
+    return { error: `A category named "${duplicate.name}" already exists.` };
   }
 
-  await prisma.category.update({
-    where: { id: categoryId },
-    data: { name: parsed.data.name },
-  });
+  try {
+    await prisma.category.update({
+      where: { id: categoryId },
+      data: { name: normalizedName },
+    });
+  } catch (err: unknown) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      err.code === "P2002"
+    ) {
+      return { error: `A category named "${normalizedName}" already exists.` };
+    }
+    throw err;
+  }
 
   revalidatePath("/admin/categories");
   revalidatePath("/bugs/new");
@@ -95,7 +134,7 @@ export async function toggleCategoryStatusAction(
   });
 
   if (!category) {
-    return { error: "Category not found" };
+    return { error: "Platform not found" };
   }
 
   await prisma.category.update({
@@ -119,7 +158,7 @@ export async function deleteCategoryAction(
   });
 
   if (!category) {
-    return { error: "Category not found" };
+    return { error: "Platform not found" };
   }
 
   const bugCount = await prisma.bug.count({
@@ -128,7 +167,7 @@ export async function deleteCategoryAction(
 
   if (bugCount > 0) {
     return {
-      error: `Cannot delete category: it is currently used by ${bugCount} issue${bugCount === 1 ? "" : "s"}. Please reassign or deactivate it instead.`,
+      error: `Cannot delete platform: it is currently used by ${bugCount} issue${bugCount === 1 ? "" : "s"}. Please reassign or deactivate it instead.`,
     };
   }
 
@@ -137,7 +176,7 @@ export async function deleteCategoryAction(
       where: { id: categoryId },
     });
   } catch {
-    return { error: "Failed to delete category" };
+    return { error: "Failed to delete platform" };
   }
 
   revalidatePath("/admin/categories");

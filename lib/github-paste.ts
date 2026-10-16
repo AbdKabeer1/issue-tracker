@@ -81,26 +81,81 @@ export function isGitHubPaste(
   return false;
 }
 
+/** Wrapper tags that leak from GitHub's rendered HTML into copied text. */
+const LEAKED_TAG_RE =
+  /<\/?(?:div|span|p|g-emoji|table|thead|tbody|tr|td|th)(?=[\s>/])[^>]*>/g;
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
+const INLINE_CODE_RE = /(`+)[\s\S]*?\1/g;
+
+/** Cleans one stretch of prose (never code): comments, leaked tags, blank lines. */
+function cleanProse(text: string): string {
+  // Protect inline code spans such as `Promise<P>` or `<div>` while cleaning.
+  const spans: string[] = [];
+  let cleaned = text.replace(INLINE_CODE_RE, (span) => {
+    spans.push(span);
+    return `\u0000${spans.length - 1}\u0000`;
+  });
+
+  // 1. HTML comments (GitHub issue/PR templates).
+  cleaned = cleaned.replace(/<!--[\s\S]*?-->/g, "");
+  // 2. Exact lowercase wrapper tags GitHub leaks. Case-sensitive, with a tag
+  //    boundary, so JSX like <Provider>, <Page> or generics like <P> survive.
+  cleaned = cleaned.replace(LEAKED_TAG_RE, "");
+  // 3. Collapse runs of blank lines left behind by removed template blocks.
+  cleaned = cleaned.replace(/\n{3,}/g, "\n\n");
+  // 4. Trim trailing spaces on each line.
+  cleaned = cleaned
+    .split("\n")
+    .map((line) => line.replace(/\s+$/, ""))
+    .join("\n");
+
+  return cleaned.replace(/\u0000(\d+)\u0000/g, (_m, i) => spans[Number(i)] ?? "");
+}
+
 /**
- * Strips HTML comments, GitHub-specific tracking wrappers, and normalizes excess whitespace.
+ * Strips HTML comments and GitHub's leaked wrapper tags, and normalises blank
+ * lines, in prose only. Fenced code blocks and inline code are left exactly as
+ * written (#114): earlier versions deleted JSX, HTML and generics such as
+ * `Promise<P>` from code samples when an issue or comment was saved.
  */
 export function stripGitHubMarkup(content: string): string {
   if (!content) return "";
 
-  // 1. Strip HTML comments (commonly present in GitHub issue/PR templates)
-  let cleaned = content.replace(/<!--[\s\S]*?-->/g, "");
+  const lines = content.split("\n");
+  const out: string[] = [];
+  let prose: string[] = [];
+  let i = 0;
 
-  // 2. Strip residual GitHub clipboard markup/tags if HTML leaked into plain text
-  cleaned = cleaned.replace(/<(?:\/)?(?:div|span|p|g-emoji|table|tbody|tr|td)[^>]*>/gi, "");
+  const flushProse = () => {
+    if (prose.length > 0) out.push(cleanProse(prose.join("\n")));
+    prose = [];
+  };
 
-  // 3. Normalize excess consecutive blank lines (from stripped template comment blocks)
-  cleaned = cleaned.replace(/\n{3,}/g, "\n\n");
+  while (i < lines.length) {
+    const open = FENCE_RE.exec(lines[i] ?? "");
+    if (!open) {
+      prose.push(lines[i] ?? "");
+      i += 1;
+      continue;
+    }
+    flushProse();
+    const marker = open[1] ?? "```";
+    const fence: string[] = [lines[i] ?? ""];
+    i += 1;
+    while (i < lines.length) {
+      const line = lines[i] ?? "";
+      fence.push(line);
+      i += 1;
+      const close = FENCE_RE.exec(line);
+      if (close && close[1]?.[0] === marker[0] && (close[1]?.length ?? 0) >= marker.length && line.trim() === close[1]) {
+        break;
+      }
+    }
+    out.push(fence.join("\n"));
+  }
+  flushProse();
 
-  // 4. Trim leading/trailing blank space around lines while preserving deliberate indentation
-  const lines = cleaned.split("\n").map((line) => line.replace(/\s+$/, ""));
-  cleaned = lines.join("\n").trim();
-
-  return cleaned;
+  return out.join("\n").trim();
 }
 
 export type GitHubPasteResult = {

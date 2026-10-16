@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { cleanEnv } from "@/lib/env-clean";
 import { calculateVoteChange } from "@/lib/voting";
 import { createdSummary } from "@/lib/activity-log";
-import { isSuperAdmin } from "@/lib/roles";
+import {
+  isSuperAdmin,
+  resolveEffectiveRole,
+  ACTIVE_ROLE_COOKIE_NAME,
+} from "@/lib/roles";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -15,25 +21,47 @@ class RollbackSignal extends Error {
   }
 }
 
-/** True when the current session belongs to a super admin. */
+/** True when the current session belongs to an effective super admin. */
 async function isSuperAdminRequest(): Promise<boolean> {
-  const session = await auth();
-  const id = session?.user?.id;
-  const email = session?.user?.email?.toLowerCase();
-  if (!id && !email) return false;
-  const user = id
-    ? await prisma.user.findUnique({ where: { id }, select: { role: true } })
-    : await prisma.user.findUnique({
-        where: { email: email! },
-        select: { role: true },
-      });
-  return isSuperAdmin(user?.role);
+  try {
+    const session = await auth();
+    const id = session?.user?.id;
+    const email = session?.user?.email?.toLowerCase();
+    if (!id && !email) return false;
+    const user = id
+      ? await prisma.user.findUnique({
+          where: { id },
+          select: { id: true, role: true, email: true },
+        })
+      : await prisma.user.findUnique({
+          where: { email: email! },
+          select: { id: true, role: true, email: true },
+        });
+    const isRealSuper =
+      user?.role === "super_admin" || isSuperAdminEmail(user?.email);
+    const cookieStore = await cookies();
+    const activeRoleOverride = cookieStore.get(ACTIVE_ROLE_COOKIE_NAME)?.value;
+    const effectiveRole = resolveEffectiveRole({
+      isRealSuperAdmin: isRealSuper,
+      baseRole: user?.role,
+      activeRoleOverride,
+      currentUserId: user?.id,
+    });
+    return isSuperAdmin(effectiveRole);
+  } catch {
+    return false;
+  }
 }
 
-/** Public: minimal `{status:"ok"}`. Super admin: full diagnostics and `?test=crud` self-test. */
+/** Public: minimal `{status:"ok"}` (or 503 `{status:"degraded"}` if DB down). Super admin: full diagnostics and `?test=crud` self-test. */
 export async function GET(request: NextRequest) {
   if (!(await isSuperAdminRequest())) {
-    return NextResponse.json({ status: "ok" });
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      return NextResponse.json({ status: "ok" });
+    } catch {
+      return NextResponse.json({ status: "degraded" }, { status: 503 });
+    }
   }
 
   const googleClientId = cleanEnv(
@@ -97,7 +125,7 @@ export async function GET(request: NextRequest) {
               "Testing bug creation and voting lifecycle in production DB",
             severity: "low",
             status: "open",
-            proofLinks: ["https://example.com/health-proof"],
+            proofLinks: ["https://github.com/Zedu-Endor/bug-tracker/issues/99"],
             reporterId: user.id,
             activities: {
               create: {
@@ -196,25 +224,32 @@ export async function GET(request: NextRequest) {
     (col) => schemaStatus[col] === true,
   );
 
-  return NextResponse.json({
-    status: dbOk && allColumnsPresent ? "healthy" : "degraded",
-    uptime: process.uptime(),
-    db: dbOk,
-    schemaSynced: allColumnsPresent,
-    schemaStatus,
-    crudVerification,
-    schemaErrors: schemaErrors.length > 0 ? schemaErrors : undefined,
-    auth: {
-      googleConfigured: Boolean(googleClientId) && Boolean(googleClientSecret),
-      clientIdPrefix: googleClientId ? `${googleClientId.slice(0, 10)}…` : null,
-      authSecretSet: Boolean(
-        cleanEnv(process.env.AUTH_SECRET) ||
-          cleanEnv(process.env.NEXTAUTH_SECRET),
-      ),
-      superAdminConfigured: Boolean(
-        cleanEnv(process.env.SUPER_ADMIN_EMAIL) ||
-          cleanEnv(process.env.SUPER_ADMIN_EMAILS),
-      ),
+  const isHealthy = dbOk && allColumnsPresent;
+
+  return NextResponse.json(
+    {
+      status: isHealthy ? "healthy" : "degraded",
+      uptime: process.uptime(),
+      db: dbOk,
+      schemaSynced: allColumnsPresent,
+      schemaStatus,
+      crudVerification,
+      schemaErrors: schemaErrors.length > 0 ? schemaErrors : undefined,
+      auth: {
+        googleConfigured: Boolean(googleClientId) && Boolean(googleClientSecret),
+        clientIdPrefix: googleClientId ? `${googleClientId.slice(0, 10)}…` : null,
+        authSecretSet: Boolean(
+          cleanEnv(process.env.AUTH_SECRET) ||
+            cleanEnv(process.env.NEXTAUTH_SECRET),
+        ),
+        superAdminConfigured: Boolean(
+          cleanEnv(process.env.SUPER_ADMIN_EMAIL) ||
+            cleanEnv(process.env.SUPER_ADMIN_EMAILS),
+        ),
+      },
     },
-  });
+    {
+      status: isHealthy ? 200 : 503,
+    },
+  );
 }

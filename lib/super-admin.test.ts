@@ -1,57 +1,44 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  DEFAULT_SUPER_ADMIN_EMAILS,
-  getSuperAdminEmails,
-  isSuperAdminEmail,
-} from "./super-admin";
+import { describe, expect, it } from "vitest";
+import { getSuperAdminEmails, isSuperAdminEmail } from "./super-admin";
 
 describe("super-admin helper", () => {
-  const originalSuperAdmin = process.env.SUPER_ADMIN_EMAIL;
-  const originalSuperAdmins = process.env.SUPER_ADMIN_EMAILS;
-
-  beforeEach(() => {
-    delete process.env.SUPER_ADMIN_EMAIL;
-    delete process.env.SUPER_ADMIN_EMAILS;
+  it("has no super admins when nothing is configured", () => {
+    expect(getSuperAdminEmails({}).size).toBe(0);
+    expect(isSuperAdminEmail("anyone@example.com", {})).toBe(false);
   });
 
-  afterEach(() => {
-    if (originalSuperAdmin !== undefined) {
-      process.env.SUPER_ADMIN_EMAIL = originalSuperAdmin;
-    } else {
-      delete process.env.SUPER_ADMIN_EMAIL;
-    }
-    if (originalSuperAdmins !== undefined) {
-      process.env.SUPER_ADMIN_EMAILS = originalSuperAdmins;
-    } else {
-      delete process.env.SUPER_ADMIN_EMAILS;
-    }
+  it("does not grant super admin to any built-in address", () => {
+    // Regression for #111: no address may be hard-coded into the set.
+    const env = { SUPER_ADMIN_EMAIL: "owner@zedu.chat" };
+    expect([...getSuperAdminEmails(env)]).toEqual(["owner@zedu.chat"]);
   });
 
-  it("recognizes default super admin amicablembakara50@gmail.com", () => {
-    expect(DEFAULT_SUPER_ADMIN_EMAILS).toContain("amicablembakara50@gmail.com");
-    expect(getSuperAdminEmails().has("amicablembakara50@gmail.com")).toBe(true);
-    expect(isSuperAdminEmail("amicablembakara50@gmail.com")).toBe(true);
-    expect(isSuperAdminEmail("AmicableMbakara50@gmail.com")).toBe(true);
-    expect(isSuperAdminEmail(" AMICABLEMBAKARA50@GMAIL.COM ")).toBe(true);
+  it("matches the configured address case- and whitespace-insensitively", () => {
+    const env = { SUPER_ADMIN_EMAIL: '"Owner@Zedu.chat"' };
+    expect(isSuperAdminEmail("owner@zedu.chat", env)).toBe(true);
+    expect(isSuperAdminEmail(" OWNER@ZEDU.CHAT ", env)).toBe(true);
   });
 
-  it("rejects non-admin emails", () => {
-    expect(isSuperAdminEmail("random@example.com")).toBe(false);
-    expect(isSuperAdminEmail("")).toBe(false);
-    expect(isSuperAdminEmail(null)).toBe(false);
-    expect(isSuperAdminEmail(undefined)).toBe(false);
+  it("rejects non-admin and empty emails", () => {
+    const env = { SUPER_ADMIN_EMAIL: "owner@zedu.chat" };
+    expect(isSuperAdminEmail("random@example.com", env)).toBe(false);
+    expect(isSuperAdminEmail("", env)).toBe(false);
+    expect(isSuperAdminEmail(null, env)).toBe(false);
+    expect(isSuperAdminEmail(undefined, env)).toBe(false);
   });
 
-  it("merges additional super admin emails from env", () => {
-    process.env.SUPER_ADMIN_EMAIL = "custom@zedu.chat";
-    expect(isSuperAdminEmail("custom@zedu.chat")).toBe(true);
-    expect(isSuperAdminEmail("amicablembakara50@gmail.com")).toBe(true);
+  it("handles comma-separated lists", () => {
+    const env = { SUPER_ADMIN_EMAILS: "admin1@test.com, admin2@test.com" };
+    expect(isSuperAdminEmail("admin1@test.com", env)).toBe(true);
+    expect(isSuperAdminEmail("admin2@test.com", env)).toBe(true);
   });
 
-  it("handles comma-separated SUPER_ADMIN_EMAILS", () => {
-    process.env.SUPER_ADMIN_EMAILS = "admin1@test.com, admin2@test.com";
-    expect(isSuperAdminEmail("admin1@test.com")).toBe(true);
-    expect(isSuperAdminEmail("admin2@test.com")).toBe(true);
-    expect(isSuperAdminEmail("amicablembakara50@gmail.com")).toBe(true);
+  it("merges SUPER_ADMIN_EMAIL and SUPER_ADMIN_EMAILS when both are set", () => {
+    const env = {
+      SUPER_ADMIN_EMAIL: "owner@zedu.chat",
+      SUPER_ADMIN_EMAILS: "lead@zedu.chat",
+    };
+    expect(isSuperAdminEmail("owner@zedu.chat", env)).toBe(true);
+    expect(isSuperAdminEmail("lead@zedu.chat", env)).toBe(true);
   });
 });

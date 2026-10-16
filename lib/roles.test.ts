@@ -86,6 +86,42 @@ describe("resolveEffectiveRole", () => {
     expect(role).toBe("super_admin");
   });
 
+  it("allows real admin to switch to user", () => {
+    const role = resolveEffectiveRole({
+      isRealSuperAdmin: false,
+      baseRole: "admin",
+      activeRoleOverride: "user",
+    });
+    expect(role).toBe("user");
+  });
+
+  it("allows real admin to keep or switch back to admin", () => {
+    const role = resolveEffectiveRole({
+      isRealSuperAdmin: false,
+      baseRole: "admin",
+      activeRoleOverride: "admin",
+    });
+    expect(role).toBe("admin");
+  });
+
+  it("prevents real admin from switching to super_admin", () => {
+    const role = resolveEffectiveRole({
+      isRealSuperAdmin: false,
+      baseRole: "admin",
+      activeRoleOverride: "super_admin",
+    });
+    expect(role).toBe("admin");
+  });
+
+  it("prevents normal user from switching to admin", () => {
+    const role = resolveEffectiveRole({
+      isRealSuperAdmin: false,
+      baseRole: "user",
+      activeRoleOverride: "admin",
+    });
+    expect(role).toBe("user");
+  });
+
   it("defaults to baseRole when no override is set", () => {
     const role = resolveEffectiveRole({
       isRealSuperAdmin: true,
@@ -94,5 +130,38 @@ describe("resolveEffectiveRole", () => {
     });
     expect(role).toBe("super_admin");
   });
+
+  describe("user-scoped active role cookie (#131)", () => {
+    it("applies role override when cookie user id matches current user", () => {
+      const role = resolveEffectiveRole({
+        isRealSuperAdmin: true,
+        baseRole: "super_admin",
+        activeRoleOverride: "user:user_123",
+        currentUserId: "user_123",
+      });
+      expect(role).toBe("user");
+    });
+
+    it("ignores role override when cookie belongs to a different user", () => {
+      const role = resolveEffectiveRole({
+        isRealSuperAdmin: false,
+        baseRole: "admin",
+        activeRoleOverride: "user:user_other",
+        currentUserId: "user_alice",
+      });
+      expect(role).toBe("admin");
+    });
+
+    it("still supports unscoped role override without user id", () => {
+      const role = resolveEffectiveRole({
+        isRealSuperAdmin: false,
+        baseRole: "admin",
+        activeRoleOverride: "user",
+        currentUserId: "user_alice",
+      });
+      expect(role).toBe("user");
+    });
+  });
 });
+
 

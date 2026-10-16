@@ -12,11 +12,13 @@ Brand mark: `public/zedu-mark.svg`.
 - Auth.js v5 — Google OAuth; email/password for local dev only (off in production, see `AUTH_PASSWORD_LOGIN`)
 - Prisma + PostgreSQL
 - pnpm
-- Docker / Coolify deploy (`basePath` `/bug-tracker`)
+- Docker / Coolify deploy (served from root at `issues.zedu.chat`)
 
-## Live (upstream)
+## Live (production)
 
-https://contributors.zedu.chat/bug-tracker
+https://issues.zedu.chat
+
+(Legacy sub-path: `https://contributors.zedu.chat/bug-tracker`)
 
 ## Roles (RBAC)
 
@@ -48,14 +50,14 @@ cp .env.example .env
 docker compose up -d          # Postgres on localhost:5433
 pnpm db:migrate
 pnpm db:seed                  # empty DB only
-pnpm dev                      # http://localhost:3001/bug-tracker
+pnpm dev                      # http://localhost:3001
 ```
 
-App is served under **`/bug-tracker`** (see `next.config.ts` `basePath`), matching Coolify.
+The app is served from the root domain at **`http://localhost:3001`** (matching production at `issues.zedu.chat`). Legacy `/bug-tracker` paths automatically redirect to root.
 
 ## Link previews (Open Graph / Twitter)
 
-Bug detail URLs (`/bugs/[id]`) emit OG + Twitter Card metadata so Slack, Discord, X, WhatsApp, and similar clients can unfurl a card with **title**, **status**, **author**, a **description snippet**, the **zedu-mark.svg** thumbnail, and a **canonical URL** under `/bug-tracker`.
+Bug detail URLs (`/bugs/[id]`) emit OG + Twitter Card metadata so Slack, Discord, X, WhatsApp, and similar clients can unfurl a card with **title**, **status**, **author**, a **description snippet**, the **zedu-mark.svg** thumbnail, and a **canonical URL**.
 
 ### Privacy (auth-gated pages)
 

@@ -39,19 +39,36 @@ export function resolveEffectiveRole({
   isRealSuperAdmin,
   baseRole,
   activeRoleOverride,
+  currentUserId,
 }: {
   isRealSuperAdmin: boolean;
   baseRole?: AppRole | null;
   activeRoleOverride?: string | null;
+  currentUserId?: string | null;
 }): AppRole {
-  if (
-    isRealSuperAdmin &&
-    (activeRoleOverride === "user" ||
-      activeRoleOverride === "admin" ||
-      activeRoleOverride === "super_admin")
-  ) {
-    return activeRoleOverride;
+  let overrideRole = activeRoleOverride;
+  if (activeRoleOverride && activeRoleOverride.includes(":")) {
+    const [rolePart, userIdPart] = activeRoleOverride.split(":");
+    if (userIdPart && currentUserId && userIdPart !== currentUserId) {
+      return baseRole ?? "user";
+    }
+    overrideRole = rolePart;
+  }
+
+  if (isRealSuperAdmin) {
+    if (
+      overrideRole === "user" ||
+      overrideRole === "admin" ||
+      overrideRole === "super_admin"
+    ) {
+      return overrideRole;
+    }
+  } else if (baseRole === "admin") {
+    if (overrideRole === "user" || overrideRole === "admin") {
+      return overrideRole;
+    }
   }
   return baseRole ?? "user";
 }
+
 

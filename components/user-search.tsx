@@ -74,7 +74,7 @@ export function UserSearch() {
             type="button"
             onClick={handleClear}
             aria-label="Clear search"
-            className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-slate-600 focus:outline-none"
+            className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-500 hover:text-slate-700 focus:outline-none"
           >
             <span className="text-sm font-bold">✕</span>
           </button>

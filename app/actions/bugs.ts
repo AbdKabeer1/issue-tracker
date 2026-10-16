@@ -6,11 +6,15 @@ import {
   activityCreateData,
   assigneeChangedSummary,
   boostedSummary,
+  categoryChangedSummary,
   commentedSummary,
   commentPreview,
   createdSummary,
+  deletedSummary,
+  restoredSummary,
   severityChangedSummary,
   statusChangedSummary,
+  typeChangedSummary,
   unboostedSummary,
   type ActivityMetadata,
 } from "@/lib/activity-log";
@@ -29,12 +33,32 @@ import {
 import {
   commentSchema,
   createBugSchema,
+  editBugContentSchema,
   updateBugSchema,
 } from "@/lib/validations/bug";
 import { calculateVoteChange, isValidVoteDirection } from "@/lib/voting";
-import { canDeleteTicket, TICKET_DELETION_ERRORS } from "@/lib/ticket-deletion";
+import {
+  canDeleteTicket,
+  canRestoreTicket,
+  TICKET_DELETION_ERRORS,
+} from "@/lib/ticket-deletion";
 import { canBoostTicket, TICKET_BOOST_ERRORS } from "@/lib/ticket-boosting";
+import { canAssignTicket, TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
+import {
+  canEditTicket,
+  formatEditSummary,
+  getChangedEditFields,
+  TICKET_EDIT_ERRORS,
+} from "@/lib/ticket-editing";
 import { Prisma, type ActivityType } from "@prisma/client";
+import { notifyLater } from "@/lib/notify";
+import type { NotificationEvent } from "@/lib/notifications";
+import { getForeignKeyErrorMessage } from "@/lib/foreign-key-errors";
+import {
+  checkRateLimit,
+  ACTION_RATE_LIMITS,
+  RATE_LIMIT_MESSAGE,
+} from "@/lib/rate-limit";
 
 export type ActionResult = { error?: string; ok?: boolean };
 
@@ -71,13 +95,42 @@ export async function createBugAction(
   const userId = user.id;
   const admin = isAdmin(user.role);
 
-  // Non-admins cannot set severity/assignee at creation.
+  const limit = checkRateLimit(
+    `create-bug:${userId}`,
+    ACTION_RATE_LIMITS.createBug,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
+
+  const rawAssignee = formData.get("assigneeId");
+  const targetAssigneeId =
+    rawAssignee === "" || rawAssignee === "unassigned" || rawAssignee === null || rawAssignee === undefined
+      ? null
+      : typeof rawAssignee === "string"
+        ? rawAssignee.trim()
+        : null;
+
+  if (targetAssigneeId) {
+    if (
+      !canAssignTicket({
+        actorId: userId,
+        actorRole: user.role,
+        currentAssigneeId: null,
+        targetAssigneeId,
+      })
+    ) {
+      return { error: TICKET_ASSIGN_ERRORS.unauthorized };
+    }
+  }
+
+  // Non-admins cannot set severity at creation; assignee validated above.
   const parsed = createBugSchema.safeParse({
     title: formData.get("title"),
     description: formData.get("description"),
     severity: admin ? formData.get("severity") || "medium" : "medium",
     typeId: formData.get("typeId") || "",
-    assigneeId: admin ? formData.get("assigneeId") || "" : "",
+    assigneeId: targetAssigneeId || "",
     categoryId: formData.get("categoryId") || "",
     proofLinks: formData.get("proofLinks") || "",
   });
@@ -87,7 +140,7 @@ export async function createBugAction(
   }
 
   const assigneeId =
-    admin && parsed.data.assigneeId && parsed.data.assigneeId.length > 0
+    parsed.data.assigneeId && parsed.data.assigneeId.length > 0
       ? parsed.data.assigneeId
       : null;
 
@@ -106,6 +159,16 @@ export async function createBugAction(
     }
   }
 
+  if (typeId) {
+    const issueType = await prisma.issueType.findUnique({
+      where: { id: typeId },
+      select: { id: true, isActive: true },
+    });
+    if (!issueType || !issueType.isActive) {
+      return { error: "That type no longer exists. Please pick another." };
+    }
+  }
+
   const description = await normalizeMentionTags(parsed.data.description);
 
   const categoryId =
@@ -119,7 +182,7 @@ export async function createBugAction(
       select: { id: true, isActive: true },
     });
     if (!category || !category.isActive) {
-      return { error: "Category not found or inactive" };
+      return { error: "Platform not found or inactive" };
     }
   }
 
@@ -155,10 +218,25 @@ export async function createBugAction(
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2003"
     ) {
-      return { error: "Assignee not found" };
+      return {
+        error: getForeignKeyErrorMessage(
+          error.meta as Record<string, unknown> | undefined,
+        ),
+      };
     }
     throw error;
   }
+
+  const events: NotificationEvent[] = [];
+  const actor = { actorId: userId, actorName: user.name ?? "Someone", bugId: bug.id, bugTitle: bug.title };
+  const mentioned = extractMentionedUserIds(description);
+  if (mentioned.length > 0) {
+    events.push({ ...actor, kind: "mentioned", place: "description", recipientIds: mentioned });
+  }
+  if (assigneeId) {
+    events.push({ ...actor, kind: "assignee_changed", fromUserId: null, toUserId: assigneeId });
+  }
+  if (events.length > 0) notifyLater(...events);
 
   revalidatePath("/bugs");
   redirect(`/bugs/${bug.id}`);
@@ -178,20 +256,46 @@ export async function updateBugAction(
     include: {
       assignee: { select: { id: true, name: true } },
       category: { select: { id: true, name: true } },
+      type: { select: { id: true, name: true } },
     },
   });
-  if (!existing) {
+  if (!existing || existing.isDeleted) {
     return { error: "Issue not found" };
   }
 
   const isAssignee = existing.assigneeId === userId;
-  if (!admin && !isAssignee) {
+  const assigneeRaw = formData.get("assigneeId");
+  const hasAssigneeField = assigneeRaw !== null && assigneeRaw !== undefined;
+  const targetAssigneeId = hasAssigneeField
+    ? assigneeRaw === "" || assigneeRaw === "unassigned"
+      ? null
+      : typeof assigneeRaw === "string"
+        ? assigneeRaw.trim()
+        : null
+    : undefined;
+
+  const isSelfAssigning =
+    targetAssigneeId !== undefined && targetAssigneeId === userId;
+
+  if (!admin && !isAssignee && !isSelfAssigning) {
     return {
       error: "Only the assignee or an admin can update this issue",
     };
   }
 
-  const assigneeRaw = formData.get("assigneeId");
+  if (targetAssigneeId !== undefined && targetAssigneeId !== existing.assigneeId) {
+    if (
+      !canAssignTicket({
+        actorId: userId,
+        actorRole: user.role,
+        currentAssigneeId: existing.assigneeId,
+        targetAssigneeId,
+      })
+    ) {
+      return { error: TICKET_ASSIGN_ERRORS.unauthorized };
+    }
+  }
+
   const categoryRaw = formData.get("categoryId");
   const typeRaw = formData.get("typeId");
   const parsed = updateBugSchema.safeParse({
@@ -202,11 +306,7 @@ export async function updateBugAction(
         ? null
         : typeRaw || undefined
       : undefined,
-    assigneeId: admin
-      ? assigneeRaw === "" || assigneeRaw === "unassigned"
-        ? null
-        : assigneeRaw || undefined
-      : undefined,
+    assigneeId: targetAssigneeId,
     categoryId: admin
       ? categoryRaw === "" || categoryRaw === "none"
         ? null
@@ -232,14 +332,14 @@ export async function updateBugAction(
     if (parsed.data.typeId !== undefined) {
       data.typeId = parsed.data.typeId === "" ? null : parsed.data.typeId;
     }
-    if (parsed.data.assigneeId !== undefined) {
-      data.assigneeId =
-        parsed.data.assigneeId === "" ? null : parsed.data.assigneeId;
-    }
     if (parsed.data.categoryId !== undefined) {
       data.categoryId =
         parsed.data.categoryId === "" ? null : parsed.data.categoryId;
     }
+  }
+  if (parsed.data.assigneeId !== undefined) {
+    data.assigneeId =
+      parsed.data.assigneeId === "" ? null : parsed.data.assigneeId;
   }
 
   type PendingActivity = {
@@ -299,13 +399,60 @@ export async function updateBugAction(
     });
   }
 
-  if (data.categoryId) {
+  if (data.typeId !== undefined && data.typeId !== existing.typeId) {
+    let toName: string | null = null;
+    if (data.typeId) {
+      const nextType = await prisma.issueType.findUnique({
+        where: { id: data.typeId },
+        select: { id: true, name: true, isActive: true },
+      });
+      if (!nextType || !nextType.isActive) {
+        return { error: "That type no longer exists. Please pick another." };
+      }
+      toName = nextType.name;
+    }
+    pending.push({
+      type: "type_changed",
+      summary: typeChangedSummary(existing.type?.name ?? null, toName),
+      metadata: {
+        field: "type",
+        from: existing.type?.name ?? null,
+        to: toName,
+      },
+    });
+  }
+
+  if (
+    data.categoryId !== undefined &&
+    data.categoryId !== existing.categoryId
+  ) {
+    let toName: string | null = null;
+    if (data.categoryId) {
+      const cat = await prisma.category.findUnique({
+        where: { id: data.categoryId },
+        select: { id: true, name: true },
+      });
+      if (!cat) {
+        return { error: "Platform not found" };
+      }
+      toName = cat.name;
+    }
+    pending.push({
+      type: "category_changed",
+      summary: categoryChangedSummary(existing.category?.name ?? null, toName),
+      metadata: {
+        field: "category",
+        from: existing.category?.name ?? null,
+        to: toName,
+      },
+    });
+  } else if (data.categoryId) {
     const cat = await prisma.category.findUnique({
       where: { id: data.categoryId },
       select: { id: true },
     });
     if (!cat) {
-      return { error: "Category not found" };
+      return { error: "Platform not found" };
     }
   }
 
@@ -338,10 +485,106 @@ export async function updateBugAction(
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2003"
     ) {
-      return { error: "Assignee not found" };
+      return {
+        error: getForeignKeyErrorMessage(
+          error.meta as Record<string, unknown> | undefined,
+        ),
+      };
     }
     throw error;
   }
+
+  const events: NotificationEvent[] = [];
+  const actor = { actorId: userId, actorName: user.name ?? "Someone", bugId, bugTitle: existing.title };
+  if (data.assigneeId !== undefined && data.assigneeId !== existing.assigneeId) {
+    events.push({ ...actor, kind: "assignee_changed", fromUserId: existing.assigneeId, toUserId: data.assigneeId });
+  }
+  if (data.status && data.status !== existing.status) {
+    events.push({ ...actor, kind: "status_changed", reporterId: existing.reporterId, from: existing.status, to: data.status });
+  }
+  if (events.length > 0) notifyLater(...events);
+
+  revalidatePath("/bugs");
+  revalidatePath(`/bugs/${bugId}`);
+  return { ok: true };
+}
+
+/** Allows the reporter or an admin to edit an issue's title and description. */
+export async function editBugContentAction(
+  bugId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await requireUser();
+  const userId = user.id;
+
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      reporterId: true,
+      isDeleted: true,
+    },
+  });
+
+  if (!existing || existing.isDeleted) {
+    return { error: TICKET_EDIT_ERRORS.notFound };
+  }
+
+  if (
+    !canEditTicket({
+      actorId: userId,
+      actorRole: user.role,
+      reporterId: existing.reporterId,
+    })
+  ) {
+    return { error: TICKET_EDIT_ERRORS.unauthorized };
+  }
+
+  const parsed = editBugContentSchema.safeParse({
+    title: formData.get("title"),
+    description: formData.get("description"),
+  });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const normalizedDescription = await normalizeMentionTags(parsed.data.description);
+  const changedFields = getChangedEditFields(existing, {
+    title: parsed.data.title,
+    description: normalizedDescription,
+  });
+
+  if (changedFields.length === 0) {
+    return { ok: true };
+  }
+
+  const summary = formatEditSummary(changedFields);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.bug.update({
+      where: { id: bugId },
+      data: {
+        title: parsed.data.title,
+        description: normalizedDescription,
+        updatedAt: new Date(),
+      },
+    });
+
+    await tx.bugActivity.create({
+      data: {
+        bugId,
+        actorId: userId,
+        type: "edited",
+        summary,
+        metadata: {
+          fields: changedFields,
+        },
+      },
+    });
+  });
 
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
@@ -354,6 +597,15 @@ export async function addCommentAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const userId = await requireUserId();
+
+  const limit = checkRateLimit(
+    `add-comment:${userId}`,
+    ACTION_RATE_LIMITS.addComment,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
+
   const parsed = commentSchema.safeParse({
     body: formData.get("body"),
     parentId: formData.get("parentId") || undefined,
@@ -365,9 +617,9 @@ export async function addCommentAction(
 
   const bug = await prisma.bug.findUnique({
     where: { id: bugId },
-    select: { id: true },
+    select: { id: true, isDeleted: true, title: true },
   });
-  if (!bug) {
+  if (!bug || bug.isDeleted) {
     return { error: "Issue not found" };
   }
 
@@ -376,11 +628,14 @@ export async function addCommentAction(
   if (parentId) {
     const parent = await prisma.comment.findUnique({
       where: { id: parentId },
-      select: { id: true, bugId: true, parentId: true },
+      select: { id: true, bugId: true, parentId: true, deletedAt: true },
     });
 
     if (!parent || parent.bugId !== bugId) {
-      return { error: "Parent comment not found on this ticket" };
+      return { error: "Parent comment not found on this issue" };
+    }
+    if (parent.deletedAt) {
+      return { error: "You can't reply to a deleted comment" };
     }
 
     const threadComments = await prisma.comment.findMany({
@@ -402,13 +657,14 @@ export async function addCommentAction(
   const normalizedBody = await normalizeMentionTags(parsed.data.body);
 
   await prisma.$transaction(async (tx) => {
-    await tx.comment.create({
+    const created = await tx.comment.create({
       data: {
         bugId,
         authorId: userId,
         body: normalizedBody,
         parentId: parentId ?? null,
       },
+      select: { id: true },
     });
     await tx.bugActivity.create({
       data: {
@@ -418,6 +674,7 @@ export async function addCommentAction(
         summary: commentedSummary(normalizedBody),
         metadata: {
           field: "comment",
+          commentId: created.id,
           commentPreview: commentPreview(normalizedBody),
         } as Prisma.InputJsonValue,
       },
@@ -427,6 +684,21 @@ export async function addCommentAction(
       data: { updatedAt: new Date() },
     });
   });
+
+  const mentioned = extractMentionedUserIds(normalizedBody);
+  if (mentioned.length > 0) {
+    const author = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+    notifyLater({
+      kind: "mentioned",
+      actorId: userId,
+      actorName: author?.name ?? "Someone",
+      bugId,
+      bugTitle: bug.title,
+      place: "comment",
+      recipientIds: mentioned,
+      excerpt: commentPreview(normalizedBody),
+    });
+  }
 
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
@@ -458,11 +730,19 @@ export async function toggleVoteAction(
   }
   const { userId } = resolved;
 
+  const limit = checkRateLimit(
+    `toggle-vote:${userId}`,
+    ACTION_RATE_LIMITS.toggleVote,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
+
   const bug = await prisma.bug.findUnique({
     where: { id: bugId },
-    select: { id: true },
+    select: { id: true, isDeleted: true },
   });
-  if (!bug) {
+  if (!bug || bug.isDeleted) {
     return { error: "Issue not found" };
   }
 
@@ -524,8 +804,8 @@ export async function toggleVoteAction(
 }
 
 /**
- * Permanently deletes a bug and all its dependent data (comments, votes, activity).
- * Super admins only.
+ * Soft deletes a bug. Admins and super admins only.
+ * The issue is hidden from normal views, but can be restored.
  */
 export async function deleteBugAction(bugId: string): Promise<ActionResult> {
   const user = await requireUser();
@@ -539,19 +819,35 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
 
   const existing = await prisma.bug.findUnique({
     where: { id: bugId },
-    select: { id: true },
+    select: { id: true, isDeleted: true },
   });
 
   if (!existing) {
     return { error: TICKET_DELETION_ERRORS.notFound };
   }
 
+  if (existing.isDeleted) {
+    return { error: TICKET_DELETION_ERRORS.alreadyDeleted };
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.comment.deleteMany({ where: { bugId } });
-      await tx.vote.deleteMany({ where: { bugId } });
-      await tx.bugActivity.deleteMany({ where: { bugId } });
-      await tx.bug.delete({ where: { id: bugId } });
+      await tx.bug.update({
+        where: { id: bugId },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+        },
+      });
+
+      await tx.bugActivity.create({
+        data: {
+          bugId,
+          actorId: user.id,
+          type: "deleted",
+          summary: deletedSummary(),
+        },
+      });
     });
   } catch (error) {
     console.error("Failed to delete bug:", error);
@@ -559,7 +855,64 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
   }
 
   revalidatePath("/bugs");
+  revalidatePath(`/bugs/${bugId}`);
   redirect("/bugs");
+}
+
+/**
+ * Restores a soft-deleted bug. Admins and super admins only.
+ * Returns the issue back to active status in views and searches.
+ */
+export async function restoreBugAction(bugId: string): Promise<ActionResult> {
+  const user = await requireUser();
+  if (!canRestoreTicket(user.role)) {
+    return { error: TICKET_DELETION_ERRORS.unauthorizedRestore };
+  }
+
+  if (!bugId || typeof bugId !== "string" || bugId.trim().length === 0) {
+    return { error: TICKET_DELETION_ERRORS.invalidId };
+  }
+
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId },
+    select: { id: true, isDeleted: true },
+  });
+
+  if (!existing) {
+    return { error: TICKET_DELETION_ERRORS.notFound };
+  }
+
+  if (!existing.isDeleted) {
+    return { error: TICKET_DELETION_ERRORS.notDeleted };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.bug.update({
+        where: { id: bugId },
+        data: {
+          isDeleted: false,
+          deletedAt: null,
+        },
+      });
+
+      await tx.bugActivity.create({
+        data: {
+          bugId,
+          actorId: user.id,
+          type: "restored",
+          summary: restoredSummary(),
+        },
+      });
+    });
+  } catch (error) {
+    console.error("Failed to restore bug:", error);
+    return { error: TICKET_DELETION_ERRORS.failedRestore };
+  }
+
+  revalidatePath("/bugs");
+  revalidatePath(`/bugs/${bugId}`);
+  return { ok: true };
 }
 
 /**
@@ -580,10 +933,10 @@ export async function toggleBoostBugAction(
 
   const existing = await prisma.bug.findUnique({
     where: { id: bugId },
-    select: { id: true, isBoosted: true },
+    select: { id: true, isBoosted: true, isDeleted: true },
   });
 
-  if (!existing) {
+  if (!existing || existing.isDeleted) {
     return { error: TICKET_BOOST_ERRORS.notFound };
   }
 
@@ -621,6 +974,99 @@ export async function toggleBoostBugAction(
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true, isBoosted: nextBoosted };
+}
+
+/**
+ * Allows a user to assign an issue to themselves, or unassign if currently assigned.
+ * Validates permission via canAssignTicket.
+ */
+export async function selfAssignBugAction(
+  bugId: string,
+  assign: boolean = true,
+): Promise<ActionResult> {
+  const user = await requireUser();
+  const userId = user.id;
+
+  if (!bugId || typeof bugId !== "string" || bugId.trim().length === 0) {
+    return { error: TICKET_ASSIGN_ERRORS.invalidId };
+  }
+
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId },
+    select: {
+      id: true,
+      title: true,
+      assigneeId: true,
+      isDeleted: true,
+      assignee: { select: { name: true } },
+    },
+  });
+
+  if (!existing || existing.isDeleted) {
+    return { error: TICKET_ASSIGN_ERRORS.notFound };
+  }
+
+  const targetAssigneeId = assign ? userId : null;
+
+  if (
+    !canAssignTicket({
+      actorId: userId,
+      actorRole: user.role,
+      currentAssigneeId: existing.assigneeId,
+      targetAssigneeId,
+    })
+  ) {
+    return { error: TICKET_ASSIGN_ERRORS.unauthorized };
+  }
+
+  if (existing.assigneeId === targetAssigneeId) {
+    return { ok: true };
+  }
+
+  const toName = targetAssigneeId ? user.name ?? null : null;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.bug.update({
+        where: { id: bugId },
+        data: { assigneeId: targetAssigneeId },
+      });
+
+      await tx.bugActivity.create({
+        data: {
+          bugId,
+          actorId: userId,
+          type: "assignee_changed",
+          summary: assigneeChangedSummary(
+            existing.assignee?.name ?? null,
+            toName,
+          ),
+          metadata: {
+            field: "assigneeId",
+            from: existing.assigneeId,
+            to: targetAssigneeId,
+          },
+        },
+      });
+    });
+  } catch (error) {
+    console.error("Failed to self-assign issue:", error);
+    return { error: TICKET_ASSIGN_ERRORS.failed };
+  }
+
+  notifyLater({
+    kind: "assignee_changed",
+    actorId: userId,
+    actorName: user.name ?? "Someone",
+    bugId,
+    bugTitle: existing.title,
+    fromUserId: existing.assigneeId,
+    toUserId: targetAssigneeId,
+  });
+
+  revalidatePath(`/bugs/${bugId}`);
+  revalidatePath("/bugs");
+  return { ok: true };
 }
 
 

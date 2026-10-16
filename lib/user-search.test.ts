@@ -8,6 +8,17 @@ describe("buildUserSearchWhere", () => {
     expect(buildUserSearchWhere(null)).toEqual({});
     expect(buildUserSearchWhere("")).toEqual({});
     expect(buildUserSearchWhere("   ")).toEqual({});
+    expect(buildUserSearchWhere([])).toEqual({});
+  });
+
+  it("handles repeated query parameters as string array using first element", () => {
+    const where = buildUserSearchWhere(["alice", "bob"]);
+    expect(where).toEqual({
+      OR: [
+        { name: { contains: "alice", mode: "insensitive" } },
+        { email: { contains: "alice", mode: "insensitive" } },
+      ],
+    });
   });
 
   it("builds OR query for name and email with case-insensitive contains", () => {

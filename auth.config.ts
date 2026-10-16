@@ -17,13 +17,13 @@ const authUrl =
  * bundle exceeds Vercel's 1 MB middleware limit.
  */
 export default {
-  basePath: `${BASE_PATH}/api/auth`,
+  basePath: BASE_PATH ? `${BASE_PATH}/api/auth` : "/api/auth",
   providers: [],
   secret: authSecret,
   session: { strategy: "jwt" },
   pages: {
-    signIn: `${BASE_PATH}/login`,
-    error: `${BASE_PATH}/login`,
+    signIn: BASE_PATH ? `${BASE_PATH}/login` : "/login",
+    error: BASE_PATH ? `${BASE_PATH}/login` : "/login",
   },
   trustHost: true,
   useSecureCookies: isProd && !authUrl?.startsWith("http://localhost"),
@@ -37,6 +37,7 @@ export default {
   callbacks: {
     redirect({ url, baseUrl }) {
       if (url.startsWith("/")) {
+        if (!BASE_PATH) return `${baseUrl}${url}`;
         return url.startsWith(BASE_PATH)
           ? `${baseUrl}${url}`
           : `${baseUrl}${BASE_PATH}${url}`;
@@ -44,7 +45,7 @@ export default {
       try {
         const parsed = new URL(url);
         if (parsed.origin === baseUrl) {
-          if (!parsed.pathname.startsWith(BASE_PATH)) {
+          if (BASE_PATH && !parsed.pathname.startsWith(BASE_PATH)) {
             parsed.pathname = `${BASE_PATH}${parsed.pathname}`;
           }
           return parsed.toString();
@@ -52,7 +53,7 @@ export default {
       } catch {
         // Fallback to default bugs page below
       }
-      return `${baseUrl}${BASE_PATH}/bugs`;
+      return `${baseUrl}${BASE_PATH ? BASE_PATH : ""}/bugs`;
     },
 
     jwt({ token, user }) {

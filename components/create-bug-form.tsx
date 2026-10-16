@@ -21,11 +21,13 @@ export function CreateBugForm({
   categories = [],
   types = [],
   isAdmin,
+  currentUserId,
 }: {
   users: UserOption[];
   categories?: CategoryOption[];
   types?: TypeOption[];
   isAdmin: boolean;
+  currentUserId?: string;
 }) {
   const defaultTypeId =
     types.find((t) => t.name.toLowerCase() === "fix")?.id ?? types[0]?.id ?? "";
@@ -36,6 +38,7 @@ export function CreateBugForm({
   const [proofLinks, setProofLinks] = useState("");
   const [severity, setSeverity] = useState<(typeof severities)[number]>("medium");
   const [assigneeId, setAssigneeId] = useState("");
+  const [assignToMe, setAssignToMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const mentionUsers = users.map((user) => ({ id: user.id, name: user.name }));
@@ -55,6 +58,8 @@ export function CreateBugForm({
         if (isAdmin) {
           formData.set("severity", severity);
           formData.set("assigneeId", assigneeId);
+        } else if (assignToMe && currentUserId) {
+          formData.set("assigneeId", currentUserId);
         }
         startTransition(async () => {
           try {
@@ -77,6 +82,7 @@ export function CreateBugForm({
             name="title"
             required
             minLength={3}
+            maxLength={200}
             placeholder="Short summary of the issue"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
@@ -107,7 +113,7 @@ export function CreateBugForm({
           htmlFor="categoryId"
           className="text-sm font-medium text-slate-700"
         >
-          Category
+          Platform
         </label>
         <Select
           id="categoryId"
@@ -115,7 +121,7 @@ export function CreateBugForm({
           value={categoryId}
           onChange={(event) => setCategoryId(event.target.value)}
         >
-          <option value="">Select a category</option>
+          <option value="">Select a platform</option>
           {categories.map((cat) => (
             <option key={cat.id} value={cat.id}>
               {cat.name}
@@ -154,22 +160,20 @@ export function CreateBugForm({
           htmlFor="proofLinks"
           className="text-sm font-medium text-slate-700"
         >
-          Proof links (screenshots / videos)
+          Proof links (GitHub)
         </label>
         <Textarea
           id="proofLinks"
           name="proofLinks"
           rows={3}
           placeholder={
-            "https://example.com/screenshot.png\nhttps://example.com/repro-video.mp4"
+            "https://github.com/organization/repo/issues/123\nhttps://github.com/organization/repo/pull/456"
           }
           value={proofLinks}
           onChange={(event) => setProofLinks(event.target.value)}
         />
         <p className="text-xs text-slate-500">
-          Optional. One http(s) URL per line (hosted screenshots or videos — not
-          uploads). In the description above, say what to look for in each link,
-          expected vs actual, and repro context so triage is fast.
+          Optional. One GitHub link per line (e.g. https://github.com/org/repo/issues/123). You need to have created the issue on GitHub first or gotten it from GitHub before adding the link here.
         </p>
       </div>
       {isAdmin ? (
@@ -217,6 +221,22 @@ export function CreateBugForm({
               ))}
             </Select>
           </div>
+        </div>
+      ) : currentUserId ? (
+        <div className="flex items-center gap-2 pt-1">
+          <input
+            type="checkbox"
+            id="assignToMe"
+            checked={assignToMe}
+            onChange={(e) => setAssignToMe(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+          />
+          <label
+            htmlFor="assignToMe"
+            className="text-sm font-medium text-slate-700 cursor-pointer"
+          >
+            Assign this issue to myself
+          </label>
         </div>
       ) : null}
       {error ? (

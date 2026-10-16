@@ -120,6 +120,8 @@ export async function signupAction(
 }
 
 export async function logoutAction() {
+  const cookieStore = await cookies();
+  cookieStore.delete(ACTIVE_ROLE_COOKIE_NAME);
   await signOut({ redirectTo: "/login" });
 }
 
@@ -131,23 +133,37 @@ export async function switchActiveRoleAction(
     return { error: "Unauthorized" };
   }
 
-  // Only verified super admins can switch viewing roles
   const isSuper = isSuperAdminEmail(session.user.email);
-  if (!isSuper) {
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { role: true },
-    });
-    if (user?.role !== "super_admin") {
-      return { error: "Only super admins can switch roles" };
-    }
+  let isRealAdmin = isSuper;
+  let isRealSuper = isSuper;
+
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email },
+    select: { id: true, role: true },
+  });
+
+  if (user?.role === "super_admin" || isSuper) {
+    isRealSuper = true;
+    isRealAdmin = true;
+  } else if (user?.role === "admin") {
+    isRealAdmin = true;
+  }
+
+  if (!isRealAdmin) {
+    return { error: "Unauthorized: only admins and super admins can switch roles" };
+  }
+
+  if (!isRealSuper && newRole === "super_admin") {
+    return { error: "Only super admins can switch to super admin" };
   }
 
   const cookieStore = await cookies();
-  if (newRole === "super_admin") {
+  const baseRole = isRealSuper ? "super_admin" : "admin";
+  if (newRole === baseRole) {
     cookieStore.delete(ACTIVE_ROLE_COOKIE_NAME);
   } else {
-    cookieStore.set(ACTIVE_ROLE_COOKIE_NAME, newRole, {
+    const cookieValue = user?.id ? `${newRole}:${user.id}` : newRole;
+    cookieStore.set(ACTIVE_ROLE_COOKIE_NAME, cookieValue, {
       path: "/",
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",

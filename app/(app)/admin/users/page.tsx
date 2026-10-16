@@ -4,6 +4,7 @@ import { requireSuperAdmin } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { roleLabels } from "@/lib/roles";
 import { buildUserSearchWhere } from "@/lib/user-search";
+import { toSingleQueryParam } from "@/lib/search";
 import { LocalTime } from "@/components/local-time";
 import { Badge } from "@/components/ui/badge";
 import { PromoteUserButton } from "@/components/promote-user-button";
@@ -19,7 +20,8 @@ const roleBadgeClass: Record<string, string> = {
 const roleOrder = { super_admin: 0, admin: 1, user: 2 } as const;
 
 type SearchParams = Promise<{
-  q?: string;
+  q?: string | string[];
+  [key: string]: string | string[] | undefined;
 }>;
 
 export default async function AdminUsersPage({
@@ -30,7 +32,7 @@ export default async function AdminUsersPage({
   await requireSuperAdmin();
 
   const params = searchParams ? await searchParams : {};
-  const query = params.q?.trim() ?? "";
+  const query = toSingleQueryParam(params.q)?.trim() ?? "";
   const where = buildUserSearchWhere(query);
 
   const users = await prisma.user.findMany({
@@ -111,7 +113,7 @@ export default async function AdminUsersPage({
                         userName={user.name}
                       />
                     ) : (
-                      <span className="text-xs text-slate-400">—</span>
+                      <span className="text-xs text-slate-500">—</span>
                     )}
                   </td>
                 </tr>

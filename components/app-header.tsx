@@ -13,10 +13,12 @@ export function AppHeader({
   userName,
   role,
   isRealSuperAdmin,
+  isRealAdmin,
 }: {
   userName?: string | null;
   role?: AppRole | null;
   isRealSuperAdmin?: boolean;
+  isRealAdmin?: boolean;
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -44,7 +46,7 @@ export function AppHeader({
                   href="/admin/categories"
                   className="text-slate-600 hover:text-slate-900"
                 >
-                  Categories
+                  Platforms
                 </Link>
                 <Link
                   href="/admin/types"
@@ -67,7 +69,9 @@ export function AppHeader({
 
         {/* Right: Desktop Controls */}
         <div className="hidden items-center gap-3 sm:flex">
-          {isRealSuperAdmin && role ? <RoleSwitcher activeRole={role} /> : null}
+          {(isRealSuperAdmin || isRealAdmin) && role ? (
+            <RoleSwitcher activeRole={role} isSuperAdmin={isRealSuperAdmin} />
+          ) : null}
           {userName ? (
             <UserNameWithBadges
               name={userName}
@@ -75,6 +79,9 @@ export function AppHeader({
               className="max-w-[14rem] text-sm text-slate-500"
             />
           ) : null}
+          <Link href="/settings" className="text-sm text-slate-600 hover:text-slate-900">
+            Settings
+          </Link>
           <form action={logoutAction}>
             <Button type="submit" variant="secondary">
               Sign out
@@ -146,9 +153,9 @@ export function AppHeader({
             </div>
           )}
 
-          {isRealSuperAdmin && role && (
+          {(isRealSuperAdmin || isRealAdmin) && role && (
             <div className="mb-3 border-b border-slate-100 pb-2">
-              <RoleSwitcher activeRole={role} />
+              <RoleSwitcher activeRole={role} isSuperAdmin={isRealSuperAdmin} />
             </div>
           )}
 
@@ -174,7 +181,7 @@ export function AppHeader({
                   onClick={closeMenu}
                   className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  Categories
+                  Platforms
                 </Link>
                 <Link
                   href="/admin/types"
@@ -194,6 +201,13 @@ export function AppHeader({
                 Admin management
               </Link>
             ) : null}
+            <Link
+              href="/settings"
+              onClick={closeMenu}
+              className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Settings
+            </Link>
           </nav>
 
           <div className="mt-4 border-t border-slate-100 pt-3">

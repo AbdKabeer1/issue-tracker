@@ -3,20 +3,24 @@ import {
   activityCreateData,
   assigneeChangedSummary,
   boostedSummary,
+  categoryChangedSummary,
   commentedSummary,
   commentPreview,
   createdSummary,
+  deletedSummary,
   editedSummary,
+  restoredSummary,
   severityChangedSummary,
   statusChangedSummary,
+  typeChangedSummary,
   unboostedSummary,
 } from "./activity-log";
 
 describe("activity summary helpers", () => {
-  it("summarizes ticket creation with truncated title", () => {
+  it("summarizes issue creation with truncated title", () => {
     const long = "A".repeat(100);
     expect(createdSummary("Login broken")).toBe(
-      'created this ticket (“Login broken”)',
+      'created this issue (“Login broken”)',
     );
     const summarized = createdSummary(long);
     expect(summarized).toContain("…");
@@ -38,6 +42,27 @@ describe("activity summary helpers", () => {
     );
     expect(assigneeChangedSummary("Ada", null)).toBe(
       "changed assignee from Ada to Unassigned",
+    );
+  });
+
+  it("summarizes type and category changes including none", () => {
+    expect(typeChangedSummary(null, "Feat")).toBe(
+      "changed type from none to Feat",
+    );
+    expect(typeChangedSummary("Bug", "Feat")).toBe(
+      "changed type from Bug to Feat",
+    );
+    expect(typeChangedSummary("Bug", null)).toBe(
+      "changed type from Bug to none",
+    );
+    expect(categoryChangedSummary(null, "Mobile")).toBe(
+      "changed category from none to Mobile",
+    );
+    expect(categoryChangedSummary("Web", "Mobile")).toBe(
+      "changed category from Web to Mobile",
+    );
+    expect(categoryChangedSummary("Web", null)).toBe(
+      "changed category from Web to none",
     );
   });
 
@@ -65,7 +90,7 @@ describe("activity summary helpers", () => {
   });
 
   it("summarizes edited fields", () => {
-    expect(editedSummary([])).toBe("edited this ticket");
+    expect(editedSummary([])).toBe("edited this issue");
     expect(editedSummary(["title"])).toBe("edited title");
     expect(editedSummary(["title", "description"])).toBe(
       "edited title and description",
@@ -76,8 +101,10 @@ describe("activity summary helpers", () => {
   });
 
   it("summarizes boosted and unboosted actions", () => {
-    expect(boostedSummary()).toBe("boosted this ticket to the top");
-    expect(unboostedSummary()).toBe("removed boost from this ticket");
+    expect(boostedSummary()).toBe("boosted this issue to the top");
+    expect(unboostedSummary()).toBe("removed boost from this issue");
+    expect(deletedSummary()).toBe("deleted this issue");
+    expect(restoredSummary()).toBe("restored this issue");
   });
 });
 

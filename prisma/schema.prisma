@@ -40,6 +40,11 @@ enum ActivityType {
   edited
   boosted
   unboosted
+  deleted
+  restored
+  comment_deleted
+  type_changed
+  category_changed
 }
 
 model User {
@@ -51,6 +56,8 @@ model User {
   emailVerified DateTime?
   image         String?
   role          Role          @default(user)
+  /// Email when mentioned, assigned, or when an issue you reported changes status (#151).
+  emailNotifications Boolean  @default(true)
   createdAt     DateTime      @default(now())
   reportedBugs  Bug[]         @relation("BugReporter")
   assignedBugs  Bug[]         @relation("BugAssignee")
@@ -94,6 +101,8 @@ model Bug {
   voteCount   Int           @default(0)
   isBoosted   Boolean       @default(false)
   boostedAt   DateTime?
+  isDeleted   Boolean       @default(false)
+  deletedAt   DateTime?
   proofLinks  String[]      @default([])
   reporterId  String
   assigneeId  String?
@@ -110,6 +119,7 @@ model Bug {
   @@index([categoryId])
   @@index([typeId])
   @@index([isBoosted])
+  @@index([isDeleted])
 }
 
 model Category {
@@ -142,6 +152,10 @@ model Comment {
   parentId  String?
   body      String
   createdAt DateTime  @default(now())
+  /// Set when the author edits the comment; shown as "edited".
+  editedAt  DateTime?
+  /// Soft delete: the body is cleared and replies keep their place.
+  deletedAt DateTime?
   bug       Bug       @relation(fields: [bugId], references: [id], onDelete: Cascade)
   author    User      @relation(fields: [authorId], references: [id])
   parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)

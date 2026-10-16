@@ -1,18 +1,30 @@
-import { isSuperAdmin, type AppRole } from "@/lib/roles";
+import { isAdmin, type AppRole } from "@/lib/roles";
 
 export const TICKET_DELETION_ERRORS = {
-  unauthorized: "Only super admins can delete tickets",
-  invalidId: "Invalid ticket ID",
-  notFound: "Ticket not found",
-  failed: "Could not delete ticket. Please try again.",
+  unauthorized: "Only admins and super admins can delete issues",
+  unauthorizedRestore: "Only admins and super admins can restore issues",
+  invalidId: "Invalid issue ID",
+  notFound: "Issue not found",
+  alreadyDeleted: "Issue is already deleted",
+  notDeleted: "Issue is not deleted",
+  failed: "Could not delete issue. Please try again.",
+  failedRestore: "Could not restore issue. Please try again.",
 } as const;
 
 export type TicketDeletionError = keyof typeof TICKET_DELETION_ERRORS;
 
 /**
- * Checks whether a user with the given role has permission to delete tickets.
- * Only super admins are permitted.
+ * Checks whether a user with the given role has permission to soft-delete tickets.
+ * Admins and super admins are permitted.
  */
 export function canDeleteTicket(role?: AppRole | null): boolean {
-  return isSuperAdmin(role);
+  return isAdmin(role);
+}
+
+/**
+ * Checks whether a user with the given role has permission to restore soft-deleted tickets.
+ * Admins and super admins are permitted.
+ */
+export function canRestoreTicket(role?: AppRole | null): boolean {
+  return isAdmin(role);
 }
