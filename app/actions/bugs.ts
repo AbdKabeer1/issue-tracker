@@ -51,6 +51,7 @@ import {
 import { Prisma, type ActivityType } from "@prisma/client";
 import { notifyLater } from "@/lib/notify";
 import type { NotificationEvent } from "@/lib/notifications";
+import { getForeignKeyErrorMessage } from "@/lib/foreign-key-errors";
 
 export type ActionResult = { error?: string; ok?: boolean };
 
@@ -143,6 +144,16 @@ export async function createBugAction(
     }
   }
 
+  if (typeId) {
+    const issueType = await prisma.issueType.findUnique({
+      where: { id: typeId },
+      select: { id: true, isActive: true },
+    });
+    if (!issueType || !issueType.isActive) {
+      return { error: "That type no longer exists. Please pick another." };
+    }
+  }
+
   const description = await normalizeMentionTags(parsed.data.description);
 
   const categoryId =
@@ -192,7 +203,11 @@ export async function createBugAction(
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2003"
     ) {
-      return { error: "Assignee not found" };
+      return {
+        error: getForeignKeyErrorMessage(
+          error.meta as Record<string, unknown> | undefined,
+        ),
+      };
     }
     throw error;
   }
@@ -368,6 +383,16 @@ export async function updateBugAction(
     });
   }
 
+  if (data.typeId) {
+    const issueType = await prisma.issueType.findUnique({
+      where: { id: data.typeId },
+      select: { id: true, isActive: true },
+    });
+    if (!issueType || !issueType.isActive) {
+      return { error: "That type no longer exists. Please pick another." };
+    }
+  }
+
   if (data.categoryId) {
     const cat = await prisma.category.findUnique({
       where: { id: data.categoryId },
@@ -407,7 +432,11 @@ export async function updateBugAction(
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2003"
     ) {
-      return { error: "Assignee not found" };
+      return {
+        error: getForeignKeyErrorMessage(
+          error.meta as Record<string, unknown> | undefined,
+        ),
+      };
     }
     throw error;
   }
