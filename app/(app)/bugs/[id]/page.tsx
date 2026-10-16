@@ -141,12 +141,13 @@ export default async function BugDetailPage({ params }: BugPageProps) {
   const user = await requireUser();
   const canTriage = isAdmin(user.role);
 
-  const [bug, users] = await Promise.all([
+  const [bug, users, categories] = await Promise.all([
     prisma.bug.findUnique({
       where: { id },
       include: {
         reporter: { select: { name: true, email: true, role: true } },
         assignee: { select: { id: true, name: true, role: true } },
+        category: { select: { id: true, name: true } },
         comments: {
           include: {
             author: { select: { name: true, role: true } },
@@ -170,6 +171,11 @@ export default async function BugDetailPage({ params }: BugPageProps) {
     prisma.user.findMany({
       orderBy: { name: "asc" },
       select: { id: true, name: true, role: true },
+    }),
+    prisma.category.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
     }),
   ]);
 
@@ -210,6 +216,11 @@ export default async function BugDetailPage({ params }: BugPageProps) {
               <Badge className={severityClass[bug.severity]}>
                 {severityLabels[bug.severity]}
               </Badge>
+              {bug.category ? (
+                <Badge className="border border-teal-200 bg-teal-50 text-teal-800">
+                  {bug.category.name}
+                </Badge>
+              ) : null}
               <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
                 {Math.max(0, bug.voteCount)} like{Math.max(0, bug.voteCount) === 1 ? "" : "s"}
               </span>
@@ -247,6 +258,12 @@ export default async function BugDetailPage({ params }: BugPageProps) {
               )}
             </dd>
           </div>
+          {bug.category ? (
+            <div>
+              <dt className="font-medium text-slate-500">Category</dt>
+              <dd>{bug.category.name}</dd>
+            </div>
+          ) : null}
           <div>
             <dt className="font-medium text-slate-500">Created</dt>
             <dd><LocalTime date={bug.createdAt} /></dd>
@@ -290,7 +307,9 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           status={bug.status}
           severity={bug.severity}
           assigneeId={bug.assigneeId}
+          categoryId={bug.categoryId}
           users={users}
+          categories={categories}
           canEditTriage={canTriage}
         />
       ) : null}

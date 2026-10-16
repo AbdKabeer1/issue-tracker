@@ -8,12 +8,19 @@ export default async function NewBugPage() {
   const user = await requireUser();
   const admin = isAdmin(user.role);
 
-  const users = admin
-    ? await prisma.user.findMany({
-        select: { id: true, name: true, role: true },
-        orderBy: { name: "asc" },
-      })
-    : [];
+  const [users, categories] = await Promise.all([
+    admin
+      ? prisma.user.findMany({
+          select: { id: true, name: true, role: true },
+          orderBy: { name: "asc" },
+        })
+      : Promise.resolve([]),
+    prisma.category.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -28,7 +35,11 @@ export default async function NewBugPage() {
         </p>
       </div>
       <div className="rounded-xl border border-slate-200 bg-white p-6">
-        <CreateBugForm users={users} isAdmin={admin} />
+        <CreateBugForm
+          users={users}
+          categories={categories}
+          isAdmin={admin}
+        />
       </div>
     </div>
   );

@@ -50,6 +50,7 @@ export const createBugSchema = z
       .max(5000),
     severity: severitySchema.default("medium"),
     assigneeId: z.string().cuid().optional().or(z.literal("")),
+    categoryId: z.string().optional().or(z.literal("")),
     proofLinks: proofLinksInputSchema,
   })
   .strict();
@@ -58,6 +59,15 @@ export const updateBugSchema = z.object({
   status: statusSchema.optional(),
   assigneeId: z.string().cuid().nullable().optional().or(z.literal("")),
   severity: severitySchema.optional(),
+  categoryId: z.string().nullable().optional().or(z.literal("")),
+});
+
+export const categorySchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Category name must be at least 2 characters")
+    .max(50, "Category name must be at most 50 characters"),
 });
 
 export const commentSchema = z.object({

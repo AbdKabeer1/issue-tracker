@@ -69,6 +69,7 @@ export default async function BugsPage({
     include: {
       reporter: { select: { name: true, role: true } },
       assignee: { select: { name: true, role: true } },
+      category: { select: { id: true, name: true } },
       votes: userId
         ? { where: { userId }, select: { id: true, value: true }, take: 1 }
         : false,
@@ -171,7 +172,12 @@ export default async function BugsPage({
                         ) : null}
                       </p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      {bug.category ? (
+                        <Badge className="border border-teal-200 bg-teal-50 text-teal-800">
+                          {bug.category.name}
+                        </Badge>
+                      ) : null}
                       <Badge className={statusClass[bug.status]}>
                         {statusLabels[bug.status]}
                       </Badge>

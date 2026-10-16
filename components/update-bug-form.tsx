@@ -9,21 +9,26 @@ import { formatUserLabel, type AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 
 type UserOption = { id: string; name: string; role: AppRole };
+type CategoryOption = { id: string; name: string };
 
 export function UpdateBugForm({
   bugId,
   status,
   severity,
   assigneeId,
+  categoryId,
   users,
+  categories = [],
   canEditTriage = true,
 }: {
   bugId: string;
   status: Status;
   severity: Severity;
   assigneeId: string | null;
+  categoryId?: string | null;
   users: UserOption[];
-  /** Admins can edit severity/assignee; assignees only change status. */
+  categories?: CategoryOption[];
+  /** Admins can edit severity/assignee/category; assignees only change status. */
   canEditTriage?: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +57,7 @@ export function UpdateBugForm({
       <div
         className={
           canEditTriage
-            ? "grid gap-3 sm:grid-cols-3"
+            ? "grid gap-3 sm:grid-cols-4"
             : "grid gap-3 sm:grid-cols-1 sm:max-w-xs"
         }
       >
@@ -91,6 +96,27 @@ export function UpdateBugForm({
                 {severities.map((value) => (
                   <option key={value} value={value}>
                     {severityLabel[value]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                htmlFor="categoryId"
+                className="mb-1 block text-xs font-medium"
+              >
+                Category
+              </label>
+              <select
+                id="categoryId"
+                name="categoryId"
+                defaultValue={categoryId ?? ""}
+                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+              >
+                <option value="">None</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
                   </option>
                 ))}
               </select>
