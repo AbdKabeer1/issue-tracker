@@ -4,6 +4,8 @@ import { safeCallbackUrl } from "@/lib/safe-callback-url";
 
 /**
  * Authenticated users are redirected to /bugs by middleware (`auth` wrapper).
+ * Errors show fixed copy per `?error=` code only; any other query text (such
+ * as the old `?reason=`) is never rendered (#118). Details are in server logs.
  * Google OAuth is the primary sign-in mechanism for Zedu Bugs.
  */
 export default async function LoginPage({
@@ -12,7 +14,6 @@ export default async function LoginPage({
   searchParams: Promise<{
     callbackUrl?: string;
     error?: string;
-    reason?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -37,11 +38,6 @@ export default async function LoginPage({
                 ? "Unable to complete Google sign-in. Please try again."
                 : "Authentication failed. Please try again."}
             </p>
-            {params.reason ? (
-              <p className="mt-1.5 font-mono text-xs text-red-800 break-words">
-                Diagnostic: {params.reason}
-              </p>
-            ) : null}
           </div>
         ) : null}
 
