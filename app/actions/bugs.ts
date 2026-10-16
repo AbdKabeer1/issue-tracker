@@ -6,6 +6,7 @@ import {
   activityCreateData,
   assigneeChangedSummary,
   commentedSummary,
+  commentPreview,
   createdSummary,
   severityChangedSummary,
   statusChangedSummary,
@@ -298,7 +299,7 @@ export async function addCommentAction(
         summary: commentedSummary(parsed.data.body),
         metadata: {
           field: "comment",
-          commentPreview: parsed.data.body.slice(0, 120),
+          commentPreview: commentPreview(parsed.data.body),
         } as Prisma.InputJsonValue,
       },
     });

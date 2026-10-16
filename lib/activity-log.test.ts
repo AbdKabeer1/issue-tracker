@@ -3,6 +3,7 @@ import {
   activityCreateData,
   assigneeChangedSummary,
   commentedSummary,
+  commentPreview,
   createdSummary,
   editedSummary,
   severityChangedSummary,
@@ -44,6 +45,15 @@ describe("activity summary helpers", () => {
     );
     const long = "word ".repeat(40);
     expect(commentedSummary(long)).toContain("…");
+  });
+
+  it("shows comments as plain text without Markdown or user ids", () => {
+    const body = "**Fixed** by @[Jane Doe](clx8k2abc000)";
+    expect(commentedSummary(body)).toBe(
+      "added a comment: “Fixed by @Jane Doe”",
+    );
+    expect(commentPreview(body)).toBe("Fixed by @Jane Doe");
+    expect(commentPreview(body)).not.toContain("clx8k2abc000");
   });
 
   it("summarizes edited fields", () => {
