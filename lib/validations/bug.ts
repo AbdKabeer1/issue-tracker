@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isHttpUrl, splitProofLinkLines } from "@/lib/proof-links";
+import { isGitHubUrl, splitProofLinkLines } from "@/lib/proof-links";
 import { stripGitHubMarkup } from "@/lib/github-paste";
 
 export const severities = ["low", "medium", "high", "critical"] as const;
@@ -10,7 +10,7 @@ export const statusSchema = z.enum(statuses);
 
 const MAX_PROOF_LINKS = 20;
 
-/** Optional newline-separated http(s) URLs for screenshots / videos. */
+/** Optional newline-separated GitHub URLs for issues / PRs. */
 export const proofLinksInputSchema = z
   .string()
   .optional()
@@ -25,10 +25,10 @@ export const proofLinksInputSchema = z
       return z.NEVER;
     }
     for (const link of links) {
-      if (!isHttpUrl(link)) {
+      if (!isGitHubUrl(link)) {
         ctx.addIssue({
           code: "custom",
-          message: `Each proof link must be a valid http(s) URL (got: ${link})`,
+          message: `Each proof link must be a valid GitHub URL (e.g. https://github.com/org/repo/issues/123) (got: ${link})`,
         });
         return z.NEVER;
       }

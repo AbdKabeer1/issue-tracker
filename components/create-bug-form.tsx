@@ -159,22 +159,20 @@ export function CreateBugForm({
           htmlFor="proofLinks"
           className="text-sm font-medium text-slate-700"
         >
-          Proof links (screenshots / videos)
+          Proof links (GitHub)
         </label>
         <Textarea
           id="proofLinks"
           name="proofLinks"
           rows={3}
           placeholder={
-            "https://example.com/screenshot.png\nhttps://example.com/repro-video.mp4"
+            "https://github.com/organization/repo/issues/123\nhttps://github.com/organization/repo/pull/456"
           }
           value={proofLinks}
           onChange={(event) => setProofLinks(event.target.value)}
         />
         <p className="text-xs text-slate-500">
-          Optional. One http(s) URL per line (hosted screenshots or videos — not
-          uploads). In the description above, say what to look for in each link,
-          expected vs actual, and repro context so triage is fast.
+          Optional. One GitHub link per line (e.g. https://github.com/org/repo/issues/123). You need to have created the issue on GitHub first or gotten it from GitHub before adding the link here.
         </p>
       </div>
       {isAdmin ? (
