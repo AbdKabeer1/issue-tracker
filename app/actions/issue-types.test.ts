@@ -15,16 +15,32 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      delete: vi.fn(),
+    },
+    bug: {
+      count: vi.fn(),
     },
   },
 }));
 
 import { prisma } from "@/lib/prisma";
-import { createIssueTypeAction, updateIssueTypeAction } from "./issue-types";
+import {
+  createIssueTypeAction,
+  deleteIssueTypeAction,
+  updateIssueTypeAction,
+} from "./issue-types";
 
 const findFirstMock = vi.mocked(prisma.issueType.findFirst) as unknown as ReturnType<typeof vi.fn>;
+const findUniqueMock = vi.mocked(prisma.issueType.findUnique) as unknown as ReturnType<typeof vi.fn>;
 const createMock = vi.mocked(prisma.issueType.create) as unknown as ReturnType<typeof vi.fn>;
 const updateMock = vi.mocked(prisma.issueType.update) as unknown as ReturnType<typeof vi.fn>;
+const deleteMock = vi.mocked(prisma.issueType.delete) as unknown as ReturnType<typeof vi.fn>;
+const bugCountMock = vi.mocked(prisma.bug.count) as unknown as ReturnType<typeof vi.fn>;
+
+/** The error Prisma throws when the row to update/delete no longer exists. */
+const recordNotFound = Object.assign(new Error("Record to delete does not exist."), {
+  code: "P2025",
+});
 
 describe("issue-types actions duplicate checks (#139)", () => {
   beforeEach(() => {
@@ -84,5 +100,53 @@ describe("issue-types actions duplicate checks (#139)", () => {
       expect(result.error).toBe('Another type named "Design" already exists.');
       expect(updateMock).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("issue-types actions on a type that no longer exists (#227)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns 'Type not found' when updating a type deleted in another tab", async () => {
+    findFirstMock.mockResolvedValue(null);
+    updateMock.mockRejectedValue(recordNotFound);
+
+    const formData = new FormData();
+    formData.set("name", "Design");
+
+    const result = await updateIssueTypeAction("type-gone", formData);
+
+    expect(result).toEqual({ error: "Type not found" });
+  });
+
+  it("returns 'Type not found' when deleting a type that is already gone", async () => {
+    findUniqueMock.mockResolvedValue(null);
+
+    const result = await deleteIssueTypeAction("type-gone");
+
+    expect(result).toEqual({ error: "Type not found" });
+    expect(deleteMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 'Type not found' when the type is deleted between the check and the delete", async () => {
+    findUniqueMock.mockResolvedValue({ id: "type-1" });
+    bugCountMock.mockResolvedValue(0);
+    deleteMock.mockRejectedValue(recordNotFound);
+
+    const result = await deleteIssueTypeAction("type-1");
+
+    expect(result).toEqual({ error: "Type not found" });
+  });
+
+  it("still deletes an unused type that exists", async () => {
+    findUniqueMock.mockResolvedValue({ id: "type-1" });
+    bugCountMock.mockResolvedValue(0);
+    deleteMock.mockResolvedValue({ id: "type-1" });
+
+    const result = await deleteIssueTypeAction("type-1");
+
+    expect(result).toEqual({ ok: true });
+    expect(deleteMock).toHaveBeenCalledWith({ where: { id: "type-1" } });
   });
 });
