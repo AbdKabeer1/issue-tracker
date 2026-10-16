@@ -1,27 +1,37 @@
 import { cleanEnv } from "@/lib/env-clean";
 
-export const DEFAULT_SUPER_ADMIN_EMAILS = [
-  "amicablembakara50@gmail.com",
-] as const;
+type SuperAdminEnv = {
+  SUPER_ADMIN_EMAIL?: string;
+  SUPER_ADMIN_EMAILS?: string;
+};
 
-export function getSuperAdminEmails(): Set<string> {
-  const raw =
-    cleanEnv(process.env.SUPER_ADMIN_EMAIL) ||
-    cleanEnv(process.env.SUPER_ADMIN_EMAILS) ||
-    "";
+/**
+ * Email addresses that are always granted the super_admin role, read only from
+ * the environment (#111). Nothing is hard-coded: a deployment with neither
+ * variable set has no auto-provisioned super admin, and existing super admins
+ * keep the role stored on their User row.
+ *
+ * Both variables are read and merged, and each may hold a comma-separated list.
+ */
+export function getSuperAdminEmails(
+  env: SuperAdminEnv = process.env as SuperAdminEnv,
+): Set<string> {
+  const raw = [cleanEnv(env.SUPER_ADMIN_EMAIL), cleanEnv(env.SUPER_ADMIN_EMAILS)]
+    .filter(Boolean)
+    .join(",");
 
-  const configured = raw
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-
-  return new Set([
-    ...DEFAULT_SUPER_ADMIN_EMAILS.map((e) => e.toLowerCase()),
-    ...configured,
-  ]);
+  return new Set(
+    raw
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean),
+  );
 }
 
-export function isSuperAdminEmail(email?: string | null): boolean {
+export function isSuperAdminEmail(
+  email?: string | null,
+  env?: SuperAdminEnv,
+): boolean {
   if (!email || typeof email !== "string") return false;
-  return getSuperAdminEmails().has(email.trim().toLowerCase());
+  return getSuperAdminEmails(env).has(email.trim().toLowerCase());
 }
