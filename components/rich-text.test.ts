@@ -14,4 +14,11 @@ describe("RichText default styles", () => {
     expect(DEFAULT_CLASS_NAME).toContain("[&_pre]:bg-slate-900");
     expect(DEFAULT_CLASS_NAME).toContain("[&_pre]:text-slate-100");
   });
+
+  it("breaks long unbroken links and inline code without horizontal overflow (#126)", () => {
+    expect(DEFAULT_CLASS_NAME).toContain("[overflow-wrap:anywhere]");
+    expect(DEFAULT_CLASS_NAME).toContain("break-words");
+    expect(DEFAULT_CLASS_NAME).toContain("[&_a]:break-all");
+    expect(DEFAULT_CLASS_NAME).toContain("[&_:not(pre)>code]:break-all");
+  });
 });
