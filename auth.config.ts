@@ -2,13 +2,11 @@ import type { NextAuthConfig } from "next-auth";
 import { BASE_PATH } from "@/lib/base-path";
 import { cleanEnv } from "@/lib/env-clean";
 import { recordAuthError } from "@/lib/auth-diagnostics";
+import { isSuperAdminEmail } from "@/lib/super-admin";
+import { resolveAuthSecret } from "@/lib/auth-secret";
 
 const isProd = process.env.NODE_ENV === "production";
-const fallbackSecret = "zedu-bug-tracker-auth-secret-production-salt-2026";
-const authSecret =
-  cleanEnv(process.env.AUTH_SECRET) ||
-  cleanEnv(process.env.NEXTAUTH_SECRET) ||
-  fallbackSecret;
+const authSecret = resolveAuthSecret();
 
 const authUrl =
   cleanEnv(process.env.AUTH_URL) || cleanEnv(process.env.NEXTAUTH_URL);
@@ -65,6 +63,9 @@ export default {
       if (user?.role) {
         token.role = user.role;
       }
+      if (isSuperAdminEmail(token.email as string | undefined)) {
+        token.role = "super_admin";
+      }
       return token;
     },
     session({ session, token }) {
@@ -73,7 +74,9 @@ export default {
         if (typeof id === "string" && id.length > 0) {
           session.user.id = id;
         }
-        if (
+        if (isSuperAdminEmail(session.user.email)) {
+          session.user.role = "super_admin";
+        } else if (
           token.role === "user" ||
           token.role === "admin" ||
           token.role === "super_admin"

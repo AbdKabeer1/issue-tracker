@@ -88,6 +88,31 @@ describe("createBugSchema", () => {
       expect(result.data).not.toHaveProperty("status");
     }
   });
+
+  it("strips GitHub template comments from description during validation", () => {
+    const result = createBugSchema.safeParse({
+      title: "Valid title here",
+      description:
+        "<!-- Please write description here -->Legitimate bug details that exceed ten characters.",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.description).toBe(
+        "Legitimate bug details that exceed ten characters.",
+      );
+      expect(result.data.description).not.toContain("Please write description");
+    }
+  });
+
+  it("rejects descriptions that only contain GitHub template comments", () => {
+    const result = createBugSchema.safeParse({
+      title: "Valid title here",
+      description: "<!-- Please write description here -->",
+    });
+
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("updateBugSchema", () => {
@@ -289,5 +314,21 @@ describe("createBugSchema proofLinks", () => {
       proofLinks: "ftp://files.example.com/shot.png",
     });
     expect(result.success).toBe(false);
+  });
+
+  it("deduplicates identical proof links", () => {
+    const result = createBugSchema.safeParse({
+      title: "Broken upload button",
+      description: "Upload never completes on Chrome 130.",
+      proofLinks:
+        "https://example.com/a.png\nhttps://example.com/a.png\nhttps://example.com/b.mp4\nhttps://example.com/a.png\n",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.proofLinks).toEqual([
+        "https://example.com/a.png",
+        "https://example.com/b.mp4",
+      ]);
+    }
   });
 });

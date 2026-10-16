@@ -1,19 +1,12 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
-import { resolveSessionUserId } from "@/lib/session-user";
+import { requireUser } from "@/lib/auth-helpers";
 import { CreateBugForm } from "@/components/create-bug-form";
 
 export default async function NewBugPage() {
-  const resolved = await resolveSessionUserId();
-  const userId = "userId" in resolved ? resolved.userId : undefined;
-  const sessionUser = userId
-    ? await prisma.user.findUnique({
-        where: { id: userId },
-        select: { role: true },
-      })
-    : null;
-  const admin = isAdmin(sessionUser?.role);
+  const user = await requireUser();
+  const admin = isAdmin(user.role);
 
   const users = admin
     ? await prisma.user.findMany({

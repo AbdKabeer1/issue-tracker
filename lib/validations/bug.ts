@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isHttpUrl, splitProofLinkLines } from "@/lib/proof-links";
+import { stripGitHubMarkup } from "@/lib/github-paste";
 
 export const severities = ["low", "medium", "high", "critical"] as const;
 export const statuses = ["open", "in_progress", "resolved", "closed"] as const;
@@ -14,7 +15,8 @@ export const proofLinksInputSchema = z
   .string()
   .optional()
   .transform((value, ctx) => {
-    const links = splitProofLinkLines(value);
+    const rawLinks = splitProofLinkLines(value);
+    const links = [...new Set(rawLinks)];
     if (links.length > MAX_PROOF_LINKS) {
       ctx.addIssue({
         code: "custom",
@@ -45,8 +47,13 @@ export const createBugSchema = z
     description: z
       .string()
       .trim()
-      .min(10, "Description must be at least 10 characters")
-      .max(5000),
+      .transform((val) => stripGitHubMarkup(val))
+      .refine((val) => val.length >= 10, {
+        message: "Description must be at least 10 characters",
+      })
+      .refine((val) => val.length <= 5000, {
+        message: "Description cannot exceed 5000 characters",
+      }),
     severity: severitySchema.default("medium"),
     assigneeId: z.string().cuid().optional().or(z.literal("")),
     proofLinks: proofLinksInputSchema,
@@ -60,7 +67,16 @@ export const updateBugSchema = z.object({
 });
 
 export const commentSchema = z.object({
-  body: z.string().trim().min(1, "Comment cannot be empty").max(2000),
+  body: z
+    .string()
+    .trim()
+    .transform((val) => stripGitHubMarkup(val))
+    .refine((val) => val.length >= 1, {
+      message: "Comment cannot be empty",
+    })
+    .refine((val) => val.length <= 2000, {
+      message: "Comment cannot exceed 2000 characters",
+    }),
   parentId: z
     .string()
     .cuid()

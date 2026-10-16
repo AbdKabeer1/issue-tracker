@@ -1,5 +1,6 @@
 import type { ActivityType, Prisma, Severity, Status } from "@prisma/client";
 import { severityLabel, statusLabel } from "@/lib/labels";
+import { stripMarkdown } from "@/lib/rich-text";
 
 export type ActivityMetadata = {
   field?: string;
@@ -53,8 +54,16 @@ export function assigneeChangedSummary(
   return `changed assignee from ${from} to ${to}`;
 }
 
+/**
+ * Plain-text version of a comment for the activity log: Markdown removed and
+ * `@[Name](userId)` mentions shown as `@Name`, so user ids never leak.
+ */
+export function commentPreview(body: string, max = 120): string {
+  return truncate(stripMarkdown(body), max);
+}
+
 export function commentedSummary(body: string): string {
-  return `added a comment: “${truncate(body, 120)}”`;
+  return `added a comment: “${commentPreview(body)}”`;
 }
 
 export function editedSummary(fields: string[]): string {

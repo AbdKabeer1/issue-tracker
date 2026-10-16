@@ -8,12 +8,14 @@ import { isSuperAdmin } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
+/** Thrown inside the self-test transaction to force a rollback while carrying results. */
 class RollbackSignal extends Error {
   constructor(readonly result: Record<string, unknown>) {
     super("rollback");
   }
 }
 
+/** True when the current session belongs to a super admin. */
 async function isSuperAdminRequest(): Promise<boolean> {
   const session = await auth();
   const id = session?.user?.id;
@@ -28,6 +30,7 @@ async function isSuperAdminRequest(): Promise<boolean> {
   return isSuperAdmin(user?.role);
 }
 
+/** Public: minimal `{status:"ok"}`. Super admin: full diagnostics and `?test=crud` self-test. */
 export async function GET(request: NextRequest) {
   if (!(await isSuperAdminRequest())) {
     return NextResponse.json({ status: "ok" });
@@ -207,6 +210,10 @@ export async function GET(request: NextRequest) {
       authSecretSet: Boolean(
         cleanEnv(process.env.AUTH_SECRET) ||
           cleanEnv(process.env.NEXTAUTH_SECRET),
+      ),
+      superAdminConfigured: Boolean(
+        cleanEnv(process.env.SUPER_ADMIN_EMAIL) ||
+          cleanEnv(process.env.SUPER_ADMIN_EMAILS),
       ),
     },
   });

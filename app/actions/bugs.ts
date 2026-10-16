@@ -6,6 +6,7 @@ import {
   activityCreateData,
   assigneeChangedSummary,
   commentedSummary,
+  commentPreview,
   createdSummary,
   severityChangedSummary,
   statusChangedSummary,
@@ -13,18 +14,23 @@ import {
 } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
+import { requireUser } from "@/lib/auth-helpers";
 import {
   resolveSessionUserId,
   SESSION_EXPIRED_MESSAGE,
 } from "@/lib/session-user";
 import { MAX_COMMENT_DEPTH, commentDepth } from "@/lib/comments";
 import {
+  extractMentionedUserIds,
+  normalizeMentions,
+} from "@/lib/mentions";
+import {
   commentSchema,
   createBugSchema,
   updateBugSchema,
 } from "@/lib/validations/bug";
 import { calculateVoteChange, isValidVoteDirection } from "@/lib/voting";
-import type { ActivityType, Prisma } from "@prisma/client";
+import { Prisma, type ActivityType } from "@prisma/client";
 
 export type ActionResult = { error?: string; ok?: boolean };
 
@@ -37,15 +43,13 @@ async function requireUserId() {
   return resolved.userId;
 }
 
+/** Creates a bug as the signed-in user; only admins may set severity/assignee. */
 export async function createBugAction(
   formData: FormData,
 ): Promise<ActionResult> {
-  const userId = await requireUserId();
-  const creator = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-  const admin = isAdmin(creator?.role);
+  const user = await requireUser();
+  const userId = user.id;
+  const admin = isAdmin(user.role);
 
   // Non-admins cannot set severity/assignee at creation.
   const parsed = createBugSchema.safeParse({
@@ -65,44 +69,63 @@ export async function createBugAction(
       ? parsed.data.assigneeId
       : null;
 
+  if (assigneeId) {
+    const assignee = await prisma.user.findUnique({
+      where: { id: assigneeId },
+      select: { id: true },
+    });
+    if (!assignee) {
+      return { error: "Assignee not found" };
+    }
+  }
+
   // Always open at creation — createBugSchema rejects client status.
-  const bug = await prisma.bug.create({
-    data: {
-      title: parsed.data.title,
-      description: parsed.data.description,
-      severity: admin ? parsed.data.severity : "medium",
-      status: "open",
-      proofLinks: parsed.data.proofLinks,
-      reporterId: userId,
-      assigneeId,
-      activities: {
-        create: {
-          actorId: userId,
-          type: "created",
-          summary: createdSummary(parsed.data.title),
-          metadata: {
-            field: "title",
-            to: parsed.data.title,
-          } as Prisma.InputJsonValue,
+  let bug;
+  try {
+    bug = await prisma.bug.create({
+      data: {
+        title: parsed.data.title,
+        description: parsed.data.description,
+        severity: admin ? parsed.data.severity : "medium",
+        status: "open",
+        proofLinks: parsed.data.proofLinks,
+        reporterId: userId,
+        assigneeId,
+        activities: {
+          create: {
+            actorId: userId,
+            type: "created",
+            summary: createdSummary(parsed.data.title),
+            metadata: {
+              field: "title",
+              to: parsed.data.title,
+            } as Prisma.InputJsonValue,
+          },
         },
       },
-    },
-  });
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2003"
+    ) {
+      return { error: "Assignee not found" };
+    }
+    throw error;
+  }
 
   revalidatePath("/bugs");
   redirect(`/bugs/${bug.id}`);
 }
 
+/** Updates status (assignee/admin) and severity/assignee (admin) and logs activity. */
 export async function updateBugAction(
   bugId: string,
   formData: FormData,
 ): Promise<ActionResult> {
-  const userId = await requireUserId();
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-  const admin = isAdmin(user?.role);
+  const user = await requireUser();
+  const userId = user.id;
+  const admin = isAdmin(user.role);
 
   const existing = await prisma.bug.findUnique({
     where: { id: bugId },
@@ -190,7 +213,10 @@ export async function updateBugAction(
         where: { id: data.assigneeId },
         select: { name: true },
       });
-      toName = nextAssignee?.name ?? null;
+      if (!nextAssignee) {
+        return { error: "Assignee not found" };
+      }
+      toName = nextAssignee.name ?? null;
     }
     pending.push({
       type: "assignee_changed",
@@ -207,31 +233,42 @@ export async function updateBugAction(
     return { ok: true };
   }
 
-  await prisma.$transaction(async (tx) => {
-    if (Object.keys(data).length > 0) {
-      await tx.bug.update({
-        where: { id: bugId },
-        data,
-      });
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (Object.keys(data).length > 0) {
+        await tx.bug.update({
+          where: { id: bugId },
+          data,
+        });
+      }
+      if (pending.length > 0) {
+        await tx.bugActivity.createMany({
+          data: activityCreateData(
+            pending.map((entry) => ({
+              bugId,
+              actorId: userId,
+              ...entry,
+            })),
+          ),
+        });
+      }
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2003"
+    ) {
+      return { error: "Assignee not found" };
     }
-    if (pending.length > 0) {
-      await tx.bugActivity.createMany({
-        data: activityCreateData(
-          pending.map((entry) => ({
-            bugId,
-            actorId: userId,
-            ...entry,
-          })),
-        ),
-      });
-    }
-  });
+    throw error;
+  }
 
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
 }
 
+/** Adds a (possibly threaded) comment to a bug and records the activity. */
 export async function addCommentAction(
   bugId: string,
   formData: FormData,
@@ -282,12 +319,24 @@ export async function addCommentAction(
     }
   }
 
+  const mentionedIds = extractMentionedUserIds(parsed.data.body);
+  let normalizedBody = parsed.data.body;
+
+  if (mentionedIds.length > 0) {
+    const validUsers = await prisma.user.findMany({
+      where: { id: { in: mentionedIds } },
+      select: { id: true, name: true },
+    });
+    const userMap = new Map(validUsers.map((u) => [u.id, u.name]));
+    normalizedBody = normalizeMentions(parsed.data.body, userMap);
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.comment.create({
       data: {
         bugId,
         authorId: userId,
-        body: parsed.data.body,
+        body: normalizedBody,
         parentId: parentId ?? null,
       },
     });
@@ -296,15 +345,20 @@ export async function addCommentAction(
         bugId,
         actorId: userId,
         type: "commented",
-        summary: commentedSummary(parsed.data.body),
+        summary: commentedSummary(normalizedBody),
         metadata: {
           field: "comment",
-          commentPreview: parsed.data.body.slice(0, 120),
+          commentPreview: commentPreview(normalizedBody),
         } as Prisma.InputJsonValue,
       },
     });
+    await tx.bug.update({
+      where: { id: bugId },
+      data: { updatedAt: new Date() },
+    });
   });
 
+  revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
 }
@@ -315,6 +369,7 @@ export type ToggleVoteResult = ActionResult & {
   voteCount?: number;
 };
 
+/** Toggles the current user's like on a bug; rejects any direction other than 1. */
 export async function toggleVoteAction(
   bugId: string,
   direction: unknown = 1,
@@ -360,16 +415,19 @@ export async function toggleVoteAction(
       });
     }
 
-    const updated = await tx.bug.update({
-      where: { id: bugId },
-      data: { voteCount: { increment: countDelta } },
-      select: { voteCount: true },
-    });
+    const rows = await tx.$queryRaw<Array<{ voteCount: number }>>`
+      UPDATE "Bug"
+      SET "voteCount" = "voteCount" + ${countDelta}
+      WHERE "id" = ${bugId}
+      RETURNING "voteCount"
+    `;
+
+    const voteCount = rows[0]?.voteCount ?? 0;
 
     return {
       voted: nextVote === 1,
       userVote: nextVote,
-      voteCount: updated.voteCount,
+      voteCount,
     };
   });
 

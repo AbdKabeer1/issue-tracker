@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "crypto";
+import { getSiteUrl } from "./site-url";
 
 export const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
 
@@ -10,13 +11,9 @@ export function hashResetToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
-/** App origin including basePath (`/bug-tracker`). */
+/** App origin including basePath (`/bug-tracker`), stripping `/api/auth` if present. */
 export function appBaseUrl() {
-  const raw =
-    process.env.AUTH_URL ||
-    process.env.NEXTAUTH_URL ||
-    "http://localhost:3001/bug-tracker";
-  return raw.replace(/\/$/, "");
+  return getSiteUrl();
 }
 
 export function buildPasswordResetUrl(rawToken: string) {
