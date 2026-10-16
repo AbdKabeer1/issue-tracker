@@ -117,6 +117,7 @@ export function CategoryManager({
 
         <form onSubmit={handleCreate} className="mt-4 flex flex-wrap gap-3">
           <Input
+            id="newPlatformName"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Platform name (e.g. Cloud)"
@@ -125,6 +126,9 @@ export function CategoryManager({
             minLength={2}
             maxLength={50}
             required
+            // #213: this field had no accessible name - screen readers only
+            // announced the placeholder, which many drop once a value is typed.
+            aria-label="New platform name"
           />
           <Button type="submit" disabled={pending || !newName.trim()}>
             {pending ? "Adding…" : "Add platform"}
@@ -171,6 +175,7 @@ export function CategoryManager({
                     {isEditing ? (
                       <div className="flex items-center gap-2">
                         <Input
+                          id={`rename-platform-${cat.id}`}
                           value={editingName}
                           onChange={(e) => setEditingName(e.target.value)}
                           className="h-8 w-48 text-sm"
@@ -178,6 +183,8 @@ export function CategoryManager({
                           autoFocus
                           minLength={2}
                           maxLength={50}
+                          // #213: the rename field announced only "edit, text".
+                          aria-label={`Rename platform ${cat.name}`}
                         />
                         <Button
                           className="px-2.5 py-1 text-xs"
