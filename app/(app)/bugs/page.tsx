@@ -132,7 +132,15 @@ export default async function BugsPage({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">
+            {/* The header already says "Zedu Issues", so the list's own title is
+                for screen readers only; "Deleted Issues" stays visible (#198). */}
+            <h1
+              className={
+                isDeletedView
+                  ? "text-xl sm:text-2xl font-semibold text-slate-900"
+                  : "sr-only"
+              }
+            >
               {isDeletedView ? "Deleted Issues" : "Issues"}
             </h1>
             {isDeletedView ? (
