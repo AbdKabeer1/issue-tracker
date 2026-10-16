@@ -26,16 +26,15 @@ import { VoteButton } from "@/components/vote-button";
 import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentThread } from "@/components/comment-thread";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
-import {
-  getActiveIssueTypes,
-  getIssueTypeBadgeClass,
-} from "@/lib/issue-types";
+import { getActiveIssueTypes } from "@/lib/issue-types";
+import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { fetchVoterSummary } from "@/lib/voter-summaries";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
 import { canEditTicket } from "@/lib/ticket-editing";
 import { DeleteBugButton } from "@/components/delete-bug-button";
 import { RestoreBugButton } from "@/components/restore-bug-button";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
+import { canAssignTicket } from "@/lib/ticket-assignment";
 import { SelfAssignButton } from "@/components/self-assign-button";
 import { EditableIssueDescription } from "@/components/editable-issue-description";
 import { withCurrentOption } from "@/lib/triage-options";
@@ -214,6 +213,14 @@ export default async function BugDetailPage({ params }: BugPageProps) {
       actorRole: user.role,
       reporterId: bug.reporterId,
     }) && !bug.isDeleted;
+  const canSelfAssign =
+    !bug.isDeleted &&
+    canAssignTicket({
+      actorId: userId,
+      actorRole: user.role,
+      currentAssigneeId: bug.assigneeId,
+      targetAssigneeId: isAssignee ? null : userId,
+    });
   const userVote =
     Array.isArray(bug.votes) && bug.votes.length > 0
       ? (bug.votes[0].value ?? 1)
@@ -306,11 +313,6 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6">
-          <SelfAssignButton
-            bugId={bug.id}
-            isAssignedToMe={isAssignee}
-            size="sm"
-          />
           {canTriage && !bug.isDeleted ? (
             <BoostTicketButton
               bugId={bug.id}
@@ -380,12 +382,14 @@ export default async function BugDetailPage({ params }: BugPageProps) {
               ) : (
                 <span className="text-slate-500">Unassigned</span>
               )}
-              <SelfAssignButton
-                bugId={bug.id}
-                isAssignedToMe={isAssignee}
-                variant="ghost"
-                size="xs"
-              />
+              {canSelfAssign ? (
+                <SelfAssignButton
+                  bugId={bug.id}
+                  isAssignedToMe={isAssignee}
+                  variant="ghost"
+                  size="xs"
+                />
+              ) : null}
             </dd>
           </div>
           {bug.category ? (
@@ -474,7 +478,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         />
       </section>
 
-      {canDelete ? (
+      {canDelete && !bug.isDeleted ? (
         <section className="rounded-xl border border-red-200 bg-red-50/50 p-4 sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
@@ -482,7 +486,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                 Danger zone
               </h2>
               <p className="text-sm text-slate-600">
-                Permanently delete this ticket along with all its comments, votes, and activity history.
+                Delete this issue. It will be hidden from everyone except admins, who can restore it.
               </p>
             </div>
             <DeleteBugButton

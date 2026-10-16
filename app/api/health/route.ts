@@ -31,11 +31,11 @@ async function isSuperAdminRequest(): Promise<boolean> {
     const user = id
       ? await prisma.user.findUnique({
           where: { id },
-          select: { role: true, email: true },
+          select: { id: true, role: true, email: true },
         })
       : await prisma.user.findUnique({
           where: { email: email! },
-          select: { role: true, email: true },
+          select: { id: true, role: true, email: true },
         });
     const isRealSuper =
       user?.role === "super_admin" || isSuperAdminEmail(user?.email);
@@ -45,6 +45,7 @@ async function isSuperAdminRequest(): Promise<boolean> {
       isRealSuperAdmin: isRealSuper,
       baseRole: user?.role,
       activeRoleOverride,
+      currentUserId: user?.id,
     });
     return isSuperAdmin(effectiveRole);
   } catch {
