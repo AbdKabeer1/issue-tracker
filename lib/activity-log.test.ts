@@ -15,10 +15,10 @@ import {
 } from "./activity-log";
 
 describe("activity summary helpers", () => {
-  it("summarizes ticket creation with truncated title", () => {
+  it("summarizes issue creation with truncated title", () => {
     const long = "A".repeat(100);
     expect(createdSummary("Login broken")).toBe(
-      'created this ticket (“Login broken”)',
+      'created this issue (“Login broken”)',
     );
     const summarized = createdSummary(long);
     expect(summarized).toContain("…");
@@ -67,7 +67,7 @@ describe("activity summary helpers", () => {
   });
 
   it("summarizes edited fields", () => {
-    expect(editedSummary([])).toBe("edited this ticket");
+    expect(editedSummary([])).toBe("edited this issue");
     expect(editedSummary(["title"])).toBe("edited title");
     expect(editedSummary(["title", "description"])).toBe(
       "edited title and description",
@@ -78,10 +78,10 @@ describe("activity summary helpers", () => {
   });
 
   it("summarizes boosted and unboosted actions", () => {
-    expect(boostedSummary()).toBe("boosted this ticket to the top");
-    expect(unboostedSummary()).toBe("removed boost from this ticket");
-    expect(deletedSummary()).toBe("deleted this ticket");
-    expect(restoredSummary()).toBe("restored this ticket");
+    expect(boostedSummary()).toBe("boosted this issue to the top");
+    expect(unboostedSummary()).toBe("removed boost from this issue");
+    expect(deletedSummary()).toBe("deleted this issue");
+    expect(restoredSummary()).toBe("restored this issue");
   });
 });
 

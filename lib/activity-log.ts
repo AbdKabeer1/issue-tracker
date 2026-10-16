@@ -34,7 +34,7 @@ export function activityCreateData(
 }
 
 export function createdSummary(title: string): string {
-  return `created this ticket (“${truncate(title, 80)}”)`;
+  return `created this issue (“${truncate(title, 80)}”)`;
 }
 
 export function statusChangedSummary(from: Status, to: Status): string {
@@ -67,26 +67,26 @@ export function commentedSummary(body: string): string {
 }
 
 export function editedSummary(fields: string[]): string {
-  if (fields.length === 0) return "edited this ticket";
+  if (fields.length === 0) return "edited this issue";
   if (fields.length === 1) return `edited ${fields[0]}`;
   if (fields.length === 2) return `edited ${fields[0]} and ${fields[1]}`;
   return `edited ${fields.slice(0, -1).join(", ")}, and ${fields.at(-1)}`;
 }
 
 export function boostedSummary(): string {
-  return "boosted this ticket to the top";
+  return "boosted this issue to the top";
 }
 
 export function unboostedSummary(): string {
-  return "removed boost from this ticket";
+  return "removed boost from this issue";
 }
 
 export function deletedSummary(): string {
-  return "deleted this ticket";
+  return "deleted this issue";
 }
 
 export function restoredSummary(): string {
-  return "restored this ticket";
+  return "restored this issue";
 }
 
 function truncate(value: string, max: number): string {

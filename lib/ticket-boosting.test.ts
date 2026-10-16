@@ -23,12 +23,12 @@ describe("canBoostTicket", () => {
 describe("TICKET_BOOST_ERRORS", () => {
   it("has clear and descriptive messages for all failure states", () => {
     expect(TICKET_BOOST_ERRORS.unauthorized).toBe(
-      "Only admins can boost tickets",
+      "Only admins can boost issues",
     );
-    expect(TICKET_BOOST_ERRORS.invalidId).toBe("Invalid ticket ID");
-    expect(TICKET_BOOST_ERRORS.notFound).toBe("Ticket not found");
+    expect(TICKET_BOOST_ERRORS.invalidId).toBe("Invalid issue ID");
+    expect(TICKET_BOOST_ERRORS.notFound).toBe("Issue not found");
     expect(TICKET_BOOST_ERRORS.failed).toBe(
-      "Could not update ticket boost status. Please try again.",
+      "Could not update issue boost status. Please try again.",
     );
   });
 });

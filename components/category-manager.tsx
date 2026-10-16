@@ -148,7 +148,7 @@ export function CategoryManager({
           </h2>
           <p className="text-xs text-slate-500">
             Active categories appear on the issue creation form. Inactive
-            categories remain on existing tickets but cannot be selected for new
+            categories remain on existing issues but cannot be selected for new
             ones.
           </p>
         </div>

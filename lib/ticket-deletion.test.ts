@@ -40,20 +40,20 @@ describe("canRestoreTicket", () => {
 describe("TICKET_DELETION_ERRORS", () => {
   it("has clear and descriptive messages for all failure states", () => {
     expect(TICKET_DELETION_ERRORS.unauthorized).toBe(
-      "Only admins and super admins can delete tickets",
+      "Only admins and super admins can delete issues",
     );
     expect(TICKET_DELETION_ERRORS.unauthorizedRestore).toBe(
-      "Only admins and super admins can restore tickets",
+      "Only admins and super admins can restore issues",
     );
-    expect(TICKET_DELETION_ERRORS.invalidId).toBe("Invalid ticket ID");
-    expect(TICKET_DELETION_ERRORS.notFound).toBe("Ticket not found");
-    expect(TICKET_DELETION_ERRORS.alreadyDeleted).toBe("Ticket is already deleted");
-    expect(TICKET_DELETION_ERRORS.notDeleted).toBe("Ticket is not deleted");
+    expect(TICKET_DELETION_ERRORS.invalidId).toBe("Invalid issue ID");
+    expect(TICKET_DELETION_ERRORS.notFound).toBe("Issue not found");
+    expect(TICKET_DELETION_ERRORS.alreadyDeleted).toBe("Issue is already deleted");
+    expect(TICKET_DELETION_ERRORS.notDeleted).toBe("Issue is not deleted");
     expect(TICKET_DELETION_ERRORS.failed).toBe(
-      "Could not delete ticket. Please try again.",
+      "Could not delete issue. Please try again.",
     );
     expect(TICKET_DELETION_ERRORS.failedRestore).toBe(
-      "Could not restore ticket. Please try again.",
+      "Could not restore issue. Please try again.",
     );
   });
 });

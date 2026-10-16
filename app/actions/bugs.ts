@@ -452,7 +452,7 @@ export async function addCommentAction(
     });
 
     if (!parent || parent.bugId !== bugId) {
-      return { error: "Parent comment not found on this ticket" };
+      return { error: "Parent comment not found on this issue" };
     }
 
     const threadComments = await prisma.comment.findMany({

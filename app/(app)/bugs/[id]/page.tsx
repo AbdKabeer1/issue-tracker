@@ -474,7 +474,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                 Danger zone
               </h2>
               <p className="text-sm text-slate-600">
-                Permanently delete this ticket along with all its comments, votes, and activity history.
+                Permanently delete this issue along with all its comments, votes, and activity history.
               </p>
             </div>
             <DeleteBugButton

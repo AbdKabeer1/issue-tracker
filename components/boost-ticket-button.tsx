@@ -34,7 +34,7 @@ export function BoostTicketButton({
         type="button"
         variant={variant}
         disabled={pending}
-        title={boosted ? "Remove boost from ticket" : "Boost ticket to top of list"}
+        title={boosted ? "Remove boost from issue" : "Boost issue to top of list"}
         aria-pressed={boosted}
         className={`${sizeClasses} ${
           boosted
