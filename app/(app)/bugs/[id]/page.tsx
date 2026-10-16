@@ -56,8 +56,8 @@ export async function generateMetadata({
 
   if (!bug) {
     return {
-      title: "Bug not found",
-      description: "This bug report could not be found.",
+      title: "Issue not found",
+      description: "This issue could not be found.",
       robots: { index: false, follow: false },
     };
   }
@@ -82,10 +82,10 @@ export async function generateMetadata({
       description,
       url: canonical,
       type: "article",
-      siteName: "Zedu Bugs",
+      siteName: "Zedu Issues",
       authors: [bug.reporter.name],
       modifiedTime: bug.updatedAt.toISOString(),
-      images: [{ url: image, alt: "Zedu Bugs" }],
+      images: [{ url: image, alt: "Zedu Issues" }],
     },
     twitter: {
       card: "summary_large_image",
@@ -122,7 +122,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
 
     return (
       <div className="mx-auto max-w-2xl space-y-4 py-10">
-        <p className="text-sm text-slate-500">Zedu Bugs</p>
+        <p className="text-sm text-slate-500">Zedu Issues</p>
         <h1 className="text-2xl font-semibold text-slate-900">{bug.title}</h1>
         <div className="flex flex-wrap gap-2">
           <Badge className={statusClass[bug.status]}>
@@ -208,7 +208,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
           <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
-            ← Back to bugs
+            ← Back to issues
           </Link>
           <div className="mt-3 space-y-3">
             <div className="space-y-2">
