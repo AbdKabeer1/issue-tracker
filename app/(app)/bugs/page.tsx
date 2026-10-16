@@ -34,6 +34,7 @@ import { DeleteBugButton } from "@/components/delete-bug-button";
 import { RestoreBugButton } from "@/components/restore-bug-button";
 import { canBoostTicket } from "@/lib/ticket-boosting";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
+import { mineFilterWhere, parseMineFilter } from "@/lib/mine-filter";
 
 type SearchParams = Promise<{
   q?: string | string[];
@@ -42,6 +43,7 @@ type SearchParams = Promise<{
   sort?: string | string[];
   page?: string | string[];
   deleted?: string | string[];
+  mine?: string | string[];
   [key: string]: string | string[] | undefined;
 }>;
 
@@ -77,11 +79,13 @@ export default async function BugsPage({
   const sortParam = toSingleQueryParam(params.sort);
   const pageParam = toSingleQueryParam(params.page);
   const deletedParam = toSingleQueryParam(params.deleted);
+  const mineFilter = parseMineFilter(params.mine);
   const isDeletedView = canDelete && deletedParam === "true";
 
   const currentSort = parseBugSort(sortParam);
   const where: Prisma.BugWhereInput = {
     isDeleted: isDeletedView,
+    ...mineFilterWhere(mineFilter, userId),
   };
 
   if (isStatus(statusParam)) {
@@ -354,6 +358,7 @@ export default async function BugsPage({
           queryParams={{
             ...(statusParam ? { status: statusParam } : {}),
             ...(severityParam ? { severity: severityParam } : {}),
+            ...(mineFilter ? { mine: mineFilter } : {}),
             ...(qParam ? { q: qParam } : {}),
             ...(isDeletedView ? { deleted: "true" } : {}),
             sort: sortParam,
