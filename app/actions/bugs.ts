@@ -336,6 +336,18 @@ export async function updateBugAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
+  // Claiming an issue doesn't also grant its status in the same request: a
+  // normal user who isn't the assignee yet must assign themselves first
+  // (#218, #175).
+  if (
+    !admin &&
+    !isAssignee &&
+    parsed.data.status &&
+    parsed.data.status !== existing.status
+  ) {
+    return { error: TICKET_ASSIGN_ERRORS.statusNeedsAssignment };
+  }
+
   const data: {
     status?: typeof parsed.data.status;
     severity?: typeof parsed.data.severity;
