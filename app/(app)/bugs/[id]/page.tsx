@@ -35,6 +35,7 @@ import { fetchVoterSummary } from "@/lib/voter-summaries";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
 import { DeleteBugButton } from "@/components/delete-bug-button";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
+import { SelfAssignButton } from "@/components/self-assign-button";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
@@ -266,6 +267,11 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6">
+          <SelfAssignButton
+            bugId={bug.id}
+            isAssignedToMe={isAssignee}
+            size="sm"
+          />
           {canTriage ? (
             <BoostTicketButton
               bugId={bug.id}
@@ -319,15 +325,21 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           </div>
           <div>
             <dt className="font-medium text-slate-500">Assignee</dt>
-            <dd>
+            <dd className="flex items-center gap-2">
               {bug.assignee ? (
                 <UserNameWithBadges
                   name={bug.assignee.name}
                   role={bug.assignee.role}
                 />
               ) : (
-                "Unassigned"
+                <span className="text-slate-500">Unassigned</span>
               )}
+              <SelfAssignButton
+                bugId={bug.id}
+                isAssignedToMe={isAssignee}
+                variant="ghost"
+                size="xs"
+              />
             </dd>
           </div>
           {bug.category ? (

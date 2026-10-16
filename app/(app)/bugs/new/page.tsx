@@ -42,6 +42,7 @@ export default async function NewBugPage() {
           categories={categories}
           types={types}
           isAdmin={admin}
+          currentUserId={user.id}
         />
       </div>
     </div>

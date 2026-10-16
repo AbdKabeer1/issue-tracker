@@ -34,6 +34,7 @@ import {
 import { calculateVoteChange, isValidVoteDirection } from "@/lib/voting";
 import { canDeleteTicket, TICKET_DELETION_ERRORS } from "@/lib/ticket-deletion";
 import { canBoostTicket, TICKET_BOOST_ERRORS } from "@/lib/ticket-boosting";
+import { canAssignTicket, TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
 import { Prisma, type ActivityType } from "@prisma/client";
 
 export type ActionResult = { error?: string; ok?: boolean };
@@ -71,13 +72,34 @@ export async function createBugAction(
   const userId = user.id;
   const admin = isAdmin(user.role);
 
-  // Non-admins cannot set severity/assignee at creation.
+  const rawAssignee = formData.get("assigneeId");
+  const targetAssigneeId =
+    rawAssignee === "" || rawAssignee === "unassigned" || rawAssignee === null || rawAssignee === undefined
+      ? null
+      : typeof rawAssignee === "string"
+        ? rawAssignee.trim()
+        : null;
+
+  if (targetAssigneeId) {
+    if (
+      !canAssignTicket({
+        actorId: userId,
+        actorRole: user.role,
+        currentAssigneeId: null,
+        targetAssigneeId,
+      })
+    ) {
+      return { error: TICKET_ASSIGN_ERRORS.unauthorized };
+    }
+  }
+
+  // Non-admins cannot set severity at creation; assignee validated above.
   const parsed = createBugSchema.safeParse({
     title: formData.get("title"),
     description: formData.get("description"),
     severity: admin ? formData.get("severity") || "medium" : "medium",
     typeId: formData.get("typeId") || "",
-    assigneeId: admin ? formData.get("assigneeId") || "" : "",
+    assigneeId: targetAssigneeId || "",
     categoryId: formData.get("categoryId") || "",
     proofLinks: formData.get("proofLinks") || "",
   });
@@ -87,7 +109,7 @@ export async function createBugAction(
   }
 
   const assigneeId =
-    admin && parsed.data.assigneeId && parsed.data.assigneeId.length > 0
+    parsed.data.assigneeId && parsed.data.assigneeId.length > 0
       ? parsed.data.assigneeId
       : null;
 
@@ -185,13 +207,38 @@ export async function updateBugAction(
   }
 
   const isAssignee = existing.assigneeId === userId;
-  if (!admin && !isAssignee) {
+  const assigneeRaw = formData.get("assigneeId");
+  const hasAssigneeField = assigneeRaw !== null && assigneeRaw !== undefined;
+  const targetAssigneeId = hasAssigneeField
+    ? assigneeRaw === "" || assigneeRaw === "unassigned"
+      ? null
+      : typeof assigneeRaw === "string"
+        ? assigneeRaw.trim()
+        : null
+    : undefined;
+
+  const isSelfAssigning =
+    targetAssigneeId !== undefined && targetAssigneeId === userId;
+
+  if (!admin && !isAssignee && !isSelfAssigning) {
     return {
       error: "Only the assignee or an admin can update this issue",
     };
   }
 
-  const assigneeRaw = formData.get("assigneeId");
+  if (targetAssigneeId !== undefined && targetAssigneeId !== existing.assigneeId) {
+    if (
+      !canAssignTicket({
+        actorId: userId,
+        actorRole: user.role,
+        currentAssigneeId: existing.assigneeId,
+        targetAssigneeId,
+      })
+    ) {
+      return { error: TICKET_ASSIGN_ERRORS.unauthorized };
+    }
+  }
+
   const categoryRaw = formData.get("categoryId");
   const typeRaw = formData.get("typeId");
   const parsed = updateBugSchema.safeParse({
@@ -202,11 +249,7 @@ export async function updateBugAction(
         ? null
         : typeRaw || undefined
       : undefined,
-    assigneeId: admin
-      ? assigneeRaw === "" || assigneeRaw === "unassigned"
-        ? null
-        : assigneeRaw || undefined
-      : undefined,
+    assigneeId: targetAssigneeId,
     categoryId: admin
       ? categoryRaw === "" || categoryRaw === "none"
         ? null
@@ -232,14 +275,14 @@ export async function updateBugAction(
     if (parsed.data.typeId !== undefined) {
       data.typeId = parsed.data.typeId === "" ? null : parsed.data.typeId;
     }
-    if (parsed.data.assigneeId !== undefined) {
-      data.assigneeId =
-        parsed.data.assigneeId === "" ? null : parsed.data.assigneeId;
-    }
     if (parsed.data.categoryId !== undefined) {
       data.categoryId =
         parsed.data.categoryId === "" ? null : parsed.data.categoryId;
     }
+  }
+  if (parsed.data.assigneeId !== undefined) {
+    data.assigneeId =
+      parsed.data.assigneeId === "" ? null : parsed.data.assigneeId;
   }
 
   type PendingActivity = {
@@ -621,6 +664,87 @@ export async function toggleBoostBugAction(
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true, isBoosted: nextBoosted };
+}
+
+/**
+ * Allows a user to assign an issue to themselves, or unassign if currently assigned.
+ * Validates permission via canAssignTicket.
+ */
+export async function selfAssignBugAction(
+  bugId: string,
+  assign: boolean = true,
+): Promise<ActionResult> {
+  const user = await requireUser();
+  const userId = user.id;
+
+  if (!bugId || typeof bugId !== "string" || bugId.trim().length === 0) {
+    return { error: TICKET_ASSIGN_ERRORS.invalidId };
+  }
+
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId },
+    select: {
+      id: true,
+      assigneeId: true,
+      assignee: { select: { name: true } },
+    },
+  });
+
+  if (!existing) {
+    return { error: TICKET_ASSIGN_ERRORS.notFound };
+  }
+
+  const targetAssigneeId = assign ? userId : null;
+
+  if (
+    !canAssignTicket({
+      actorId: userId,
+      actorRole: user.role,
+      currentAssigneeId: existing.assigneeId,
+      targetAssigneeId,
+    })
+  ) {
+    return { error: TICKET_ASSIGN_ERRORS.unauthorized };
+  }
+
+  if (existing.assigneeId === targetAssigneeId) {
+    return { ok: true };
+  }
+
+  const toName = targetAssigneeId ? user.name ?? null : null;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.bug.update({
+        where: { id: bugId },
+        data: { assigneeId: targetAssigneeId },
+      });
+
+      await tx.bugActivity.create({
+        data: {
+          bugId,
+          actorId: userId,
+          type: "assignee_changed",
+          summary: assigneeChangedSummary(
+            existing.assignee?.name ?? null,
+            toName,
+          ),
+          metadata: {
+            field: "assigneeId",
+            from: existing.assigneeId,
+            to: targetAssigneeId,
+          },
+        },
+      });
+    });
+  } catch (error) {
+    console.error("Failed to self-assign issue:", error);
+    return { error: TICKET_ASSIGN_ERRORS.failed };
+  }
+
+  revalidatePath(`/bugs/${bugId}`);
+  revalidatePath("/bugs");
+  return { ok: true };
 }
 
 
