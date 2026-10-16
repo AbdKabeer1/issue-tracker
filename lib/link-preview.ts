@@ -9,15 +9,15 @@ export function snippetText(text: string, max = SNIPPET_MAX): string {
   return `${normalized.slice(0, max - 1).trimEnd()}…`;
 }
 
-/** Safe, non-sensitive preview copy for OG/Twitter cards. */
-export function bugLinkPreviewDescription(input: {
-  status: Status;
-  authorName: string;
-  description: string;
-}): string {
-  const status = statusLabels[input.status];
-  const snippet = snippetText(input.description, 120);
-  return `${status} · reported by ${input.authorName} — ${snippet}`;
+/**
+ * Preview copy for OG/Twitter cards and the anonymous unfurl page (#117).
+ *
+ * Bots are identified only by their (spoofable) User-Agent, so anything here
+ * is effectively public for every issue whose link has been shared. Keep it
+ * to the status: no reporter name and no description text.
+ */
+export function bugLinkPreviewDescription(input: { status: Status }): string {
+  return `${statusLabels[input.status]} issue on Zedu Issues. Sign in to view the details.`;
 }
 
 /**
