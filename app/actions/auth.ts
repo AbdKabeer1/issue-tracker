@@ -39,7 +39,8 @@ export async function loginAction(
     if (error instanceof AuthError) {
       return { error: "Invalid email or password" };
     }
-    throw error;
+    console.error("[loginAction] signIn error:", error);
+    return { error: "Invalid email or password" };
   }
 
   redirect(callbackUrl);
@@ -90,8 +91,12 @@ export async function signupAction(
         error: "Account created, but sign-in failed. Try logging in.",
       };
     }
-    throw error;
+    console.error("[signupAction] signIn error after user creation:", error);
+    return {
+      error: "Account created! Please sign in with your email and password.",
+    };
   }
+
 
   redirect(callbackUrl);
 }
@@ -100,9 +105,25 @@ export async function logoutAction() {
   await signOut({ redirectTo: "/login" });
 }
 
-export async function googleSignInAction() {
-  await signIn("google", { redirectTo: "/bugs" });
+export async function googleSignInAction(
+  callbackUrlOrFormData?: string | FormData,
+) {
+  let target = "/bugs";
+  if (typeof callbackUrlOrFormData === "string") {
+    target = callbackUrlOrFormData;
+  } else if (
+    callbackUrlOrFormData &&
+    typeof callbackUrlOrFormData === "object" &&
+    "get" in callbackUrlOrFormData
+  ) {
+    const raw = callbackUrlOrFormData.get("callbackUrl");
+    if (typeof raw === "string") target = raw;
+  }
+  const safeTarget = safeCallbackUrl(target);
+  await signIn("google", { redirectTo: safeTarget });
 }
+
+
 
 export async function forgotPasswordAction(
   _prev: { error?: string; success?: string } | undefined,

@@ -32,6 +32,7 @@ export default auth((req) => {
     isPasswordResetPage ||
     isBugPreview ||
     pathWithoutBase.startsWith("/api/auth") ||
+    pathWithoutBase.startsWith("/api/health") ||
     pathWithoutBase.startsWith("/_next") ||
     pathWithoutBase === "/favicon.ico";
 
@@ -61,5 +62,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|.*\\..*).*)"],
+  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\..*).*)"],
 };

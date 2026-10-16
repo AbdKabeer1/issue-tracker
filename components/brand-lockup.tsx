@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { BASE_PATH } from "@/lib/base-path";
 
 type BrandLockupProps = {
   /** When set, wraps the lockup in a link. Omit on auth pages. */
@@ -23,7 +24,7 @@ export function BrandLockup({
   const content = (
     <>
       <Image
-        src="/zedu-mark.svg"
+        src={`${BASE_PATH}/zedu-mark.svg`}
         alt=""
         width={dim.px}
         height={dim.px}

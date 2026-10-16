@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
 import { resolveSessionUserId } from "@/lib/session-user";
-import { formatDate } from "@/lib/format";
+import { LocalTime } from "@/components/local-time";
 import { buildCommentTree } from "@/lib/comments";
 import {
   bugLinkPreviewDescription,
@@ -166,7 +166,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           include: { actor: { select: { name: true } } },
           orderBy: { createdAt: "asc" },
         },
-        votes: { where: { userId }, select: { id: true }, take: 1 },
+        votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
       },
     }),
     prisma.user.findMany({
@@ -181,7 +181,10 @@ export default async function BugDetailPage({ params }: BugPageProps) {
 
   const isAssignee = !!userId && bug.assigneeId === userId;
   const canUpdateStatus = canTriage || isAssignee;
-  const voted = Array.isArray(bug.votes) && bug.votes.length > 0;
+  const userVote =
+    Array.isArray(bug.votes) && bug.votes.length > 0
+      ? (bug.votes[0].value ?? 1)
+      : 0;
   const commentTree = buildCommentTree(bug.comments);
 
   return (
@@ -194,9 +197,10 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           <VoteButton
             bugId={bug.id}
             voteCount={bug.voteCount}
-            voted={voted}
+            userVote={userVote}
             size="md"
           />
+
           <div className="min-w-0 flex-1 space-y-2">
             <h1 className="text-2xl font-semibold text-slate-900">
               {bug.title}
@@ -209,7 +213,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                 {severityLabels[bug.severity]}
               </Badge>
               <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-                {bug.voteCount} vote{bug.voteCount === 1 ? "" : "s"}
+                {Math.max(0, bug.voteCount)} like{Math.max(0, bug.voteCount) === 1 ? "" : "s"}
               </span>
             </div>
           </div>
@@ -247,11 +251,11 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           </div>
           <div>
             <dt className="font-medium text-slate-500">Created</dt>
-            <dd>{formatDate(bug.createdAt)}</dd>
+            <dd><LocalTime date={bug.createdAt} /></dd>
           </div>
           <div>
             <dt className="font-medium text-slate-500">Updated</dt>
-            <dd>{formatDate(bug.updatedAt)}</dd>
+            <dd><LocalTime date={bug.updatedAt} /></dd>
           </div>
         </dl>
       </section>

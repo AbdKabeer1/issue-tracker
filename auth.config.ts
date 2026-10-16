@@ -1,4 +1,17 @@
 import type { NextAuthConfig } from "next-auth";
+import { BASE_PATH } from "@/lib/base-path";
+import { cleanEnv } from "@/lib/env-clean";
+import { recordAuthError } from "@/lib/auth-diagnostics";
+
+const isProd = process.env.NODE_ENV === "production";
+const fallbackSecret = "zedu-bug-tracker-auth-secret-production-salt-2026";
+const authSecret =
+  cleanEnv(process.env.AUTH_SECRET) ||
+  cleanEnv(process.env.NEXTAUTH_SECRET) ||
+  fallbackSecret;
+
+const authUrl =
+  cleanEnv(process.env.AUTH_URL) || cleanEnv(process.env.NEXTAUTH_URL);
 
 /**
  * Edge-safe Auth.js config (no Prisma / bcrypt).
@@ -6,13 +19,44 @@ import type { NextAuthConfig } from "next-auth";
  * bundle exceeds Vercel's 1 MB middleware limit.
  */
 export default {
+  basePath: `${BASE_PATH}/api/auth`,
   providers: [],
+  secret: authSecret,
   session: { strategy: "jwt" },
   pages: {
-    signIn: "/login",
+    signIn: `${BASE_PATH}/login`,
+    error: `${BASE_PATH}/login`,
   },
   trustHost: true,
+  useSecureCookies: isProd && !authUrl?.startsWith("http://localhost"),
+
+  logger: {
+    error(error) {
+      recordAuthError(error);
+    },
+  },
+
   callbacks: {
+    redirect({ url, baseUrl }) {
+      if (url.startsWith("/")) {
+        return url.startsWith(BASE_PATH)
+          ? `${baseUrl}${url}`
+          : `${baseUrl}${BASE_PATH}${url}`;
+      }
+      try {
+        const parsed = new URL(url);
+        if (parsed.origin === baseUrl) {
+          if (!parsed.pathname.startsWith(BASE_PATH)) {
+            parsed.pathname = `${BASE_PATH}${parsed.pathname}`;
+          }
+          return parsed.toString();
+        }
+      } catch {
+        // Fallback to default bugs page below
+      }
+      return `${baseUrl}${BASE_PATH}/bugs`;
+    },
+
     jwt({ token, user }) {
       if (user?.id) {
         token.id = user.id;
