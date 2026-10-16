@@ -34,6 +34,7 @@ import {
 import { fetchVoterSummary } from "@/lib/voter-summaries";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
 import { DeleteBugButton } from "@/components/delete-bug-button";
+import { RestoreBugButton } from "@/components/restore-bug-button";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { SelfAssignButton } from "@/components/self-assign-button";
 
@@ -52,11 +53,12 @@ export async function generateMetadata({
       description: true,
       status: true,
       updatedAt: true,
+      isDeleted: true,
       reporter: { select: { name: true } },
     },
   });
 
-  if (!bug) {
+  if (!bug || bug.isDeleted) {
     return {
       title: "Issue not found",
       description: "This issue could not be found.",
@@ -117,10 +119,11 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         description: true,
         status: true,
         severity: true,
+        isDeleted: true,
         reporter: { select: { name: true } },
       },
     });
-    if (!bug) notFound();
+    if (!bug || bug.isDeleted) notFound();
 
     return (
       <div className="mx-auto max-w-2xl space-y-4 py-10">
@@ -197,6 +200,10 @@ export default async function BugDetailPage({ params }: BugPageProps) {
     notFound();
   }
 
+  if (bug.isDeleted && !canDelete) {
+    notFound();
+  }
+
   const isAssignee = !!userId && bug.assigneeId === userId;
   const canUpdateStatus = canTriage || isAssignee;
   const userVote =
@@ -207,6 +214,25 @@ export default async function BugDetailPage({ params }: BugPageProps) {
 
   return (
     <div className="space-y-6">
+      {bug.isDeleted ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 sm:p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span className="text-xl">🗑️</span>
+              <div>
+                <h3 className="text-sm font-semibold text-red-900">
+                  This issue was deleted
+                </h3>
+                <p className="text-xs text-red-700">
+                  It is currently hidden from regular users. Admins and super admins can restore it at any time.
+                </p>
+              </div>
+            </div>
+            <RestoreBugButton bugId={bug.id} bugTitle={bug.title} size="sm" />
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
           <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
@@ -218,7 +244,12 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                 {bug.title}
               </h1>
               <div className="flex flex-wrap items-center gap-2">
-                {bug.isBoosted ? (
+                {bug.isDeleted ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-900 shadow-2xs">
+                    🗑️ Deleted
+                  </span>
+                ) : null}
+                {bug.isBoosted && !bug.isDeleted ? (
                   <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900 shadow-2xs">
                     ⚡ Boosted
                   </span>
@@ -272,7 +303,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
             isAssignedToMe={isAssignee}
             size="sm"
           />
-          {canTriage ? (
+          {canTriage && !bug.isDeleted ? (
             <BoostTicketButton
               bugId={bug.id}
               isBoosted={bug.isBoosted}
@@ -280,12 +311,20 @@ export default async function BugDetailPage({ params }: BugPageProps) {
             />
           ) : null}
           {canDelete ? (
-            <DeleteBugButton
-              bugId={bug.id}
-              bugTitle={bug.title}
-              variant="danger-secondary"
-              size="sm"
-            />
+            bug.isDeleted ? (
+              <RestoreBugButton
+                bugId={bug.id}
+                bugTitle={bug.title}
+                size="sm"
+              />
+            ) : (
+              <DeleteBugButton
+                bugId={bug.id}
+                bugTitle={bug.title}
+                variant="danger-secondary"
+                size="sm"
+              />
+            )
           ) : null}
         </div>
       </div>
@@ -397,7 +436,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         )}
       </section>
 
-      {canUpdateStatus ? (
+      {canUpdateStatus && !bug.isDeleted ? (
         <UpdateBugForm
           bugId={bug.id}
           status={bug.status}

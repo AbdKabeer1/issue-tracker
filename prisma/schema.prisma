@@ -40,6 +40,8 @@ enum ActivityType {
   edited
   boosted
   unboosted
+  deleted
+  restored
 }
 
 model User {
@@ -94,6 +96,8 @@ model Bug {
   voteCount   Int           @default(0)
   isBoosted   Boolean       @default(false)
   boostedAt   DateTime?
+  isDeleted   Boolean       @default(false)
+  deletedAt   DateTime?
   proofLinks  String[]      @default([])
   reporterId  String
   assigneeId  String?
@@ -110,6 +114,7 @@ model Bug {
   @@index([categoryId])
   @@index([typeId])
   @@index([isBoosted])
+  @@index([isDeleted])
 }
 
 model Category {
