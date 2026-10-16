@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { BASE_PATH, toAppPath } from "./base-path";
 
 describe("toAppPath", () => {
@@ -26,5 +26,23 @@ describe("toAppPath", () => {
 
   it("keeps BASE_PATH in sync with next.config", () => {
     expect(BASE_PATH).toBe("/bug-tracker");
+  });
+
+  it("serves from the domain root when NEXT_PUBLIC_BASE_PATH is '/'", async () => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_BASE_PATH", "/");
+    const mod = await import("./base-path");
+    expect(mod.BASE_PATH).toBe("");
+    expect(mod.toAppPath("/bugs/42")).toBe("/bugs/42");
+    expect(mod.toAppPath("/")).toBe("/");
+    vi.unstubAllEnvs();
+  });
+
+  it("honours a custom sub-path", async () => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_BASE_PATH", "issues/");
+    const mod = await import("./base-path");
+    expect(mod.BASE_PATH).toBe("/issues");
+    vi.unstubAllEnvs();
   });
 });
