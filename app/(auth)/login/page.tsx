@@ -1,5 +1,7 @@
 import { BrandLockup } from "@/components/brand-lockup";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
+import { LoginForm } from "@/components/login-form";
+import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
 
 /**
@@ -31,7 +33,10 @@ export default async function LoginPage({
         </p>
 
         {params.error ? (
-          <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          <div
+            className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700"
+            role="alert"
+          >
             <p className="font-medium">
               {params.error === "OAuthCallbackError" ||
               params.error === "Configuration"
@@ -42,7 +47,15 @@ export default async function LoginPage({
         ) : null}
 
         <div className="mt-6">
-          <GoogleSignInButton callbackUrl={callbackUrl} />
+          {/* #203: LoginForm existed with zero importers, so whenever password
+              auth is enabled (local dev, the demo seed, or any deployment with
+              AUTH_PASSWORD_LOGIN=true) this page offered no way to sign in and
+              /forgot-password + /reset-password were unreachable by link. */}
+          {isPasswordAuthEnabled() ? (
+            <LoginForm callbackUrl={callbackUrl} googleEnabled />
+          ) : (
+            <GoogleSignInButton callbackUrl={callbackUrl} />
+          )}
         </div>
       </div>
     </main>
