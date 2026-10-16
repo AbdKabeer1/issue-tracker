@@ -120,6 +120,8 @@ export async function signupAction(
 }
 
 export async function logoutAction() {
+  const cookieStore = await cookies();
+  cookieStore.delete(ACTIVE_ROLE_COOKIE_NAME);
   await signOut({ redirectTo: "/login" });
 }
 
@@ -137,7 +139,7 @@ export async function switchActiveRoleAction(
 
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
-    select: { role: true },
+    select: { id: true, role: true },
   });
 
   if (user?.role === "super_admin" || isSuper) {
@@ -160,7 +162,8 @@ export async function switchActiveRoleAction(
   if (newRole === baseRole) {
     cookieStore.delete(ACTIVE_ROLE_COOKIE_NAME);
   } else {
-    cookieStore.set(ACTIVE_ROLE_COOKIE_NAME, newRole, {
+    const cookieValue = user?.id ? `${newRole}:${user.id}` : newRole;
+    cookieStore.set(ACTIVE_ROLE_COOKIE_NAME, cookieValue, {
       path: "/",
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",

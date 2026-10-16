@@ -69,6 +69,7 @@ export default auth((req) => {
       isRealSuperAdmin: isRealSuper,
       baseRole: req.auth?.user?.role,
       activeRoleOverride,
+      currentUserId: req.auth?.user?.id,
     });
 
     if (pathWithoutBase.startsWith("/admin/users")) {
