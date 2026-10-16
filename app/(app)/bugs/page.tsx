@@ -16,11 +16,14 @@ import { LocalTime } from "@/components/local-time";
 import { severities, statuses } from "@/lib/validations/bug";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { escapeSearchQuery } from "@/lib/search";
+import { calculatePagination } from "@/lib/pagination";
+import { PaginationControls } from "@/components/pagination-controls";
 
 type SearchParams = Promise<{
   q?: string;
   status?: string;
   severity?: string;
+  page?: string;
 }>;
 
 function isStatus(value: string | undefined): value is Status {
@@ -55,6 +58,12 @@ export default async function BugsPage({
     ];
   }
 
+  const totalCount = await prisma.bug.count({ where });
+  const pagination = calculatePagination({
+    page: params.page,
+    totalCount,
+  });
+
   const bugs = await prisma.bug.findMany({
     where,
     include: {
@@ -63,9 +72,10 @@ export default async function BugsPage({
       votes: userId
         ? { where: { userId }, select: { id: true, value: true }, take: 1 }
         : false,
-
     },
     orderBy: [{ voteCount: "desc" }, { updatedAt: "desc" }],
+    skip: pagination.skip,
+    take: pagination.take,
   });
 
   return (
@@ -74,7 +84,7 @@ export default async function BugsPage({
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Bugs</h1>
           <p className="text-sm text-slate-600">
-            {bugs.length} result{bugs.length === 1 ? "" : "s"} · sorted by likes
+            {totalCount} result{totalCount === 1 ? "" : "s"} · sorted by likes
           </p>
         </div>
         <Link
@@ -113,7 +123,8 @@ export default async function BugsPage({
           </div>
         </div>
       ) : (
-        <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <>
+          <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
           {bugs.map((bug) => {
             const userVote =
               Array.isArray(bug.votes) && bug.votes.length > 0
@@ -174,6 +185,19 @@ export default async function BugsPage({
             );
           })}
         </ul>
+        <PaginationControls
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          totalCount={totalCount}
+          from={pagination.from}
+          to={pagination.to}
+          queryParams={{
+            q: params.q,
+            status: params.status,
+            severity: params.severity,
+          }}
+        />
+        </>
       )}
     </div>
   );
