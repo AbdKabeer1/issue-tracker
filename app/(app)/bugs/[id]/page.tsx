@@ -33,6 +33,7 @@ import {
 import { fetchVoterSummary } from "@/lib/voter-summaries";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
 import { DeleteBugButton } from "@/components/delete-bug-button";
+import { BoostTicketButton } from "@/components/boost-ticket-button";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
@@ -215,6 +216,11 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                 {bug.title}
               </h1>
               <div className="flex flex-wrap items-center gap-2">
+                {bug.isBoosted ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900 shadow-2xs">
+                    ⚡ Boosted
+                  </span>
+                ) : null}
                 {bug.type ? (
                   <span
                     className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getIssueTypeBadgeClass(
@@ -258,16 +264,23 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           </div>
         </div>
 
-        {canDelete ? (
-          <div className="shrink-0 self-start sm:pt-6">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6">
+          {canTriage ? (
+            <BoostTicketButton
+              bugId={bug.id}
+              isBoosted={bug.isBoosted}
+              size="sm"
+            />
+          ) : null}
+          {canDelete ? (
             <DeleteBugButton
               bugId={bug.id}
               bugTitle={bug.title}
               variant="danger-secondary"
               size="sm"
             />
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">

@@ -16,6 +16,8 @@ const typeLabel: Record<ActivityType, string> = {
   assignee_changed: "Assignee",
   commented: "Comment",
   edited: "Edit",
+  boosted: "Boost",
+  unboosted: "Unboost",
 };
 
 export function ActivityTimeline({

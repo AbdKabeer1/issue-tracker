@@ -73,6 +73,14 @@ export function editedSummary(fields: string[]): string {
   return `edited ${fields.slice(0, -1).join(", ")}, and ${fields.at(-1)}`;
 }
 
+export function boostedSummary(): string {
+  return "boosted this ticket to the top";
+}
+
+export function unboostedSummary(): string {
+  return "removed boost from this ticket";
+}
+
 function truncate(value: string, max: number): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (normalized.length <= max) return normalized;

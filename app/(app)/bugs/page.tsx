@@ -29,6 +29,8 @@ import {
 } from "@/lib/bugs-sort";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
 import { DeleteBugButton } from "@/components/delete-bug-button";
+import { canBoostTicket } from "@/lib/ticket-boosting";
+import { BoostTicketButton } from "@/components/boost-ticket-button";
 
 type SearchParams = Promise<{
   q?: string;
@@ -61,6 +63,7 @@ export default async function BugsPage({
       })
     : null;
   const canDelete = canDeleteTicket(currentUser?.role);
+  const canBoost = canBoostTicket(currentUser?.role);
   const params = await searchParams;
   const currentSort = parseBugSort(params.sort);
   const where: Prisma.BugWhereInput = {};
@@ -231,6 +234,11 @@ export default async function BugsPage({
                       )}
                     </div>
                     <div className="flex shrink-0 flex-wrap gap-1.5 self-start">
+                      {bug.isBoosted ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                          <span aria-hidden="true">⚡</span> Boosted
+                        </span>
+                      ) : null}
                       {bug.type ? (
                         <span
                           className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getIssueTypeBadgeClass(
@@ -254,16 +262,26 @@ export default async function BugsPage({
                     </div>
                   </div>
                 </Link>
-                {canDelete ? (
-                  <div className="shrink-0 self-center pl-1">
-                    <DeleteBugButton
-                      bugId={bug.id}
-                      bugTitle={bug.title}
-                      variant="ghost"
-                      size="sm"
-                      label="Delete"
-                      className="text-slate-400 hover:text-red-600 hover:bg-red-50"
-                    />
+                {canBoost || canDelete ? (
+                  <div className="flex shrink-0 items-center gap-1 self-center pl-1">
+                    {canBoost ? (
+                      <BoostTicketButton
+                        bugId={bug.id}
+                        isBoosted={bug.isBoosted}
+                        variant="ghost"
+                        size="sm"
+                      />
+                    ) : null}
+                    {canDelete ? (
+                      <DeleteBugButton
+                        bugId={bug.id}
+                        bugTitle={bug.title}
+                        variant="ghost"
+                        size="sm"
+                        label="Delete"
+                        className="text-slate-400 hover:text-red-600 hover:bg-red-50"
+                      />
+                    ) : null}
                   </div>
                 ) : null}
               </li>
