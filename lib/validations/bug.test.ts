@@ -312,29 +312,36 @@ describe("resetPasswordSchema", () => {
 });
 
 describe("createBugSchema proofLinks", () => {
-  it("parses newline-separated http(s) URLs", () => {
+  it("parses newline-separated GitHub URLs", () => {
     const result = createBugSchema.safeParse({
       title: "Broken upload button",
       description: "Upload never completes on Chrome 130.",
       proofLinks:
-        "https://example.com/a.png\nhttps://example.com/b.mp4\n",
+        "https://github.com/org/repo/issues/12\nhttps://github.com/org/repo/pull/13\n",
     });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.proofLinks).toEqual([
-        "https://example.com/a.png",
-        "https://example.com/b.mp4",
+        "https://github.com/org/repo/issues/12",
+        "https://github.com/org/repo/pull/13",
       ]);
     }
   });
 
-  it("rejects non-http proof URLs", () => {
-    const result = createBugSchema.safeParse({
+  it("rejects non-GitHub proof URLs", () => {
+    const nonHttpResult = createBugSchema.safeParse({
       title: "Broken upload button",
       description: "Upload never completes on Chrome 130.",
       proofLinks: "ftp://files.example.com/shot.png",
     });
-    expect(result.success).toBe(false);
+    expect(nonHttpResult.success).toBe(false);
+
+    const nonGitHubResult = createBugSchema.safeParse({
+      title: "Broken upload button",
+      description: "Upload never completes on Chrome 130.",
+      proofLinks: "https://example.com/screenshot.png",
+    });
+    expect(nonGitHubResult.success).toBe(false);
   });
 
   it("deduplicates identical proof links", () => {
@@ -342,13 +349,13 @@ describe("createBugSchema proofLinks", () => {
       title: "Broken upload button",
       description: "Upload never completes on Chrome 130.",
       proofLinks:
-        "https://example.com/a.png\nhttps://example.com/a.png\nhttps://example.com/b.mp4\nhttps://example.com/a.png\n",
+        "https://github.com/org/repo/issues/12\nhttps://github.com/org/repo/issues/12\nhttps://github.com/org/repo/pull/13\nhttps://github.com/org/repo/issues/12\n",
     });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.proofLinks).toEqual([
-        "https://example.com/a.png",
-        "https://example.com/b.mp4",
+        "https://github.com/org/repo/issues/12",
+        "https://github.com/org/repo/pull/13",
       ]);
     }
   });

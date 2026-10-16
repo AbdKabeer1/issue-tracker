@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
               "Testing bug creation and voting lifecycle in production DB",
             severity: "low",
             status: "open",
-            proofLinks: ["https://example.com/health-proof"],
+            proofLinks: ["https://github.com/Zedu-Endor/bug-tracker/issues/99"],
             reporterId: user.id,
             activities: {
               create: {
