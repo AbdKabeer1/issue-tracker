@@ -56,6 +56,7 @@ export async function createBugAction(
     title: formData.get("title"),
     description: formData.get("description"),
     severity: admin ? formData.get("severity") || "medium" : "medium",
+    typeId: formData.get("typeId") || "",
     assigneeId: admin ? formData.get("assigneeId") || "" : "",
     proofLinks: formData.get("proofLinks") || "",
   });
@@ -67,6 +68,11 @@ export async function createBugAction(
   const assigneeId =
     admin && parsed.data.assigneeId && parsed.data.assigneeId.length > 0
       ? parsed.data.assigneeId
+      : null;
+
+  const typeId =
+    parsed.data.typeId && parsed.data.typeId.length > 0
+      ? parsed.data.typeId
       : null;
 
   if (assigneeId) {
@@ -88,6 +94,7 @@ export async function createBugAction(
         description: parsed.data.description,
         severity: admin ? parsed.data.severity : "medium",
         status: "open",
+        typeId,
         proofLinks: parsed.data.proofLinks,
         reporterId: userId,
         assigneeId,
@@ -143,9 +150,15 @@ export async function updateBugAction(
   }
 
   const assigneeRaw = formData.get("assigneeId");
+  const typeRaw = formData.get("typeId");
   const parsed = updateBugSchema.safeParse({
     status: formData.get("status") || undefined,
     severity: admin ? formData.get("severity") || undefined : undefined,
+    typeId: admin
+      ? typeRaw === "" || typeRaw === "none"
+        ? null
+        : typeRaw || undefined
+      : undefined,
     assigneeId: admin
       ? assigneeRaw === "" || assigneeRaw === "unassigned"
         ? null
@@ -160,12 +173,16 @@ export async function updateBugAction(
   const data: {
     status?: typeof parsed.data.status;
     severity?: typeof parsed.data.severity;
+    typeId?: string | null;
     assigneeId?: string | null;
   } = {};
 
   if (parsed.data.status) data.status = parsed.data.status;
   if (admin) {
     if (parsed.data.severity) data.severity = parsed.data.severity;
+    if (parsed.data.typeId !== undefined) {
+      data.typeId = parsed.data.typeId === "" ? null : parsed.data.typeId;
+    }
     if (parsed.data.assigneeId !== undefined) {
       data.assigneeId =
         parsed.data.assigneeId === "" ? null : parsed.data.assigneeId;

@@ -26,6 +26,10 @@ import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentThread } from "@/components/comment-thread";
 import { RichText } from "@/components/rich-text";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
+import {
+  getActiveIssueTypes,
+  getIssueTypeBadgeClass,
+} from "@/lib/issue-types";
 import { fetchVoterSummary } from "@/lib/voter-summaries";
 
 type BugPageProps = {
@@ -142,10 +146,11 @@ export default async function BugDetailPage({ params }: BugPageProps) {
   const user = await requireUser();
   const canTriage = isAdmin(user.role);
 
-  const [bug, users, voterSummary] = await Promise.all([
+  const [bug, users, types, voterSummary] = await Promise.all([
     prisma.bug.findUnique({
       where: { id },
       include: {
+        type: true,
         reporter: { select: { name: true, email: true, role: true } },
         assignee: { select: { id: true, name: true, role: true } },
         comments: {
@@ -172,6 +177,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
       orderBy: { name: "asc" },
       select: { id: true, name: true, role: true },
     }),
+    canTriage ? getActiveIssueTypes() : Promise.resolve([]),
     fetchVoterSummary(id),
   ]);
 
@@ -199,6 +205,15 @@ export default async function BugDetailPage({ params }: BugPageProps) {
               {bug.title}
             </h1>
             <div className="flex flex-wrap items-center gap-2">
+              {bug.type ? (
+                <span
+                  className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getIssueTypeBadgeClass(
+                    bug.type.name,
+                  )}`}
+                >
+                  {bug.type.name}
+                </span>
+              ) : null}
               <Badge className={statusClass[bug.status]}>
                 {statusLabels[bug.status]}
               </Badge>
@@ -234,6 +249,20 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         </h2>
         <RichText content={bug.description} />
         <dl className="mt-6 grid grid-cols-1 gap-3 text-sm text-slate-600 sm:grid-cols-2">
+          {bug.type ? (
+            <div>
+              <dt className="font-medium text-slate-500">Type</dt>
+              <dd>
+                <span
+                  className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getIssueTypeBadgeClass(
+                    bug.type.name,
+                  )}`}
+                >
+                  {bug.type.name}
+                </span>
+              </dd>
+            </div>
+          ) : null}
           <div>
             <dt className="font-medium text-slate-500">Reporter</dt>
             <dd>
@@ -299,8 +328,10 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           bugId={bug.id}
           status={bug.status}
           severity={bug.severity}
+          typeId={bug.typeId}
           assigneeId={bug.assigneeId}
           users={users}
+          types={types}
           canEditTriage={canTriage}
         />
       ) : null}

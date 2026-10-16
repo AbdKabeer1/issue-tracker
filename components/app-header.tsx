@@ -6,7 +6,7 @@ import { logoutAction } from "@/app/actions/auth";
 import { BrandLockup } from "@/components/brand-lockup";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { Button } from "@/components/ui/button";
-import { isSuperAdmin, type AppRole } from "@/lib/roles";
+import { isAdmin, isSuperAdmin, type AppRole } from "@/lib/roles";
 import { RoleSwitcher } from "@/components/role-switcher";
 
 export function AppHeader({
@@ -38,6 +38,14 @@ export function AppHeader({
             >
               New bug
             </Link>
+            {isAdmin(role) ? (
+              <Link
+                href="/admin/types"
+                className="text-slate-600 hover:text-slate-900"
+              >
+                Types
+              </Link>
+            ) : null}
             {isSuperAdmin(role) ? (
               <Link
                 href="/admin/users"

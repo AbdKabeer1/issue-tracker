@@ -9,21 +9,26 @@ import { formatUserLabel, type AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 
 type UserOption = { id: string; name: string; role: AppRole };
+type TypeOption = { id: string; name: string };
 
 export function UpdateBugForm({
   bugId,
   status,
   severity,
+  typeId,
   assigneeId,
   users,
+  types = [],
   canEditTriage = true,
 }: {
   bugId: string;
   status: Status;
   severity: Severity;
+  typeId?: string | null;
   assigneeId: string | null;
   users: UserOption[];
-  /** Admins can edit severity/assignee; assignees only change status. */
+  types?: TypeOption[];
+  /** Admins can edit severity/type/assignee; assignees only change status. */
   canEditTriage?: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +57,7 @@ export function UpdateBugForm({
       <div
         className={
           canEditTriage
-            ? "grid gap-3 sm:grid-cols-3"
+            ? "grid gap-3 sm:grid-cols-4"
             : "grid gap-3 sm:grid-cols-1 sm:max-w-xs"
         }
       >
@@ -75,6 +80,24 @@ export function UpdateBugForm({
         </div>
         {canEditTriage ? (
           <>
+            <div>
+              <label htmlFor="typeId" className="mb-1 block text-xs font-medium">
+                Type
+              </label>
+              <select
+                id="typeId"
+                name="typeId"
+                defaultValue={typeId ?? ""}
+                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+              >
+                <option value="">No type</option>
+                {types.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div>
               <label
                 htmlFor="severity"

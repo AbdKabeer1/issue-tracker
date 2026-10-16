@@ -55,6 +55,7 @@ export const createBugSchema = z
         message: "Description cannot exceed 5000 characters",
       }),
     severity: severitySchema.default("medium"),
+    typeId: z.string().optional().nullable().or(z.literal("")),
     assigneeId: z.string().cuid().optional().or(z.literal("")),
     proofLinks: proofLinksInputSchema,
   })
@@ -62,6 +63,7 @@ export const createBugSchema = z
 
 export const updateBugSchema = z.object({
   status: statusSchema.optional(),
+  typeId: z.string().nullable().optional().or(z.literal("")),
   assigneeId: z.string().cuid().nullable().optional().or(z.literal("")),
   severity: severitySchema.optional(),
 });

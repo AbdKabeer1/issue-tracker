@@ -15,6 +15,7 @@ import {
 import { LocalTime } from "@/components/local-time";
 import { severities, statuses } from "@/lib/validations/bug";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
+import { getIssueTypeBadgeClass } from "@/lib/issue-types";
 import { escapeSearchQuery } from "@/lib/search";
 import { calculatePagination } from "@/lib/pagination";
 import { PaginationControls } from "@/components/pagination-controls";
@@ -70,6 +71,7 @@ export default async function BugsPage({
   const bugs = await prisma.bug.findMany({
     where,
     include: {
+      type: { select: { name: true } },
       reporter: { select: { name: true, role: true } },
       assignee: { select: { name: true, role: true } },
       votes: userId
@@ -210,6 +212,15 @@ export default async function BugsPage({
                       )}
                     </div>
                     <div className="flex shrink-0 flex-wrap gap-1.5 self-start">
+                      {bug.type ? (
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getIssueTypeBadgeClass(
+                            bug.type.name,
+                          )}`}
+                        >
+                          {bug.type.name}
+                        </span>
+                      ) : null}
                       <Badge className={statusClass[bug.status]}>
                         {statusLabels[bug.status]}
                       </Badge>
