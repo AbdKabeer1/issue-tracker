@@ -29,5 +29,5 @@ LABEL "traefik.http.routers.bug-tracker.rule"="Host(`issues.zedu.chat`) || (Host
 LABEL "traefik.http.routers.bug-tracker.priority"="1000"
 LABEL "traefik.http.services.bug-tracker.loadbalancer.server.port"="3000"
 
-# Apply pending Prisma migrations, then start the server
-CMD ["sh", "-c", "node scripts/migrate.mjs; pnpm run start"]
+# Apply pending Prisma migrations; start the server only if they succeed
+CMD ["sh", "-c", "node scripts/migrate.mjs && pnpm run start"]
