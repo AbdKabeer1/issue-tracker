@@ -51,6 +51,11 @@ import {
 import { Prisma, type ActivityType } from "@prisma/client";
 import { notifyLater } from "@/lib/notify";
 import type { NotificationEvent } from "@/lib/notifications";
+import {
+  checkRateLimit,
+  ACTION_RATE_LIMITS,
+  RATE_LIMIT_MESSAGE,
+} from "@/lib/rate-limit";
 
 export type ActionResult = { error?: string; ok?: boolean };
 
@@ -86,6 +91,14 @@ export async function createBugAction(
   const user = await requireUser();
   const userId = user.id;
   const admin = isAdmin(user.role);
+
+  const limit = checkRateLimit(
+    `create-bug:${userId}`,
+    ACTION_RATE_LIMITS.createBug,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
 
   const rawAssignee = formData.get("assigneeId");
   const targetAssigneeId =
@@ -515,6 +528,15 @@ export async function addCommentAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const userId = await requireUserId();
+
+  const limit = checkRateLimit(
+    `add-comment:${userId}`,
+    ACTION_RATE_LIMITS.addComment,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
+
   const parsed = commentSchema.safeParse({
     body: formData.get("body"),
     parentId: formData.get("parentId") || undefined,
@@ -638,6 +660,14 @@ export async function toggleVoteAction(
     return { error: SESSION_EXPIRED_MESSAGE };
   }
   const { userId } = resolved;
+
+  const limit = checkRateLimit(
+    `toggle-vote:${userId}`,
+    ACTION_RATE_LIMITS.toggleVote,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
 
   const bug = await prisma.bug.findUnique({
     where: { id: bugId },
