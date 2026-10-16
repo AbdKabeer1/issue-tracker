@@ -4,13 +4,16 @@ import { BrandLockup } from "@/components/brand-lockup";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { Button } from "@/components/ui/button";
 import { isSuperAdmin, type AppRole } from "@/lib/roles";
+import { RoleSwitcher } from "@/components/role-switcher";
 
 export function AppHeader({
   userName,
   role,
+  isRealSuperAdmin,
 }: {
   userName?: string | null;
   role?: AppRole | null;
+  isRealSuperAdmin?: boolean;
 }) {
   return (
     <header className="border-b border-slate-200 bg-white">
@@ -38,6 +41,7 @@ export function AppHeader({
           </nav>
         </div>
         <div className="flex items-center gap-3">
+          {isRealSuperAdmin && role ? <RoleSwitcher activeRole={role} /> : null}
           {userName ? (
             <UserNameWithBadges
               name={userName}

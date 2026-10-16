@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
+import { requireUser } from "@/lib/auth-helpers";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { LocalTime } from "@/components/local-time";
 import { buildCommentTree } from "@/lib/comments";
@@ -137,11 +138,8 @@ export default async function BugDetailPage({ params }: BugPageProps) {
     );
   }
 
-  const sessionUser = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-  const canTriage = isAdmin(sessionUser?.role);
+  const user = await requireUser();
+  const canTriage = isAdmin(user.role);
 
   const [bug, users] = await Promise.all([
     prisma.bug.findUnique({

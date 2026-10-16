@@ -32,3 +32,26 @@ export function formatUserLabel(
 ): string {
   return isAdmin(role) ? `${name} (Admin)` : name;
 }
+
+export const ACTIVE_ROLE_COOKIE_NAME = "zedu_active_role";
+
+export function resolveEffectiveRole({
+  isRealSuperAdmin,
+  baseRole,
+  activeRoleOverride,
+}: {
+  isRealSuperAdmin: boolean;
+  baseRole?: AppRole | null;
+  activeRoleOverride?: string | null;
+}): AppRole {
+  if (
+    isRealSuperAdmin &&
+    (activeRoleOverride === "user" ||
+      activeRoleOverride === "admin" ||
+      activeRoleOverride === "super_admin")
+  ) {
+    return activeRoleOverride;
+  }
+  return baseRole ?? "user";
+}
+
