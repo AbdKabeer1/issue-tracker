@@ -25,7 +25,7 @@ EXPOSE 3000
 
 # Traefik routing labels for Coolify
 LABEL "traefik.enable"="true"
-LABEL "traefik.http.routers.bug-tracker.rule"="Host(`contributors.zedu.chat`) && PathPrefix(`/bug-tracker`)"
+LABEL "traefik.http.routers.bug-tracker.rule"="Host(`issues.zedu.chat`) || (Host(`contributors.zedu.chat`) && PathPrefix(`/bug-tracker`))"
 LABEL "traefik.http.routers.bug-tracker.priority"="1000"
 LABEL "traefik.http.services.bug-tracker.loadbalancer.server.port"="3000"
 
