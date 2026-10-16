@@ -71,23 +71,49 @@ model PasswordResetToken {
   @@index([userId])
 }
 
+model IssueType {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  bugs        Bug[]
+}
+
 model Bug {
   id          String        @id @default(cuid())
   title       String
   description String
   severity    Severity      @default(medium)
   status      Status        @default(open)
+  typeId      String?
+  type        IssueType?    @relation(fields: [typeId], references: [id], onDelete: SetNull)
   voteCount   Int           @default(0)
   proofLinks  String[]      @default([])
   reporterId  String
   assigneeId  String?
+  categoryId  String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   reporter    User          @relation("BugReporter", fields: [reporterId], references: [id])
   assignee    User?         @relation("BugAssignee", fields: [assigneeId], references: [id])
+  category    Category?     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   comments    Comment[]
   votes       Vote[]
   activities  BugActivity[]
+
+  @@index([categoryId])
+  @@index([typeId])
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  bugs      Bug[]
 }
 
 model BugActivity {

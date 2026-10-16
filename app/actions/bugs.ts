@@ -30,6 +30,7 @@ import {
   updateBugSchema,
 } from "@/lib/validations/bug";
 import { calculateVoteChange, isValidVoteDirection } from "@/lib/voting";
+import { canDeleteTicket, TICKET_DELETION_ERRORS } from "@/lib/ticket-deletion";
 import { Prisma, type ActivityType } from "@prisma/client";
 
 export type ActionResult = { error?: string; ok?: boolean };
@@ -56,7 +57,9 @@ export async function createBugAction(
     title: formData.get("title"),
     description: formData.get("description"),
     severity: admin ? formData.get("severity") || "medium" : "medium",
+    typeId: formData.get("typeId") || "",
     assigneeId: admin ? formData.get("assigneeId") || "" : "",
+    categoryId: formData.get("categoryId") || "",
     proofLinks: formData.get("proofLinks") || "",
   });
 
@@ -69,6 +72,11 @@ export async function createBugAction(
       ? parsed.data.assigneeId
       : null;
 
+  const typeId =
+    parsed.data.typeId && parsed.data.typeId.length > 0
+      ? parsed.data.typeId
+      : null;
+
   if (assigneeId) {
     const assignee = await prisma.user.findUnique({
       where: { id: assigneeId },
@@ -76,6 +84,21 @@ export async function createBugAction(
     });
     if (!assignee) {
       return { error: "Assignee not found" };
+    }
+  }
+
+  const categoryId =
+    parsed.data.categoryId && parsed.data.categoryId.length > 0
+      ? parsed.data.categoryId
+      : null;
+
+  if (categoryId) {
+    const category = await prisma.category.findUnique({
+      where: { id: categoryId },
+      select: { id: true, isActive: true },
+    });
+    if (!category || !category.isActive) {
+      return { error: "Category not found or inactive" };
     }
   }
 
@@ -88,9 +111,11 @@ export async function createBugAction(
         description: parsed.data.description,
         severity: admin ? parsed.data.severity : "medium",
         status: "open",
+        typeId,
         proofLinks: parsed.data.proofLinks,
         reporterId: userId,
         assigneeId,
+        categoryId,
         activities: {
           create: {
             actorId: userId,
@@ -129,7 +154,10 @@ export async function updateBugAction(
 
   const existing = await prisma.bug.findUnique({
     where: { id: bugId },
-    include: { assignee: { select: { id: true, name: true } } },
+    include: {
+      assignee: { select: { id: true, name: true } },
+      category: { select: { id: true, name: true } },
+    },
   });
   if (!existing) {
     return { error: "Bug not found" };
@@ -143,13 +171,25 @@ export async function updateBugAction(
   }
 
   const assigneeRaw = formData.get("assigneeId");
+  const categoryRaw = formData.get("categoryId");
+  const typeRaw = formData.get("typeId");
   const parsed = updateBugSchema.safeParse({
     status: formData.get("status") || undefined,
     severity: admin ? formData.get("severity") || undefined : undefined,
+    typeId: admin
+      ? typeRaw === "" || typeRaw === "none"
+        ? null
+        : typeRaw || undefined
+      : undefined,
     assigneeId: admin
       ? assigneeRaw === "" || assigneeRaw === "unassigned"
         ? null
         : assigneeRaw || undefined
+      : undefined,
+    categoryId: admin
+      ? categoryRaw === "" || categoryRaw === "none"
+        ? null
+        : categoryRaw || undefined
       : undefined,
   });
 
@@ -160,15 +200,24 @@ export async function updateBugAction(
   const data: {
     status?: typeof parsed.data.status;
     severity?: typeof parsed.data.severity;
+    typeId?: string | null;
     assigneeId?: string | null;
+    categoryId?: string | null;
   } = {};
 
   if (parsed.data.status) data.status = parsed.data.status;
   if (admin) {
     if (parsed.data.severity) data.severity = parsed.data.severity;
+    if (parsed.data.typeId !== undefined) {
+      data.typeId = parsed.data.typeId === "" ? null : parsed.data.typeId;
+    }
     if (parsed.data.assigneeId !== undefined) {
       data.assigneeId =
         parsed.data.assigneeId === "" ? null : parsed.data.assigneeId;
+    }
+    if (parsed.data.categoryId !== undefined) {
+      data.categoryId =
+        parsed.data.categoryId === "" ? null : parsed.data.categoryId;
     }
   }
 
@@ -227,6 +276,16 @@ export async function updateBugAction(
         to: data.assigneeId,
       },
     });
+  }
+
+  if (data.categoryId) {
+    const cat = await prisma.category.findUnique({
+      where: { id: data.categoryId },
+      select: { id: true },
+    });
+    if (!cat) {
+      return { error: "Category not found" };
+    }
   }
 
   if (pending.length === 0 && Object.keys(data).length === 0) {
@@ -452,3 +511,43 @@ export async function toggleVoteAction(
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true, ...result };
 }
+
+/**
+ * Permanently deletes a bug and all its dependent data (comments, votes, activity).
+ * Super admins only.
+ */
+export async function deleteBugAction(bugId: string): Promise<ActionResult> {
+  const user = await requireUser();
+  if (!canDeleteTicket(user.role)) {
+    return { error: TICKET_DELETION_ERRORS.unauthorized };
+  }
+
+  if (!bugId || typeof bugId !== "string" || bugId.trim().length === 0) {
+    return { error: TICKET_DELETION_ERRORS.invalidId };
+  }
+
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    return { error: TICKET_DELETION_ERRORS.notFound };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.comment.deleteMany({ where: { bugId } });
+      await tx.vote.deleteMany({ where: { bugId } });
+      await tx.bugActivity.deleteMany({ where: { bugId } });
+      await tx.bug.delete({ where: { id: bugId } });
+    });
+  } catch (error) {
+    console.error("Failed to delete bug:", error);
+    return { error: TICKET_DELETION_ERRORS.failed };
+  }
+
+  revalidatePath("/bugs");
+  redirect("/bugs");
+}
+

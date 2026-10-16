@@ -15,6 +15,7 @@ import {
 import { LocalTime } from "@/components/local-time";
 import { severities, statuses } from "@/lib/validations/bug";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
+import { getIssueTypeBadgeClass } from "@/lib/issue-types";
 import { escapeSearchQuery } from "@/lib/search";
 import { calculatePagination } from "@/lib/pagination";
 import { PaginationControls } from "@/components/pagination-controls";
@@ -26,6 +27,8 @@ import {
   getBugOrderBy,
   parseBugSort,
 } from "@/lib/bugs-sort";
+import { canDeleteTicket } from "@/lib/ticket-deletion";
+import { DeleteBugButton } from "@/components/delete-bug-button";
 
 type SearchParams = Promise<{
   q?: string;
@@ -51,6 +54,13 @@ export default async function BugsPage({
 }) {
   const resolved = await resolveSessionUserId();
   const userId = "userId" in resolved ? resolved.userId : undefined;
+  const currentUser = userId
+    ? await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      })
+    : null;
+  const canDelete = canDeleteTicket(currentUser?.role);
   const params = await searchParams;
   const currentSort = parseBugSort(params.sort);
   const where: Prisma.BugWhereInput = {};
@@ -78,8 +88,10 @@ export default async function BugsPage({
   const bugs = await prisma.bug.findMany({
     where,
     include: {
+      type: { select: { name: true } },
       reporter: { select: { name: true, role: true } },
       assignee: { select: { name: true, role: true } },
+      category: { select: { id: true, name: true } },
       votes: userId
         ? { where: { userId }, select: { id: true, value: true }, take: 1 }
         : false,
@@ -219,6 +231,20 @@ export default async function BugsPage({
                       )}
                     </div>
                     <div className="flex shrink-0 flex-wrap gap-1.5 self-start">
+                      {bug.type ? (
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getIssueTypeBadgeClass(
+                            bug.type.name,
+                          )}`}
+                        >
+                          {bug.type.name}
+                        </span>
+                      ) : null}
+                      {bug.category ? (
+                        <Badge className="border border-teal-200 bg-teal-50 text-teal-800">
+                          {bug.category.name}
+                        </Badge>
+                      ) : null}
                       <Badge className={statusClass[bug.status]}>
                         {statusLabels[bug.status]}
                       </Badge>
@@ -228,6 +254,18 @@ export default async function BugsPage({
                     </div>
                   </div>
                 </Link>
+                {canDelete ? (
+                  <div className="shrink-0 self-center pl-1">
+                    <DeleteBugButton
+                      bugId={bug.id}
+                      bugTitle={bug.title}
+                      variant="ghost"
+                      size="sm"
+                      label="Delete"
+                      className="text-slate-400 hover:text-red-600 hover:bg-red-50"
+                    />
+                  </div>
+                ) : null}
               </li>
             );
           })}

@@ -1,8 +1,12 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
+import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 import { BrandLockup } from "@/components/brand-lockup";
 import { ForgotPasswordForm } from "@/components/forgot-password-form";
 
 export default function ForgotPasswordPage() {
+  if (!isPasswordAuthEnabled()) notFound();
+
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4 py-16">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
