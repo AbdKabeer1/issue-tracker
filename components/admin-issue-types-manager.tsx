@@ -7,7 +7,7 @@ import {
   toggleIssueTypeActiveAction,
   updateIssueTypeAction,
 } from "@/app/actions/issue-types";
-import { getIssueTypeBadgeClass } from "@/lib/issue-types";
+import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
