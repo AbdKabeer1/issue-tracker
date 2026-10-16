@@ -22,3 +22,35 @@ describe("RichText default styles", () => {
     expect(DEFAULT_CLASS_NAME).toContain("[&_:not(pre)>code]:break-all");
   });
 });
+
+describe("RichText images (#119)", () => {
+  it("shows images from other servers as a link instead of loading them", async () => {
+    const { createElement } = await import("react");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { RichText } = await import("./rich-text");
+
+    const html = renderToStaticMarkup(
+      createElement(RichText, {
+        content: "Look ![pixel](https://attacker.example/pixel.png?id=1)",
+      }),
+    );
+    expect(html).not.toContain("<img");
+    expect(html).toContain('href="https://attacker.example/pixel.png?id=1"');
+    expect(html).toContain(">pixel</a>");
+  });
+
+  it("loads GitHub attachments inline without sending a referrer", async () => {
+    const { createElement } = await import("react");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { RichText } = await import("./rich-text");
+
+    const html = renderToStaticMarkup(
+      createElement(RichText, {
+        content: "![shot](https://github.com/user-attachments/assets/abc123)",
+      }),
+    );
+    expect(html).toContain('<img src="https://github.com/user-attachments/assets/abc123"');
+    expect(html).toContain('referrerPolicy="no-referrer"');
+    expect(html).toContain('loading="lazy"');
+  });
+});
