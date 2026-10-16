@@ -81,6 +81,14 @@ export function unboostedSummary(): string {
   return "removed boost from this ticket";
 }
 
+export function deletedSummary(): string {
+  return "deleted this ticket";
+}
+
+export function restoredSummary(): string {
+  return "restored this ticket";
+}
+
 function truncate(value: string, max: number): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (normalized.length <= max) return normalized;

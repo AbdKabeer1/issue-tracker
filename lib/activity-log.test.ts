@@ -6,7 +6,9 @@ import {
   commentedSummary,
   commentPreview,
   createdSummary,
+  deletedSummary,
   editedSummary,
+  restoredSummary,
   severityChangedSummary,
   statusChangedSummary,
   unboostedSummary,
@@ -78,6 +80,8 @@ describe("activity summary helpers", () => {
   it("summarizes boosted and unboosted actions", () => {
     expect(boostedSummary()).toBe("boosted this ticket to the top");
     expect(unboostedSummary()).toBe("removed boost from this ticket");
+    expect(deletedSummary()).toBe("deleted this ticket");
+    expect(restoredSummary()).toBe("restored this ticket");
   });
 });
 

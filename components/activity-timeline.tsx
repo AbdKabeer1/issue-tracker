@@ -18,6 +18,8 @@ const typeLabel: Record<ActivityType, string> = {
   edited: "Edit",
   boosted: "Boost",
   unboosted: "Unboost",
+  deleted: "Deleted",
+  restored: "Restored",
 };
 
 export function ActivityTimeline({

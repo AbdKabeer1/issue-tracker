@@ -9,6 +9,8 @@ import {
   commentedSummary,
   commentPreview,
   createdSummary,
+  deletedSummary,
+  restoredSummary,
   severityChangedSummary,
   statusChangedSummary,
   unboostedSummary,
@@ -32,7 +34,11 @@ import {
   updateBugSchema,
 } from "@/lib/validations/bug";
 import { calculateVoteChange, isValidVoteDirection } from "@/lib/voting";
-import { canDeleteTicket, TICKET_DELETION_ERRORS } from "@/lib/ticket-deletion";
+import {
+  canDeleteTicket,
+  canRestoreTicket,
+  TICKET_DELETION_ERRORS,
+} from "@/lib/ticket-deletion";
 import { canBoostTicket, TICKET_BOOST_ERRORS } from "@/lib/ticket-boosting";
 import { canAssignTicket, TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
 import { Prisma, type ActivityType } from "@prisma/client";
@@ -202,7 +208,7 @@ export async function updateBugAction(
       category: { select: { id: true, name: true } },
     },
   });
-  if (!existing) {
+  if (!existing || existing.isDeleted) {
     return { error: "Issue not found" };
   }
 
@@ -408,9 +414,9 @@ export async function addCommentAction(
 
   const bug = await prisma.bug.findUnique({
     where: { id: bugId },
-    select: { id: true },
+    select: { id: true, isDeleted: true },
   });
-  if (!bug) {
+  if (!bug || bug.isDeleted) {
     return { error: "Issue not found" };
   }
 
@@ -503,9 +509,9 @@ export async function toggleVoteAction(
 
   const bug = await prisma.bug.findUnique({
     where: { id: bugId },
-    select: { id: true },
+    select: { id: true, isDeleted: true },
   });
-  if (!bug) {
+  if (!bug || bug.isDeleted) {
     return { error: "Issue not found" };
   }
 
@@ -567,8 +573,8 @@ export async function toggleVoteAction(
 }
 
 /**
- * Permanently deletes a bug and all its dependent data (comments, votes, activity).
- * Super admins only.
+ * Soft deletes a bug. Admins and super admins only.
+ * The issue is hidden from normal views, but can be restored.
  */
 export async function deleteBugAction(bugId: string): Promise<ActionResult> {
   const user = await requireUser();
@@ -582,19 +588,35 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
 
   const existing = await prisma.bug.findUnique({
     where: { id: bugId },
-    select: { id: true },
+    select: { id: true, isDeleted: true },
   });
 
   if (!existing) {
     return { error: TICKET_DELETION_ERRORS.notFound };
   }
 
+  if (existing.isDeleted) {
+    return { error: TICKET_DELETION_ERRORS.alreadyDeleted };
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.comment.deleteMany({ where: { bugId } });
-      await tx.vote.deleteMany({ where: { bugId } });
-      await tx.bugActivity.deleteMany({ where: { bugId } });
-      await tx.bug.delete({ where: { id: bugId } });
+      await tx.bug.update({
+        where: { id: bugId },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+        },
+      });
+
+      await tx.bugActivity.create({
+        data: {
+          bugId,
+          actorId: user.id,
+          type: "deleted",
+          summary: deletedSummary(),
+        },
+      });
     });
   } catch (error) {
     console.error("Failed to delete bug:", error);
@@ -602,7 +624,64 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
   }
 
   revalidatePath("/bugs");
+  revalidatePath(`/bugs/${bugId}`);
   redirect("/bugs");
+}
+
+/**
+ * Restores a soft-deleted bug. Admins and super admins only.
+ * Returns the issue back to active status in views and searches.
+ */
+export async function restoreBugAction(bugId: string): Promise<ActionResult> {
+  const user = await requireUser();
+  if (!canRestoreTicket(user.role)) {
+    return { error: TICKET_DELETION_ERRORS.unauthorizedRestore };
+  }
+
+  if (!bugId || typeof bugId !== "string" || bugId.trim().length === 0) {
+    return { error: TICKET_DELETION_ERRORS.invalidId };
+  }
+
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId },
+    select: { id: true, isDeleted: true },
+  });
+
+  if (!existing) {
+    return { error: TICKET_DELETION_ERRORS.notFound };
+  }
+
+  if (!existing.isDeleted) {
+    return { error: TICKET_DELETION_ERRORS.notDeleted };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.bug.update({
+        where: { id: bugId },
+        data: {
+          isDeleted: false,
+          deletedAt: null,
+        },
+      });
+
+      await tx.bugActivity.create({
+        data: {
+          bugId,
+          actorId: user.id,
+          type: "restored",
+          summary: restoredSummary(),
+        },
+      });
+    });
+  } catch (error) {
+    console.error("Failed to restore bug:", error);
+    return { error: TICKET_DELETION_ERRORS.failedRestore };
+  }
+
+  revalidatePath("/bugs");
+  revalidatePath(`/bugs/${bugId}`);
+  return { ok: true };
 }
 
 /**
@@ -623,10 +702,10 @@ export async function toggleBoostBugAction(
 
   const existing = await prisma.bug.findUnique({
     where: { id: bugId },
-    select: { id: true, isBoosted: true },
+    select: { id: true, isBoosted: true, isDeleted: true },
   });
 
-  if (!existing) {
+  if (!existing || existing.isDeleted) {
     return { error: TICKET_BOOST_ERRORS.notFound };
   }
 
@@ -686,11 +765,12 @@ export async function selfAssignBugAction(
     select: {
       id: true,
       assigneeId: true,
+      isDeleted: true,
       assignee: { select: { name: true } },
     },
   });
 
-  if (!existing) {
+  if (!existing || existing.isDeleted) {
     return { error: TICKET_ASSIGN_ERRORS.notFound };
   }
 
