@@ -52,10 +52,18 @@ describe("resolveSessionUserId with session versions (#208)", () => {
     await expect(resolveSessionUserId()).resolves.toEqual({ error: SESSION_EXPIRED_MESSAGE });
   });
 
-  it("accepts a Google session when password sign-in is off", async () => {
+  it("rejects a Google session when role is changed (sessionVersion bumped) even when password sign-in is off", async () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("AUTH_PASSWORD_LOGIN", "false");
     mockAuth.mockResolvedValue({ user: { id: "u1", email: "a@x.dev", sessionVersion: 0 } });
+    findUnique.mockResolvedValue({ id: "u1", sessionVersion: 1 });
+    await expect(resolveSessionUserId()).resolves.toEqual({ error: SESSION_EXPIRED_MESSAGE });
+  });
+
+  it("accepts a Google session when sessionVersion matches even when password sign-in is off", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_PASSWORD_LOGIN", "false");
+    mockAuth.mockResolvedValue({ user: { id: "u1", email: "a@x.dev", sessionVersion: 1 } });
     findUnique.mockResolvedValue({ id: "u1", sessionVersion: 1 });
     await expect(resolveSessionUserId()).resolves.toEqual({ userId: "u1" });
   });
