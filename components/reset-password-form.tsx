@@ -18,6 +18,17 @@ export function ResetPasswordForm({ token }: { token: string }) {
       onSubmit={(event) => {
         event.preventDefault();
         setError(null);
+
+        if (password.length < 8) {
+          setError("Password must be at least 8 characters");
+          return;
+        }
+
+        if (password !== confirmPassword) {
+          setError("Passwords do not match");
+          return;
+        }
+
         const formData = new FormData();
         formData.set("token", token);
         formData.set("password", password);
@@ -50,8 +61,16 @@ export function ResetPasswordForm({ token }: { token: string }) {
           minLength={8}
           placeholder="At least 8 characters"
           value={password}
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={(event) => {
+            setPassword(event.target.value);
+            if (error) setError(null);
+          }}
         />
+        {password.length > 0 && password.length < 8 && !error ? (
+          <p className="text-xs text-amber-600" aria-live="polite">
+            Must be at least 8 characters
+          </p>
+        ) : null}
       </div>
       <div className="space-y-1.5">
         <label
@@ -68,8 +87,20 @@ export function ResetPasswordForm({ token }: { token: string }) {
           required
           minLength={8}
           value={confirmPassword}
-          onChange={(event) => setConfirmPassword(event.target.value)}
+          onChange={(event) => {
+            setConfirmPassword(event.target.value);
+            if (error) setError(null);
+          }}
         />
+        {confirmPassword.length > 0 && password !== confirmPassword && !error ? (
+          <p className="text-xs text-red-600" aria-live="polite">
+            Passwords do not match
+          </p>
+        ) : confirmPassword.length > 0 && password === confirmPassword ? (
+          <p className="text-xs text-emerald-600" aria-live="polite">
+            Passwords match
+          </p>
+        ) : null}
       </div>
       {error ? (
         <p className="text-sm text-red-600" role="alert">
