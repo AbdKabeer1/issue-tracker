@@ -227,7 +227,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
     notFound();
   }
 
-  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments] =
+  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision] =
     await Promise.all([
       loadOptional("users", [], () =>
         prisma.user.findMany({
@@ -278,6 +278,14 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           where: { bugId: id },
           select: { id: true, filename: true, contentType: true, size: true, commentId: true },
           orderBy: { createdAt: "asc" },
+        }),
+      ),
+      // #303: only whether there is history, and when it last changed.
+      loadOptional<{ editedAt: Date } | null>("revisions", null, () =>
+        prisma.bugRevision.findFirst({
+          where: { bugId: id },
+          orderBy: { editedAt: "desc" },
+          select: { editedAt: true },
         }),
       ),
     ]);
@@ -464,6 +472,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         initialDescription={bug.description}
         canEdit={canEdit}
         users={users}
+        lastEditedAt={lastRevision?.editedAt ?? null}
+        historyHref={`/bugs/${bug.id}/history`}
       >
         <dl className="mt-6 grid grid-cols-1 gap-3 text-sm text-slate-600 sm:grid-cols-2">
           {bug.type ? (

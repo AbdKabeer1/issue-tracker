@@ -71,6 +71,7 @@ model User {
   comments            Comment[]
   votes               Vote[]
   activities          BugActivity[]
+  bugRevisions        BugRevision[]
   passwordResetTokens PasswordResetToken[]
   watches             IssueWatch[]
   notifications       Notification[]
@@ -129,6 +130,7 @@ model Bug {
   watches       IssueWatch[]
   notifications Notification[]
   activities  BugActivity[]
+  revisions   BugRevision[]
 
   @@index([categoryId])
   @@index([typeId])
@@ -164,6 +166,22 @@ model BugActivity {
   actor     User         @relation(fields: [actorId], references: [id])
 
   @@index([bugId, createdAt])
+}
+
+/// A title + description an edit replaced (#303). The issue row holds the
+/// current version; these are the ones before it.
+model BugRevision {
+  id          String   @id @default(cuid())
+  bugId       String
+  title       String
+  description String
+  /// Who made the edit that replaced this version. Null if since deleted.
+  editedById  String?
+  editedAt    DateTime @default(now())
+  bug         Bug      @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  editedBy    User?    @relation(fields: [editedById], references: [id], onDelete: SetNull)
+
+  @@index([bugId, editedAt])
 }
 
 model Comment {
