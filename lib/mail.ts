@@ -78,7 +78,7 @@ async function sendSmtpMail({ to, subject, text }: SendMailInput) {
   // Prefer an explicit override; fall back to the machine's real hostname so
   // the EHLO greeting is RFC-5321-compliant instead of the literal "localhost"
   // which many mail servers treat as a spam signal (#353).
-  const ehloName = process.env.SMTP_EHLO_NAME ?? osHostname();
+  const ehloName = getEhloName();
   const connectTimeoutMs = Number(process.env.SMTP_CONNECT_TIMEOUT_MS ?? "10000");
   const commandTimeoutMs = Number(process.env.SMTP_COMMAND_TIMEOUT_MS ?? "15000");
 
@@ -94,7 +94,7 @@ async function sendSmtpMail({ to, subject, text }: SendMailInput) {
 
     if (!secure) {
       await session.command("STARTTLS", 220);
-      const upgraded = await upgradeToTls(socket as Socket, host);
+      const upgraded = await upgradeToTls(socket as Socket, host, connectTimeoutMs);
       session.replaceSocket(upgraded);
       await session.command(`EHLO ${ehloName}`, 250);
     }
@@ -115,6 +115,32 @@ async function sendSmtpMail({ to, subject, text }: SendMailInput) {
   } finally {
     session.close();
   }
+}
+
+/**
+ * Returns an RFC-5321 compliant EHLO name:
+ * - Uses process.env.SMTP_EHLO_NAME if provided
+ * - If OS hostname is a valid FQDN (contains dot), uses it
+ * - If OS hostname is an address literal, uses it
+ * - Otherwise falls back to address literal "[127.0.0.1]"
+ */
+export function getEhloName(override?: string, hostname?: string): string {
+  const custom = override ?? process.env.SMTP_EHLO_NAME;
+  if (custom && custom.trim()) {
+    return custom.trim();
+  }
+  const host = (hostname ?? osHostname()).trim();
+  if (/^\[.+\]$/.test(host)) {
+    return host;
+  }
+  const isFqdn =
+    /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/.test(
+      host,
+    );
+  if (isFqdn) {
+    return host;
+  }
+  return "[127.0.0.1]";
 }
 
 /** Removes CR/LF so a value can't start a new header line (header injection). */
@@ -158,39 +184,61 @@ function extractEmail(value: string) {
 
 function connectPlain(host: string, port: number, timeoutMs: number) {
   return new Promise<Socket>((resolve, reject) => {
+    let timer: NodeJS.Timeout | undefined;
     const socket = createConnection({ host, port }, () => {
-      socket.setTimeout(0); // clear connect-phase timeout once connected
+      if (timer) clearTimeout(timer);
       resolve(socket);
     });
     socket.setEncoding("utf8");
-    socket.setTimeout(timeoutMs, () => {
-      socket.destroy(new Error(`SMTP connect timeout after ${timeoutMs}ms (${host}:${port})`));
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        socket.destroy(new Error(`SMTP connect timeout after ${timeoutMs}ms (${host}:${port})`));
+      }, timeoutMs);
+    }
+    socket.on("error", (err) => {
+      if (timer) clearTimeout(timer);
+      reject(err);
     });
-    socket.on("error", reject);
   });
 }
 
 function connectTls(host: string, port: number, timeoutMs: number) {
   return new Promise<TLSSocket>((resolve, reject) => {
+    let timer: NodeJS.Timeout | undefined;
     const socket = tlsConnect({ host, port, servername: host }, () => {
-      socket.setTimeout(0);
+      if (timer) clearTimeout(timer);
       resolve(socket);
     });
     socket.setEncoding("utf8");
-    socket.setTimeout(timeoutMs, () => {
-      socket.destroy(new Error(`SMTP TLS connect timeout after ${timeoutMs}ms (${host}:${port})`));
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        socket.destroy(new Error(`SMTP TLS connect timeout after ${timeoutMs}ms (${host}:${port})`));
+      }, timeoutMs);
+    }
+    socket.on("error", (err) => {
+      if (timer) clearTimeout(timer);
+      reject(err);
     });
-    socket.on("error", reject);
   });
 }
 
-function upgradeToTls(socket: Socket, host: string) {
+export function upgradeToTls(socket: Socket, host: string, timeoutMs: number) {
   return new Promise<TLSSocket>((resolve, reject) => {
-    const upgraded = tlsConnect({ socket, host, servername: host }, () =>
-      resolve(upgraded),
-    );
+    let timer: NodeJS.Timeout | undefined;
+    const upgraded = tlsConnect({ socket, host, servername: host }, () => {
+      if (timer) clearTimeout(timer);
+      resolve(upgraded);
+    });
     upgraded.setEncoding("utf8");
-    upgraded.on("error", reject);
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        upgraded.destroy(new Error(`SMTP TLS handshake timeout after ${timeoutMs}ms (${host})`));
+      }, timeoutMs);
+    }
+    upgraded.on("error", (err) => {
+      if (timer) clearTimeout(timer);
+      reject(err);
+    });
   });
 }
 
@@ -217,14 +265,28 @@ export class SmtpSession {
       this.buffer += chunk;
       this.flush();
     });
+    this.socket.on("error", (err: Error) => {
+      this.close(err);
+    });
+    this.socket.on("close", () => {
+      this.close(new Error("SMTP socket closed"));
+    });
   }
 
   replaceSocket(socket: Socket | TLSSocket) {
     this.socket.removeAllListeners("data");
+    this.socket.removeAllListeners("error");
+    this.socket.removeAllListeners("close");
     this.socket = socket;
     this.socket.on("data", (chunk: string) => {
       this.buffer += chunk;
       this.flush();
+    });
+    this.socket.on("error", (err: Error) => {
+      this.close(err);
+    });
+    this.socket.on("close", () => {
+      this.close(new Error("SMTP socket closed"));
     });
   }
 
@@ -251,12 +313,19 @@ export class SmtpSession {
     });
   }
 
-  close() {
-    // Cancel any outstanding timers to avoid leaking handles.
+  close(error?: Error) {
+    const err = error ?? new Error("SMTP session closed");
+    // Cancel any outstanding timers and reject pending waiters
     for (const w of this.waiters) {
       if (w.timer !== undefined) clearTimeout(w.timer);
+      w.reject(err);
     }
-    this.socket.end();
+    this.waiters = [];
+    try {
+      this.socket.end();
+    } catch {
+      // socket might already be closed/destroyed
+    }
   }
 
   private flush() {

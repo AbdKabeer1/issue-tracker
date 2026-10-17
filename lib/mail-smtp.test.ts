@@ -1,6 +1,6 @@
 import { EventEmitter } from "events";
 import { describe, expect, it } from "vitest";
-import { SmtpSession, buildSmtpData } from "./mail";
+import { SmtpSession, buildSmtpData, getEhloName } from "./mail";
 
 /** The hand-rolled SMTP pieces in lib/mail.ts (#218). */
 
@@ -76,12 +76,55 @@ describe("SmtpSession response parsing", () => {
     await expect(cmd).rejects.toThrow("SMTP command timeout: no response for code 250 after 25ms");
   });
 
-  it("cleans up active timers when close is called (#353)", async () => {
+  it("cleans up active timers and rejects pending expectations when close is called (#353)", async () => {
     const socket = new FakeSocket();
     const smtp = new SmtpSession(socket as never, 5000);
-    smtp.expect(220).catch(() => {});
+    const greeting = smtp.expect(220);
     smtp.close();
     expect(socket.ended).toBe(true);
+    await expect(greeting).rejects.toThrow("SMTP session closed");
+  });
+
+  it("rejects pending expectations with explicit error when close is passed an error", async () => {
+    const socket = new FakeSocket();
+    const smtp = new SmtpSession(socket as never);
+    const greeting = smtp.expect(220);
+    smtp.close(new Error("Connection reset by peer"));
+    await expect(greeting).rejects.toThrow("Connection reset by peer");
+  });
+});
+
+describe("getEhloName", () => {
+  it("uses custom override if provided", () => {
+    expect(getEhloName("mail.custom.org", "localbox")).toBe("mail.custom.org");
+  });
+
+  it("uses process.env.SMTP_EHLO_NAME if set", () => {
+    const old = process.env.SMTP_EHLO_NAME;
+    try {
+      process.env.SMTP_EHLO_NAME = "smtp.corp.internal";
+      expect(getEhloName()).toBe("smtp.corp.internal");
+    } finally {
+      if (old !== undefined) {
+        process.env.SMTP_EHLO_NAME = old;
+      } else {
+        delete process.env.SMTP_EHLO_NAME;
+      }
+    }
+  });
+
+  it("uses hostname when it is a valid FQDN", () => {
+    expect(getEhloName(undefined, "server1.example.com")).toBe("server1.example.com");
+  });
+
+  it("uses hostname when it is an IPv4 or IPv6 address literal", () => {
+    expect(getEhloName(undefined, "[192.168.1.100]")).toBe("[192.168.1.100]");
+    expect(getEhloName(undefined, "[::1]")).toBe("[::1]");
+  });
+
+  it("falls back to [127.0.0.1] when hostname is an unqualified machine name", () => {
+    expect(getEhloName(undefined, "docker-worker")).toBe("[127.0.0.1]");
+    expect(getEhloName(undefined, "localhost")).toBe("[127.0.0.1]");
   });
 });
 
