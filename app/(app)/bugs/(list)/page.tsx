@@ -276,9 +276,9 @@ export default async function BugsPage({
             return (
               <li
                 key={bug.id}
-                /* flex-wrap so the admin controls drop to their own line on a
-                   phone instead of squeezing the title (#LIST-ROW). */
-                className="flex flex-wrap items-start gap-3 px-3 py-3.5 sm:flex-nowrap sm:px-4 sm:py-4 transition hover:bg-slate-50"
+                /* flex-wrap so the admin controls drop to their own line on small screens
+                   instead of squeezing the title (#255). */
+                className="flex flex-wrap items-start gap-3 px-3 py-3.5 sm:px-4 sm:py-4 md:flex-nowrap transition hover:bg-slate-50"
               >
                 <VoteButton
                   bugId={bug.id}
@@ -396,7 +396,9 @@ export default async function BugsPage({
                   </div>
                 </Link>
                 {canBoost || canDelete ? (
-                  <div className="flex w-full shrink-0 items-center justify-end gap-1 self-center border-t border-slate-100 pt-2 sm:w-auto sm:border-0 sm:pt-0 sm:pl-1">
+                  // Below `md` the actions get their own row so the title keeps
+                  // the full width; beside the issue from `md` up (#255).
+                  <div className="flex w-full basis-full shrink-0 items-center justify-end gap-1 self-center border-t border-slate-100 pt-2 md:basis-auto md:w-auto md:border-0 md:pt-0 md:pl-1">
                     {canBoost && !bug.isDeleted ? (
                       <BoostTicketButton
                         bugId={bug.id}
