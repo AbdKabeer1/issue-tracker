@@ -537,7 +537,7 @@ export default async function BugsPage({
                 key={bug.id}
                 /* flex-wrap so the admin controls drop to their own line on small screens
                    instead of squeezing the title (#255). */
-                className="flex flex-wrap items-start gap-3 px-3 py-3.5 sm:px-4 sm:py-4 md:flex-nowrap transition hover:bg-slate-50"
+                className="flex flex-wrap items-start gap-3 px-3 py-3.5 sm:px-4 sm:py-4 md:flex-nowrap transition hover:bg-slate-50 has-[a[data-issue-link]:focus-visible]:bg-teal-50/70"
               >
                 {canDelete && !isDeletedView ? (
                   <BulkCheckbox id={bug.id} title={bug.title} />
@@ -551,7 +551,12 @@ export default async function BugsPage({
                   size="sm"
                   readOnly={isDeletedView}
                 />
-                <Link href={`/bugs/${bug.id}`} className="min-w-0 flex-1 basis-0">
+                <Link
+                  href={`/bugs/${bug.id}`}
+                  // j / k move focus between these (#287).
+                  data-issue-link=""
+                  className="min-w-0 flex-1 basis-0 rounded-md scroll-my-24 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-teal-600"
+                >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-1">
                       {/* Finished issues are muted so the eye lands on what

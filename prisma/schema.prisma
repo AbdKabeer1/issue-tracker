@@ -64,6 +64,8 @@ model User {
   notifyMentions     Boolean       @default(true)
   notifyAssignments  Boolean       @default(true)
   notifyStatusChanges Boolean      @default(true)
+  /// #287: site-wide keyboard shortcuts; per user so it follows them.
+  keyboardShortcuts   Boolean      @default(true)
   /// Bumped on password reset; JWTs carrying an older value are rejected (#208).
   sessionVersion Int          @default(0)
   createdAt     DateTime      @default(now())
