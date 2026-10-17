@@ -19,6 +19,7 @@ import { severities, statuses } from "@/lib/validations/bug";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
+import { formatIssueNumber, parseIssueNumberQuery } from "@/lib/issue-number";
 import { calculatePagination } from "@/lib/pagination";
 import { PaginationControls } from "@/components/pagination-controls";
 import { fetchVoterSummaries } from "@/lib/voter-summaries";
@@ -134,6 +135,11 @@ export default async function BugsPage({
       { title: { contains: q, mode: "insensitive" } },
       { description: { contains: q, mode: "insensitive" } },
     ];
+    // "42" or "#42" should also find issue #42, which is how people quote an
+    // issue to each other. Left as an OR so a title containing "42" still
+    // matches too, rather than the number silently hijacking the search.
+    const asNumber = parseIssueNumberQuery(qParam);
+    if (asNumber !== null) where.OR.push({ number: asNumber });
   }
 
   const totalCount = await prisma.bug.count({ where });
@@ -148,6 +154,7 @@ export default async function BugsPage({
     where,
     select: {
       id: true,
+      number: true,
       title: true,
       status: true,
       severity: true,
@@ -285,7 +292,12 @@ export default async function BugsPage({
                 <Link href={`/bugs/${bug.id}`} className="min-w-0 flex-1 basis-0">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-1">
-                      <p className="font-medium text-slate-900 break-words">{bug.title}</p>
+                      <p className="font-medium text-slate-900 break-words">
+                        <span className="font-normal text-slate-500 tabular-nums">
+                          {formatIssueNumber(bug.number)}
+                        </span>{" "}
+                        {bug.title}
+                      </p>
                       <p className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-slate-500">
                         <span>Reported by</span>
                         <UserNameWithBadges

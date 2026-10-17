@@ -94,6 +94,8 @@ model IssueType {
 
 model Bug {
   id          String        @id @default(cuid())
+  /// Human-readable reference (#1, #2, ...), assigned by a Postgres sequence.
+  number      Int           @unique @default(autoincrement())
   title       String
   description String
   severity    Severity      @default(medium)

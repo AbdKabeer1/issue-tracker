@@ -6,6 +6,7 @@ import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { LocalTime } from "@/components/local-time";
+import { formatIssueNumber } from "@/lib/issue-number";
 import { buildCommentTree } from "@/lib/comments";
 import {
   bugLinkPreviewDescription,
@@ -51,6 +52,7 @@ export async function generateMetadata({
   const bug = await prisma.bug.findUnique({
     where: { id },
     select: {
+      number: true,
       title: true,
       status: true,
       updatedAt: true,
@@ -71,7 +73,9 @@ export async function generateMetadata({
   const description = bugLinkPreviewDescription({ status: bug.status });
   const canonical = absoluteUrl(`/bugs/${id}`);
   const image = absoluteUrl(SHARE_IMAGE.url);
-  const title = bug.title;
+  // The reference goes in the tab title too: with several issues open, the
+  // number is what tells two similar titles apart.
+  const title = `${formatIssueNumber(bug.number)} ${bug.title}`;
 
   return {
     title,
@@ -248,6 +252,9 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           <div className="mt-3 space-y-3">
             <div className="space-y-2">
               <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 break-words">
+                <span className="font-normal text-slate-500 tabular-nums">
+                  {formatIssueNumber(bug.number)}
+                </span>{" "}
                 {bug.title}
               </h1>
               <div className="flex flex-wrap items-center gap-2">
