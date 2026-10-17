@@ -102,18 +102,6 @@ export function AssigneeCombobox({
         if (!open) openList();
         else moveTo(activeIndex - 1);
         break;
-      case "Home":
-        if (open) {
-          event.preventDefault();
-          moveTo(0);
-        }
-        break;
-      case "End":
-        if (open) {
-          event.preventDefault();
-          moveTo(options.length - 1);
-        }
-        break;
       case "Enter":
         if (open) {
           // Pick the highlighted person instead of submitting the form.
