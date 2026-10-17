@@ -43,7 +43,11 @@ import {
   canRestoreTicket,
   TICKET_DELETION_ERRORS,
 } from "@/lib/ticket-deletion";
-import { canBoostTicket, TICKET_BOOST_ERRORS } from "@/lib/ticket-boosting";
+import {
+  canBoostTicket,
+  shouldUnboostOnStatusChange,
+  TICKET_BOOST_ERRORS,
+} from "@/lib/ticket-boosting";
 import { canAssignTicket, TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
 import { canChangeTicketStatus, TICKET_TRIAGE_ERRORS } from "@/lib/ticket-triage";
 import {
@@ -355,6 +359,8 @@ export async function updateBugAction(
     typeId?: string | null;
     assigneeId?: string | null;
     categoryId?: string | null;
+    isBoosted?: boolean;
+    boostedAt?: Date | null;
   } = {};
 
   if (parsed.data.status) data.status = parsed.data.status;
@@ -389,6 +395,23 @@ export async function updateBugAction(
         from: existing.status,
         to: data.status,
       },
+    });
+  }
+
+  // #256: a resolved or closed issue shouldn't stay pinned above open work.
+  if (
+    shouldUnboostOnStatusChange({
+      isBoosted: existing.isBoosted,
+      from: existing.status,
+      to: data.status,
+    })
+  ) {
+    data.isBoosted = false;
+    data.boostedAt = null;
+    pending.push({
+      type: "unboosted",
+      summary: unboostedSummary(),
+      metadata: { field: "isBoosted", to: "false" },
     });
   }
 

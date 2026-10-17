@@ -23,6 +23,13 @@ export function BoostTicketButton({
   className = "",
 }: BoostTicketButtonProps) {
   const [boosted, setBoosted] = useState(initialBoosted);
+  // Follow the server when the boost changes elsewhere, e.g. closing the
+  // issue removes it (#256); adjusted during render rather than in an effect.
+  const [lastInitial, setLastInitial] = useState(initialBoosted);
+  if (initialBoosted !== lastInitial) {
+    setLastInitial(initialBoosted);
+    setBoosted(initialBoosted);
+  }
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const toast = useToast();

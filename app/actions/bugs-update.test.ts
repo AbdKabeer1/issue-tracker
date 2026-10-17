@@ -42,6 +42,7 @@ const OTHER = "cotheruser00001";
 const SOMEONE = "csomeone0000001";
 
 let written: Record<string, unknown> | null;
+let activities: string[] = [];
 
 function issue(assigneeId: string | null, extra: Record<string, unknown> = {}) {
   return {
@@ -76,13 +77,18 @@ async function run(who: Who, assigneeId: string | null, values: Record<string, s
 beforeEach(() => {
   vi.clearAllMocks();
   written = null;
+  activities = [];
   db.user.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({ name: where.id }));
   db.issueType.findUnique.mockResolvedValue({ id: "t1", name: "Fix", isActive: true });
   db.category.findUnique.mockResolvedValue({ id: "c1", name: "Web" });
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
     fn({
       bug: { update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => (written = data)) },
-      bugActivity: { createMany: vi.fn() },
+      bugActivity: {
+        createMany: vi.fn(async ({ data }: { data: Array<{ type: string }> }) => {
+          activities = data.map((entry) => entry.type);
+        }),
+      },
       // Used once assignees auto-watch issues (#216).
       issueWatch: { createMany: vi.fn() },
     }),
@@ -135,5 +141,33 @@ describe("updateBugAction authorization (#218)", () => {
     vi.clearAllMocks();
     await run("admin", null, { status: "open" });
     expect(notifyLater).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateBugAction unboosts finished issues (#256)", () => {
+  async function runBoosted(status: string, extra: Record<string, unknown> = {}) {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "admin" });
+    db.bug.findUnique.mockResolvedValue(
+      issue(null, { isBoosted: true, boostedAt: new Date("2026-10-01T00:00:00Z"), ...extra }),
+    );
+    return updateBugAction("bug1", form({ status }));
+  }
+
+  it.each(["resolved", "closed"])("clears the boost and logs it when an issue is %s", async (status) => {
+    await expect(runBoosted(status)).resolves.toEqual({ ok: true });
+    expect(written).toEqual({ status, isBoosted: false, boostedAt: null });
+    expect(activities).toEqual(["status_changed", "unboosted"]);
+  });
+
+  it("keeps the boost when a boosted issue moves to in progress", async () => {
+    await runBoosted("in_progress");
+    expect(written).toEqual({ status: "in_progress" });
+    expect(activities).toEqual(["status_changed"]);
+  });
+
+  it("leaves a boosted issue alone when its status doesn't change", async () => {
+    await runBoosted("closed", { status: "closed" });
+    expect(written).toEqual({ status: "closed" });
+    expect(activities).toEqual([]);
   });
 });
