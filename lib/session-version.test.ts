@@ -40,6 +40,12 @@ describe("resolveSessionUserId with session versions (#208)", () => {
     await expect(resolveSessionUserId()).resolves.toEqual({ error: SESSION_EXPIRED_MESSAGE });
   });
 
+  it("rejects a session issued before a role change bumped the session version (#347)", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "u1", email: "a@x.dev", sessionVersion: 1 } });
+    findUnique.mockResolvedValue({ id: "u1", sessionVersion: 2 });
+    await expect(resolveSessionUserId()).resolves.toEqual({ error: SESSION_EXPIRED_MESSAGE });
+  });
+
   it("also checks the version on the email fallback path", async () => {
     mockAuth.mockResolvedValue({ user: { id: "stale", email: "a@x.dev", sessionVersion: 0 } });
     findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: "u1", sessionVersion: 2 });
