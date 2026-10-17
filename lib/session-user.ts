@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 import { prisma } from "@/lib/prisma";
 
 export const SESSION_EXPIRED_MESSAGE =
@@ -14,6 +15,19 @@ export function isSessionVersionCurrent(
   userVersion: number,
 ): boolean {
   return (sessionVersion ?? 0) === userVersion;
+}
+
+/**
+ * Password reset is the only writer of sessionVersion. Google-only
+ * deployments never change it, so the check would only reject a valid
+ * Google session.
+ */
+function sessionVersionAllowsSignIn(
+  sessionVersion: number | null | undefined,
+  userVersion: number,
+): boolean {
+  if (!isPasswordAuthEnabled()) return true;
+  return isSessionVersionCurrent(sessionVersion, userVersion);
 }
 
 /**
@@ -40,7 +54,7 @@ export async function resolveSessionUserId(): Promise<
         select: { id: true, sessionVersion: true },
       });
       if (byId) {
-        if (!isSessionVersionCurrent(sessionVersion, byId.sessionVersion)) {
+        if (!sessionVersionAllowsSignIn(sessionVersion, byId.sessionVersion)) {
           return { error: SESSION_EXPIRED_MESSAGE };
         }
         return { userId: byId.id };
@@ -65,7 +79,7 @@ export async function resolveSessionUserId(): Promise<
         select: { id: true, sessionVersion: true },
       });
       if (byEmail) {
-        if (!isSessionVersionCurrent(sessionVersion, byEmail.sessionVersion)) {
+        if (!sessionVersionAllowsSignIn(sessionVersion, byEmail.sessionVersion)) {
           return { error: SESSION_EXPIRED_MESSAGE };
         }
         return { userId: byEmail.id };
