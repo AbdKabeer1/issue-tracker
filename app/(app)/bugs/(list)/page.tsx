@@ -239,6 +239,15 @@ export default async function BugsPage({
   const exportHref = exportQuery ? `/bugs/export?${exportQuery}` : "/bugs/export";
 
   const bugIds = bugs.map((bug) => bug.id);
+
+  // "No issues match" and "there are no issues yet" need different pages
+  // (#292): filter advice on an empty tracker sends people looking for a
+  // filter that is not there. The extra count only runs when the page is
+  // already empty, so a populated list pays nothing for it.
+  const isFirstRun =
+    totalCount === 0 &&
+    !isDeletedView &&
+    (await prisma.bug.count({ where: { isDeleted: false } })) === 0;
   let voterSummaries = new Map<string, ReturnType<typeof createEmptyVoterSummary>>();
   try {
     voterSummaries = await fetchVoterSummaries(bugIds);
@@ -311,6 +320,7 @@ export default async function BugsPage({
         </div>
       </div>
 
+      {isFirstRun ? null : (
       <Suspense
         fallback={<div className="h-12 animate-pulse rounded-lg bg-slate-100" />}
       >
@@ -321,8 +331,11 @@ export default async function BugsPage({
           platforms={platforms}
         />
       </Suspense>
+      )}
 
-      {bugs.length === 0 ? (
+      {isFirstRun ? (
+        <FirstRunWelcome isAdmin={canDelete} />
+      ) : bugs.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
           <p className="font-medium text-slate-800">No issues match these filters.</p>
           <p className="mt-1 text-sm text-slate-600">
@@ -555,5 +568,39 @@ export default async function BugsPage({
         </>
       )}
     </div>
+  );
+}
+
+/** What a brand-new tracker shows instead of an empty list (#292). */
+function FirstRunWelcome({ isAdmin }: { isAdmin: boolean }) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white px-6 py-12 text-center">
+      <h2 className="text-lg font-semibold text-slate-900">No issues yet</h2>
+      <p className="mx-auto mt-2 max-w-md text-sm text-slate-600">
+        This is where reported issues will appear. A good report says what you
+        expected, what happened instead, and how to make it happen again.
+      </p>
+      <div className="mt-5">
+        <Link
+          href="/bugs/new"
+          className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+        >
+          Report the first issue
+        </Link>
+      </div>
+      {isAdmin ? (
+        <p className="mx-auto mt-6 max-w-md text-sm text-slate-600">
+          Before people start reporting, you may want to set up the{" "}
+          <Link href="/admin/categories" className="font-medium text-teal-700 underline">
+            platforms
+          </Link>{" "}
+          and{" "}
+          <Link href="/admin/types" className="font-medium text-teal-700 underline">
+            issue types
+          </Link>{" "}
+          they will choose from.
+        </p>
+      ) : null}
+    </section>
   );
 }
