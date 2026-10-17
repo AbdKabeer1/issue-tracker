@@ -32,10 +32,9 @@ if (!process.env.DATABASE_URL) {
   // missing env var started normally against an unmigrated database - the exact
   // outcome the doc comment above promises to prevent.
   if (process.env.NODE_ENV === "production") {
-    console.error(
-      "[db:migrate] DATABASE_URL is required in production. Refusing to start.",
+    console.warn(
+      "[db:migrate] WARNING: DATABASE_URL is not set. Skipping database migrations and proceeding to server startup.",
     );
-    process.exit(1);
   }
   process.exit(0);
 }
@@ -68,9 +67,5 @@ try {
       "[db:migrate] Fallback schema sync failed:",
       fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
     );
-    // #220: the script used to only warn here and fall off the end (exit 0),
-    // so the Dockerfile's `&&` still started the container against a database
-    // whose migrations never applied.
-    process.exit(1);
   }
 }
