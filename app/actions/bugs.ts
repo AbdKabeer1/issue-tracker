@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { fieldError, fromZodError } from "@/lib/form-errors";
 import { redirect } from "next/navigation";
 import {
   activityCreateData,
@@ -69,7 +70,13 @@ import {
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
 
-export type ActionResult = { error?: string; ok?: boolean };
+export type ActionResult = {
+  error?: string;
+  ok?: boolean;
+  /** Which field failed, when there is one (#309). */
+  field?: string;
+  fieldErrors?: Record<string, string>;
+};
 
 /**
  * Resolves `@[Name](userId)` tags against real accounts: known ids are
@@ -145,7 +152,7 @@ export async function createBugAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return fromZodError(parsed.error);
   }
 
   const assigneeId =
@@ -164,7 +171,7 @@ export async function createBugAction(
       select: { id: true },
     });
     if (!assignee) {
-      return { error: "Assignee not found" };
+      return fieldError("assigneeId", "Assignee not found");
     }
   }
 
@@ -174,7 +181,7 @@ export async function createBugAction(
       select: { id: true, isActive: true },
     });
     if (!issueType || !issueType.isActive) {
-      return { error: "That type no longer exists. Please pick another." };
+      return fieldError("typeId", "That type no longer exists. Please pick another.");
     }
   }
 
@@ -191,7 +198,7 @@ export async function createBugAction(
       select: { id: true, isActive: true },
     });
     if (!category || !category.isActive) {
-      return { error: "Platform not found or inactive" };
+      return fieldError("categoryId", "Platform not found or inactive");
     }
   }
 
@@ -354,7 +361,7 @@ export async function updateBugAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return fromZodError(parsed.error);
   }
 
   // Claiming an issue doesn't also grant its status in the same request: a
@@ -622,7 +629,7 @@ export async function editBugContentAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return fromZodError(parsed.error);
   }
 
   const normalizedDescription = await normalizeMentionTags(parsed.data.description);
@@ -702,7 +709,7 @@ export async function addCommentAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid comment" };
+    return fromZodError(parsed.error, "Invalid comment");
   }
 
   const bug = await prisma.bug.findUnique({

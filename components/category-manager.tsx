@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import {
   createCategoryAction,
   updateCategoryAction,
@@ -32,7 +32,19 @@ export function CategoryManager({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // The input the current error is about, if any (#309): it is marked
+  // invalid, described by the message, and focused.
+  const [errorField, setErrorField] = useState<string | null>(null);
+  const invalidAttrs = (id: string) =>
+    errorField === id
+      ? ({ "aria-invalid": true, "aria-describedby": "platform-error" } as const)
+      : {};
   const [pending, startTransition] = useTransition();
+  // The inputs are disabled while a request is pending, and focusing a
+  // disabled control silently does nothing — so wait until it is enabled.
+  useEffect(() => {
+    if (errorField && !pending) document.getElementById(errorField)?.focus();
+  }, [errorField, pending]);
   const confirm = useConfirm();
   const toast = useToast();
 
@@ -40,6 +52,7 @@ export function CategoryManager({
     e.preventDefault();
     if (!newName.trim()) return;
     setError(null);
+    setErrorField(null);
 
     const formData = new FormData();
     formData.set("name", newName.trim());
@@ -48,6 +61,7 @@ export function CategoryManager({
       const res = await createCategoryAction(formData);
       if (res.error) {
         setError(res.error);
+        setErrorField("newPlatformName");
       } else {
         setNewName("");
       }
@@ -63,6 +77,7 @@ export function CategoryManager({
   const handleSaveEdit = (categoryId: string) => {
     if (!editingName.trim()) return;
     setError(null);
+    setErrorField(null);
 
     const formData = new FormData();
     formData.set("name", editingName.trim());
@@ -71,6 +86,7 @@ export function CategoryManager({
       const res = await updateCategoryAction(categoryId, formData);
       if (res.error) {
         setError(res.error);
+        setErrorField(`rename-platform-${categoryId}`);
       } else {
         setEditingId(null);
         setEditingName("");
@@ -140,6 +156,7 @@ export function CategoryManager({
             // #213: this field had no accessible name - screen readers only
             // announced the placeholder, which many drop once a value is typed.
             aria-label="New platform name"
+            {...invalidAttrs("newPlatformName")}
           />
           <Button type="submit" disabled={pending || !newName.trim()}>
             {pending ? "Adding…" : "Add platform"}
@@ -149,6 +166,7 @@ export function CategoryManager({
 
       {error ? (
         <div
+          id="platform-error"
           className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"
           role="alert"
         >
@@ -196,6 +214,7 @@ export function CategoryManager({
                           maxLength={50}
                           // #213: the rename field announced only "edit, text".
                           aria-label={`Rename platform ${cat.name}`}
+                          {...invalidAttrs(`rename-platform-${cat.id}`)}
                         />
                         <Button
                           className="px-2.5 py-1 text-xs"

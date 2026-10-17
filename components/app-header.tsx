@@ -15,6 +15,7 @@ import {
   roleViewLabels,
 } from "@/lib/header-nav";
 import { isAdmin, type AppRole } from "@/lib/roles";
+import { FOCUSABLE, wrapFocusIndex } from "@/lib/focus-trap";
 
 /** Closes a popover on outside click or Escape, returning focus to its trigger. */
 function useDismiss(
@@ -41,6 +42,62 @@ function useDismiss(
       document.removeEventListener("keydown", onKey);
     };
   }, [open, close, containerRef, triggerRef]);
+}
+
+/**
+ * While the mobile menu is open it behaves like a modal (#308): Tab cycles
+ * between the toggle and the panel's controls, everything outside the header
+ * is inert — unreachable by keyboard and hidden from screen readers — and
+ * the page behind stops scrolling. Escape and outside clicks are handled by
+ * useDismiss, which returns focus to the toggle.
+ */
+function useMenuFocusTrap(
+  open: boolean,
+  headerRef: React.RefObject<HTMLElement | null>,
+  panelRef: React.RefObject<HTMLElement | null>,
+  triggerRef: React.RefObject<HTMLElement | null>,
+) {
+  useEffect(() => {
+    const header = headerRef.current;
+    const panel = panelRef.current;
+    if (!open || !header || !panel) return;
+
+    // Everything beside the header — main content, the skip link, the
+    // floating report button — goes inert for as long as the menu is open.
+    const siblings = Array.from(header.parentElement?.children ?? []).filter(
+      (el): el is HTMLElement => el !== header && el instanceof HTMLElement,
+    );
+    const wasInert = siblings.map((el) => el.inert);
+    siblings.forEach((el) => (el.inert = true));
+
+    const scroll = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+
+    const stops = () => [
+      ...(triggerRef.current ? [triggerRef.current] : []),
+      ...Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)),
+    ];
+
+    // Start on the first link, so the first Tab is already inside the menu.
+    panel.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const list = stops();
+      const index = list.indexOf(document.activeElement as HTMLElement);
+      const next = wrapFocusIndex(index, list.length, event.shiftKey);
+      if (next === null) return;
+      event.preventDefault();
+      list[next].focus();
+    };
+    document.addEventListener("keydown", onKey);
+
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      siblings.forEach((el, i) => (el.inert = wasInert[i]));
+      document.documentElement.style.overflow = scroll;
+    };
+  }, [open, headerRef, panelRef, triggerRef]);
 }
 
 function PlusIcon({ className = "h-4 w-4" }: { className?: string }) {
@@ -124,11 +181,13 @@ export function AppHeader({
   const accountButtonRef = useRef<HTMLButtonElement>(null);
   const headerRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuPanelRef = useRef<HTMLDivElement>(null);
 
   const closeAccount = () => setAccountOpen(false);
   const closeMenu = () => setMenuOpen(false);
   useDismiss(accountOpen, closeAccount, accountRef, accountButtonRef);
   useDismiss(menuOpen, closeMenu, headerRef, menuButtonRef);
+  useMenuFocusTrap(menuOpen, headerRef, menuPanelRef, menuButtonRef);
 
   // Close menus when the page changes (state adjusted during render, not in an effect).
   const [lastPath, setLastPath] = useState(pathname);
@@ -298,6 +357,7 @@ export function AppHeader({
       {menuOpen ? (
         <div
           id="mobile-menu"
+          ref={menuPanelRef}
           className="max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-4 pt-2 md:hidden"
         >
           <nav aria-label="Main" className="flex flex-col py-1">
