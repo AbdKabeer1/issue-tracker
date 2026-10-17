@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { fieldError, fromZodError } from "@/lib/form-errors";
 import { redirect } from "next/navigation";
 import {
   activityCreateData,
@@ -59,17 +60,25 @@ import {
 import { Prisma, type ActivityType } from "@prisma/client";
 import { notifyLater } from "@/lib/notify";
 import { ensureWatching } from "@/lib/watch";
+import { parseResolutionNote } from "@/lib/resolution-note";
+import { isUntouchedTemplate, UNFILLED_TEMPLATE_MESSAGE } from "@/lib/issue-templates";
 import type { NotificationEvent } from "@/lib/notifications";
 import { getForeignKeyErrorMessage } from "@/lib/foreign-key-errors";
 import { parseAttachmentIds } from "@/lib/attachments";
 import { linkAttachments } from "@/lib/attachment-link";
 import {
-  checkRateLimit,
+  consumeRateLimit,
   ACTION_RATE_LIMITS,
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
 
-export type ActionResult = { error?: string; ok?: boolean };
+export type ActionResult = {
+  error?: string;
+  ok?: boolean;
+  /** Which field failed, when there is one (#309). */
+  field?: string;
+  fieldErrors?: Record<string, string>;
+};
 
 /**
  * Resolves `@[Name](userId)` tags against real accounts: known ids are
@@ -104,7 +113,7 @@ export async function createBugAction(
   const userId = user.id;
   const admin = isAdmin(user.role);
 
-  const limit = checkRateLimit(
+  const limit = await consumeRateLimit(
     `create-bug:${userId}`,
     ACTION_RATE_LIMITS.createBug,
   );
@@ -145,7 +154,7 @@ export async function createBugAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return fromZodError(parsed.error);
   }
 
   const assigneeId =
@@ -164,17 +173,21 @@ export async function createBugAction(
       select: { id: true },
     });
     if (!assignee) {
-      return { error: "Assignee not found" };
+      return fieldError("assigneeId", "Assignee not found");
     }
   }
 
   if (typeId) {
     const issueType = await prisma.issueType.findUnique({
       where: { id: typeId },
-      select: { id: true, isActive: true },
+      select: { id: true, isActive: true, template: true },
     });
     if (!issueType || !issueType.isActive) {
-      return { error: "That type no longer exists. Please pick another." };
+      return fieldError("typeId", "That type no longer exists. Please pick another.");
+    }
+    // #307: headings alone pass the length check but say nothing.
+    if (isUntouchedTemplate(parsed.data.description, issueType.template)) {
+      return fieldError("description", UNFILLED_TEMPLATE_MESSAGE);
     }
   }
 
@@ -191,7 +204,7 @@ export async function createBugAction(
       select: { id: true, isActive: true },
     });
     if (!category || !category.isActive) {
-      return { error: "Platform not found or inactive" };
+      return fieldError("categoryId", "Platform not found or inactive");
     }
   }
 
@@ -279,6 +292,7 @@ export async function updateBugAction(
       assignee: { select: { id: true, name: true } },
       category: { select: { id: true, name: true } },
       type: { select: { id: true, name: true } },
+      milestone: { select: { id: true, title: true } },
     },
   });
   if (!existing || existing.isDeleted) {
@@ -354,7 +368,7 @@ export async function updateBugAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return fromZodError(parsed.error);
   }
 
   // Claiming an issue doesn't also grant its status in the same request: a
@@ -369,12 +383,21 @@ export async function updateBugAction(
     return { error: TICKET_ASSIGN_ERRORS.statusNeedsAssignment };
   }
 
+  // #316: an optional note, only for a change into resolved or closed.
+  const parsedNote = parseResolutionNote(formData.get("resolutionNote"), {
+    from: existing.status,
+    to: parsed.data.status,
+  });
+  if ("error" in parsedNote) return { error: parsedNote.error, field: "resolutionNote" };
+  const resolutionNote = parsedNote.note;
+
   const data: {
     status?: typeof parsed.data.status;
     severity?: typeof parsed.data.severity;
     typeId?: string | null;
     assigneeId?: string | null;
     categoryId?: string | null;
+    milestoneId?: string | null;
     isBoosted?: boolean;
     boostedAt?: Date | null;
   } = {};
@@ -410,6 +433,7 @@ export async function updateBugAction(
         field: "status",
         from: existing.status,
         to: data.status,
+        ...(resolutionNote ? { note: resolutionNote } : {}),
       },
     });
   }
@@ -526,6 +550,38 @@ export async function updateBugAction(
     }
   }
 
+  // #289: admins put an issue in at most one milestone. Absent from the
+  // form means "leave it"; "" or "none" takes it out.
+  const milestoneRaw = admin ? formData.get("milestoneId") : null;
+  if (typeof milestoneRaw === "string") {
+    const nextMilestoneId = milestoneRaw === "" || milestoneRaw === "none" ? null : milestoneRaw.trim();
+    if (nextMilestoneId !== existing.milestoneId) {
+      let toTitle: string | null = null;
+      if (nextMilestoneId) {
+        const milestone = await prisma.milestone.findUnique({
+          where: { id: nextMilestoneId },
+          select: { title: true, isClosed: true },
+        });
+        if (!milestone) return fieldError("milestoneId", "That milestone no longer exists.");
+        if (milestone.isClosed) {
+          return fieldError("milestoneId", `"${milestone.title}" is closed. Reopen it to add issues.`);
+        }
+        toTitle = milestone.title;
+      }
+      data.milestoneId = nextMilestoneId;
+      const fromTitle = existing.milestone?.title ?? null;
+      pending.push({
+        type: "milestone_changed",
+        summary: toTitle
+          ? fromTitle
+            ? `moved this from milestone "${fromTitle}" to "${toTitle}"`
+            : `added this to milestone "${toTitle}"`
+          : `removed this from milestone "${fromTitle}"`,
+        metadata: { field: "milestone", from: fromTitle, to: toTitle },
+      });
+    }
+  }
+
   if (pending.length === 0 && Object.keys(data).length === 0) {
     return { ok: true };
   }
@@ -574,7 +630,7 @@ export async function updateBugAction(
     events.push({ ...actor, kind: "assignee_changed", fromUserId: existing.assigneeId, toUserId: data.assigneeId });
   }
   if (data.status && data.status !== existing.status) {
-    events.push({ ...actor, kind: "status_changed", reporterId: existing.reporterId, from: existing.status, to: data.status });
+    events.push({ ...actor, kind: "status_changed", reporterId: existing.reporterId, from: existing.status, to: data.status, note: resolutionNote });
   }
   if (events.length > 0) notifyLater(...events);
 
@@ -622,7 +678,7 @@ export async function editBugContentAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return fromZodError(parsed.error);
   }
 
   const normalizedDescription = await normalizeMentionTags(parsed.data.description);
@@ -638,6 +694,20 @@ export async function editBugContentAction(
   const summary = formatEditSummary(changedFields);
 
   await prisma.$transaction(async (tx) => {
+    // #303: keep the version this edit replaces. Read again under a row
+    // lock so two edits at once each store the version they replaced and
+    // none goes missing from the history.
+    const [previous] = await tx.$queryRaw<{ title: string; description: string }[]>`
+      SELECT "title", "description" FROM "Bug" WHERE "id" = ${bugId} FOR UPDATE`;
+    await tx.bugRevision.create({
+      data: {
+        bugId,
+        title: previous?.title ?? existing.title,
+        description: previous?.description ?? existing.description,
+        editedById: userId,
+      },
+    });
+
     await tx.bug.update({
       where: { id: bugId },
       data: {
@@ -688,7 +758,7 @@ export async function addCommentAction(
 ): Promise<ActionResult> {
   const userId = await requireUserId();
 
-  const limit = checkRateLimit(
+  const limit = await consumeRateLimit(
     `add-comment:${userId}`,
     ACTION_RATE_LIMITS.addComment,
   );
@@ -702,7 +772,7 @@ export async function addCommentAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid comment" };
+    return fromZodError(parsed.error, "Invalid comment");
   }
 
   const bug = await prisma.bug.findUnique({
@@ -843,7 +913,7 @@ export async function toggleVoteAction(
   }
   const { userId } = resolved;
 
-  const limit = checkRateLimit(
+  const limit = await consumeRateLimit(
     `toggle-vote:${userId}`,
     ACTION_RATE_LIMITS.toggleVote,
   );

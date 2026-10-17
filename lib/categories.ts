@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 
 export const DEFAULT_PLATFORMS = ["Desktop", "Web", "Mobile"] as const;
-const RETIRED_PLATFORMS = ["Backend", "Frontend", "FE"] as const;
+export const RETIRED_PLATFORMS = ["Backend", "Frontend", "FE"] as const;
 
 /** Ensure the standard platforms exist and retire the former web subcategories. */
 export async function ensureDefaultPlatforms(): Promise<void> {

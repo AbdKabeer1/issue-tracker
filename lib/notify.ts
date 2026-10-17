@@ -9,6 +9,7 @@ import {
 } from "@/lib/notifications";
 import { shouldNotify } from "@/lib/notification-prefs";
 import { watchersFor } from "@/lib/watch";
+import { expireUnreadCounts } from "@/lib/lookups";
 
 /**
  * Fills in the audience for events that go to an issue's watchers (#216):
@@ -42,6 +43,8 @@ async function recordInApp(event: NotificationEvent, planned: PlannedNotificatio
       url: n.url,
     })),
   });
+  // The recipients' header badges (#317).
+  expireUnreadCounts(planned.map((n) => n.userId));
 }
 
 /** Emails everyone who hasn't opted out, when email can be sent at all (#210). */

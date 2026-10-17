@@ -1,4 +1,5 @@
 import type { Status } from "@prisma/client";
+import { commentPermalinkPath } from "@/lib/comment-window";
 import { statusLabel } from "@/lib/labels";
 
 /**
@@ -48,6 +49,8 @@ export type NotificationEvent =
       reporterId: string;
       from: Status;
       to: Status;
+      /** What happened, written by whoever resolved or closed it (#316). */
+      note?: string | null;
       /** Watchers to tell, resolved at delivery; defaults to the reporter. */
       recipientIds?: string[];
     });
@@ -80,7 +83,11 @@ export function planNotifications(event: NotificationEvent, siteUrl: string): Pl
   const base = siteUrl.replace(/\/$/, "");
   const commentId =
     event.kind === "comment_added" || event.kind === "mentioned" ? event.commentId : undefined;
-  const path = `/bugs/${event.bugId}${commentId ? `#comment-${commentId}` : ""}`;
+  // The query lets the page load down to the comment's thread even when
+  // it's older than the default window (#280).
+  const path = commentId
+    ? commentPermalinkPath(event.bugId, commentId)
+    : `/bugs/${event.bugId}`;
   const issueUrl = `${base}${path}`;
   const settingsUrl = `${base}/settings`;
   const title = quote(event.bugTitle);
@@ -144,6 +151,7 @@ export function planNotifications(event: NotificationEvent, siteUrl: string): Pl
         const yours = userId === event.reporterId;
         add(userId, `${title} is now ${statusLabel[event.to]}`, [
           `${event.actorName} changed the status of ${yours ? "your issue " : ""}${title} from ${statusLabel[event.from]} to ${statusLabel[event.to]}.`,
+          ...(event.note ? ["", `Resolution note from ${event.actorName}:`, event.note] : []),
         ]);
       }
       break;

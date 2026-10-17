@@ -424,7 +424,15 @@ function renderInline(
     const label = token.type === "link" ? token.label : token.href;
     if (!href) return <span key={index}>{label}</span>;
     return (
-      <a key={index} href={href} target="_blank" rel="noopener noreferrer">
+      <a
+        key={index}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        // A bare URL already shows its address; the print stylesheet uses
+        // this to avoid printing it twice (#300).
+        data-bare-url={label === token.href ? "" : undefined}
+      >
         {label}
       </a>
     );

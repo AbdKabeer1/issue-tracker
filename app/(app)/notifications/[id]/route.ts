@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { BASE_PATH } from "@/lib/base-path";
 import { safeNotificationPath } from "@/lib/notification-links";
+import { expireTag, TAGS } from "@/lib/lookups";
 
 /**
  * Opening a notification marks it read and goes to what it's about (#216).
@@ -31,6 +32,7 @@ export async function GET(
 
   if (!notification.readAt) {
     await prisma.notification.update({ where: { id }, data: { readAt: new Date() } });
+    expireTag(TAGS.unread(resolved.userId));
   }
   return NextResponse.redirect(toApp(safeNotificationPath(notification.url)));
 }
