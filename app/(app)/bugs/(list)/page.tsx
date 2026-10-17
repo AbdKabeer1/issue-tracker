@@ -67,6 +67,20 @@ function isSeverity(value: string | undefined): value is Severity {
   return !!value && (severities as readonly string[]).includes(value);
 }
 
+function issuesQueryError(detail: string) {
+  return (
+    <div className="rounded-xl border border-red-200 bg-white px-6 py-10">
+      <h1 className="text-xl font-semibold text-slate-900">Issues could not be loaded</h1>
+      <p className="mt-2 text-sm text-slate-600">
+        The issues query failed. The message below is the database error.
+      </p>
+      <pre className="mt-4 overflow-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-800">
+        {detail}
+      </pre>
+    </div>
+  );
+}
+
 export default async function BugsPage({
   searchParams,
 }: {
@@ -101,19 +115,26 @@ export default async function BugsPage({
   };
 
   // Tag filter (#102): issue types picked from the search box.
-  const [tagTypes, platforms] = await Promise.all([
-    prisma.issueType.findMany({
-      select: { id: true, name: true, isActive: true },
-      orderBy: { name: "asc" },
-    }),
-    // Every platform, not just active ones: a link filtered on a platform
-    // that was since deactivated still has to resolve. BugFilters narrows
-    // the dropdown itself.
-    prisma.category.findMany({
-      select: { id: true, name: true, isActive: true },
-      orderBy: { name: "asc" },
-    }),
-  ]);
+  // These lookups are filters only. A missing table must not blank the list.
+  let tagTypes: { id: string; name: string; isActive: boolean }[] = [];
+  let platforms: { id: string; name: string; isActive: boolean }[] = [];
+  try {
+    [tagTypes, platforms] = await Promise.all([
+      prisma.issueType.findMany({
+        select: { id: true, name: true, isActive: true },
+        orderBy: { name: "asc" },
+      }),
+      // Every platform, not just active ones: a link filtered on a platform
+      // that was since deactivated still has to resolve. BugFilters narrows
+      // the dropdown itself.
+      prisma.category.findMany({
+        select: { id: true, name: true, isActive: true },
+        orderBy: { name: "asc" },
+      }),
+    ]);
+  } catch (error) {
+    console.error("[bugs] filter options failed", error);
+  }
   const selectedTags = parseTagFilter(params.tags, tagTypes);
   if (selectedTags.length > 0) {
     where.typeId = { in: tagTypeIds(selectedTags, tagTypes) };
@@ -142,7 +163,14 @@ export default async function BugsPage({
     if (asNumber !== null) where.OR.push({ number: asNumber });
   }
 
-  const totalCount = await prisma.bug.count({ where });
+  let totalCount: number;
+  try {
+    totalCount = await prisma.bug.count({ where });
+  } catch (error) {
+    console.error("[bugs] list count failed", error);
+    const detail = error instanceof Error ? error.message : "Could not load issues";
+    return issuesQueryError(detail);
+  }
   const pagination = calculatePagination({
     page: pageParam,
     totalCount,
@@ -150,32 +178,43 @@ export default async function BugsPage({
 
   // Select only what the list shows: no `description` (up to 5000 chars
   // each), which the list never displays (#217).
-  const bugs = await prisma.bug.findMany({
-    where,
-    select: {
-      id: true,
-      number: true,
-      title: true,
-      status: true,
-      severity: true,
-      voteCount: true,
-      proofLinks: true,
-      isDeleted: true,
-      isBoosted: true,
-      createdAt: true,
-      updatedAt: true,
-      type: { select: { name: true } },
-      reporter: { select: { name: true, role: true } },
-      assignee: { select: { name: true, role: true } },
-      category: { select: { id: true, name: true } },
-      votes: userId
-        ? { where: { userId }, select: { id: true, value: true }, take: 1 }
-        : false,
-    },
-    orderBy: getBugOrderBy(currentSort),
-    skip: pagination.skip,
-    take: pagination.take,
-  });
+  const listed = await prisma.bug
+    .findMany({
+      where,
+      select: {
+        id: true,
+        number: true,
+        title: true,
+        status: true,
+        severity: true,
+        voteCount: true,
+        proofLinks: true,
+        isDeleted: true,
+        isBoosted: true,
+        createdAt: true,
+        updatedAt: true,
+        type: { select: { name: true } },
+        reporter: { select: { name: true, role: true } },
+        assignee: { select: { name: true, role: true } },
+        category: { select: { id: true, name: true } },
+        votes: userId
+          ? { where: { userId }, select: { id: true, value: true }, take: 1 }
+          : false,
+      },
+      orderBy: getBugOrderBy(currentSort),
+      skip: pagination.skip,
+      take: pagination.take,
+    })
+    .then((bugs) => ({ bugs }))
+    .catch((error: unknown) => {
+      console.error("[bugs] list query failed", error);
+      const detail = error instanceof Error ? error.message : "Could not load issues";
+      return { detail };
+    });
+  if ("detail" in listed) {
+    return issuesQueryError(listed.detail);
+  }
+  const bugs = listed.bugs;
 
   // The export must return exactly what is on screen, so it is handed the
   // same filters — by name, rather than forwarding whatever else is in the
@@ -199,7 +238,13 @@ export default async function BugsPage({
   const exportHref = exportQuery ? `/bugs/export?${exportQuery}` : "/bugs/export";
 
   const bugIds = bugs.map((bug) => bug.id);
-  const voterSummaries = await fetchVoterSummaries(bugIds);
+  let voterSummaries = new Map<string, ReturnType<typeof createEmptyVoterSummary>>();
+  try {
+    voterSummaries = await fetchVoterSummaries(bugIds);
+  } catch (error) {
+    console.error("[bugs] voter summaries failed", error);
+    voterSummaries = new Map();
+  }
 
   return (
     <div className="space-y-6">
@@ -360,7 +405,7 @@ export default async function BugsPage({
                             updated <LocalTime date={bug.updatedAt} />
                           </span>
                         )}
-                        {bug.proofLinks.length > 0 ? (
+                        {(bug.proofLinks?.length ?? 0) > 0 ? (
                           <span>
                             · {bug.proofLinks.length} proof link
                             {bug.proofLinks.length === 1 ? "" : "s"}
