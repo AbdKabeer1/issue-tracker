@@ -5,11 +5,8 @@ import { expireTag, TAGS } from "@/lib/lookups";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-helpers";
 import { canDeleteIssueType, issueTypeInputSchema } from "@/lib/issue-types";
-<<<<<<< HEAD
 import { typeChangedSummary } from "@/lib/activity-log";
-=======
 import { normalizeTemplate } from "@/lib/issue-templates";
->>>>>>> origin/main
 
 export type IssueTypeActionResult = { error?: string; ok?: boolean };
 
