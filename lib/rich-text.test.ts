@@ -17,6 +17,9 @@ describe("looksLikeMarkdown", () => {
     expect(looksLikeMarkdown("- item")).toBe(true);
     expect(looksLikeMarkdown("- [ ] item")).toBe(true);
     expect(looksLikeMarkdown("[x](https://a.com)")).toBe(true);
+    expect(looksLikeMarkdown("[x](mailto:test@example.com)")).toBe(true);
+    expect(looksLikeMarkdown("[docs](/docs)")).toBe(false);
+    expect(looksLikeMarkdown("@[John Doe](user_123)")).toBe(false);
     expect(looksLikeMarkdown("## heading")).toBe(true);
     expect(looksLikeMarkdown("> quoted")).toBe(true);
     expect(looksLikeMarkdown("~~gone~~")).toBe(true);
