@@ -1,6 +1,15 @@
 import { toAppPath } from "@/lib/base-path";
 
-/** Same-origin relative paths only — blocks open redirects and normalizes basePath. */
+const DISALLOWED_CALLBACK_PATHS = [
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+  "/session-expired",
+  "/api/auth",
+];
+
+/** Same-origin relative paths only — blocks open redirects, auth loops, and normalizes basePath. */
 export function safeCallbackUrl(
   value: FormDataEntryValue | string | null | undefined,
   fallback = "/bugs",
@@ -25,7 +34,21 @@ export function safeCallbackUrl(
     return fallback;
   }
 
-  return toAppPath(trimmed);
+  const normalized = toAppPath(trimmed);
+
+  // Reject auth loops: landing on login/signup/reset after login creates bounce loops (#352)
+  if (
+    DISALLOWED_CALLBACK_PATHS.some(
+      (path) =>
+        normalized === path ||
+        normalized.startsWith(path + "/") ||
+        normalized.startsWith(path + "?"),
+    )
+  ) {
+    return fallback;
+  }
+
+  return normalized;
 }
 
 
