@@ -28,6 +28,16 @@ export type CommentNode = FlatComment & {
   children: CommentNode[];
 };
 
+/**
+ * Comments that still have content. Deleted comments are soft-deleted and kept
+ * so their replies stay threaded, but they don't count towards "Comments (N)" (#257).
+ */
+export function countVisibleComments(
+  comments: readonly { deletedAt?: Date | string | null }[],
+): number {
+  return comments.filter((comment) => !comment.deletedAt).length;
+}
+
 /** Build a nested tree from a flat, chronological comment list. */
 export function buildCommentTree(comments: FlatComment[]): CommentNode[] {
   const byId = new Map<string, CommentNode>();
