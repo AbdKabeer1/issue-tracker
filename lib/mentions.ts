@@ -27,6 +27,18 @@ export function extractMentionedUserIds(body: string): string[] {
 }
 
 /**
+ * User ids mentioned in `nextBody` but not in `previousBody`, so an edit
+ * only notifies people it newly tags instead of re-emailing everyone (#228).
+ */
+export function newlyMentionedUserIds(
+  previousBody: string,
+  nextBody: string,
+): string[] {
+  const before = new Set(extractMentionedUserIds(previousBody));
+  return extractMentionedUserIds(nextBody).filter((id) => !before.has(id));
+}
+
+/**
  * Verifies mentions against known users.
  * Replaces unknown user IDs with plain text `@name`.
  * Canonicalizes known user mentions to their real name from the database.

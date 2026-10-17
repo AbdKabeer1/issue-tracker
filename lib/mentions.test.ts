@@ -5,6 +5,7 @@ import {
   formatMention,
   getMentionQuery,
   insertMention,
+  newlyMentionedUserIds,
   normalizeMentions,
   tokenizeMentions,
 } from "./mentions";
@@ -163,5 +164,25 @@ describe("normalizeMentions", () => {
     expect(normalizeMentions(input, usersMap)).toBe(
       `@[Alice Smith](${aliceId}) met @Unknown and @[Bob Jones](${bobId})`,
     );
+  });
+});
+
+describe("newlyMentionedUserIds (#228)", () => {
+  it("returns people tagged only in the new text", () => {
+    const before = "Looks broken on staging.";
+    const after = `Looks broken on staging. cc @[Alice](${aliceId})`;
+    expect(newlyMentionedUserIds(before, after)).toEqual([aliceId]);
+  });
+
+  it("does not re-notify people who were already tagged", () => {
+    const before = `cc @[Alice](${aliceId})`;
+    const after = `cc @[Alice](${aliceId}) and @[Bob](${bobId})`;
+    expect(newlyMentionedUserIds(before, after)).toEqual([bobId]);
+  });
+
+  it("returns nothing when an edit only removes or keeps mentions", () => {
+    const before = `cc @[Alice](${aliceId}) and @[Bob](${bobId})`;
+    expect(newlyMentionedUserIds(before, `cc @[Alice](${aliceId})`)).toEqual([]);
+    expect(newlyMentionedUserIds(before, before)).toEqual([]);
   });
 });

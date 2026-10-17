@@ -28,6 +28,7 @@ import {
 import { MAX_COMMENT_DEPTH, commentDepth } from "@/lib/comments";
 import {
   extractMentionedUserIds,
+  newlyMentionedUserIds,
   normalizeMentions,
 } from "@/lib/mentions";
 import {
@@ -615,6 +616,22 @@ export async function editBugContentAction(
       },
     });
   });
+
+  const newlyMentioned = newlyMentionedUserIds(
+    existing.description,
+    normalizedDescription,
+  );
+  if (newlyMentioned.length > 0) {
+    notifyLater({
+      kind: "mentioned",
+      actorId: userId,
+      actorName: user.name ?? "Someone",
+      bugId,
+      bugTitle: parsed.data.title,
+      place: "description",
+      recipientIds: newlyMentioned,
+    });
+  }
 
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
