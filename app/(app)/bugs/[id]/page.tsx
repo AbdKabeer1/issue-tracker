@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentThread } from "@/components/comment-thread";
+import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getActiveIssueTypes } from "@/lib/issue-types";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
@@ -199,6 +200,18 @@ export default async function BugDetailPage({ params }: BugPageProps) {
 
   if (bug.isDeleted && !canDelete) {
     notFound();
+  }
+
+  // Files on the issue and on its comments (#215); never the file contents here.
+  const attachments = await prisma.attachment.findMany({
+    where: { bugId: id },
+    select: { id: true, filename: true, contentType: true, size: true, commentId: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const issueAttachments: AttachmentView[] = attachments.filter((a) => !a.commentId);
+  const attachmentsByComment: Record<string, AttachmentView[]> = {};
+  for (const a of attachments) {
+    if (a.commentId) (attachmentsByComment[a.commentId] ??= []).push(a);
   }
 
   const isAssignee = !!userId && bug.assigneeId === userId;
@@ -411,6 +424,15 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         </dl>
       </EditableIssueDescription>
 
+      {issueAttachments.length > 0 ? (
+        <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Attachments
+          </h2>
+          <AttachmentList attachments={issueAttachments} />
+        </section>
+      ) : null}
+
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Proof links
@@ -477,6 +499,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           bugId={bug.id}
           reporterId={bug.reporterId}
           comments={commentTree}
+          attachmentsByComment={attachmentsByComment}
           users={users}
           currentUserId={user.id}
           currentUserRole={user.role}

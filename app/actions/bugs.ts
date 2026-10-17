@@ -60,6 +60,8 @@ import { Prisma, type ActivityType } from "@prisma/client";
 import { notifyLater } from "@/lib/notify";
 import type { NotificationEvent } from "@/lib/notifications";
 import { getForeignKeyErrorMessage } from "@/lib/foreign-key-errors";
+import { parseAttachmentIds } from "@/lib/attachments";
+import { linkAttachments } from "@/lib/attachment-link";
 import {
   checkRateLimit,
   ACTION_RATE_LIMITS,
@@ -232,6 +234,13 @@ export async function createBugAction(
     }
     throw error;
   }
+
+  // Files uploaded while writing the report (#215).
+  await linkAttachments(prisma, {
+    ids: parseAttachmentIds(formData.get("attachmentIds")),
+    uploaderId: userId,
+    bugId: bug.id,
+  });
 
   const events: NotificationEvent[] = [];
   const actor = { actorId: userId, actorName: user.name ?? "Someone", bugId: bug.id, bugTitle: bug.title };
@@ -735,6 +744,13 @@ export async function addCommentAction(
         parentId: parentId ?? null,
       },
       select: { id: true },
+    });
+    // Files uploaded with the comment (#215).
+    await linkAttachments(tx, {
+      ids: parseAttachmentIds(formData.get("attachmentIds")),
+      uploaderId: userId,
+      bugId,
+      commentId: created.id,
     });
     await tx.bugActivity.create({
       data: {

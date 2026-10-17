@@ -136,6 +136,8 @@ export async function deleteCommentAction(
         where: { id: comment.id },
         data: { body: "", deletedAt: new Date() },
       });
+      // A deleted comment's files go too, e.g. a screenshot posted by mistake (#215).
+      await tx.attachment.deleteMany({ where: { commentId: comment.id } });
 
       // Scrub the text preview from the activity entry that recorded it.
       await tx.bugActivity.updateMany({

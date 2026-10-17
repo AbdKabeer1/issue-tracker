@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { AttachmentPicker } from "@/components/attachment-picker";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { useFormDraft } from "@/components/use-form-draft";
 import { buildDraftKey } from "@/lib/form-drafts";
@@ -36,7 +37,6 @@ export function CreateBugForm({
 }) {
   const defaultTypeId =
     types.find((t) => t.name.toLowerCase() === "fix")?.id ?? types[0]?.id ?? "";
-
   const draftKey = buildDraftKey({
     userId: currentUserId,
     formType: "create-bug",
@@ -55,7 +55,7 @@ export function CreateBugForm({
       assignToMe: false,
     },
   );
-
+  const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   // True when the request itself failed (network / server error), so the
   // person can simply retry; validation errors from the server aren't retryable.
@@ -78,6 +78,7 @@ export function CreateBugForm({
         formData.set("description", values.description);
         formData.set("categoryId", values.categoryId);
         formData.set("proofLinks", values.proofLinks);
+        formData.set("attachmentIds", attachmentIds.join(","));
         if (isAdmin) {
           formData.set("severity", values.severity);
           formData.set("assigneeId", values.assigneeId);
@@ -213,6 +214,16 @@ export function CreateBugForm({
           Optional. One GitHub link per line (e.g. https://github.com/org/repo/issues/123). You need to have created the issue on GitHub first or gotten it from GitHub before adding the link here.
         </p>
       </div>
+      <fieldset className="space-y-1.5">
+        <legend className="text-sm font-medium text-slate-700">
+          Screenshots and files
+        </legend>
+        <p className="text-xs text-slate-500">
+          Optional. No GitHub account needed: attach a screenshot, console log
+          or recording export straight to the report.
+        </p>
+        <AttachmentPicker name="attachmentIdsPicker" onChange={setAttachmentIds} />
+      </fieldset>
       {isAdmin ? (
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
