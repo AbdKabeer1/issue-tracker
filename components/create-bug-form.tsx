@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AttachmentPicker } from "@/components/attachment-picker";
+import { SimilarIssues } from "@/components/similar-issues";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { useFormDraft } from "@/components/use-form-draft";
 import { buildDraftKey } from "@/lib/form-drafts";
@@ -145,6 +146,7 @@ export function CreateBugForm({
             {...errs.attrs("title")}
           />
           <FieldError formId={errs.formId} field="title" errors={errs.fieldErrors} />
+          <SimilarIssues title={values.title} />
         </div>
         {types.length > 0 ? (
           <div className="space-y-1.5">
