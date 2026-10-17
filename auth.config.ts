@@ -75,6 +75,7 @@ export default {
         if (typeof id === "string" && id.length > 0) {
           session.user.id = id;
         }
+        session.user.sessionVersion = typeof token.sv === "number" ? token.sv : 0;
         if (isSuperAdminEmail(session.user.email)) {
           session.user.role = "super_admin";
         } else if (

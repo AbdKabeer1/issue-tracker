@@ -61,14 +61,3 @@ export async function ensureDefaultIssueTypes(): Promise<void> {
     });
   }
 }
-
-/**
- * Retrieves all active issue types for issue creation.
- */
-export async function getActiveIssueTypes() {
-  return prisma.issueType.findMany({
-    where: { isActive: true },
-    orderBy: { name: "asc" },
-  });
-}
-

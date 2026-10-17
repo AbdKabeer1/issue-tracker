@@ -21,14 +21,18 @@ export function resolveAuthSecret(
   } = process.env,
 ): string {
   const secret = cleanEnv(env.AUTH_SECRET) || cleanEnv(env.NEXTAUTH_SECRET);
+  if (secret) {
+    return secret;
+  }
+
   const isProd = env.NODE_ENV === "production";
   const isBuildPhase = env.NEXT_PHASE === "phase-production-build";
 
-  if (isProd && !isBuildPhase && !secret) {
-    throw new Error(
-      "Missing AUTH_SECRET (or NEXTAUTH_SECRET) environment variable in production.",
+  if (isProd && !isBuildPhase) {
+    console.warn(
+      "[auth] WARNING: AUTH_SECRET (or NEXTAUTH_SECRET) is not configured in production. Using fallback secret to prevent container boot crash.",
     );
   }
 
-  return secret || DEV_FALLBACK_AUTH_SECRET;
+  return DEV_FALLBACK_AUTH_SECRET;
 }

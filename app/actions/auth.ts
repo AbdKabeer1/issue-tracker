@@ -1,21 +1,30 @@
 "use server";
 
+import { fromZodError } from "@/lib/form-errors";
+
+/** An error, and the field it is about when there is one (#309). */
+type FieldAwareResult = {
+  error?: string;
+  field?: string;
+  fieldErrors?: Record<string, string>;
+};
 import { AuthError } from "next-auth";
 import { hash } from "bcryptjs";
 import { Prisma } from "@prisma/client";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth, signIn, signOut } from "@/auth";
 import { ACTIVE_ROLE_COOKIE_NAME } from "@/lib/roles";
 import { isSuperAdminEmail } from "@/lib/super-admin";
-import { sendMail } from "@/lib/mail";
+import { canSendMail, sendMail } from "@/lib/mail";
 import {
   PASSWORD_RESET_TTL_MS,
   buildPasswordResetUrl,
   createRawResetToken,
   hashResetToken,
 } from "@/lib/password-reset";
+import { consumeResetToken } from "@/lib/password-reset-consume";
 import { prisma } from "@/lib/prisma";
 import {
   isPasswordAuthEnabled,
@@ -23,18 +32,48 @@ import {
 } from "@/lib/auth-mode";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
 import {
+  RATE_LIMIT_MESSAGE,
+  consumeAuthRateLimit,
+  clientIpFrom,
+  type AuthRateLimitAction,
+} from "@/lib/rate-limit";
+import {
   forgotPasswordSchema,
   resetPasswordSchema,
   signupSchema,
 } from "@/lib/validations/bug";
 
+const RESET_LINK_INVALID =
+  "This reset link is invalid or has expired. Request a new one.";
+
+const RESET_EMAIL_UNAVAILABLE =
+  "Password reset emails aren't set up on this site yet. Ask an admin to reset your password.";
+
+/**
+ * Shown when sign-up hits an existing email. It doesn't confirm that an
+ * account exists (#207); a full fix would need email verification.
+ */
+const SIGNUP_FAILED =
+  "We couldn't create an account with those details. If you already have one, sign in or reset your password.";
+
+/** Returns an error result when this auth attempt is over its rate limit (#207). */
+async function authRateLimited(
+  action: AuthRateLimitAction,
+  email: string | null,
+): Promise<{ error: string } | null> {
+  const ip = clientIpFrom(await headers());
+  const result = await consumeAuthRateLimit(action, { email, ip });
+  return result.allowed ? null : { error: RATE_LIMIT_MESSAGE };
+}
+
 const FORGOT_PASSWORD_SUCCESS =
   "If an account exists for that email, we've sent a password reset link.";
+
 
 export async function loginAction(
   _prev: { error?: string } | undefined,
   formData: FormData,
-) {
+): Promise<FieldAwareResult | undefined> {
   // Server actions stay callable even when no UI renders them.
   if (!isPasswordAuthEnabled()) {
     return { error: PASSWORD_AUTH_DISABLED_MESSAGE };
@@ -42,6 +81,9 @@ export async function loginAction(
 
   const callbackUrl = safeCallbackUrl(formData.get("callbackUrl"));
 
+  // Rate limited inside the Credentials provider's authorize() (auth.ts), which
+  // every password sign-in passes through, including direct POSTs to
+  // /api/auth/callback/credentials (#207).
   try {
     await signIn("credentials", {
       email: String(formData.get("email") ?? ""),
@@ -49,11 +91,14 @@ export async function loginAction(
       redirect: false,
     });
   } catch (error) {
+    // Points at the email field so focus lands there, but deliberately not
+    // at a single culprit: saying which one was wrong would reveal whether
+    // the account exists.
     if (error instanceof AuthError) {
-      return { error: "Invalid email or password" };
+      return { error: "Invalid email or password", field: "email" };
     }
     console.error("[loginAction] signIn error:", error);
-    return { error: "Invalid email or password" };
+    return { error: "Invalid email or password", field: "email" };
   }
 
   redirect(callbackUrl);
@@ -62,7 +107,7 @@ export async function loginAction(
 export async function signupAction(
   _prev: { error?: string } | undefined,
   formData: FormData,
-) {
+): Promise<FieldAwareResult | undefined> {
   // Server actions stay callable even when no UI renders them.
   if (!isPasswordAuthEnabled()) {
     return { error: PASSWORD_AUTH_DISABLED_MESSAGE };
@@ -76,10 +121,14 @@ export async function signupAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return fromZodError(parsed.error);
   }
 
   const { name, email, password } = parsed.data;
+
+  const limited = await authRateLimited("signup", email);
+  if (limited) return limited;
+
   const passwordHash = await hash(password, 10);
   const callbackUrl = safeCallbackUrl(formData.get("callbackUrl"));
 
@@ -92,7 +141,7 @@ export async function signupAction(
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
     ) {
-      return { error: "An account with this email already exists" };
+      return { error: SIGNUP_FAILED };
     }
     throw error;
   }
@@ -199,7 +248,7 @@ export async function googleSignInAction(
 export async function forgotPasswordAction(
   _prev: { error?: string; success?: string } | undefined,
   formData: FormData,
-) {
+): Promise<FieldAwareResult & { success?: string }> {
   // Server actions stay callable even when no UI renders them.
   if (!isPasswordAuthEnabled()) {
     return { error: PASSWORD_AUTH_DISABLED_MESSAGE };
@@ -210,10 +259,20 @@ export async function forgotPasswordAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid email" };
+    return fromZodError(parsed.error, "Invalid email");
   }
 
   const email = parsed.data.email;
+
+  const limited = await authRateLimited("forgotPassword", email);
+  if (limited) return limited;
+
+  // Checked before looking anyone up, so every address gets the same answer
+  // (no account enumeration) and nobody is told a link is on its way when it
+  // can't be sent (#210).
+  if (!canSendMail()) {
+    return { error: RESET_EMAIL_UNAVAILABLE };
+  }
 
   try {
     const user = await prisma.user.findUnique({ where: { email } });
@@ -257,7 +316,7 @@ export async function forgotPasswordAction(
 export async function resetPasswordAction(
   _prev: { error?: string } | undefined,
   formData: FormData,
-) {
+): Promise<FieldAwareResult | undefined> {
   // Server actions stay callable even when no UI renders them.
   if (!isPasswordAuthEnabled()) {
     return { error: PASSWORD_AUTH_DISABLED_MESSAGE };
@@ -270,40 +329,37 @@ export async function resetPasswordAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return fromZodError(parsed.error);
   }
 
   const { token, password } = parsed.data;
   const tokenHash = hashResetToken(token);
+
+  // No email here; the token hash stands in as the per-target key.
+  const limited = await authRateLimited("resetPassword", `token:${tokenHash}`);
+  if (limited) return limited;
 
   const record = await prisma.passwordResetToken.findUnique({
     where: { tokenHash },
   });
 
   if (!record || record.usedAt || record.expiresAt.getTime() <= Date.now()) {
-    return {
-      error: "This reset link is invalid or has expired. Request a new one.",
-    };
+    return { error: RESET_LINK_INVALID };
   }
 
   const passwordHash = await hash(password, 10);
 
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: record.userId },
-      data: { passwordHash },
+  // Claim the token atomically so a raced second request can't reuse it (#209).
+  const consumed = await prisma.$transaction((tx) =>
+    consumeResetToken(tx, {
+      tokenId: record.id,
+      userId: record.userId,
+      passwordHash,
     }),
-    prisma.passwordResetToken.update({
-      where: { id: record.id },
-      data: { usedAt: new Date() },
-    }),
-    prisma.passwordResetToken.deleteMany({
-      where: {
-        userId: record.userId,
-        id: { not: record.id },
-      },
-    }),
-  ]);
+  );
+  if (!consumed) {
+    return { error: RESET_LINK_INVALID };
+  }
 
   redirect("/login");
 }

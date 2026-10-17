@@ -1,67 +1,39 @@
 /**
- * Module-level storage for recent authentication error details.
+ * Server-side logging for Auth.js errors.
  *
- * Auth.js deliberately masks error codes like InvalidCheck, MissingSecret, or
- * OAuthCallbackError into generic `?error=Configuration` to prevent client leakage.
- * In production deployment triage, this makes debugging near-impossible.
+ * Auth.js masks error codes like InvalidCheck, MissingSecret or
+ * OAuthCallbackError as a generic `?error=Configuration`. This hook writes the
+ * underlying cause to the server log so failures can still be triaged.
  *
- * This store intercepts the underlying AuthError via logger.error and allows the
- * route handler to attach a sanitized reason to the redirect query parameters.
+ * It deliberately keeps nothing in memory and never returns the detail to the
+ * caller: error text used to be stored in one module-level variable shared by
+ * every request and copied into the login redirect as `?reason=`, which leaked
+ * internals (database host, file paths) and could show one user's error to
+ * another (#118).
  */
-
-interface RecentAuthError {
-  timestamp: number;
-  message: string;
-  type?: string;
-  detail?: string;
-}
-
-let lastError: RecentAuthError | null = null;
-
-export function recordAuthError(error: unknown) {
+export function describeAuthError(error: unknown): { type?: string; detail: string } {
   const err = error as {
     name?: string;
     message?: string;
     type?: string;
-    cause?: {
-      err?: Error;
-      message?: string;
-    } | Error;
+    cause?: { err?: Error; message?: string } | Error;
   };
 
   const causeObj = err?.cause as { err?: Error; message?: string } | undefined;
   const causeErr = causeObj?.err instanceof Error ? causeObj.err.message : undefined;
   const causeMsg = typeof causeObj?.message === "string" ? causeObj.message : undefined;
 
-  const detail =
-    causeErr ||
-    causeMsg ||
-    err?.message ||
-    err?.name ||
-    "Authentication failure";
-
-  lastError = {
-    timestamp: Date.now(),
-    message: err?.message || "Unknown error",
+  return {
     type: err?.type || err?.name,
-    detail,
+    detail: causeErr || causeMsg || err?.message || err?.name || "Authentication failure",
   };
-
-  console.error("[auth:diagnostic] Captured auth error:", {
-    type: lastError.type,
-    detail: lastError.detail,
-    timestamp: new Date(lastError.timestamp).toISOString(),
-  });
 }
 
-export function popRecentAuthError(maxAgeMs = 15000): string | null {
-  if (!lastError) return null;
-  const age = Date.now() - lastError.timestamp;
-  if (age > maxAgeMs) {
-    lastError = null;
-    return null;
-  }
-  const detail = lastError.detail || lastError.message;
-  lastError = null;
-  return detail;
+export function recordAuthError(error: unknown) {
+  const { type, detail } = describeAuthError(error);
+  console.error("[auth:diagnostic] Captured auth error:", {
+    type,
+    detail,
+    timestamp: new Date().toISOString(),
+  });
 }

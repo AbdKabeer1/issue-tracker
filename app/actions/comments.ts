@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { commentSchema } from "@/lib/validations/bug";
 import {
   extractMentionedUserIds,
+  newlyMentionedUserIds,
   normalizeMentions,
 } from "@/lib/mentions";
 import {
@@ -14,7 +15,12 @@ import {
   canEditComment,
   COMMENT_ERRORS,
 } from "@/lib/comment-permissions";
-import { commentDeletedSummary } from "@/lib/activity-log";
+import {
+  commentDeletedSummary,
+  commentedSummary,
+  commentPreview,
+} from "@/lib/activity-log";
+import { notifyLater } from "@/lib/notify";
 
 export type CommentActionResult = { error?: string; ok?: boolean };
 
@@ -26,9 +32,10 @@ async function loadComment(commentId: unknown) {
       id: true,
       bugId: true,
       authorId: true,
+      body: true,
       deletedAt: true,
       author: { select: { name: true } },
-      bug: { select: { isDeleted: true } },
+      bug: { select: { isDeleted: true, title: true } },
     },
   });
 }
@@ -62,10 +69,42 @@ export async function updateCommentAction(
     new Map(known.map((u) => [u.id, u.name])),
   );
 
-  await prisma.comment.update({
-    where: { id: comment.id },
-    data: { body, editedAt: new Date() },
+  await prisma.$transaction(async (tx) => {
+    await tx.comment.update({
+      where: { id: comment.id },
+      data: { body, editedAt: new Date() },
+    });
+
+    await tx.bugActivity.updateMany({
+      where: {
+        bugId: comment.bugId,
+        type: "commented",
+        metadata: { path: ["commentId"], equals: comment.id },
+      },
+      data: {
+        summary: commentedSummary(body),
+        metadata: {
+          field: "comment",
+          commentId: comment.id,
+          commentPreview: commentPreview(body),
+        } as Prisma.InputJsonValue,
+      },
+    });
   });
+
+  const newlyMentioned = newlyMentionedUserIds(comment.body, body);
+  if (newlyMentioned.length > 0) {
+    notifyLater({
+      kind: "mentioned",
+      actorId: user.id,
+      actorName: user.name ?? "Someone",
+      bugId: comment.bugId,
+      bugTitle: comment.bug.title,
+      place: "comment",
+      recipientIds: newlyMentioned,
+      excerpt: commentPreview(body),
+    });
+  }
 
   revalidatePath(`/bugs/${comment.bugId}`);
   return { ok: true };
@@ -97,6 +136,8 @@ export async function deleteCommentAction(
         where: { id: comment.id },
         data: { body: "", deletedAt: new Date() },
       });
+      // A deleted comment's files go too, e.g. a screenshot posted by mistake (#215).
+      await tx.attachment.deleteMany({ where: { commentId: comment.id } });
 
       // Scrub the text preview from the activity entry that recorded it.
       await tx.bugActivity.updateMany({

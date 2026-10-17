@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   looksLikeMarkdown,
+  inlineImageSrc,
   safeHref,
   stripMarkdown,
   stripLegacyMarkup,
@@ -86,5 +87,32 @@ describe("wrapSelection", () => {
   it("prefixes list lines", () => {
     const result = wrapSelection("a\nb", 0, 3, "ul");
     expect(result.value).toBe("- a\n- b");
+  });
+});
+
+describe("inlineImageSrc (#119)", () => {
+  it("allows GitHub attachment and avatar images over https", () => {
+    for (const url of [
+      "https://github.com/user-attachments/assets/abc123",
+      "https://user-images.githubusercontent.com/1/shot.png",
+      "https://private-user-images.githubusercontent.com/1/shot.png?jwt=x",
+      "https://avatars.githubusercontent.com/u/1?v=4",
+    ]) {
+      expect(inlineImageSrc(url)).toBe(url);
+    }
+  });
+
+  it("rejects images from other servers (tracking pixels)", () => {
+    expect(inlineImageSrc("https://attacker.example/pixel.png?id=1")).toBeNull();
+    expect(inlineImageSrc("https://github.com/someone/avatar.png")).toBeNull();
+    expect(
+      inlineImageSrc("https://avatars.githubusercontent.com.evil.example/x.png"),
+    ).toBeNull();
+  });
+
+  it("rejects non-https and unsafe sources", () => {
+    expect(inlineImageSrc("http://avatars.githubusercontent.com/u/1")).toBeNull();
+    expect(inlineImageSrc("javascript:alert(1)")).toBeNull();
+    expect(inlineImageSrc("mailto:dev@example.com")).toBeNull();
   });
 });

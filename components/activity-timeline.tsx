@@ -1,4 +1,5 @@
 import type { ActivityType } from "@prisma/client";
+import { activityNote } from "@/lib/resolution-note";
 import { LocalTime } from "@/components/local-time";
 
 export type ActivityEntry = {
@@ -7,6 +8,7 @@ export type ActivityEntry = {
   summary: string;
   createdAt: Date;
   actor: { name: string };
+  metadata?: unknown;
 };
 
 const typeLabel: Record<ActivityType, string> = {
@@ -27,16 +29,25 @@ const typeLabel: Record<ActivityType, string> = {
 
 export function ActivityTimeline({
   activities,
+  totalCount,
 }: {
+  /** The newest entries, oldest first. May be fewer than `totalCount`. */
   activities: ActivityEntry[];
+  /** Every entry on the issue, so the heading does not under-report. */
+  totalCount?: number;
 }) {
+  const total = totalCount ?? activities.length;
+  const trimmed = total > activities.length;
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-        Activity ({activities.length})
+        Activity ({total})
       </h2>
       <p className="mt-1 text-xs text-slate-500">
         Read-only history of changes on this issue.
+        {trimmed
+          ? ` Showing the ${activities.length} most recent of ${total}.`
+          : ""}
       </p>
       {activities.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500">
@@ -65,6 +76,11 @@ export function ActivityTimeline({
                 </span>{" "}
                 {entry.summary}
               </p>
+              {entry.type === "status_changed" && activityNote(entry.metadata) ? (
+                <blockquote className="mt-1 whitespace-pre-wrap break-words border-l-2 border-emerald-300 pl-3 text-sm text-slate-700">
+                  {activityNote(entry.metadata)}
+                </blockquote>
+              ) : null}
             </li>
           ))}
         </ol>

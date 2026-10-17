@@ -1,20 +1,38 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
 import { createBugAction, type ActionResult } from "@/app/actions/bugs";
+import { submitFailureMessage } from "@/lib/submit-error";
+import { ErrorSummary, FieldError, useFieldErrors } from "@/components/ui/field-errors";
 import { severities } from "@/lib/validations/bug";
 import { severityLabels } from "@/lib/labels";
-import { formatUserLabel, type AppRole } from "@/lib/roles";
+import type { AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { AttachmentPicker } from "@/components/attachment-picker";
 import { MarkdownEditor } from "@/components/markdown-editor";
+import { useFormDraft } from "@/components/use-form-draft";
+import { buildDraftKey } from "@/lib/form-drafts";
+import { DraftBanner } from "@/components/draft-banner";
+import { AssigneeCombobox } from "@/components/assignee-combobox";
 
-type UserOption = { id: string; name: string; role: AppRole };
+type UserOption = { id: string; name: string; role: AppRole; image?: string | null };
 type CategoryOption = { id: string; name: string };
 type TypeOption = { id: string; name: string; description?: string | null };
+
+/** Field names as the person sees them, for the error summary. */
+const FIELD_LABELS: Record<string, string> = {
+  title: "Title",
+  typeId: "Type",
+  categoryId: "Platform",
+  description: "Description",
+  proofLinks: "Proof links",
+  severity: "Severity",
+  assigneeId: "Assignee",
+};
 
 export function CreateBugForm({
   users,
@@ -31,47 +49,85 @@ export function CreateBugForm({
 }) {
   const defaultTypeId =
     types.find((t) => t.name.toLowerCase() === "fix")?.id ?? types[0]?.id ?? "";
-  const [title, setTitle] = useState("");
-  const [typeId, setTypeId] = useState(defaultTypeId);
-  const [description, setDescription] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [proofLinks, setProofLinks] = useState("");
-  const [severity, setSeverity] = useState<(typeof severities)[number]>("medium");
-  const [assigneeId, setAssigneeId] = useState("");
-  const [assignToMe, setAssignToMe] = useState(false);
+  const draftKey = buildDraftKey({
+    userId: currentUserId,
+    formType: "create-bug",
+  });
+
+  const { values, setValue, isRestored, clearDraft, discardDraft } = useFormDraft(
+    draftKey,
+    {
+      title: "",
+      typeId: defaultTypeId,
+      description: "",
+      categoryId: "",
+      proofLinks: "",
+      severity: "medium" as (typeof severities)[number],
+      assigneeId: "",
+      assignToMe: false,
+    },
+  );
+  const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // True when the request itself failed (network / server error), so the
+  // person can simply retry; validation errors from the server aren't retryable.
+  const [canRetry, setCanRetry] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
+  const errs = useFieldErrors("report", formRef);
   const mentionUsers = users.map((user) => ({ id: user.id, name: user.name }));
 
   return (
     <form
+      ref={formRef}
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
         setError(null);
+        setCanRetry(false);
+        errs.clear();
         const formData = new FormData();
-        formData.set("title", title);
-        formData.set("typeId", typeId);
-        formData.set("description", description);
-        formData.set("categoryId", categoryId);
-        formData.set("proofLinks", proofLinks);
+        formData.set("title", values.title);
+        formData.set("typeId", values.typeId);
+        formData.set("description", values.description);
+        formData.set("categoryId", values.categoryId);
+        formData.set("proofLinks", values.proofLinks);
+        formData.set("attachmentIds", attachmentIds.join(","));
         if (isAdmin) {
-          formData.set("severity", severity);
-          formData.set("assigneeId", assigneeId);
-        } else if (assignToMe && currentUserId) {
+          formData.set("severity", values.severity);
+          formData.set("assigneeId", values.assigneeId);
+        } else if (values.assignToMe && currentUserId) {
           formData.set("assigneeId", currentUserId);
         }
         startTransition(async () => {
           try {
             const result: ActionResult = await createBugAction(formData);
-            if (result.error) setError(result.error);
+            if (result.error) {
+              // A field-specific error goes beside its control and takes
+              // focus there; only an error about no field in particular
+              // stays as the form-level alert at the bottom.
+              if (result.field || result.fieldErrors) errs.show(result);
+              else setError(result.error);
+            } else {
+              clearDraft();
+            }
           } catch (error) {
             unstable_rethrow(error);
-            setError("Something went wrong. Please try again.");
+            setError(submitFailureMessage(navigator.onLine));
+            setCanRetry(true);
           }
         });
       }}
     >
+      {isRestored ? (
+        <DraftBanner
+          onDiscard={discardDraft}
+          message="Restored unsaved draft from this browser"
+        />
+      ) : null}
+
+      <ErrorSummary errors={errs.fieldErrors} labels={FIELD_LABELS} />
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <label htmlFor="title" className="text-sm font-medium text-slate-700">
@@ -84,9 +140,11 @@ export function CreateBugForm({
             minLength={3}
             maxLength={200}
             placeholder="Short summary of the issue"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
+            value={values.title}
+            onChange={(event) => setValue("title", event.target.value)}
+            {...errs.attrs("title")}
           />
+          <FieldError formId={errs.formId} field="title" errors={errs.fieldErrors} />
         </div>
         {types.length > 0 ? (
           <div className="space-y-1.5">
@@ -96,8 +154,9 @@ export function CreateBugForm({
             <Select
               id="typeId"
               name="typeId"
-              value={typeId}
-              onChange={(event) => setTypeId(event.target.value)}
+              value={values.typeId}
+              onChange={(event) => setValue("typeId", event.target.value)}
+              {...errs.attrs("typeId")}
             >
               {types.map((type) => (
                 <option key={type.id} value={type.id}>
@@ -105,6 +164,7 @@ export function CreateBugForm({
                 </option>
               ))}
             </Select>
+            <FieldError formId={errs.formId} field="typeId" errors={errs.fieldErrors} />
           </div>
         ) : null}
       </div>
@@ -118,8 +178,9 @@ export function CreateBugForm({
         <Select
           id="categoryId"
           name="categoryId"
-          value={categoryId}
-          onChange={(event) => setCategoryId(event.target.value)}
+          value={values.categoryId}
+          onChange={(event) => setValue("categoryId", event.target.value)}
+          {...errs.attrs("categoryId")}
         >
           <option value="">Select a platform</option>
           {categories.map((cat) => (
@@ -128,9 +189,11 @@ export function CreateBugForm({
             </option>
           ))}
         </Select>
+        <FieldError formId={errs.formId} field="categoryId" errors={errs.fieldErrors} />
       </div>
       <div className="space-y-1.5">
         <label
+          id="description-label"
           htmlFor="description"
           className="text-sm font-medium text-slate-700"
         >
@@ -138,15 +201,17 @@ export function CreateBugForm({
         </label>
         <MarkdownEditor
           id="description"
+          labelId="description-label"
           name="description"
           required
           minLength={10}
           maxLength={5000}
           rows={6}
           placeholder="Steps to reproduce, expected vs actual, environment…"
-          value={description}
-          onChange={setDescription}
+          value={values.description}
+          onChange={(val) => setValue("description", val)}
           users={mentionUsers}
+          {...errs.attrs("description")}
           footer={
             <p className="text-xs text-slate-500">
               Markdown is supported. Be specific: what should happen, what
@@ -154,6 +219,7 @@ export function CreateBugForm({
             </p>
           }
         />
+        <FieldError formId={errs.formId} field="description" errors={errs.fieldErrors} />
       </div>
       <div className="space-y-1.5">
         <label
@@ -169,13 +235,25 @@ export function CreateBugForm({
           placeholder={
             "https://github.com/organization/repo/issues/123\nhttps://github.com/organization/repo/pull/456"
           }
-          value={proofLinks}
-          onChange={(event) => setProofLinks(event.target.value)}
+          value={values.proofLinks}
+          onChange={(event) => setValue("proofLinks", event.target.value)}
+          {...errs.attrs("proofLinks")}
         />
+        <FieldError formId={errs.formId} field="proofLinks" errors={errs.fieldErrors} />
         <p className="text-xs text-slate-500">
           Optional. One GitHub link per line (e.g. https://github.com/org/repo/issues/123). You need to have created the issue on GitHub first or gotten it from GitHub before adding the link here.
         </p>
       </div>
+      <fieldset className="space-y-1.5">
+        <legend className="text-sm font-medium text-slate-700">
+          Screenshots and files
+        </legend>
+        <p className="text-xs text-slate-500">
+          Optional. No GitHub account needed: attach a screenshot, console log
+          or recording export straight to the report.
+        </p>
+        <AttachmentPicker name="attachmentIdsPicker" onChange={setAttachmentIds} />
+      </fieldset>
       {isAdmin ? (
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
@@ -188,10 +266,11 @@ export function CreateBugForm({
             <Select
               id="severity"
               name="severity"
-              value={severity}
+              value={values.severity}
               onChange={(event) =>
-                setSeverity(event.target.value as (typeof severities)[number])
+                setValue("severity", event.target.value as (typeof severities)[number])
               }
+              {...errs.attrs("severity")}
             >
               {severities.map((value) => (
                 <option key={value} value={value}>
@@ -207,19 +286,14 @@ export function CreateBugForm({
             >
               Assignee
             </label>
-            <Select
+            <AssigneeCombobox
               id="assigneeId"
               name="assigneeId"
-              value={assigneeId}
-              onChange={(event) => setAssigneeId(event.target.value)}
-            >
-              <option value="">Unassigned</option>
-              {users.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {formatUserLabel(user.name, user.role)}
-                </option>
-              ))}
-            </Select>
+              people={users}
+              value={values.assigneeId}
+              onChange={(val) => setValue("assigneeId", val)}
+            />
+            <FieldError formId={errs.formId} field="assigneeId" errors={errs.fieldErrors} />
           </div>
         </div>
       ) : currentUserId ? (
@@ -227,8 +301,8 @@ export function CreateBugForm({
           <input
             type="checkbox"
             id="assignToMe"
-            checked={assignToMe}
-            onChange={(e) => setAssignToMe(e.target.checked)}
+            checked={values.assignToMe}
+            onChange={(e) => setValue("assignToMe", e.target.checked)}
             className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
           />
           <label
@@ -240,9 +314,19 @@ export function CreateBugForm({
         </div>
       ) : null}
       {error ? (
-        <p className="text-sm text-red-600" role="alert">
-          {error}
-        </p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1" role="alert">
+          <p className="text-sm text-red-600">{error}</p>
+          {canRetry ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => formRef.current?.requestSubmit()}
+              className="text-sm font-medium text-teal-700 underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              Try again
+            </button>
+          ) : null}
+        </div>
       ) : null}
       <Button type="submit" disabled={pending}>
         {pending ? "Creating…" : "Create issue"}

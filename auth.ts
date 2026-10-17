@@ -4,10 +4,12 @@ import Google from "next-auth/providers/google";
 import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { loginSchema } from "@/lib/validations/bug";
+import type { Role } from "@prisma/client";
 import authConfig from "@/auth.config";
 import { cleanEnv } from "@/lib/env-clean";
-import { isSuperAdminEmail } from "@/lib/super-admin";
 import { isPasswordAuthEnabled } from "@/lib/auth-mode";
+import { upsertGoogleUser } from "@/lib/google-user";
+import { clientIpFrom, consumeAuthRateLimit } from "@/lib/rate-limit";
 
 const googleClientId = cleanEnv(
   process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID,
@@ -49,12 +51,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         if (!isPasswordAuthEnabled()) {
           return null;
         }
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) {
+          return null;
+        }
+
+        // Per-email and per-IP limit on password attempts (#207). Every
+        // password sign-in comes through here, whichever entry point it used.
+        // Shared across instances (#296).
+        const limit = await consumeAuthRateLimit("login", {
+          email: parsed.data.email,
+          ip: request?.headers ? clientIpFrom(request.headers) : null,
+        });
+        if (!limit.allowed) {
+          console.warn("[auth] password sign-in rate limited", { email: parsed.data.email });
           return null;
         }
 
@@ -76,6 +90,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: user.name,
           email: user.email,
           role: user.role,
+          sessionVersion: user.sessionVersion,
         };
       },
     }),
@@ -101,44 +116,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             (typeof profile?.picture === "string" && profile.picture) ||
             (typeof user?.image === "string" ? user.image : undefined);
 
-          const isSuperAdmin = isSuperAdminEmail(email);
-
-          let dbUser = null;
+          let dbUser: { id: string; role: Role } | null = null;
+          let lastError: unknown;
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
-              dbUser = await prisma.user.upsert({
-                where: { email },
-                create: {
-                  email,
-                  name,
-                  image,
-                  emailVerified: new Date(),
-                  ...(isSuperAdmin ? { role: "super_admin" } : {}),
-                },
-                update: {
-                  name,
-                  ...(image ? { image } : {}),
-                  emailVerified: new Date(),
-                  ...(isSuperAdmin ? { role: "super_admin" } : {}),
-                },
-              });
+              dbUser = await upsertGoogleUser({ email, name, image });
               break;
             } catch (dbError) {
-              console.error(
-                `[auth] Google user upsert attempt ${attempt} failed:`,
-                dbError,
-              );
-              if (attempt === 3) throw dbError;
-              await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
+              lastError = dbError;
+              console.error(`[auth] Google user save attempt ${attempt} failed:`, dbError);
+              if (attempt < 3) {
+                await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
+              }
             }
           }
 
-          if (dbUser) {
-            token.id = dbUser.id;
-            token.sub = dbUser.id;
-            token.role = dbUser.role;
-            return token;
+          if (!dbUser) {
+            throw lastError instanceof Error
+              ? lastError
+              : new Error("Google sign-in could not save the user");
           }
+
+          token.email = email;
+          token.name = name;
+          token.id = dbUser.id;
+          token.sub = dbUser.id;
+          token.role = dbUser.role;
+          token.sv = 0;
+          return token;
         }
       }
 
@@ -148,6 +153,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       if (user?.role) {
         token.role = user.role;
+      }
+      if (typeof user?.sessionVersion === "number") {
+        token.sv = user.sessionVersion;
       }
       return token;
     },

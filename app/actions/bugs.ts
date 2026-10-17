@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { fieldError, fromZodError } from "@/lib/form-errors";
 import { redirect } from "next/navigation";
 import {
   activityCreateData,
@@ -28,6 +29,7 @@ import {
 import { MAX_COMMENT_DEPTH, commentDepth } from "@/lib/comments";
 import {
   extractMentionedUserIds,
+  newlyMentionedUserIds,
   normalizeMentions,
 } from "@/lib/mentions";
 import {
@@ -42,8 +44,13 @@ import {
   canRestoreTicket,
   TICKET_DELETION_ERRORS,
 } from "@/lib/ticket-deletion";
-import { canBoostTicket, TICKET_BOOST_ERRORS } from "@/lib/ticket-boosting";
+import {
+  canBoostTicket,
+  shouldUnboostOnStatusChange,
+  TICKET_BOOST_ERRORS,
+} from "@/lib/ticket-boosting";
 import { canAssignTicket, TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
+import { canChangeTicketStatus, TICKET_TRIAGE_ERRORS } from "@/lib/ticket-triage";
 import {
   canEditTicket,
   formatEditSummary,
@@ -52,15 +59,25 @@ import {
 } from "@/lib/ticket-editing";
 import { Prisma, type ActivityType } from "@prisma/client";
 import { notifyLater } from "@/lib/notify";
+import { ensureWatching } from "@/lib/watch";
+import { parseResolutionNote } from "@/lib/resolution-note";
 import type { NotificationEvent } from "@/lib/notifications";
 import { getForeignKeyErrorMessage } from "@/lib/foreign-key-errors";
+import { parseAttachmentIds } from "@/lib/attachments";
+import { linkAttachments } from "@/lib/attachment-link";
 import {
-  checkRateLimit,
+  consumeRateLimit,
   ACTION_RATE_LIMITS,
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
 
-export type ActionResult = { error?: string; ok?: boolean };
+export type ActionResult = {
+  error?: string;
+  ok?: boolean;
+  /** Which field failed, when there is one (#309). */
+  field?: string;
+  fieldErrors?: Record<string, string>;
+};
 
 /**
  * Resolves `@[Name](userId)` tags against real accounts: known ids are
@@ -95,7 +112,7 @@ export async function createBugAction(
   const userId = user.id;
   const admin = isAdmin(user.role);
 
-  const limit = checkRateLimit(
+  const limit = await consumeRateLimit(
     `create-bug:${userId}`,
     ACTION_RATE_LIMITS.createBug,
   );
@@ -136,7 +153,7 @@ export async function createBugAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return fromZodError(parsed.error);
   }
 
   const assigneeId =
@@ -155,7 +172,7 @@ export async function createBugAction(
       select: { id: true },
     });
     if (!assignee) {
-      return { error: "Assignee not found" };
+      return fieldError("assigneeId", "Assignee not found");
     }
   }
 
@@ -165,7 +182,7 @@ export async function createBugAction(
       select: { id: true, isActive: true },
     });
     if (!issueType || !issueType.isActive) {
-      return { error: "That type no longer exists. Please pick another." };
+      return fieldError("typeId", "That type no longer exists. Please pick another.");
     }
   }
 
@@ -182,7 +199,7 @@ export async function createBugAction(
       select: { id: true, isActive: true },
     });
     if (!category || !category.isActive) {
-      return { error: "Platform not found or inactive" };
+      return fieldError("categoryId", "Platform not found or inactive");
     }
   }
 
@@ -200,6 +217,12 @@ export async function createBugAction(
         reporterId: userId,
         assigneeId,
         categoryId,
+        // Reporter and assignee watch the issue from the start (#216).
+        watches: {
+          create: [...new Set([userId, assigneeId].filter((id): id is string => Boolean(id)))].map(
+            (watcherId) => ({ userId: watcherId }),
+          ),
+        },
         activities: {
           create: {
             actorId: userId,
@@ -226,6 +249,13 @@ export async function createBugAction(
     }
     throw error;
   }
+
+  // Files uploaded while writing the report (#215).
+  await linkAttachments(prisma, {
+    ids: parseAttachmentIds(formData.get("attachmentIds")),
+    uploaderId: userId,
+    bugId: bug.id,
+  });
 
   const events: NotificationEvent[] = [];
   const actor = { actorId: userId, actorName: user.name ?? "Someone", bugId: bug.id, bugTitle: bug.title };
@@ -277,6 +307,23 @@ export async function updateBugAction(
   const isSelfAssigning =
     targetAssigneeId !== undefined && targetAssigneeId === userId;
 
+  // #202: `status` is a triage field and must be gated on the issue's current
+  // assignee (or an admin) - never on the assignee this request is trying to
+  // set. Without this, a self-assignment satisfied the gate above and the same
+  // request could also close/reopen the issue, letting any user close any
+  // unassigned issue. Checked before schema parsing so the error is explicit.
+  const requestedStatus = formData.get("status") || undefined;
+  if (
+    requestedStatus &&
+    !canChangeTicketStatus({
+      actorId: userId,
+      actorRole: user.role,
+      currentAssigneeId: existing.assigneeId,
+    })
+  ) {
+    return { error: TICKET_TRIAGE_ERRORS.statusUnauthorized };
+  }
+
   if (!admin && !isAssignee && !isSelfAssigning) {
     return {
       error: "Only the assignee or an admin can update this issue",
@@ -299,7 +346,7 @@ export async function updateBugAction(
   const categoryRaw = formData.get("categoryId");
   const typeRaw = formData.get("typeId");
   const parsed = updateBugSchema.safeParse({
-    status: formData.get("status") || undefined,
+    status: requestedStatus,
     severity: admin ? formData.get("severity") || undefined : undefined,
     typeId: admin
       ? typeRaw === "" || typeRaw === "none"
@@ -315,8 +362,28 @@ export async function updateBugAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return fromZodError(parsed.error);
   }
+
+  // Claiming an issue doesn't also grant its status in the same request: a
+  // normal user who isn't the assignee yet must assign themselves first
+  // (#218, #175).
+  if (
+    !admin &&
+    !isAssignee &&
+    parsed.data.status &&
+    parsed.data.status !== existing.status
+  ) {
+    return { error: TICKET_ASSIGN_ERRORS.statusNeedsAssignment };
+  }
+
+  // #316: an optional note, only for a change into resolved or closed.
+  const parsedNote = parseResolutionNote(formData.get("resolutionNote"), {
+    from: existing.status,
+    to: parsed.data.status,
+  });
+  if ("error" in parsedNote) return { error: parsedNote.error, field: "resolutionNote" };
+  const resolutionNote = parsedNote.note;
 
   const data: {
     status?: typeof parsed.data.status;
@@ -324,6 +391,8 @@ export async function updateBugAction(
     typeId?: string | null;
     assigneeId?: string | null;
     categoryId?: string | null;
+    isBoosted?: boolean;
+    boostedAt?: Date | null;
   } = {};
 
   if (parsed.data.status) data.status = parsed.data.status;
@@ -357,7 +426,25 @@ export async function updateBugAction(
         field: "status",
         from: existing.status,
         to: data.status,
+        ...(resolutionNote ? { note: resolutionNote } : {}),
       },
+    });
+  }
+
+  // #256: a resolved or closed issue shouldn't stay pinned above open work.
+  if (
+    shouldUnboostOnStatusChange({
+      isBoosted: existing.isBoosted,
+      from: existing.status,
+      to: data.status,
+    })
+  ) {
+    data.isBoosted = false;
+    data.boostedAt = null;
+    pending.push({
+      type: "unboosted",
+      summary: unboostedSummary(),
+      metadata: { field: "isBoosted", to: "false" },
     });
   }
 
@@ -468,6 +555,10 @@ export async function updateBugAction(
           data,
         });
       }
+      if (data.assigneeId) {
+        // The new assignee starts watching (#216).
+        await ensureWatching(tx, bugId, [data.assigneeId]);
+      }
       if (pending.length > 0) {
         await tx.bugActivity.createMany({
           data: activityCreateData(
@@ -500,7 +591,7 @@ export async function updateBugAction(
     events.push({ ...actor, kind: "assignee_changed", fromUserId: existing.assigneeId, toUserId: data.assigneeId });
   }
   if (data.status && data.status !== existing.status) {
-    events.push({ ...actor, kind: "status_changed", reporterId: existing.reporterId, from: existing.status, to: data.status });
+    events.push({ ...actor, kind: "status_changed", reporterId: existing.reporterId, from: existing.status, to: data.status, note: resolutionNote });
   }
   if (events.length > 0) notifyLater(...events);
 
@@ -548,7 +639,7 @@ export async function editBugContentAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return fromZodError(parsed.error);
   }
 
   const normalizedDescription = await normalizeMentionTags(parsed.data.description);
@@ -586,6 +677,22 @@ export async function editBugContentAction(
     });
   });
 
+  const newlyMentioned = newlyMentionedUserIds(
+    existing.description,
+    normalizedDescription,
+  );
+  if (newlyMentioned.length > 0) {
+    notifyLater({
+      kind: "mentioned",
+      actorId: userId,
+      actorName: user.name ?? "Someone",
+      bugId,
+      bugTitle: parsed.data.title,
+      place: "description",
+      recipientIds: newlyMentioned,
+    });
+  }
+
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
@@ -598,7 +705,7 @@ export async function addCommentAction(
 ): Promise<ActionResult> {
   const userId = await requireUserId();
 
-  const limit = checkRateLimit(
+  const limit = await consumeRateLimit(
     `add-comment:${userId}`,
     ACTION_RATE_LIMITS.addComment,
   );
@@ -612,23 +719,24 @@ export async function addCommentAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid comment" };
+    return fromZodError(parsed.error, "Invalid comment");
   }
 
   const bug = await prisma.bug.findUnique({
     where: { id: bugId },
-    select: { id: true, isDeleted: true, title: true },
+    select: { id: true, isDeleted: true, title: true, reporterId: true, assigneeId: true },
   });
   if (!bug || bug.isDeleted) {
     return { error: "Issue not found" };
   }
 
   const parentId = parsed.data.parentId;
+  let parentAuthorId: string | null = null;
 
   if (parentId) {
     const parent = await prisma.comment.findUnique({
       where: { id: parentId },
-      select: { id: true, bugId: true, parentId: true, deletedAt: true },
+      select: { id: true, bugId: true, parentId: true, deletedAt: true, authorId: true },
     });
 
     if (!parent || parent.bugId !== bugId) {
@@ -637,6 +745,7 @@ export async function addCommentAction(
     if (parent.deletedAt) {
       return { error: "You can't reply to a deleted comment" };
     }
+    parentAuthorId = parent.authorId;
 
     const threadComments = await prisma.comment.findMany({
       where: { bugId },
@@ -656,7 +765,7 @@ export async function addCommentAction(
 
   const normalizedBody = await normalizeMentionTags(parsed.data.body);
 
-  await prisma.$transaction(async (tx) => {
+  const commentId = await prisma.$transaction(async (tx) => {
     const created = await tx.comment.create({
       data: {
         bugId,
@@ -665,6 +774,13 @@ export async function addCommentAction(
         parentId: parentId ?? null,
       },
       select: { id: true },
+    });
+    // Files uploaded with the comment (#215).
+    await linkAttachments(tx, {
+      ids: parseAttachmentIds(formData.get("attachmentIds")),
+      uploaderId: userId,
+      bugId,
+      commentId: created.id,
     });
     await tx.bugActivity.create({
       data: {
@@ -683,22 +799,36 @@ export async function addCommentAction(
       where: { id: bugId },
       data: { updatedAt: new Date() },
     });
+    // Commenting on an issue means you want to hear about replies (#216).
+    await ensureWatching(tx, bugId, [userId]);
+    return created.id;
   });
 
   const mentioned = extractMentionedUserIds(normalizedBody);
+  const author = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+  const actor = {
+    actorId: userId,
+    actorName: author?.name ?? "Someone",
+    bugId,
+    bugTitle: bug.title,
+  };
+  const excerpt = commentPreview(normalizedBody);
+  const events: NotificationEvent[] = [];
   if (mentioned.length > 0) {
-    const author = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
-    notifyLater({
-      kind: "mentioned",
-      actorId: userId,
-      actorName: author?.name ?? "Someone",
-      bugId,
-      bugTitle: bug.title,
-      place: "comment",
-      recipientIds: mentioned,
-      excerpt: commentPreview(normalizedBody),
-    });
+    events.push({ ...actor, kind: "mentioned", place: "comment", recipientIds: mentioned, excerpt, commentId });
   }
+  // Watchers hear about every new comment (#216). The reporter and assignee
+  // are the default audience; delivery adds anyone else watching.
+  events.push({
+    ...actor,
+    kind: "comment_added",
+    commentId,
+    excerpt,
+    parentAuthorId,
+    recipientIds: [bug.reporterId, bug.assigneeId].filter((id): id is string => Boolean(id)),
+    excludeIds: mentioned,
+  });
+  notifyLater(...events);
 
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
@@ -730,7 +860,7 @@ export async function toggleVoteAction(
   }
   const { userId } = resolved;
 
-  const limit = checkRateLimit(
+  const limit = await consumeRateLimit(
     `toggle-vote:${userId}`,
     ACTION_RATE_LIMITS.toggleVote,
   );
@@ -1031,6 +1161,8 @@ export async function selfAssignBugAction(
         where: { id: bugId },
         data: { assigneeId: targetAssigneeId },
       });
+      // Taking an issue means watching it (#216).
+      await ensureWatching(tx, bugId, [targetAssigneeId]);
 
       await tx.bugActivity.create({
         data: {

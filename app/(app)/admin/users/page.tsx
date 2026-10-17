@@ -6,10 +6,16 @@ import { roleLabels } from "@/lib/roles";
 import { buildUserSearchWhere } from "@/lib/user-search";
 import { toSingleQueryParam } from "@/lib/search";
 import { LocalTime } from "@/components/local-time";
+import { Avatar } from "@/components/avatar";
 import { Badge } from "@/components/ui/badge";
 import { PromoteUserButton } from "@/components/promote-user-button";
 import { DemoteUserButton } from "@/components/demote-user-button";
 import { UserSearch } from "@/components/user-search";
+import { PaginationControls } from "@/components/pagination-controls";
+import { calculatePagination } from "@/lib/pagination";
+
+/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+export const metadata = { title: "Admins" };
 
 const roleBadgeClass: Record<string, string> = {
   user: "bg-slate-100 text-slate-700",
@@ -17,10 +23,18 @@ const roleBadgeClass: Record<string, string> = {
   super_admin: "bg-amber-100 text-amber-900",
 };
 
-const roleOrder = { super_admin: 0, admin: 1, user: 2 } as const;
+/**
+ * The list used to load every account in one query and sort in memory. That
+ * is fine for a handful of users and a cliff once the product has real ones,
+ * so it is paged in the database now. `role: "desc"` reproduces the old
+ * super admin -> admin -> user order: the Role enum is declared in the
+ * opposite order, and Postgres sorts enums by declaration.
+ */
+const USERS_PER_PAGE = 25;
 
 type SearchParams = Promise<{
   q?: string | string[];
+  page?: string | string[];
   [key: string]: string | string[] | undefined;
 }>;
 
@@ -35,22 +49,27 @@ export default async function AdminUsersPage({
   const query = toSingleQueryParam(params.q)?.trim() ?? "";
   const where = buildUserSearchWhere(query);
 
+  const totalCount = await prisma.user.count({ where });
+  const pagination = calculatePagination({
+    page: params.page,
+    pageSize: USERS_PER_PAGE,
+    totalCount,
+  });
+
   const users = await prisma.user.findMany({
     where,
-    orderBy: { name: "asc" },
+    orderBy: [{ role: "desc" }, { name: "asc" }],
+    skip: pagination.skip,
+    take: pagination.take,
     select: {
       id: true,
       name: true,
       email: true,
+      image: true,
       role: true,
       createdAt: true,
     },
   });
-
-  users.sort(
-    (a, b) =>
-      roleOrder[a.role] - roleOrder[b.role] || a.name.localeCompare(b.name),
-  );
 
   return (
     <div className="space-y-6">
@@ -90,8 +109,13 @@ export default async function AdminUsersPage({
               {users.map((user) => (
                 <tr key={user.id} className="hover:bg-slate-50/80">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-slate-900">{user.name}</div>
-                    <div className="text-xs sm:text-sm text-slate-500 break-all">{user.email}</div>
+                    <div className="flex items-center gap-3">
+                      <Avatar name={user.name} image={user.image} size="md" />
+                      <div className="min-w-0">
+                        <div className="font-medium text-slate-900">{user.name}</div>
+                        <div className="text-xs sm:text-sm text-slate-500 break-all">{user.email}</div>
+                      </div>
+                    </div>
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
                     <Badge className={roleBadgeClass[user.role]}>
@@ -141,6 +165,17 @@ export default async function AdminUsersPage({
           </p>
         )}
       </div>
+
+      <PaginationControls
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        totalCount={pagination.totalCount}
+        from={pagination.from}
+        to={pagination.to}
+        queryParams={{ q: query || undefined }}
+        basePath="/admin/users"
+        itemLabel="user"
+      />
     </div>
   );
 }

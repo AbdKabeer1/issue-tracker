@@ -1,15 +1,20 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import type { Role } from "@prisma/client";
-import { auth, signOut } from "@/auth";
+import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import {
   isAdmin,
   resolveEffectiveRole,
   ACTIVE_ROLE_COOKIE_NAME,
 } from "@/lib/roles";
+import { isPasswordAuthEnabled } from "@/lib/auth-mode";
+import { upsertGoogleUser } from "@/lib/google-user";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { isSuperAdminEmail } from "@/lib/super-admin";
+
+/** Route handler that clears an invalid session (see app/session-expired/route.ts). */
+export const SESSION_EXPIRED_PATH = "/session-expired";
 
 export type SessionAppUser = {
   id: string;
@@ -24,8 +29,10 @@ export type SessionAppUser = {
 /**
  * App-layout gate. Uses the same JWT session as edge middleware (auth.config).
  * Missing session → redirect to login.
- * Stale JWT (cookie present, user gone from DB) → signOut to clear cookie,
- * then login — avoids middleware bouncing /login ↔ /bugs.
+ * Stale JWT (cookie present, user gone from DB, or issued before a password
+ * reset) → /session-expired, a route handler that clears the cookie and goes
+ * to login. Calling signOut() here would throw: Server Components can't set
+ * cookies.
  */
 export async function requireUser(): Promise<SessionAppUser> {
   const session = await auth();
@@ -34,20 +41,46 @@ export async function requireUser(): Promise<SessionAppUser> {
   }
 
   const resolved = await resolveSessionUserId();
+  let userId: string;
   if ("error" in resolved) {
-    // Clears Auth.js cookies, then redirects (does not return).
-    await signOut({ redirectTo: "/login" });
-    throw new Error("unreachable: signOut redirects");
+    const email = session.user.email?.toLowerCase();
+    // Google-only production has no password reset. A session with an email
+    // and no matching row was saved under Google's subject, not User.id.
+    if (!email || isPasswordAuthEnabled()) {
+      redirect(SESSION_EXPIRED_PATH);
+    }
+    try {
+      userId = (
+        await upsertGoogleUser({
+          email,
+          name: session.user.name,
+          image: session.user.image,
+        })
+      ).id;
+    } catch (error) {
+      console.error("[auth] Google session could not be linked to a user", error);
+      redirect(SESSION_EXPIRED_PATH);
+    }
+  } else {
+    userId = resolved.userId;
   }
 
-  const dbUser = await prisma.user.findUnique({
-    where: { id: resolved.userId },
-    select: { id: true, name: true, email: true, image: true, role: true },
-  });
+  const dbUser = await prisma.user
+    .findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true, image: true, role: true },
+    })
+    .catch(async () => {
+      const basic = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, name: true, email: true },
+      });
+      if (!basic) return null;
+      return { ...basic, image: null, role: "user" as Role };
+    });
 
   if (!dbUser) {
-    await signOut({ redirectTo: "/login" });
-    throw new Error("unreachable: signOut redirects");
+    redirect(SESSION_EXPIRED_PATH);
   }
 
   const isRealSuperAdmin =
@@ -55,11 +88,15 @@ export async function requireUser(): Promise<SessionAppUser> {
   const isRealAdmin = isRealSuperAdmin || dbUser.role === "admin";
 
   if (dbUser.role !== "super_admin" && isSuperAdminEmail(dbUser.email)) {
-    await prisma.user.update({
-      where: { id: dbUser.id },
-      data: { role: "super_admin" },
-    });
-    dbUser.role = "super_admin";
+    try {
+      await prisma.user.update({
+        where: { id: dbUser.id },
+        data: { role: "super_admin" },
+      });
+      dbUser.role = "super_admin";
+    } catch (error) {
+      console.error("[auth] super admin role update failed", error);
+    }
   }
 
   const cookieStore = await cookies();

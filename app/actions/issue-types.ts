@@ -1,11 +1,21 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { expireTag, TAGS } from "@/lib/lookups";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-helpers";
 import { canDeleteIssueType, issueTypeInputSchema } from "@/lib/issue-types";
 
 export type IssueTypeActionResult = { error?: string; ok?: boolean };
+
+const TYPE_NOT_FOUND = "Type not found";
+
+/** Prisma P2025: the row was deleted (e.g. by another admin) before we wrote to it. */
+function isRecordNotFound(err: unknown): boolean {
+  return (
+    typeof err === "object" && err !== null && "code" in err && err.code === "P2025"
+  );
+}
 
 export async function createIssueTypeAction(
   formData: FormData,
@@ -62,6 +72,7 @@ export async function createIssueTypeAction(
     throw err;
   }
 
+  expireTag(TAGS.issueTypes);
   revalidatePath("/admin/types");
   revalidatePath("/bugs/new");
   return { ok: true };
@@ -126,9 +137,13 @@ export async function updateIssueTypeAction(
     ) {
       return { error: `Another type named "${normalizedName}" already exists.` };
     }
+    if (isRecordNotFound(err)) {
+      return { error: TYPE_NOT_FOUND };
+    }
     throw err;
   }
 
+  expireTag(TAGS.issueTypes);
   revalidatePath("/admin/types");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
@@ -158,6 +173,7 @@ export async function toggleIssueTypeActiveAction(
     data: { isActive: !existing.isActive },
   });
 
+  expireTag(TAGS.issueTypes);
   revalidatePath("/admin/types");
   revalidatePath("/bugs/new");
   return { ok: true };
@@ -172,6 +188,15 @@ export async function deleteIssueTypeAction(
     return { error: "Invalid type ID" };
   }
 
+  const existing = await prisma.issueType.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    return { error: TYPE_NOT_FOUND };
+  }
+
   const count = await prisma.bug.count({
     where: { typeId: id },
   });
@@ -181,10 +206,18 @@ export async function deleteIssueTypeAction(
     return { error: check.reason };
   }
 
-  await prisma.issueType.delete({
-    where: { id },
-  });
+  try {
+    await prisma.issueType.delete({
+      where: { id },
+    });
+  } catch (err: unknown) {
+    if (isRecordNotFound(err)) {
+      return { error: TYPE_NOT_FOUND };
+    }
+    throw err;
+  }
 
+  expireTag(TAGS.issueTypes);
   revalidatePath("/admin/types");
   revalidatePath("/bugs/new");
   return { ok: true };

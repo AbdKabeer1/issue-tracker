@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_COMMENT_DEPTH,
   buildCommentTree,
+  countVisibleComments,
   commentDepth,
   truncateCommentBody,
   type FlatComment,
@@ -128,5 +129,27 @@ describe("truncateCommentBody", () => {
     expect(
       truncateCommentBody("## Steps\n\n> expected\n\n- [x] done\n- [ ] todo"),
     ).toBe("Steps expected done todo");
+  });
+});
+
+describe("countVisibleComments (#257)", () => {
+  it("counts every comment when none are deleted", () => {
+    expect(countVisibleComments([comment({ id: "a" }), comment({ id: "b" })])).toBe(2);
+  });
+
+  it("leaves deleted comments out of the count", () => {
+    const comments = [
+      comment({ id: "a" }),
+      comment({ id: "b", body: "", deletedAt: new Date("2026-01-02T00:00:00Z") }),
+      comment({ id: "c", parentId: "b" }),
+    ];
+    expect(countVisibleComments(comments)).toBe(2);
+  });
+
+  it("is zero when every comment was deleted", () => {
+    const deletedAt = "2026-01-02T00:00:00.000Z";
+    expect(
+      countVisibleComments([comment({ id: "a", deletedAt }), comment({ id: "b", deletedAt })]),
+    ).toBe(0);
   });
 });

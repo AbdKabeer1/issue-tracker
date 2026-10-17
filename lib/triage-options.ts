@@ -17,3 +17,31 @@ export function withCurrentOption(
   }
   return [...active, { id: current.id, name: `${current.name} (inactive)` }];
 }
+
+export type SavedTriageValues = {
+  status: string;
+  severity: string;
+  typeId?: string | null;
+  categoryId?: string | null;
+  assigneeId?: string | null;
+};
+
+/**
+ * React `key` for the triage fields, built from the issue's saved values.
+ *
+ * The selects (and the assignee combobox) are uncontrolled, and React resets
+ * a `<form action>` to the values it was mounted with after each submit. The
+ * refreshed props don't update mounted fields, so they kept showing page-load
+ * values and the next save sent those back, e.g. undoing a status change
+ * (#261). Keying the fields on the saved values remounts them whenever the
+ * server's values change, whether from this form or another control.
+ */
+export function triageFieldsKey(values: SavedTriageValues): string {
+  return [
+    values.status,
+    values.severity,
+    values.typeId ?? "",
+    values.categoryId ?? "",
+    values.assigneeId ?? "",
+  ].join("|");
+}

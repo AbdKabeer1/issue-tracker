@@ -39,6 +39,7 @@ describe("CommentThread permalinks (#142)", () => {
     const html = renderToStaticMarkup(
       createElement(CommentThread, {
         bugId: "b1",
+        issueUrl: "https://issues.example/bugs/b1",
         reporterId: "u1",
         comments,
         users: [{ id: "u1", name: "Alice" }],
@@ -48,5 +49,54 @@ describe("CommentThread permalinks (#142)", () => {
     expect(html).toContain('id="comment-c1"');
     expect(html).toContain("scroll-mt-24");
     expect(html).toContain('href="#comment-c1"');
+    // A permalink copy control beside the timestamp, with a real name (#279).
+    expect(html).toContain('aria-label="Copy link to this comment"');
+  });
+});
+
+describe("CommentThread read-only mode (#122)", () => {
+  const comments: CommentNode[] = [
+    {
+      id: "c1",
+      authorId: "u1",
+      parentId: null,
+      body: "First comment",
+      createdAt: new Date("2026-10-16T12:00:00Z"),
+      editedAt: null,
+      deletedAt: null,
+      depth: 0,
+      author: { name: "Alice", role: "user" },
+      parent: null,
+      children: [],
+    },
+  ];
+
+  const render = (readOnly: boolean) =>
+    renderToStaticMarkup(
+      createElement(CommentThread, {
+        bugId: "b1",
+        issueUrl: "https://issues.example/bugs/b1",
+        reporterId: "u1",
+        comments,
+        users: [{ id: "u1", name: "Alice" }],
+        currentUserId: "u1",
+        currentUserRole: "user",
+        readOnly,
+      }),
+    );
+
+  it("shows the comment form and Reply on a normal issue", () => {
+    const html = render(false);
+    expect(html).toContain("<form");
+    expect(html).toContain(">Reply<");
+  });
+
+  it("keeps comments but hides the form, Reply, Edit and Delete on a deleted issue", () => {
+    const html = render(true);
+    expect(html).toContain("First comment");
+    expect(html).not.toContain("<form");
+    expect(html).not.toContain(">Reply<");
+    expect(html).not.toContain(">Edit<");
+    expect(html).not.toContain(">Delete<");
   });
 });

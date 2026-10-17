@@ -15,12 +15,20 @@ import { CommentBody, MentionText } from "@/components/comment-body";
 import { CommentForm } from "@/components/comment-form";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
+import { CopyLinkButton } from "@/components/copy-link-button";
+import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
+
+type AttachmentsByComment = Record<string, AttachmentView[]>;
 
 type UserOption = { id: string; name: string };
 
 type ViewerProps = {
   currentUserId?: string;
   currentUserRole?: AppRole | null;
+  /** Deleted issues: show comments but no reply, edit, delete or new comment. */
+  readOnly?: boolean;
 };
 
 function CommentEditForm({
@@ -81,44 +89,68 @@ function CommentEditForm({
 function CommentItem({
   comment,
   bugId,
+  issueUrl,
   reporterId,
   users,
   currentUserId,
   currentUserRole,
+  attachmentsByComment = {},
+  readOnly = false,
 }: {
   comment: CommentNode;
   bugId: string;
+  /** Canonical issue URL, for each comment's permalink (#279). */
+  issueUrl: string;
   reporterId: string;
   users: UserOption[];
+  attachmentsByComment?: AttachmentsByComment;
 } & ViewerProps) {
   const [replying, setReplying] = useState(false);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const confirm = useConfirm();
+  const toast = useToast();
   const isDeleted = Boolean(comment.deletedAt);
-  const canReply = comment.depth < MAX_COMMENT_DEPTH && !isDeleted;
-  const canEdit = canEditComment(currentUserId, comment);
-  const canDelete = canDeleteComment(currentUserId, currentUserRole, comment);
+  const canReply =
+    !readOnly && comment.depth < MAX_COMMENT_DEPTH && !isDeleted;
+  const canEdit = !readOnly && canEditComment(currentUserId, comment);
+  const canDelete =
+    !readOnly && canDeleteComment(currentUserId, currentUserRole, comment);
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     const own = comment.authorId === currentUserId;
-    const confirmed = window.confirm(
-      own
-        ? "Delete your comment? Replies will stay, and the comment will show as deleted."
-        : `Delete ${comment.author.name}'s comment? This is recorded in the activity log.`,
-    );
+    const confirmed = await confirm({
+      title: own ? "Delete your comment?" : `Delete ${comment.author.name}'s comment?`,
+      body: own
+        ? "Replies will stay, and the comment will show as deleted."
+        : "This is recorded in the activity log.",
+      confirmLabel: "Delete comment",
+      tone: "danger",
+    });
     if (!confirmed) return;
     setError(null);
     startTransition(async () => {
       const result = await deleteCommentAction(comment.id);
-      if (result.error) setError(result.error);
+      if (result.error) {
+        setError(result.error);
+        toast(result.error, "error");
+      } else {
+        toast("Comment deleted.");
+      }
     });
   };
 
   return (
-    <li id={`comment-${comment.id}`} className="scroll-mt-24 space-y-3">
+    <li
+      id={`comment-${comment.id}`}
+      // :target is the comment a permalink points at (#279); the highlight
+      // needs no script, so it works on first load and on hash changes.
+      // break-inside keeps a comment whole across printed pages (#300).
+      className="group/comment scroll-mt-24 space-y-3 break-inside-avoid"
+    >
       <article
-        className={`rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 ${
+        className={`rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 group-target/comment:border-teal-400 group-target/comment:bg-teal-50 group-target/comment:ring-2 group-target/comment:ring-teal-500/40 motion-safe:transition-colors ${
           comment.depth > 0 ? "border-l-2 border-l-teal-600" : ""
         }`}
       >
@@ -130,6 +162,9 @@ function CommentItem({
               <UserNameWithBadges
                 name={comment.author.name}
                 role={comment.author.role}
+                image={comment.author.image}
+                avatar="sm"
+                userId={comment.authorId}
                 showAuthor={comment.authorId === reporterId}
                 className="font-medium text-slate-700"
               />
@@ -140,6 +175,11 @@ function CommentItem({
                 >
                   <LocalTime date={comment.createdAt} />
                 </a>
+                <CopyLinkButton
+                  url={`${issueUrl}#comment-${comment.id}`}
+                  label="comment"
+                  compact
+                />
                 {comment.editedAt ? (
                   <span title="This comment was edited">· edited</span>
                 ) : null}
@@ -168,7 +208,10 @@ function CommentItem({
                 onDone={() => setEditing(false)}
               />
             ) : (
-              <CommentBody body={comment.body} users={users} />
+              <>
+                <CommentBody body={comment.body} users={users} />
+                <AttachmentList attachments={attachmentsByComment[comment.id] ?? []} />
+              </>
             )}
           </>
         )}
@@ -235,10 +278,13 @@ function CommentItem({
               key={child.id}
               comment={child}
               bugId={bugId}
+              issueUrl={issueUrl}
               reporterId={reporterId}
               users={users}
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
+              attachmentsByComment={attachmentsByComment}
+              readOnly={readOnly}
             />
           ))}
         </ul>
@@ -249,22 +295,30 @@ function CommentItem({
 
 export function CommentThread({
   bugId,
+  issueUrl,
   reporterId,
   comments,
   users,
   currentUserId,
   currentUserRole,
+  attachmentsByComment = {},
+  readOnly = false,
 }: {
   bugId: string;
+  issueUrl: string;
   reporterId: string;
   comments: CommentNode[];
   users: UserOption[];
+  /** Files attached to each comment, by comment id (#215). */
+  attachmentsByComment?: AttachmentsByComment;
 } & ViewerProps) {
   return (
     <div className="mt-4 space-y-6">
       {comments.length === 0 ? (
         <p className="text-sm text-slate-500">
-          No comments yet. Add triage notes or reproduction steps below.
+          {readOnly
+            ? "No comments."
+            : "No comments yet. Add triage notes or reproduction steps below."}
         </p>
       ) : (
         <ul className="space-y-4">
@@ -273,15 +327,18 @@ export function CommentThread({
               key={comment.id}
               comment={comment}
               bugId={bugId}
+              issueUrl={issueUrl}
               reporterId={reporterId}
               users={users}
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
+              attachmentsByComment={attachmentsByComment}
+              readOnly={readOnly}
             />
           ))}
         </ul>
       )}
-      <CommentForm bugId={bugId} users={users} />
+      {readOnly ? null : <CommentForm bugId={bugId} users={users} />}
     </div>
   );
 }

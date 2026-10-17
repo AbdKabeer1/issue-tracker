@@ -1,36 +1,31 @@
 import { handlers } from "@/auth";
 import { BASE_PATH } from "@/lib/base-path";
 import { getSiteUrl } from "@/lib/site-url";
-import { popRecentAuthError } from "@/lib/auth-diagnostics";
+import { resolveAuthOrigin } from "@/lib/auth-origin";
+import { cleanEnv } from "@/lib/env-clean";
+import { recordAuthError } from "@/lib/auth-diagnostics";
 import { NextRequest } from "next/server";
+
+function configuredAuthUrl(): string | null {
+  return cleanEnv(process.env.AUTH_URL) || cleanEnv(process.env.NEXTAUTH_URL) || null;
+}
+
+/** The origin this request should be treated as, ignoring spoofable headers in production (#206). */
+function trustedOrigin(req: NextRequest): string {
+  return resolveAuthOrigin({
+    configuredUrl: configuredAuthUrl(),
+    requestUrl: req.url,
+    forwardedProto: req.headers.get("x-forwarded-proto"),
+    forwardedHost: req.headers.get("x-forwarded-host"),
+    host: req.headers.get("host"),
+  });
+}
 
 function withNormalizedRequest(req: NextRequest): NextRequest {
   const url = new URL(req.url);
-
-  // Normalize protocol from reverse proxy (Traefik/Coolify SSL termination)
-  const forwardedProto = req.headers.get("x-forwarded-proto");
-  const isLocal =
-    url.hostname === "localhost" ||
-    url.hostname === "127.0.0.1" ||
-    url.hostname === "0.0.0.0";
-  const proto = forwardedProto || (isLocal ? "http" : "https");
-  url.protocol = `${proto}:`;
-
-  // Normalize host from reverse proxy
-  const forwardedHost = req.headers.get("x-forwarded-host");
-  const host = forwardedHost || req.headers.get("host") || url.host;
-  url.host = host;
-
-  // Clear internal container port if behind public reverse proxy
-  if (
-    url.protocol === "https:" &&
-    (url.port === "3000" || url.port === "3001")
-  ) {
-    url.port = "";
-  }
-  if (forwardedHost && !forwardedHost.includes(":")) {
-    url.port = "";
-  }
+  const origin = new URL(trustedOrigin(req));
+  url.protocol = origin.protocol;
+  url.host = origin.host;
 
   // Restore subpath if stripped by Next.js router
   if (BASE_PATH && !url.pathname.startsWith(BASE_PATH)) {
@@ -38,6 +33,18 @@ function withNormalizedRequest(req: NextRequest): NextRequest {
   }
 
   return new NextRequest(url, req);
+}
+
+/** Generic sign-in failure redirect with diagnostic details (#118). */
+function loginErrorRedirect(req: NextRequest, error: unknown): Response {
+  recordAuthError(error);
+  console.error("[auth] handler threw exception:", error);
+  const redirectUrl = new URL(`${BASE_PATH}/login?error=Configuration`, trustedOrigin(req));
+  const errDesc = error instanceof Error ? error.message : String(error);
+  if (errDesc) {
+    redirectUrl.searchParams.set("reason", errDesc.slice(0, 140));
+  }
+  return Response.redirect(redirectUrl.toString());
 }
 
 function normalizeResponse(response: Response): Response {
@@ -69,28 +76,25 @@ function normalizeResponse(response: Response): Response {
     }
   }
 
-  const recentReason = popRecentAuthError();
-  if (location.includes("error=") && recentReason && targetUrl) {
-    targetUrl.searchParams.set("reason", recentReason);
-  }
-
   const finalLocation = targetUrl ? targetUrl.toString() : location;
 
   if (location.includes("error=")) {
+    // Details were already logged by the Auth.js logger (lib/auth-diagnostics.ts).
     console.error("[AUTH_REDIRECT_ERROR]", {
       location: finalLocation,
-      reason: recentReason,
       status: response.status,
     });
   }
 
-  if (finalLocation === location) {
+  const effectiveLocation = targetUrl ? targetUrl.toString() : finalLocation;
+
+  if (effectiveLocation === location) {
     return response;
   }
 
   // Use a new Response to avoid "TypeError: immutable" on guarded headers
   const newHeaders = new Headers(response.headers);
-  newHeaders.set("Location", finalLocation);
+  newHeaders.set("Location", effectiveLocation);
 
   return new Response(response.body, {
     status: response.status,
@@ -104,13 +108,7 @@ export async function GET(req: NextRequest) {
     const res = await handlers.GET(withNormalizedRequest(req));
     return normalizeResponse(res);
   } catch (error) {
-    console.error("[auth] GET handler threw exception:", error);
-    const reason = error instanceof Error ? error.message : String(error);
-    const redirectUrl = new URL(
-      `${BASE_PATH}/login?error=Configuration&reason=${encodeURIComponent(reason)}`,
-      req.nextUrl.origin,
-    );
-    return Response.redirect(redirectUrl.toString());
+    return loginErrorRedirect(req, error);
   }
 }
 
@@ -119,12 +117,6 @@ export async function POST(req: NextRequest) {
     const res = await handlers.POST(withNormalizedRequest(req));
     return normalizeResponse(res);
   } catch (error) {
-    console.error("[auth] POST handler threw exception:", error);
-    const reason = error instanceof Error ? error.message : String(error);
-    const redirectUrl = new URL(
-      `${BASE_PATH}/login?error=Configuration&reason=${encodeURIComponent(reason)}`,
-      req.nextUrl.origin,
-    );
-    return Response.redirect(redirectUrl.toString());
+    return loginErrorRedirect(req, error);
   }
 }

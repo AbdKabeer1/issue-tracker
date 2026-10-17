@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
 /**
@@ -11,18 +12,47 @@ import { usePathname } from "next/navigation";
  * The URL is resolved and validated server-side (see `lib/report-form.ts`) and
  * passed in as a prop, so no secret-looking config is inlined client-side.
  */
+/** True while the keyboard focus is in a text field anywhere on the page. */
+function useTypingSomewhere(): boolean {
+  const [typing, setTyping] = useState(false);
+
+  useEffect(() => {
+    const check = () => {
+      const el = document.activeElement as HTMLElement | null;
+      setTyping(
+        !!el &&
+          (el.tagName === "INPUT" ||
+            el.tagName === "TEXTAREA" ||
+            el.isContentEditable),
+      );
+    };
+    document.addEventListener("focusin", check);
+    document.addEventListener("focusout", check);
+    return () => {
+      document.removeEventListener("focusin", check);
+      document.removeEventListener("focusout", check);
+    };
+  }, []);
+
+  return typing;
+}
+
 export function ReportIssueFab({ href }: { href?: string }) {
   const pathname = usePathname();
+  // The button is fixed to the bottom-right, where it sits over the comment
+  // box on a phone. Get out of the way while someone is writing (#FAB).
+  const typing = useTypingSomewhere();
 
   if (!href) return null;
   if (pathname?.endsWith("/bugs/new")) return null;
+  if (typing) return null;
 
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 inline-flex min-h-11 items-center gap-2 rounded-full bg-teal-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg transition hover:bg-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 sm:right-6 sm:bottom-6"
+      className="print:hidden fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 inline-flex min-h-11 items-center gap-2 rounded-full bg-teal-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg transition hover:bg-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 sm:right-6 sm:bottom-6"
     >
       <svg
         viewBox="0 0 16 16"

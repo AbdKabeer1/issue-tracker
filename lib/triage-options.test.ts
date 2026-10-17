@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { withCurrentOption } from "./triage-options";
+import { triageFieldsKey, withCurrentOption } from "./triage-options";
 
 const active = [
   { id: "fix", name: "Fix" },
@@ -24,5 +24,36 @@ describe("withCurrentOption (#115)", () => {
   it("does not modify the original list", () => {
     withCurrentOption(active, { id: "feat", name: "Feat" });
     expect(active).toHaveLength(2);
+  });
+});
+
+describe("triageFieldsKey (#261)", () => {
+  const saved = {
+    status: "in_progress",
+    severity: "medium",
+    typeId: "fix",
+    categoryId: "web",
+    assigneeId: "user-1",
+  };
+
+  it("is stable while the saved values are unchanged", () => {
+    expect(triageFieldsKey(saved)).toBe(triageFieldsKey({ ...saved }));
+  });
+
+  it.each([
+    ["status", { status: "resolved" }],
+    ["severity", { severity: "high" }],
+    ["type", { typeId: "design" }],
+    ["platform", { categoryId: null }],
+    ["assignee", { assigneeId: "user-2" }],
+  ])("changes when the saved %s changes, so the fields remount", (_field, change) => {
+    expect(triageFieldsKey({ ...saved, ...change })).not.toBe(triageFieldsKey(saved));
+  });
+
+  it("treats a missing value the same as an empty one", () => {
+    const empty = { status: "open", severity: "low" };
+    expect(triageFieldsKey(empty)).toBe(
+      triageFieldsKey({ ...empty, typeId: null, categoryId: undefined, assigneeId: null }),
+    );
   });
 });

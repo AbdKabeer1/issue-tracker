@@ -4,6 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { ensureDefaultPlatforms } from "@/lib/categories";
 import { CategoryManager } from "@/components/category-manager";
 
+/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+export const metadata = { title: "Platforms" };
+
 export default async function AdminCategoriesPage() {
   await requireAdmin();
 
@@ -17,6 +20,17 @@ export default async function AdminCategoriesPage() {
       },
     },
   });
+
+  // Soft-deleted issues still hold the platform, so they block deletion, but
+  // the list hides them. Counted apart so the "in use" link matches (#314).
+  const deletedRows = await prisma.bug.groupBy({
+    by: ["categoryId"],
+    where: { isDeleted: true, categoryId: { not: null } },
+    _count: { _all: true },
+  });
+  const deletedCounts = Object.fromEntries(
+    deletedRows.map((row) => [row.categoryId as string, row._count._all]),
+  );
 
   return (
     <div className="space-y-6">
@@ -33,7 +47,7 @@ export default async function AdminCategoriesPage() {
         </p>
       </div>
 
-      <CategoryManager initialCategories={categories} />
+      <CategoryManager initialCategories={categories} deletedCounts={deletedCounts} />
     </div>
   );
 }

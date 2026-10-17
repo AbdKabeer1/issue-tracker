@@ -3,6 +3,7 @@ import { isAdmin, type AppRole } from "@/lib/roles";
 export const TICKET_ASSIGN_ERRORS = {
   unauthorized: "Only admins can assign issues to other users",
   unauthorizedUpdate: "Only the assignee or an admin can update this issue",
+  statusNeedsAssignment: "Assign this issue to yourself first, then change its status.",
   invalidId: "Invalid issue ID",
   notFound: "Issue not found",
   assigneeNotFound: "Assignee not found",

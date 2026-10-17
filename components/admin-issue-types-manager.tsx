@@ -12,6 +12,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { InUseNotice, type InUse } from "@/components/in-use-notice";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 export interface IssueTypeWithCount {
   id: string;
@@ -26,9 +29,13 @@ export interface IssueTypeWithCount {
 
 export function AdminIssueTypesManager({
   types,
+  deletedCounts = {},
 }: {
   types: IssueTypeWithCount[];
+  /** Soft-deleted issues per type, which block deletion but are hidden. */
+  deletedCounts?: Record<string, number>;
 }) {
+  const [inUse, setInUse] = useState<InUse | null>(null);
   const [editingType, setEditingType] = useState<IssueTypeWithCount | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [name, setName] = useState("");
@@ -36,6 +43,8 @@ export function AdminIssueTypesManager({
   const [isActive, setIsActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const confirm = useConfirm();
+  const toast = useToast();
 
   function startCreate() {
     setName("");
@@ -102,25 +111,44 @@ export function AdminIssueTypesManager({
     });
   }
 
-  function handleDelete(type: IssueTypeWithCount) {
+  async function handleDelete(type: IssueTypeWithCount) {
     if (type._count.bugs > 0) {
-      setError(
-        `Cannot delete "${type.name}" because it is in use by ${type._count.bugs} issue(s). Deactivate it instead.`,
-      );
+      setError(null);
+      setInUse({
+        kind: "type",
+        id: type.id,
+        name: type.name,
+        // The list filters types through the tag filter, by name.
+        filterValue: type.name,
+        total: type._count.bugs,
+        deleted: deletedCounts[type.id] ?? 0,
+        isActive: type.isActive,
+      });
       return;
     }
+    setInUse(null);
 
-    if (!confirm(`Are you sure you want to delete the issue type "${type.name}"?`)) {
-      return;
-    }
+    const confirmed = await confirm({
+      title: `Delete issue type "${type.name}"?`,
+      body: "This cannot be undone.",
+      confirmLabel: "Delete type",
+      tone: "danger",
+    });
+    if (!confirmed) return;
 
     setError(null);
     startTransition(async () => {
       try {
         const result = await deleteIssueTypeAction(type.id);
-        if (result.error) setError(result.error);
+        if (result.error) {
+          setError(result.error);
+          toast(result.error, "error");
+        } else {
+          toast(`Issue type "${type.name}" deleted.`);
+        }
       } catch {
         setError("Failed to delete type.");
+        toast("Failed to delete type.", "error");
       }
     });
   }
@@ -140,6 +168,29 @@ export function AdminIssueTypesManager({
           <Button onClick={startCreate}>Add new type</Button>
         )}
       </div>
+
+      {inUse ? (
+        <InUseNotice
+          inUse={inUse}
+          pending={pending}
+          onDismiss={() => setInUse(null)}
+          onDeactivate={() =>
+            startTransition(async () => {
+              try {
+                const result = await toggleIssueTypeActiveAction(inUse.id);
+                if (result.error) {
+                  toast(result.error, "error");
+                } else {
+                  toast(`Issue type “${inUse.name}” deactivated.`);
+                  setInUse(null);
+                }
+              } catch {
+                toast("Failed to update status.", "error");
+              }
+            })
+          }
+        />
+      ) : null}
 
       {error ? (
         <div
@@ -215,7 +266,10 @@ export function AdminIssueTypesManager({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {/* #211: `overflow-hidden` clipped the Actions column on narrow screens,
+          making Delete unreachable. Scroll instead, matching the users table
+          in app/(app)/admin/users/page.tsx. */}
+      <div className="overflow-x-auto overflow-y-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
             <tr>
@@ -279,16 +333,14 @@ export function AdminIssueTypesManager({
                       type="button"
                       disabled={pending}
                       onClick={() => handleDelete(type)}
-                      className={`text-xs font-medium ${
+                      // Clickable when in use, like the platform page: it
+                      // explains why it cannot delete rather than looking
+                      // dead (#314). So no not-allowed cursor either.
+                      className={`text-xs font-medium hover:underline ${
                         type._count.bugs > 0
-                          ? "cursor-not-allowed text-slate-500"
-                          : "text-red-600 hover:text-red-800 hover:underline"
+                          ? "text-slate-600 hover:text-slate-800"
+                          : "text-red-600 hover:text-red-800"
                       }`}
-                      title={
-                        type._count.bugs > 0
-                          ? "Cannot delete type in use by existing issues"
-                          : "Delete type"
-                      }
                     >
                       Delete
                     </button>

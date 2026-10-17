@@ -4,7 +4,7 @@ import { stripMarkdown } from "@/lib/rich-text";
 /** Root = 0. Replies may nest up to this depth (3 levels total). */
 export const MAX_COMMENT_DEPTH = 2;
 
-export type CommentAuthor = { name: string; role?: AppRole | null };
+export type CommentAuthor = { name: string; role?: AppRole | null; image?: string | null };
 
 export type FlatComment = {
   id: string;
@@ -27,6 +27,16 @@ export type CommentNode = FlatComment & {
   depth: number;
   children: CommentNode[];
 };
+
+/**
+ * Comments that still have content. Deleted comments are soft-deleted and kept
+ * so their replies stay threaded, but they don't count towards "Comments (N)" (#257).
+ */
+export function countVisibleComments(
+  comments: readonly { deletedAt?: Date | string | null }[],
+): number {
+  return comments.filter((comment) => !comment.deletedAt).length;
+}
 
 /** Build a nested tree from a flat, chronological comment list. */
 export function buildCommentTree(comments: FlatComment[]): CommentNode[] {

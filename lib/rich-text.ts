@@ -206,3 +206,32 @@ export function safeHref(url: string): string | null {
   if (/^mailto:[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(trimmed)) return trimmed;
   return null;
 }
+
+/** Hosts whose images may load inline (GitHub attachments and avatars). */
+const INLINE_IMAGE_HOSTS = new Set([
+  "user-images.githubusercontent.com",
+  "private-user-images.githubusercontent.com",
+  "avatars.githubusercontent.com",
+]);
+
+/**
+ * `src` for an inline Markdown image, or null to show it as a plain link.
+ * Images from arbitrary servers would let anyone log every reader's IP and
+ * read time (tracking pixels, #119), so only https GitHub image hosts load.
+ */
+export function inlineImageSrc(url: string): string | null {
+  const href = safeHref(url);
+  if (!href) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(href);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:") return null;
+  const host = parsed.hostname.toLowerCase();
+  if (host === "github.com") {
+    return parsed.pathname.startsWith("/user-attachments/") ? href : null;
+  }
+  return INLINE_IMAGE_HOSTS.has(host) ? href : null;
+}

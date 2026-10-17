@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -6,12 +7,22 @@ import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { LocalTime } from "@/components/local-time";
+import { currentResolution, isFinishedStatus, type StatusChangeActivity } from "@/lib/resolution-note";
+import { statusLabel as resolutionStatusLabel } from "@/lib/labels";
+import { formatIssueNumber } from "@/lib/issue-number";
 import { buildCommentTree } from "@/lib/comments";
 import {
+  COMMENT_THREADS_PER_PAGE,
+  earlierThreadsHref,
+  loadCommentWindow,
+  parseCommentTarget,
+  parseThreadWindow,
+  type CommentWindow,
+} from "@/lib/comment-window";
+import { CommentPermalinkResolver } from "@/components/comment-permalink-resolver";
+import {
   bugLinkPreviewDescription,
-  snippetText,
 } from "@/lib/link-preview";
-import { stripMarkdown } from "@/lib/rich-text";
 import { absoluteUrl } from "@/lib/site-url";
 import { SHARE_IMAGE } from "@/lib/share-image";
 import {
@@ -20,15 +31,19 @@ import {
   statusClass,
   statusLabels,
 } from "@/lib/labels";
-import { ActivityTimeline } from "@/components/activity-timeline";
+import { ActivityTimeline, type ActivityEntry } from "@/components/activity-timeline";
 import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
+import { WatchButton } from "@/components/watch-button";
+import { isWatchingIssue } from "@/lib/watch";
 import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentThread } from "@/components/comment-thread";
+import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
-import { getActiveIssueTypes } from "@/lib/issue-types";
+import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { fetchVoterSummary } from "@/lib/voter-summaries";
+import { createEmptyVoterSummary } from "@/lib/voters";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
 import { canEditTicket } from "@/lib/ticket-editing";
 import { DeleteBugButton } from "@/components/delete-bug-button";
@@ -36,12 +51,47 @@ import { RestoreBugButton } from "@/components/restore-bug-button";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { canAssignTicket } from "@/lib/ticket-assignment";
 import { SelfAssignButton } from "@/components/self-assign-button";
+import { CopyLinkButton } from "@/components/copy-link-button";
 import { EditableIssueDescription } from "@/components/editable-issue-description";
 import { withCurrentOption } from "@/lib/triage-options";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
+
+const NO_COMMENTS: CommentWindow = {
+  comments: [],
+  shownThreads: 0,
+  hiddenThreads: 0,
+  visibleCount: 0,
+};
+
+/** How much of the activity log a single page render is allowed to load. */
+const ACTIVITY_PAGE_SIZE = 50;
+
+async function loadOptional<T>(label: string, fallback: T, load: () => Promise<T>): Promise<T> {
+  try {
+    return await load();
+  } catch (error) {
+    console.error(`[issue] ${label} failed`, error);
+    return fallback;
+  }
+}
+
+function issueLoadError(detail: string) {
+  return (
+    <div className="rounded-xl border border-red-200 bg-white px-6 py-10">
+      <h1 className="text-xl font-semibold text-slate-900">This issue could not be loaded</h1>
+      <p className="mt-2 text-sm text-slate-600">
+        The issue query failed. The message below is the database error.
+      </p>
+      <pre className="mt-4 overflow-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-800">
+        {detail}
+      </pre>
+    </div>
+  );
+}
 
 export async function generateMetadata({
   params,
@@ -50,12 +100,11 @@ export async function generateMetadata({
   const bug = await prisma.bug.findUnique({
     where: { id },
     select: {
+      number: true,
       title: true,
-      description: true,
       status: true,
       updatedAt: true,
       isDeleted: true,
-      reporter: { select: { name: true } },
     },
   });
 
@@ -67,14 +116,14 @@ export async function generateMetadata({
     };
   }
 
-  const description = bugLinkPreviewDescription({
-    status: bug.status,
-    authorName: bug.reporter.name,
-    description: stripMarkdown(bug.description),
-  });
+  // Title and status only: these tags are served to anyone with a preview-bot
+  // User-Agent, signed in or not (#117).
+  const description = bugLinkPreviewDescription({ status: bug.status });
   const canonical = absoluteUrl(`/bugs/${id}`);
   const image = absoluteUrl(SHARE_IMAGE.url);
-  const title = bug.title;
+  // The reference goes in the tab title too: with several issues open, the
+  // number is what tells two similar titles apart.
+  const title = `${formatIssueNumber(bug.number)} ${bug.title}`;
 
   return {
     title,
@@ -87,7 +136,6 @@ export async function generateMetadata({
       url: canonical,
       type: "article",
       siteName: "Zedu Issues",
-      authors: [bug.reporter.name],
       modifiedTime: bug.updatedAt.toISOString(),
       images: [{ ...SHARE_IMAGE, url: image }],
     },
@@ -99,28 +147,26 @@ export async function generateMetadata({
     },
     other: {
       "bug:status": statusLabels[bug.status],
-      "bug:author": bug.reporter.name,
     },
   };
 }
 
-export default async function BugDetailPage({ params }: BugPageProps) {
+export default async function BugDetailPage({ params, searchParams }: BugPageProps) {
   const { id } = await params;
+  const query = (await searchParams) ?? {};
   const resolved = await resolveSessionUserId();
   const userId = "userId" in resolved ? resolved.userId : undefined;
 
-  // Unauthenticated crawlers only get a safe, limited preview (no comments,
-  // emails, or proof links). Interactive UI stays behind auth.
+  // Unauthenticated link-preview bots get the title and status only (#117).
+  // They're recognised by User-Agent, which anyone can fake, so nothing more
+  // sensitive (reporter, severity, description) may appear here.
   if (!userId) {
     const bug = await prisma.bug.findUnique({
       where: { id },
       select: {
         title: true,
-        description: true,
         status: true,
-        severity: true,
         isDeleted: true,
-        reporter: { select: { name: true } },
       },
     });
     if (!bug || bug.isDeleted) notFound();
@@ -133,14 +179,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           <Badge className={statusClass[bug.status]}>
             {statusLabels[bug.status]}
           </Badge>
-          <Badge className={severityClass[bug.severity]}>
-            {severityLabels[bug.severity]}
-          </Badge>
         </div>
-        <p className="text-sm text-slate-600">
-          Reported by {bug.reporter.name}
-        </p>
-        <p className="text-slate-800">{snippetText(bug.description, 280)}</p>
         <Link
           href={`/login?callbackUrl=${encodeURIComponent(`/bugs/${id}`)}`}
           className="inline-flex text-sm font-medium text-teal-700 hover:underline"
@@ -155,47 +194,30 @@ export default async function BugDetailPage({ params }: BugPageProps) {
   const canTriage = isAdmin(user.role);
   const canDelete = canDeleteTicket(user.role);
 
-  const [bug, users, categories, types, voterSummary] = await Promise.all([
-    prisma.bug.findUnique({
+  // The list page already proved the issue row itself can be read. Comments,
+  // the activity log, watches and attachments are newer tables. One of them
+  // missing used to reject this whole Promise and blank the page.
+  const loadedBug = await prisma.bug
+    .findUnique({
       where: { id },
       include: {
-        type: true,
-        reporter: { select: { name: true, email: true, role: true } },
-        assignee: { select: { id: true, name: true, role: true } },
+        type: { select: { id: true, name: true, isActive: true } },
+        reporter: { select: { name: true, email: true, role: true, image: true } },
+        assignee: { select: { id: true, name: true, role: true, image: true } },
         category: { select: { id: true, name: true, isActive: true } },
-        comments: {
-          include: {
-            author: { select: { name: true, role: true } },
-            parent: {
-              select: {
-                id: true,
-                body: true,
-                deletedAt: true,
-                author: { select: { name: true, role: true } },
-              },
-            },
-          },
-          orderBy: { createdAt: "asc" },
-        },
-        activities: {
-          include: { actor: { select: { name: true } } },
-          orderBy: { createdAt: "asc" },
-        },
         votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
       },
-    }),
-    prisma.user.findMany({
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, role: true },
-    }),
-    prisma.category.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    canTriage ? getActiveIssueTypes() : Promise.resolve([]),
-    fetchVoterSummary(id),
-  ]);
+    })
+    .then((bug) => ({ bug }))
+    .catch((error: unknown) => {
+      console.error("[issue] detail query failed", error);
+      const detail = error instanceof Error ? error.message : "Could not load issue";
+      return { detail };
+    });
+  if ("detail" in loadedBug) {
+    return issueLoadError(loadedBug.detail);
+  }
+  const bug = loadedBug.bug;
 
   if (!bug) {
     notFound();
@@ -203,6 +225,66 @@ export default async function BugDetailPage({ params }: BugPageProps) {
 
   if (bug.isDeleted && !canDelete) {
     notFound();
+  }
+
+  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments] =
+    await Promise.all([
+      loadOptional("users", [], () =>
+        prisma.user.findMany({
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, role: true, image: true },
+        }),
+      ),
+      loadOptional("platforms", [], () => getActivePlatforms()),
+      canTriage ? loadOptional("types", [], () => getActiveIssueTypesCached()) : Promise.resolve([]),
+      loadOptional("votes", createEmptyVoterSummary(), () => fetchVoterSummary(id)),
+      loadOptional("activity", [] as ActivityEntry[], () =>
+        prisma.bugActivity.findMany({
+          where: { bugId: id },
+          include: { actor: { select: { name: true } } },
+          orderBy: { createdAt: "desc" },
+          take: ACTIVITY_PAGE_SIZE,
+        }),
+      ),
+      loadOptional("activity count", 0, () => prisma.bugActivity.count({ where: { bugId: id } })),
+      loadOptional<{ userId: string; watching: boolean } | null>("watch", null, () =>
+        prisma.issueWatch.findUnique({
+          where: { userId_bugId: { userId: user.id, bugId: id } },
+          select: { userId: true, watching: true },
+        }),
+      ),
+      // The newest threads only (#280); a permalink widens the window to
+      // reach its comment.
+      loadOptional("comments", NO_COMMENTS, () =>
+        loadCommentWindow(prisma, id, {
+          threads: parseThreadWindow(query.threads),
+          target: parseCommentTarget(query.comment),
+        }),
+      ),
+      // #316: the status change that put the issue in its current state,
+      // read on its own so it is found even when the timeline is trimmed.
+      isFinishedStatus(bug.status)
+        ? loadOptional<StatusChangeActivity | null>("resolution note", null, () =>
+            prisma.bugActivity.findFirst({
+              where: { bugId: id, type: "status_changed" },
+              orderBy: { createdAt: "desc" },
+              select: { createdAt: true, metadata: true, actor: { select: { name: true } } },
+            }),
+          )
+        : Promise.resolve(null),
+      // Files on the issue and on its comments (#215); never the file contents here.
+      loadOptional("attachments", [], () =>
+        prisma.attachment.findMany({
+          where: { bugId: id },
+          select: { id: true, filename: true, contentType: true, size: true, commentId: true },
+          orderBy: { createdAt: "asc" },
+        }),
+      ),
+    ]);
+  const issueAttachments: AttachmentView[] = attachments.filter((a) => !a.commentId);
+  const attachmentsByComment: Record<string, AttachmentView[]> = {};
+  for (const a of attachments) {
+    if (a.commentId) (attachmentsByComment[a.commentId] ??= []).push(a);
   }
 
   const isAssignee = !!userId && bug.assigneeId === userId;
@@ -225,7 +307,14 @@ export default async function BugDetailPage({ params }: BugPageProps) {
     Array.isArray(bug.votes) && bug.votes.length > 0
       ? (bug.votes[0].value ?? 1)
       : 0;
-  const commentTree = buildCommentTree(bug.comments);
+  const commentTree = buildCommentTree(comments.comments);
+  const pageQuery = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (typeof value === "string") pageQuery.set(key, value);
+  }
+  const proofLinks = bug.proofLinks ?? [];
+
+  const resolution = currentResolution(bug.status, latestStatusChange);
 
   return (
     <div className="space-y-6">
@@ -248,14 +337,34 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         </div>
       ) : null}
 
+      {resolution ? (
+        <section
+          aria-label="Resolution note"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5"
+        >
+          <h2 className="text-sm font-semibold text-emerald-900">
+            {resolutionStatusLabel[resolution.status]} by {resolution.by}
+            <span className="ml-2 text-xs font-normal text-emerald-800">
+              <LocalTime date={resolution.at} />
+            </span>
+          </h2>
+          <p className="mt-1 whitespace-pre-wrap break-words text-sm text-emerald-950">
+            {resolution.note}
+          </p>
+        </section>
+      ) : null}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
-          <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
+          <Link href="/bugs" className="text-sm text-teal-700 hover:underline print:hidden">
             ← Back to issues
           </Link>
           <div className="mt-3 space-y-3">
             <div className="space-y-2">
               <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 break-words">
+                <span className="font-normal text-slate-500 tabular-nums">
+                  {formatIssueNumber(bug.number)}
+                </span>{" "}
                 {bug.title}
               </h1>
               <div className="flex flex-wrap items-center gap-2">
@@ -307,12 +416,22 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                 dislikeVoters={voterSummary.dislikes.voters}
                 size="md"
                 showAvatars
+                readOnly={bug.isDeleted}
               />
             </div>
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6 print:hidden">
+          {/* The canonical URL from the configured site, not the browser's
+              current one, which may carry a query string or a #comment. */}
+          <CopyLinkButton url={absoluteUrl(`/bugs/${bug.id}`)} label="issue" />
+          {!bug.isDeleted ? (
+            <WatchButton
+              bugId={bug.id}
+              watching={isWatchingIssue(user.id, [bug.reporterId, bug.assigneeId], watchRow)}
+            />
+          ) : null}
           {canTriage && !bug.isDeleted ? (
             <BoostTicketButton
               bugId={bug.id}
@@ -367,6 +486,9 @@ export default async function BugDetailPage({ params }: BugPageProps) {
               <UserNameWithBadges
                 name={bug.reporter.name}
                 role={bug.reporter.role}
+                image={bug.reporter.image}
+                avatar="sm"
+                userId={bug.reporterId}
                 showAuthor
               />
             </dd>
@@ -378,6 +500,9 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                 <UserNameWithBadges
                   name={bug.assignee.name}
                   role={bug.assignee.role}
+                  image={bug.assignee.image}
+                  avatar="sm"
+                  userId={bug.assigneeId}
                 />
               ) : (
                 <span className="text-slate-500">Unassigned</span>
@@ -409,17 +534,26 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         </dl>
       </EditableIssueDescription>
 
+      {issueAttachments.length > 0 ? (
+        <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Attachments
+          </h2>
+          <AttachmentList attachments={issueAttachments} />
+        </section>
+      ) : null}
+
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Proof links
         </h2>
-        {bug.proofLinks.length === 0 ? (
+        {proofLinks.length === 0 ? (
           <p className="mt-3 text-sm text-slate-500">
             No proof links attached to this report.
           </p>
         ) : (
           <ul className="mt-3 space-y-2">
-            {bug.proofLinks.map((url, index) => (
+            {proofLinks.map((url, index) => (
               <li key={`${index}-${url}`}>
                 <a
                   href={url}
@@ -462,24 +596,60 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         />
       ) : null}
 
-      <ActivityTimeline activities={bug.activities} />
+      <ActivityTimeline
+        activities={[...activities].reverse()}
+        totalCount={activityCount}
+      />
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section
+        id="comments"
+        className="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-4 sm:p-6"
+      >
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Comments ({bug.comments.length})
+          Comments ({comments.visibleCount})
         </h2>
+        {comments.hiddenThreads > 0 ? (
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600 print:hidden">
+            <span>
+              {comments.hiddenThreads} earlier{" "}
+              {comments.hiddenThreads === 1 ? "thread" : "threads"} not shown.
+            </span>
+            <Link
+              href={earlierThreadsHref(pageQuery, comments.shownThreads)}
+              scroll={false}
+              className="font-medium text-teal-700 hover:underline"
+            >
+              Show {Math.min(comments.hiddenThreads, COMMENT_THREADS_PER_PAGE)} earlier
+            </Link>
+            {comments.hiddenThreads > COMMENT_THREADS_PER_PAGE ? (
+              <Link
+                href={earlierThreadsHref(pageQuery, comments.shownThreads, true)}
+                scroll={false}
+                className="font-medium text-teal-700 hover:underline"
+              >
+                Show all
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
+        <Suspense fallback={null}>
+          <CommentPermalinkResolver />
+        </Suspense>
         <CommentThread
           bugId={bug.id}
+          issueUrl={absoluteUrl(`/bugs/${bug.id}`)}
           reporterId={bug.reporterId}
           comments={commentTree}
+          attachmentsByComment={attachmentsByComment}
           users={users}
           currentUserId={user.id}
           currentUserRole={user.role}
+          readOnly={bug.isDeleted}
         />
       </section>
 
       {canDelete && !bug.isDeleted ? (
-        <section className="rounded-xl border border-red-200 bg-red-50/50 p-4 sm:p-6">
+        <section className="rounded-xl border border-red-200 bg-red-50/50 p-4 sm:p-6 print:hidden">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-red-700">

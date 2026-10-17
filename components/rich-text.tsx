@@ -1,5 +1,10 @@
 import type { ReactNode } from "react";
-import { looksLikeMarkdown, safeHref, stripLegacyMarkup } from "@/lib/rich-text";
+import {
+  inlineImageSrc,
+  looksLikeMarkdown,
+  safeHref,
+  stripLegacyMarkup,
+} from "@/lib/rich-text";
 
 type RichTextProps = {
   content: string;
@@ -213,7 +218,9 @@ function renderBlocks(
       }
       if (i < lines.length) i += 1;
       nodes.push(
-        <pre key={`pre-${key++}`}>
+        /* Focusable so a keyboard user can scroll a long line: a code block
+           overflows on purpose, and axe flags an unreachable scroll region. */
+        <pre key={`pre-${key++}`} tabIndex={0} role="group" aria-label="Code block">
           <code>{fence.join("\n")}</code>
         </pre>,
       );
@@ -388,16 +395,28 @@ function renderInline(
       );
     }
     if (token.type === "image") {
-      const src = safeHref(token.src);
-      if (!src) return <span key={index}>{token.alt}</span>;
+      const src = inlineImageSrc(token.src);
+      if (src) {
+        return (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={index}
+            src={src}
+            alt={token.alt}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            className="max-h-96 max-w-full rounded-lg border border-slate-200"
+          />
+        );
+      }
+      // Other hosts: a link the reader can choose to open; nothing auto-loads.
+      const href = safeHref(token.src);
+      const label = token.alt || "image";
+      if (!href) return <span key={index}>{label}</span>;
       return (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          key={index}
-          src={src}
-          alt={token.alt}
-          className="max-w-full rounded-lg border border-slate-200"
-        />
+        <a key={index} href={href} target="_blank" rel="noopener noreferrer">
+          {label}
+        </a>
       );
     }
 
@@ -405,7 +424,15 @@ function renderInline(
     const label = token.type === "link" ? token.label : token.href;
     if (!href) return <span key={index}>{label}</span>;
     return (
-      <a key={index} href={href} target="_blank" rel="noopener noreferrer">
+      <a
+        key={index}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        // A bare URL already shows its address; the print stylesheet uses
+        // this to avoid printing it twice (#300).
+        data-bare-url={label === token.href ? "" : undefined}
+      >
         {label}
       </a>
     );

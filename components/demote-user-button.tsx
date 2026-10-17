@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { demoteUserToUserAction } from "@/app/actions/admin";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 export function DemoteUserButton({
   userId,
@@ -13,6 +15,8 @@ export function DemoteUserButton({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const confirm = useConfirm();
+  const toast = useToast();
 
   return (
     <div className="flex flex-col items-end gap-1">
@@ -20,10 +24,13 @@ export function DemoteUserButton({
         type="button"
         variant="secondary"
         disabled={pending}
-        onClick={() => {
-          const confirmed = window.confirm(
-            `Remove admin from ${userName}? They will no longer be able to triage issues.`,
-          );
+        onClick={async () => {
+          const confirmed = await confirm({
+            title: `Remove admin from ${userName}?`,
+            body: "They will no longer be able to triage issues.",
+            confirmLabel: "Remove admin",
+            tone: "danger",
+          });
           if (!confirmed) return;
 
           setError(null);
@@ -32,9 +39,13 @@ export function DemoteUserButton({
               const result = await demoteUserToUserAction(userId);
               if (result.error) {
                 setError(result.error);
+                toast(result.error, "error");
+              } else {
+                toast(`${userName} is no longer an admin.`);
               }
             } catch {
               setError("Could not remove admin access. Please try again.");
+              toast("Could not remove admin access. Please try again.", "error");
             }
           });
         }}
