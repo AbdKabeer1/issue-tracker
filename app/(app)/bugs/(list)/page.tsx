@@ -20,6 +20,14 @@ import { severities, statuses } from "@/lib/validations/bug";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
+import {
+  hasMatch,
+  highlightSegments,
+  markdownToPlain,
+  matchSnippet,
+  type Snippet,
+} from "@/lib/search-snippet";
+import { Highlighted, SearchSnippet } from "@/components/search-highlight";
 import { formatIssueNumber, parseIssueNumberQuery } from "@/lib/issue-number";
 import { isDone, resultCountText } from "@/lib/issue-state";
 import { calculatePagination } from "@/lib/pagination";
@@ -213,6 +221,33 @@ export default async function BugsPage({
   }
   const bugs = listed.bugs;
 
+  // #301: when searching, show why a row matched. Only rows whose title
+  // doesn't already contain the query need their description, so the list
+  // query still never selects it (#217) and a search whose hits are all in
+  // titles costs nothing extra. No search → no query at all.
+  const searchText = qParam?.trim() ?? "";
+  const snippets = new Map<string, Snippet>();
+  if (searchText) {
+    const needDescription = bugs
+      .filter((bug) => !hasMatch(bug.title, searchText))
+      .map((bug) => bug.id);
+    if (needDescription.length > 0) {
+      try {
+        const rows = await prisma.bug.findMany({
+          where: { id: { in: needDescription } },
+          select: { id: true, description: true },
+        });
+        for (const row of rows) {
+          const snippet = matchSnippet(markdownToPlain(row.description), searchText);
+          if (snippet) snippets.set(row.id, snippet);
+        }
+      } catch (error) {
+        // A snippet is a nicety; the results themselves are already loaded.
+        console.error("[bugs] search snippets failed", error);
+      }
+    }
+  }
+
   // The export must return exactly what is on screen, so it is handed the
   // same filters — by name, rather than forwarding whatever else is in the
   // URL. `page` is left out deliberately: the export is the whole result,
@@ -392,8 +427,15 @@ export default async function BugsPage({
                         <span className="font-normal text-slate-500 tabular-nums">
                           {formatIssueNumber(bug.number)}
                         </span>{" "}
-                        {bug.title}
+                        {searchText ? (
+                          <Highlighted segments={highlightSegments(bug.title, searchText)} />
+                        ) : (
+                          bug.title
+                        )}
                       </p>
+                      {snippets.has(bug.id) ? (
+                        <SearchSnippet snippet={snippets.get(bug.id)!} />
+                      ) : null}
                       <p className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-slate-500">
                         <span>Reported by</span>
                         <UserNameWithBadges
