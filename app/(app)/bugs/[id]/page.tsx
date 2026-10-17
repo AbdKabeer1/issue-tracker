@@ -38,7 +38,7 @@ import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentThread } from "@/components/comment-thread";
 import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
-import { getActiveIssueTypes } from "@/lib/issue-types";
+import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { fetchVoterSummary } from "@/lib/voter-summaries";
 import { createEmptyVoterSummary } from "@/lib/voters";
@@ -233,14 +233,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           select: { id: true, name: true, role: true },
         }),
       ),
-      loadOptional("platforms", [], () =>
-        prisma.category.findMany({
-          where: { isActive: true },
-          select: { id: true, name: true },
-          orderBy: { name: "asc" },
-        }),
-      ),
-      canTriage ? loadOptional("types", [], () => getActiveIssueTypes()) : Promise.resolve([]),
+      loadOptional("platforms", [], () => getActivePlatforms()),
+      canTriage ? loadOptional("types", [], () => getActiveIssueTypesCached()) : Promise.resolve([]),
       loadOptional("votes", createEmptyVoterSummary(), () => fetchVoterSummary(id)),
       loadOptional("activity", [] as ActivityEntry[], () =>
         prisma.bugActivity.findMany({

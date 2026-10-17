@@ -4,7 +4,7 @@ import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import { isLinkPreviewBot } from "@/lib/link-preview";
 import { AppHeader } from "@/components/app-header";
-import { prisma } from "@/lib/prisma";
+import { getUnreadCount } from "@/lib/lookups";
 import { REPORT_FORM_URL } from "@/lib/report-form";
 import { MAIN_CONTENT_ID, SkipLink } from "@/components/skip-link";
 import { FocusMainOnNavigate } from "@/components/focus-main-on-navigate";
@@ -35,9 +35,9 @@ export default async function AppLayout({
   // A missing Notification table must not take down every signed-in page.
   let unreadCount = 0;
   try {
-    unreadCount = await prisma.notification.count({
-      where: { userId: user.id, readAt: null },
-    });
+    // Cached per user and expired by every write that changes it (#317), so
+    // ordinary navigation doesn't pay for a count query.
+    unreadCount = await getUnreadCount(user.id);
   } catch (error) {
     console.error("[layout] notification count failed", error);
   }

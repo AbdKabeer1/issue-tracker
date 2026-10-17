@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import type { Prisma, Severity, Status } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getIssueTypes, getPlatforms } from "@/lib/lookups";
 import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import type { AppRole } from "@/lib/roles";
@@ -120,18 +121,13 @@ export default async function BugsPage({
   let tagTypes: { id: string; name: string; isActive: boolean }[] = [];
   let platforms: { id: string; name: string; isActive: boolean }[] = [];
   try {
+    // Cached, expired by the admin actions that change them (#297).
     [tagTypes, platforms] = await Promise.all([
-      prisma.issueType.findMany({
-        select: { id: true, name: true, isActive: true },
-        orderBy: { name: "asc" },
-      }),
+      getIssueTypes(),
       // Every platform, not just active ones: a link filtered on a platform
       // that was since deactivated still has to resolve. BugFilters narrows
       // the dropdown itself.
-      prisma.category.findMany({
-        select: { id: true, name: true, isActive: true },
-        orderBy: { name: "asc" },
-      }),
+      getPlatforms(),
     ]);
   } catch (error) {
     console.error("[bugs] filter options failed", error);

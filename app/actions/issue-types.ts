@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { expireTag, TAGS } from "@/lib/lookups";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-helpers";
 import { canDeleteIssueType, issueTypeInputSchema } from "@/lib/issue-types";
@@ -71,6 +72,7 @@ export async function createIssueTypeAction(
     throw err;
   }
 
+  expireTag(TAGS.issueTypes);
   revalidatePath("/admin/types");
   revalidatePath("/bugs/new");
   return { ok: true };
@@ -141,6 +143,7 @@ export async function updateIssueTypeAction(
     throw err;
   }
 
+  expireTag(TAGS.issueTypes);
   revalidatePath("/admin/types");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
@@ -170,6 +173,7 @@ export async function toggleIssueTypeActiveAction(
     data: { isActive: !existing.isActive },
   });
 
+  expireTag(TAGS.issueTypes);
   revalidatePath("/admin/types");
   revalidatePath("/bugs/new");
   return { ok: true };
@@ -213,6 +217,7 @@ export async function deleteIssueTypeAction(
     throw err;
   }
 
+  expireTag(TAGS.issueTypes);
   revalidatePath("/admin/types");
   revalidatePath("/bugs/new");
   return { ok: true };
