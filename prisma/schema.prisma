@@ -49,6 +49,13 @@ enum ActivityType {
   duplicate_changed
 }
 
+/// Light or dark appearance (#277). "system" follows the device.
+enum ThemePreference {
+  system
+  light
+  dark
+}
+
 model User {
   id            String        @id @default(cuid())
   name          String
@@ -58,6 +65,8 @@ model User {
   emailVerified DateTime?
   image         String?
   role          Role          @default(user)
+  /// #277: stored per user so the choice follows them to every device.
+  theme         ThemePreference @default(system)
   /// Email when mentioned, assigned, or when an issue you reported changes status (#151).
   /// Master switch. The notify* flags below pick which kinds when it is on.
   emailNotifications Boolean  @default(true)
