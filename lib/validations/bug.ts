@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { displayNameSchema } from "@/lib/display-name";
 import { isGitHubUrl, splitProofLinkLines } from "@/lib/proof-links";
 import { stripGitHubMarkup } from "@/lib/github-paste";
 
@@ -129,11 +130,7 @@ const passwordField = z
 
 export const signupSchema = z
   .object({
-    name: z
-      .string()
-      .trim()
-      .min(2, "Name must be at least 2 characters")
-      .max(100),
+    name: displayNameSchema,
     email: z
       .string()
       .trim()
