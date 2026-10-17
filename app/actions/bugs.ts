@@ -44,6 +44,7 @@ import {
 } from "@/lib/ticket-deletion";
 import { canBoostTicket, TICKET_BOOST_ERRORS } from "@/lib/ticket-boosting";
 import { canAssignTicket, TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
+import { canChangeTicketStatus, TICKET_TRIAGE_ERRORS } from "@/lib/ticket-triage";
 import {
   canEditTicket,
   formatEditSummary,
@@ -277,6 +278,23 @@ export async function updateBugAction(
   const isSelfAssigning =
     targetAssigneeId !== undefined && targetAssigneeId === userId;
 
+  // #202: `status` is a triage field and must be gated on the issue's current
+  // assignee (or an admin) - never on the assignee this request is trying to
+  // set. Without this, a self-assignment satisfied the gate above and the same
+  // request could also close/reopen the issue, letting any user close any
+  // unassigned issue. Checked before schema parsing so the error is explicit.
+  const requestedStatus = formData.get("status") || undefined;
+  if (
+    requestedStatus &&
+    !canChangeTicketStatus({
+      actorId: userId,
+      actorRole: user.role,
+      currentAssigneeId: existing.assigneeId,
+    })
+  ) {
+    return { error: TICKET_TRIAGE_ERRORS.statusUnauthorized };
+  }
+
   if (!admin && !isAssignee && !isSelfAssigning) {
     return {
       error: "Only the assignee or an admin can update this issue",
@@ -299,7 +317,7 @@ export async function updateBugAction(
   const categoryRaw = formData.get("categoryId");
   const typeRaw = formData.get("typeId");
   const parsed = updateBugSchema.safeParse({
-    status: formData.get("status") || undefined,
+    status: requestedStatus,
     severity: admin ? formData.get("severity") || undefined : undefined,
     typeId: admin
       ? typeRaw === "" || typeRaw === "none"
@@ -316,6 +334,18 @@ export async function updateBugAction(
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  // Claiming an issue doesn't also grant its status in the same request: a
+  // normal user who isn't the assignee yet must assign themselves first
+  // (#218, #175).
+  if (
+    !admin &&
+    !isAssignee &&
+    parsed.data.status &&
+    parsed.data.status !== existing.status
+  ) {
+    return { error: TICKET_ASSIGN_ERRORS.statusNeedsAssignment };
   }
 
   const data: {

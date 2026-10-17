@@ -14,7 +14,11 @@ import {
   canEditComment,
   COMMENT_ERRORS,
 } from "@/lib/comment-permissions";
-import { commentDeletedSummary } from "@/lib/activity-log";
+import {
+  commentDeletedSummary,
+  commentedSummary,
+  commentPreview,
+} from "@/lib/activity-log";
 
 export type CommentActionResult = { error?: string; ok?: boolean };
 
@@ -62,9 +66,27 @@ export async function updateCommentAction(
     new Map(known.map((u) => [u.id, u.name])),
   );
 
-  await prisma.comment.update({
-    where: { id: comment.id },
-    data: { body, editedAt: new Date() },
+  await prisma.$transaction(async (tx) => {
+    await tx.comment.update({
+      where: { id: comment.id },
+      data: { body, editedAt: new Date() },
+    });
+
+    await tx.bugActivity.updateMany({
+      where: {
+        bugId: comment.bugId,
+        type: "commented",
+        metadata: { path: ["commentId"], equals: comment.id },
+      },
+      data: {
+        summary: commentedSummary(body),
+        metadata: {
+          field: "comment",
+          commentId: comment.id,
+          commentPreview: commentPreview(body),
+        } as Prisma.InputJsonValue,
+      },
+    });
   });
 
   revalidatePath(`/bugs/${comment.bugId}`);

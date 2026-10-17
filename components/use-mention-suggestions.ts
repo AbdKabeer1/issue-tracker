@@ -44,11 +44,22 @@ export function useMentionSuggestions({
 
   const showSuggestions = enabled && mention !== null && suggestions.length > 0;
 
+  /**
+   * Re-evaluate the mention query at a caret position.
+   *
+   * #201: this used to reset `activeIndex` to 0 unconditionally. Because the
+   * textarea calls `sync` from `onKeyUp`, `onClick` and `onSelect` as well as
+   * `onChange`, pressing ArrowDown moved the highlight and the very next
+   * keyup snapped it back, so Enter always inserted the first result.
+   *
+   * Callers should pass `resetIndex` only for genuine typing (onChange, or
+   * inserting "@" from the toolbar) - never from keyup/click/select.
+   */
   const sync = useCallback(
-    (nextValue: string, caret: number) => {
+    (nextValue: string, caret: number, resetIndex = false) => {
       if (!enabled) return;
       setMention(getMentionQuery(nextValue, caret));
-      setActiveIndex(0);
+      if (resetIndex) setActiveIndex(0);
     },
     [enabled],
   );

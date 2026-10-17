@@ -38,7 +38,15 @@ export default async function AppLayout({
         isRealSuperAdmin={user.isRealSuperAdmin}
         isRealAdmin={user.isRealAdmin}
       />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-3.5 py-5 sm:px-4 sm:py-8">
+      <main
+        className={`mx-auto w-full max-w-5xl flex-1 px-3.5 pt-5 sm:px-4 sm:pt-8 ${
+          // #221: the fixed FAB sits over the bottom-right of the viewport and
+          // was covering pagination "Next" and the Danger-zone Delete button.
+          // Reserve clearance only when the FAB actually renders, so we don't
+          // leave dead space in deployments without REPORT_FORM_URL.
+          REPORT_FORM_URL ? "pb-20 sm:pb-24" : "pb-5 sm:pb-8"
+        }`}
+      >
         {children}
       </main>
       <ReportIssueFab href={REPORT_FORM_URL} />

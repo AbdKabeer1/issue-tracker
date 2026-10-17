@@ -22,16 +22,17 @@ describe("snippetText", () => {
   });
 });
 
-describe("bugLinkPreviewDescription", () => {
-  it("includes status, author, and description snippet", () => {
-    const result = bugLinkPreviewDescription({
-      status: "open",
-      authorName: "Alice",
-      description: "Steps to reproduce the crash",
-    });
-    expect(result).toContain("Open");
-    expect(result).toContain("Alice");
-    expect(result).toContain("Steps to reproduce");
+describe("bugLinkPreviewDescription (#117)", () => {
+  it("gives the status only", () => {
+    expect(bugLinkPreviewDescription({ status: "open" })).toBe(
+      "Open issue on Zedu Issues. Sign in to view the details.",
+    );
+  });
+
+  it("can't include a reporter or description, because it doesn't accept them", () => {
+    const result = bugLinkPreviewDescription({ status: "resolved" });
+    expect(result).not.toMatch(/reported by/i);
+    expect(result).toContain("Resolved");
   });
 });
 

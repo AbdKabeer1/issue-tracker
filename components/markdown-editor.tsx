@@ -298,7 +298,7 @@ export const MarkdownEditor = forwardRef<
       const caret = textarea.selectionStart ?? 0;
       const next = `${value.slice(0, caret)}@${value.slice(caret)}`;
       applyTextChange(textarea, value, next, caret + 1, caret + 1, onChange);
-      mention.sync(next, caret + 1);
+      mention.sync(next, caret + 1, true);
       onKeyDown?.(event);
       return;
     }
@@ -337,8 +337,13 @@ export const MarkdownEditor = forwardRef<
 
   return (
     <div className="space-y-1.5">
+      {/* #200: `overflow-hidden` on this shell clipped the absolutely-positioned
+          mention listbox, which sits directly below the textarea and so
+          rendered outside the shell - typing "@a" showed no dropdown at all.
+          The shell must not clip. Rounded corners are preserved by clipping
+          the toolbar row itself, which is the only child that needs it. */}
       <div className="rounded-lg border border-slate-300 bg-white shadow-sm focus-within:border-teal-600 focus-within:ring-2 focus-within:ring-teal-600/20">
-        <div className="flex flex-wrap items-center gap-1 rounded-t-lg border-b border-slate-200 bg-slate-50 px-1.5 py-1">
+        <div className="flex flex-wrap items-center gap-1 overflow-hidden rounded-t-lg border-b border-slate-200 bg-slate-50 px-1.5 py-1">
           <div
             className="flex items-center gap-1 border-r border-slate-200 pr-1.5"
             role="tablist"
@@ -408,7 +413,12 @@ export const MarkdownEditor = forwardRef<
             onChange={(event) => {
               const next = event.target.value;
               onChange(next);
-              mention.sync(next, event.target.selectionStart ?? next.length);
+              // #201: only real typing resets the highlighted suggestion.
+              mention.sync(
+                next,
+                event.target.selectionStart ?? next.length,
+                true,
+              );
             }}
             onKeyDown={handleKeyDown}
             onKeyUp={(event) => {

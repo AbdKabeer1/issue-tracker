@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
 import { createBugAction, type ActionResult } from "@/app/actions/bugs";
+import { submitFailureMessage } from "@/lib/submit-error";
 import { severities } from "@/lib/validations/bug";
 import { severityLabels } from "@/lib/labels";
 import type { AppRole } from "@/lib/roles";
@@ -41,15 +42,21 @@ export function CreateBugForm({
   const [assigneeId, setAssigneeId] = useState("");
   const [assignToMe, setAssignToMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // True when the request itself failed (network / server error), so the
+  // person can simply retry; validation errors from the server aren't retryable.
+  const [canRetry, setCanRetry] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
   const mentionUsers = users.map((user) => ({ id: user.id, name: user.name }));
 
   return (
     <form
+      ref={formRef}
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
         setError(null);
+        setCanRetry(false);
         const formData = new FormData();
         formData.set("title", title);
         formData.set("typeId", typeId);
@@ -68,7 +75,8 @@ export function CreateBugForm({
             if (result.error) setError(result.error);
           } catch (error) {
             unstable_rethrow(error);
-            setError("Something went wrong. Please try again.");
+            setError(submitFailureMessage(navigator.onLine));
+            setCanRetry(true);
           }
         });
       }}
@@ -235,9 +243,19 @@ export function CreateBugForm({
         </div>
       ) : null}
       {error ? (
-        <p className="text-sm text-red-600" role="alert">
-          {error}
-        </p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1" role="alert">
+          <p className="text-sm text-red-600">{error}</p>
+          {canRetry ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => formRef.current?.requestSubmit()}
+              className="text-sm font-medium text-teal-700 underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              Try again
+            </button>
+          ) : null}
+        </div>
       ) : null}
       <Button type="submit" disabled={pending}>
         {pending ? "Creating…" : "Create issue"}

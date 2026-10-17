@@ -16,7 +16,7 @@ import {
 describe("sort options constants and labels", () => {
   it("includes newest, top_votes, and lowest_votes options", () => {
     expect(BUG_SORT_OPTIONS).toEqual(["newest", "top_votes", "lowest_votes"]);
-    expect(DEFAULT_BUG_SORT).toBe("newest");
+    expect(DEFAULT_BUG_SORT).toBe("top_votes");
     expect(bugSortLabels).toEqual({
       newest: "Newest",
       top_votes: "Top Votes",
@@ -31,16 +31,16 @@ describe("sort options constants and labels", () => {
 });
 
 describe("parseBugSort", () => {
-  it("defaults to newest when undefined, null, empty, or whitespace", () => {
-    expect(parseBugSort(undefined)).toBe("newest");
-    expect(parseBugSort(null)).toBe("newest");
-    expect(parseBugSort("")).toBe("newest");
-    expect(parseBugSort("   ")).toBe("newest");
+  it("defaults to top votes when undefined, null, empty, or whitespace", () => {
+    expect(parseBugSort(undefined)).toBe("top_votes");
+    expect(parseBugSort(null)).toBe("top_votes");
+    expect(parseBugSort("")).toBe("top_votes");
+    expect(parseBugSort("   ")).toBe("top_votes");
   });
 
-  it("defaults to newest for unrecognized sort options", () => {
-    expect(parseBugSort("invalid")).toBe("newest");
-    expect(parseBugSort("random_sort")).toBe("newest");
+  it("defaults to top votes for unrecognized sort options", () => {
+    expect(parseBugSort("invalid")).toBe("top_votes");
+    expect(parseBugSort("random_sort")).toBe("top_votes");
   });
 
   it("parses newest variants", () => {
@@ -67,7 +67,7 @@ describe("parseBugSort", () => {
     expect(parseBugSort(["newest", "top_votes"])).toBe("newest");
     expect(parseBugSort(["top_votes", "lowest_votes"])).toBe("top_votes");
     expect(parseBugSort(["lowest_votes", "newest"])).toBe("lowest_votes");
-    expect(parseBugSort([])).toBe("newest");
+    expect(parseBugSort([])).toBe("top_votes");
   });
 });
 
