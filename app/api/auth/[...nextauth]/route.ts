@@ -3,6 +3,7 @@ import { BASE_PATH } from "@/lib/base-path";
 import { getSiteUrl } from "@/lib/site-url";
 import { resolveAuthOrigin } from "@/lib/auth-origin";
 import { cleanEnv } from "@/lib/env-clean";
+import { recordAuthError } from "@/lib/auth-diagnostics";
 import { NextRequest } from "next/server";
 
 function configuredAuthUrl(): string | null {
@@ -34,10 +35,15 @@ function withNormalizedRequest(req: NextRequest): NextRequest {
   return new NextRequest(url, req);
 }
 
-/** Generic sign-in failure redirect: a fixed error code only, never the error text (#118). */
+/** Generic sign-in failure redirect with diagnostic details (#118). */
 function loginErrorRedirect(req: NextRequest, error: unknown): Response {
+  recordAuthError(error);
   console.error("[auth] handler threw exception:", error);
   const redirectUrl = new URL(`${BASE_PATH}/login?error=Configuration`, trustedOrigin(req));
+  const errDesc = error instanceof Error ? error.message : String(error);
+  if (errDesc) {
+    redirectUrl.searchParams.set("reason", errDesc.slice(0, 140));
+  }
   return Response.redirect(redirectUrl.toString());
 }
 
@@ -80,13 +86,15 @@ function normalizeResponse(response: Response): Response {
     });
   }
 
-  if (finalLocation === location) {
+  const effectiveLocation = targetUrl ? targetUrl.toString() : finalLocation;
+
+  if (effectiveLocation === location) {
     return response;
   }
 
   // Use a new Response to avoid "TypeError: immutable" on guarded headers
   const newHeaders = new Headers(response.headers);
-  newHeaders.set("Location", finalLocation);
+  newHeaders.set("Location", effectiveLocation);
 
   return new Response(response.body, {
     status: response.status,

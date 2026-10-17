@@ -34,28 +34,52 @@ export async function resolveSessionUserId(): Promise<
   }
 
   if (sessionId) {
-    const byId = await prisma.user.findUnique({
-      where: { id: sessionId },
-      select: { id: true, sessionVersion: true },
-    });
-    if (byId) {
-      if (!isSessionVersionCurrent(sessionVersion, byId.sessionVersion)) {
-        return { error: SESSION_EXPIRED_MESSAGE };
+    try {
+      const byId = await prisma.user.findUnique({
+        where: { id: sessionId },
+        select: { id: true, sessionVersion: true },
+      });
+      if (byId) {
+        if (!isSessionVersionCurrent(sessionVersion, byId.sessionVersion)) {
+          return { error: SESSION_EXPIRED_MESSAGE };
+        }
+        return { userId: byId.id };
       }
-      return { userId: byId.id };
+    } catch {
+      try {
+        const byId = await prisma.user.findUnique({
+          where: { id: sessionId },
+          select: { id: true },
+        });
+        if (byId) return { userId: byId.id };
+      } catch {
+        // Fall through
+      }
     }
   }
 
   if (email) {
-    const byEmail = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true, sessionVersion: true },
-    });
-    if (byEmail) {
-      if (!isSessionVersionCurrent(sessionVersion, byEmail.sessionVersion)) {
-        return { error: SESSION_EXPIRED_MESSAGE };
+    try {
+      const byEmail = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true, sessionVersion: true },
+      });
+      if (byEmail) {
+        if (!isSessionVersionCurrent(sessionVersion, byEmail.sessionVersion)) {
+          return { error: SESSION_EXPIRED_MESSAGE };
+        }
+        return { userId: byEmail.id };
       }
-      return { userId: byEmail.id };
+    } catch {
+      try {
+        const byEmail = await prisma.user.findUnique({
+          where: { email },
+          select: { id: true },
+        });
+        if (byEmail) return { userId: byEmail.id };
+      } catch {
+        // Fall through
+      }
     }
   }
 
