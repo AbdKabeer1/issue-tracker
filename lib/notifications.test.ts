@@ -96,8 +96,8 @@ describe("comment and watcher notifications (#216)", () => {
       { ...base, kind: "comment_added", commentId: "c9", recipientIds: ["bob"] },
       SITE,
     );
-    expect(n?.url).toBe("/bugs/b1#comment-c9");
-    expect(n?.text).toContain("https://issues.zedu.chat/bugs/b1#comment-c9");
+    expect(n?.url).toBe("/bugs/b1?comment=c9#comment-c9");
+    expect(n?.text).toContain("https://issues.zedu.chat/bugs/b1?comment=c9#comment-c9");
   });
 
   it("uses the reply wording for the parent comment's author", () => {
