@@ -42,4 +42,33 @@ describe("MarkdownEditor accessibility (#146)", () => {
     expect(html).not.toContain("tabular-nums text-slate-400");
     expect(html).toContain("9/2000");
   });
+
+  it("does not clip mentions dropdown with overflow-hidden on the editor shell (#200)", () => {
+    const html = renderToStaticMarkup(
+      createElement(MarkdownEditor, {
+        value: "Test text",
+        onChange: () => {},
+        users: [{ id: "u1", name: "Ada" }],
+      }),
+    );
+    expect(html).not.toContain("overflow-hidden rounded-lg border border-slate-300");
+    expect(html).toContain("rounded-lg border border-slate-300");
+  });
+});
+
+describe("MarkdownEditor form validation (#123)", () => {
+  it("renders required and minLength attributes on the textarea", () => {
+    const html = renderToStaticMarkup(
+      createElement(MarkdownEditor, {
+        value: "",
+        onChange: () => {},
+        required: true,
+        minLength: 10,
+        name: "description",
+      }),
+    );
+    expect(html).toContain("required");
+    expect(html).toContain('minLength="10"');
+    expect(html).toContain('name="description"');
+  });
 });

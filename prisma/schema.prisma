@@ -58,6 +58,8 @@ model User {
   role          Role          @default(user)
   /// Email when mentioned, assigned, or when an issue you reported changes status (#151).
   emailNotifications Boolean  @default(true)
+  /// Bumped on password reset; JWTs carrying an older value are rejected (#208).
+  sessionVersion Int          @default(0)
   createdAt     DateTime      @default(now())
   reportedBugs  Bug[]         @relation("BugReporter")
   assignedBugs  Bug[]         @relation("BugAssignee")

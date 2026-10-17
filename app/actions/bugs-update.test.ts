@@ -24,6 +24,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { notifyLater } from "@/lib/notify";
 import { TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
+import { TICKET_TRIAGE_ERRORS } from "@/lib/ticket-triage";
 import { updateBugAction } from "./bugs";
 
 const db = prisma as unknown as {
@@ -91,11 +92,11 @@ beforeEach(() => {
 describe("updateBugAction authorization (#218)", () => {
   it.each([
     // [who, current assignee, form, expected error or null, expected written data]
-    ["user", null, { status: "resolved" }, "Only the assignee or an admin can update this issue", null],
-    ["user", OTHER, { status: "resolved" }, "Only the assignee or an admin can update this issue", null],
+    ["user", null, { status: "resolved" }, TICKET_TRIAGE_ERRORS.statusUnauthorized, null],
+    ["user", OTHER, { status: "resolved" }, TICKET_TRIAGE_ERRORS.statusUnauthorized, null],
     ["user", null, { assigneeId: ME }, null, { assigneeId: ME }],
-    ["user", null, { assigneeId: ME, status: "resolved" }, TICKET_ASSIGN_ERRORS.statusNeedsAssignment, null],
-    ["user", null, { assigneeId: ME, status: "open" }, null, { status: "open", assigneeId: ME }],
+    ["user", null, { assigneeId: ME, status: "resolved" }, TICKET_TRIAGE_ERRORS.statusUnauthorized, null],
+    ["user", null, { assigneeId: ME, status: "open" }, TICKET_TRIAGE_ERRORS.statusUnauthorized, null],
     ["user", OTHER, { assigneeId: ME }, TICKET_ASSIGN_ERRORS.unauthorized, null],
     ["user", ME, { status: "resolved" }, null, { status: "resolved" }],
     ["user", ME, { status: "in_progress", severity: "critical", typeId: "t1", categoryId: "c1" }, null, { status: "in_progress" }],
