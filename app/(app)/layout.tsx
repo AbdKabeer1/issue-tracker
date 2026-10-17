@@ -32,9 +32,15 @@ export default async function AppLayout({
   }
 
   const user = await requireUser();
-  const unreadCount = await prisma.notification.count({
-    where: { userId: user.id, readAt: null },
-  });
+  // A missing Notification table must not take down every signed-in page.
+  let unreadCount = 0;
+  try {
+    unreadCount = await prisma.notification.count({
+      where: { userId: user.id, readAt: null },
+    });
+  } catch (error) {
+    console.error("[layout] notification count failed", error);
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
