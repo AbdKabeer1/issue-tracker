@@ -49,6 +49,8 @@ export type NotificationEvent =
       reporterId: string;
       from: Status;
       to: Status;
+      /** What happened, written by whoever resolved or closed it (#316). */
+      note?: string | null;
       /** Watchers to tell, resolved at delivery; defaults to the reporter. */
       recipientIds?: string[];
     });
@@ -149,6 +151,7 @@ export function planNotifications(event: NotificationEvent, siteUrl: string): Pl
         const yours = userId === event.reporterId;
         add(userId, `${title} is now ${statusLabel[event.to]}`, [
           `${event.actorName} changed the status of ${yours ? "your issue " : ""}${title} from ${statusLabel[event.from]} to ${statusLabel[event.to]}.`,
+          ...(event.note ? ["", `Resolution note from ${event.actorName}:`, event.note] : []),
         ]);
       }
       break;

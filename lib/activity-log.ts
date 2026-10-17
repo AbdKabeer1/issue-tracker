@@ -8,6 +8,8 @@ export type ActivityMetadata = {
   to?: string | null;
   commentPreview?: string;
   commentId?: string;
+  /** Resolution note, on the status change into resolved/closed (#316). */
+  note?: string;
 };
 
 type ActivityInput = {

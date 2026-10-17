@@ -60,6 +60,7 @@ import {
 import { Prisma, type ActivityType } from "@prisma/client";
 import { notifyLater } from "@/lib/notify";
 import { ensureWatching } from "@/lib/watch";
+import { parseResolutionNote } from "@/lib/resolution-note";
 import type { NotificationEvent } from "@/lib/notifications";
 import { getForeignKeyErrorMessage } from "@/lib/foreign-key-errors";
 import { parseAttachmentIds } from "@/lib/attachments";
@@ -376,6 +377,14 @@ export async function updateBugAction(
     return { error: TICKET_ASSIGN_ERRORS.statusNeedsAssignment };
   }
 
+  // #316: an optional note, only for a change into resolved or closed.
+  const parsedNote = parseResolutionNote(formData.get("resolutionNote"), {
+    from: existing.status,
+    to: parsed.data.status,
+  });
+  if ("error" in parsedNote) return { error: parsedNote.error, field: "resolutionNote" };
+  const resolutionNote = parsedNote.note;
+
   const data: {
     status?: typeof parsed.data.status;
     severity?: typeof parsed.data.severity;
@@ -417,6 +426,7 @@ export async function updateBugAction(
         field: "status",
         from: existing.status,
         to: data.status,
+        ...(resolutionNote ? { note: resolutionNote } : {}),
       },
     });
   }
@@ -581,7 +591,7 @@ export async function updateBugAction(
     events.push({ ...actor, kind: "assignee_changed", fromUserId: existing.assigneeId, toUserId: data.assigneeId });
   }
   if (data.status && data.status !== existing.status) {
-    events.push({ ...actor, kind: "status_changed", reporterId: existing.reporterId, from: existing.status, to: data.status });
+    events.push({ ...actor, kind: "status_changed", reporterId: existing.reporterId, from: existing.status, to: data.status, note: resolutionNote });
   }
   if (events.length > 0) notifyLater(...events);
 

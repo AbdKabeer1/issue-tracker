@@ -7,6 +7,8 @@ import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { LocalTime } from "@/components/local-time";
+import { currentResolution, isFinishedStatus, type StatusChangeActivity } from "@/lib/resolution-note";
+import { statusLabel as resolutionStatusLabel } from "@/lib/labels";
 import { formatIssueNumber } from "@/lib/issue-number";
 import { buildCommentTree } from "@/lib/comments";
 import {
@@ -225,7 +227,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
     notFound();
   }
 
-  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, attachments] =
+  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments] =
     await Promise.all([
       loadOptional("users", [], () =>
         prisma.user.findMany({
@@ -259,6 +261,17 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           target: parseCommentTarget(query.comment),
         }),
       ),
+      // #316: the status change that put the issue in its current state,
+      // read on its own so it is found even when the timeline is trimmed.
+      isFinishedStatus(bug.status)
+        ? loadOptional<StatusChangeActivity | null>("resolution note", null, () =>
+            prisma.bugActivity.findFirst({
+              where: { bugId: id, type: "status_changed" },
+              orderBy: { createdAt: "desc" },
+              select: { createdAt: true, metadata: true, actor: { select: { name: true } } },
+            }),
+          )
+        : Promise.resolve(null),
       // Files on the issue and on its comments (#215); never the file contents here.
       loadOptional("attachments", [], () =>
         prisma.attachment.findMany({
@@ -301,6 +314,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   }
   const proofLinks = bug.proofLinks ?? [];
 
+  const resolution = currentResolution(bug.status, latestStatusChange);
+
   return (
     <div className="space-y-6">
       {bug.isDeleted ? (
@@ -320,6 +335,23 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             <RestoreBugButton bugId={bug.id} bugTitle={bug.title} size="sm" />
           </div>
         </div>
+      ) : null}
+
+      {resolution ? (
+        <section
+          aria-label="Resolution note"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5"
+        >
+          <h2 className="text-sm font-semibold text-emerald-900">
+            {resolutionStatusLabel[resolution.status]} by {resolution.by}
+            <span className="ml-2 text-xs font-normal text-emerald-800">
+              <LocalTime date={resolution.at} />
+            </span>
+          </h2>
+          <p className="mt-1 whitespace-pre-wrap break-words text-sm text-emerald-950">
+            {resolution.note}
+          </p>
+        </section>
       ) : null}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

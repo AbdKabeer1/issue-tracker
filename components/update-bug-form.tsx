@@ -7,6 +7,8 @@ import { severities, statuses } from "@/lib/validations/bug";
 import { severityLabel, statusLabel } from "@/lib/labels";
 import type { AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { RESOLUTION_NOTE_MAX, isFinishedStatus } from "@/lib/resolution-note";
 import { AssigneeCombobox } from "@/components/assignee-combobox";
 import { triageFieldsKey } from "@/lib/triage-options";
 
@@ -55,6 +57,7 @@ export function UpdateBugForm({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [note, setNote] = useState("");
   const [pending, startTransition] = useTransition();
 
   // What the server currently holds.
@@ -81,6 +84,8 @@ export function UpdateBugForm({
   }
 
   const dirty = !sameDraft(draft, serverDraft);
+  // #316: only a move into resolved/closed can carry a note.
+  const asksForNote = draft.status !== status && isFinishedStatus(draft.status);
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     setSaved(false);
     setDraft((d) => ({ ...d, [key]: value }));
@@ -108,6 +113,7 @@ export function UpdateBugForm({
         setSaved(false);
         const formData = new FormData();
         formData.set("status", draft.status);
+        if (asksForNote) formData.set("resolutionNote", note);
         if (canEditTriage) {
           formData.set("typeId", draft.typeId);
           formData.set("severity", draft.severity);
@@ -122,6 +128,7 @@ export function UpdateBugForm({
             setError(result.error);
           } else {
             setSaved(true);
+            setNote("");
           }
         });
       }}
@@ -258,6 +265,30 @@ export function UpdateBugForm({
           </div>
         ) : null}
       </div>
+
+      {asksForNote ? (
+        <div>
+          <label htmlFor="resolutionNote" className="mb-1 block text-xs font-medium text-slate-700">
+            Resolution note <span className="font-normal text-slate-500">(optional)</span>
+          </label>
+          <Textarea
+            id="resolutionNote"
+            name="resolutionNote"
+            rows={3}
+            maxLength={RESOLUTION_NOTE_MAX}
+            value={note}
+            onChange={(event) => {
+              setSaved(false);
+              setNote(event.target.value);
+            }}
+            placeholder="What happened? e.g. Fixed in the 2.4 release. Clear your cache if you still see it."
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            Shown at the top of the issue and sent to the reporter and watchers.{" "}
+            {[...note].length}/{RESOLUTION_NOTE_MAX}
+          </p>
+        </div>
+      ) : null}
 
       {error ? (
         <p className="text-sm text-red-600" role="alert">
