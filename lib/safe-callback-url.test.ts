@@ -44,5 +44,8 @@ describe("safeCallbackUrl", () => {
     expect(safeCallbackUrl("/api/auth/signout")).toBe("/bugs");
     expect(safeCallbackUrl("/api/auth/callback/google")).toBe("/bugs");
     expect(safeCallbackUrl("/bug-tracker/login")).toBe("/bugs");
+    expect(safeCallbackUrl("/login#section")).toBe("/bugs");
+    expect(safeCallbackUrl("/bugs/../login")).toBe("/bugs");
+    expect(safeCallbackUrl("/bugs#section")).toBe("/bugs#section");
   });
 });

@@ -25,24 +25,26 @@ export function safeCallbackUrl(
     return fallback;
   }
 
+  let parsedPathname = "";
   try {
     const parsed = new URL(trimmed, "http://dummy.local");
     if (parsed.origin !== "http://dummy.local") {
       return fallback;
     }
+    parsedPathname = parsed.pathname;
   } catch {
     return fallback;
   }
 
   const normalized = toAppPath(trimmed);
+  const normalizedPath = toAppPath(parsedPathname);
 
   // Reject auth loops: landing on login/signup/reset after login creates bounce loops (#352)
   if (
     DISALLOWED_CALLBACK_PATHS.some(
       (path) =>
-        normalized === path ||
-        normalized.startsWith(path + "/") ||
-        normalized.startsWith(path + "?"),
+        normalizedPath === path ||
+        normalizedPath.startsWith(path + "/"),
     )
   ) {
     return fallback;
