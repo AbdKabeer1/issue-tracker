@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { selfAssignBugAction } from "@/app/actions/bugs";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 
 type SelfAssignButtonProps = {
   bugId: string;
@@ -21,6 +22,7 @@ export function SelfAssignButton({
 }: SelfAssignButtonProps) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const handleToggle = (assign: boolean) => {
     setError(null);
@@ -28,6 +30,11 @@ export function SelfAssignButton({
       const result = await selfAssignBugAction(bugId, assign);
       if (result.error) {
         setError(result.error);
+        toast(result.error, "error");
+      } else {
+        // The row re-renders in place, so without this there is nothing to
+        // tell a screen reader — or a distracted eye — that anything happened.
+        toast(assign ? "Assigned to you." : "Unassigned.");
       }
     });
   };

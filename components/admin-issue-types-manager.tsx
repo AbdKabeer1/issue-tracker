@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 export interface IssueTypeWithCount {
   id: string;
@@ -36,6 +38,8 @@ export function AdminIssueTypesManager({
   const [isActive, setIsActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const confirm = useConfirm();
+  const toast = useToast();
 
   function startCreate() {
     setName("");
@@ -102,7 +106,7 @@ export function AdminIssueTypesManager({
     });
   }
 
-  function handleDelete(type: IssueTypeWithCount) {
+  async function handleDelete(type: IssueTypeWithCount) {
     if (type._count.bugs > 0) {
       setError(
         `Cannot delete "${type.name}" because it is in use by ${type._count.bugs} issue(s). Deactivate it instead.`,
@@ -110,17 +114,27 @@ export function AdminIssueTypesManager({
       return;
     }
 
-    if (!confirm(`Are you sure you want to delete the issue type "${type.name}"?`)) {
-      return;
-    }
+    const confirmed = await confirm({
+      title: `Delete issue type "${type.name}"?`,
+      body: "This cannot be undone.",
+      confirmLabel: "Delete type",
+      tone: "danger",
+    });
+    if (!confirmed) return;
 
     setError(null);
     startTransition(async () => {
       try {
         const result = await deleteIssueTypeAction(type.id);
-        if (result.error) setError(result.error);
+        if (result.error) {
+          setError(result.error);
+          toast(result.error, "error");
+        } else {
+          toast(`Issue type "${type.name}" deleted.`);
+        }
       } catch {
         setError("Failed to delete type.");
+        toast("Failed to delete type.", "error");
       }
     });
   }

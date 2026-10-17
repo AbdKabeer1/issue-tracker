@@ -4,6 +4,9 @@ import { useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
 import { deleteBugAction } from "@/app/actions/bugs";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
+import { isRedirectError } from "@/lib/toast-store";
 
 type DeleteBugButtonProps = {
   bugId: string;
@@ -24,6 +27,8 @@ export function DeleteBugButton({
 }: DeleteBugButtonProps) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const confirm = useConfirm();
+  const toast = useToast();
 
   const sizeClasses =
     size === "sm" ? "px-2.5 py-1 text-xs" : "px-3.5 py-2 text-sm";
@@ -35,12 +40,15 @@ export function DeleteBugButton({
         variant={variant}
         disabled={pending}
         className={`${sizeClasses} ${className}`}
-        onClick={(event) => {
+        onClick={async (event) => {
           event.preventDefault();
           event.stopPropagation();
-          const confirmed = window.confirm(
-            `Are you sure you want to delete "${bugTitle}"?\n\nThe issue will be hidden from regular users, but admins can restore it if needed.`,
-          );
+          const confirmed = await confirm({
+            title: `Delete "${bugTitle}"?`,
+            body: "The issue will be hidden from regular users, but admins can restore it if needed.",
+            confirmLabel: "Delete issue",
+            tone: "danger",
+          });
           if (!confirmed) return;
 
           setError(null);
@@ -49,10 +57,19 @@ export function DeleteBugButton({
               const result = await deleteBugAction(bugId);
               if (result?.error) {
                 setError(result.error);
+                toast(result.error, "error");
+              } else {
+                toast("Issue deleted.");
               }
             } catch (err) {
+              // From the issue page the action ends in redirect("/bugs"),
+              // which throws. The provider lives in the root layout and
+              // survives that client-side navigation, so the toast has to be
+              // raised here, before unstable_rethrow() stops this function.
+              if (isRedirectError(err)) toast("Issue deleted.");
               unstable_rethrow(err);
               setError("Could not delete issue. Please try again.");
+              toast("Could not delete issue. Please try again.", "error");
             }
           });
         }}
