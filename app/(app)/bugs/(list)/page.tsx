@@ -35,6 +35,7 @@ import { RestoreBugButton } from "@/components/restore-bug-button";
 import { canBoostTicket } from "@/lib/ticket-boosting";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { mineFilterWhere, parseMineFilter } from "@/lib/mine-filter";
+import { TAGS_PARAM, parseTagFilter, serializeTags, tagTypeIds } from "@/lib/tag-filter";
 
 type SearchParams = Promise<{
   q?: string | string[];
@@ -44,6 +45,7 @@ type SearchParams = Promise<{
   page?: string | string[];
   deleted?: string | string[];
   mine?: string | string[];
+  tags?: string | string[];
   [key: string]: string | string[] | undefined;
 }>;
 
@@ -87,6 +89,17 @@ export default async function BugsPage({
     isDeleted: isDeletedView,
     ...mineFilterWhere(mineFilter, userId),
   };
+
+  // Tag filter (#102): issue types picked from the search box.
+  const tagTypes = await prisma.issueType.findMany({
+    select: { id: true, name: true, isActive: true },
+    orderBy: { name: "asc" },
+  });
+  const selectedTags = parseTagFilter(params.tags, tagTypes);
+  if (selectedTags.length > 0) {
+    where.typeId = { in: tagTypeIds(selectedTags, tagTypes) };
+  }
+  const tagsParam = serializeTags(selectedTags.map((t) => t.name));
 
   if (isStatus(statusParam)) {
     where.status = statusParam;
@@ -193,11 +206,8 @@ export default async function BugsPage({
       <Suspense
         fallback={<div className="h-12 animate-pulse rounded-lg bg-slate-100" />}
       >
-        {/* #204: keyed on the search query so the uncontrolled input inside
-            BugFilters remounts (and re-reads its defaultValue) whenever the
-            URL changes - including via the browser Back button, which
-            previously left stale text in the box over an unfiltered list. */}
-        <BugFilters key={qParam ?? ""} />
+        {/* #204: keyed on the search query so BugFilters remounts on URL change */}
+        <BugFilters key={qParam ?? ""} tagTypes={tagTypes} />
       </Suspense>
 
       {bugs.length === 0 ? (
@@ -394,6 +404,7 @@ export default async function BugsPage({
             ...(severityParam ? { severity: severityParam } : {}),
             ...(mineFilter ? { mine: mineFilter } : {}),
             ...(qParam ? { q: qParam } : {}),
+            ...(tagsParam ? { [TAGS_PARAM]: tagsParam } : {}),
             ...(isDeletedView ? { deleted: "true" } : {}),
             sort: sortParam,
           }}
