@@ -1,4 +1,5 @@
 import { createConnection, type Socket } from "net";
+import { hostname as osHostname } from "os";
 import { connect as tlsConnect, type TLSSocket } from "tls";
 
 type SendMailInput = {
@@ -7,7 +8,17 @@ type SendMailInput = {
   text: string;
 };
 
-type MailEnv = { SMTP_HOST?: string; SMTP_FROM?: string; NODE_ENV?: string };
+type MailEnv = {
+  SMTP_HOST?: string;
+  SMTP_FROM?: string;
+  NODE_ENV?: string;
+  /** Override the hostname sent in EHLO; defaults to os.hostname() (#353). */
+  SMTP_EHLO_NAME?: string;
+  /** TCP connect timeout in ms (default 10 000) (#353). */
+  SMTP_CONNECT_TIMEOUT_MS?: string;
+  /** Per-command SMTP response timeout in ms (default 15 000) (#353). */
+  SMTP_COMMAND_TIMEOUT_MS?: string;
+};
 
 export function smtpConfigured(env: MailEnv = process.env as MailEnv) {
   return Boolean(env.SMTP_HOST && env.SMTP_FROM);
@@ -64,21 +75,28 @@ async function sendSmtpMail({ to, subject, text }: SendMailInput) {
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
 
-  const socket: Socket | TLSSocket = secure
-    ? await connectTls(host, port)
-    : await connectPlain(host, port);
+  // Prefer an explicit override; fall back to the machine's real hostname so
+  // the EHLO greeting is RFC-5321-compliant instead of the literal "localhost"
+  // which many mail servers treat as a spam signal (#353).
+  const ehloName = process.env.SMTP_EHLO_NAME ?? osHostname();
+  const connectTimeoutMs = Number(process.env.SMTP_CONNECT_TIMEOUT_MS ?? "10000");
+  const commandTimeoutMs = Number(process.env.SMTP_COMMAND_TIMEOUT_MS ?? "15000");
 
-  const session = new SmtpSession(socket);
+  const socket: Socket | TLSSocket = secure
+    ? await connectTls(host, port, connectTimeoutMs)
+    : await connectPlain(host, port, connectTimeoutMs);
+
+  const session = new SmtpSession(socket, commandTimeoutMs);
 
   try {
     await session.expect(220);
-    await session.command(`EHLO localhost`, 250);
+    await session.command(`EHLO ${ehloName}`, 250);
 
     if (!secure) {
       await session.command("STARTTLS", 220);
       const upgraded = await upgradeToTls(socket as Socket, host);
       session.replaceSocket(upgraded);
-      await session.command(`EHLO localhost`, 250);
+      await session.command(`EHLO ${ehloName}`, 250);
     }
 
     if (user && pass) {
@@ -138,20 +156,30 @@ function extractEmail(value: string) {
   return match?.[1] ?? value.trim();
 }
 
-function connectPlain(host: string, port: number) {
+function connectPlain(host: string, port: number, timeoutMs: number) {
   return new Promise<Socket>((resolve, reject) => {
-    const socket = createConnection({ host, port }, () => resolve(socket));
+    const socket = createConnection({ host, port }, () => {
+      socket.setTimeout(0); // clear connect-phase timeout once connected
+      resolve(socket);
+    });
     socket.setEncoding("utf8");
+    socket.setTimeout(timeoutMs, () => {
+      socket.destroy(new Error(`SMTP connect timeout after ${timeoutMs}ms (${host}:${port})`));
+    });
     socket.on("error", reject);
   });
 }
 
-function connectTls(host: string, port: number) {
+function connectTls(host: string, port: number, timeoutMs: number) {
   return new Promise<TLSSocket>((resolve, reject) => {
-    const socket = tlsConnect({ host, port, servername: host }, () =>
-      resolve(socket),
-    );
+    const socket = tlsConnect({ host, port, servername: host }, () => {
+      socket.setTimeout(0);
+      resolve(socket);
+    });
     socket.setEncoding("utf8");
+    socket.setTimeout(timeoutMs, () => {
+      socket.destroy(new Error(`SMTP TLS connect timeout after ${timeoutMs}ms (${host}:${port})`));
+    });
     socket.on("error", reject);
   });
 }
@@ -173,9 +201,18 @@ export class SmtpSession {
     code: number;
     resolve: () => void;
     reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout> | undefined;
   }> = [];
 
-  constructor(private socket: Socket | TLSSocket) {
+  /**
+   * @param socket - The underlying TCP/TLS socket.
+   * @param commandTimeoutMs - How long to wait for a server reply before
+   *   rejecting the pending command (default: no timeout, for tests). (#353)
+   */
+  constructor(
+    private socket: Socket | TLSSocket,
+    private commandTimeoutMs = 0,
+  ) {
     this.socket.on("data", (chunk: string) => {
       this.buffer += chunk;
       this.flush();
@@ -198,12 +235,27 @@ export class SmtpSession {
 
   expect(code: number) {
     return new Promise<void>((resolve, reject) => {
-      this.waiters.push({ code, resolve, reject });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      if (this.commandTimeoutMs > 0) {
+        timer = setTimeout(() => {
+          // Remove this waiter so flush() can't resolve it after timeout.
+          const idx = this.waiters.findIndex((w) => w.timer === timer);
+          if (idx !== -1) this.waiters.splice(idx, 1);
+          reject(
+            new Error(`SMTP command timeout: no response for code ${code} after ${this.commandTimeoutMs}ms`),
+          );
+        }, this.commandTimeoutMs);
+      }
+      this.waiters.push({ code, resolve, reject, timer });
       this.flush();
     });
   }
 
   close() {
+    // Cancel any outstanding timers to avoid leaking handles.
+    for (const w of this.waiters) {
+      if (w.timer !== undefined) clearTimeout(w.timer);
+    }
     this.socket.end();
   }
 
@@ -227,6 +279,9 @@ export class SmtpSession {
       const last = responseLines[responseLines.length - 1] ?? "";
       const responseCode = Number(last.slice(0, 3));
       const waiter = this.waiters.shift()!;
+
+      // Cancel the command timeout — we got a response.
+      if (waiter.timer !== undefined) clearTimeout(waiter.timer);
 
       if (responseCode !== waiter.code) {
         waiter.reject(

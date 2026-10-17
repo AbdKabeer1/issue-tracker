@@ -68,6 +68,21 @@ describe("SmtpSession response parsing", () => {
     socket.serverSays("250 OK\r\n250 OK\r\n");
     await expect(Promise.all([a, b])).resolves.toEqual([undefined, undefined]);
   });
+
+  it("rejects with timeout when server fails to respond within commandTimeoutMs (#353)", async () => {
+    const socket = new FakeSocket();
+    const smtp = new SmtpSession(socket as never, 25);
+    const cmd = smtp.command("EHLO test.example", 250);
+    await expect(cmd).rejects.toThrow("SMTP command timeout: no response for code 250 after 25ms");
+  });
+
+  it("cleans up active timers when close is called (#353)", async () => {
+    const socket = new FakeSocket();
+    const smtp = new SmtpSession(socket as never, 5000);
+    smtp.expect(220).catch(() => {});
+    smtp.close();
+    expect(socket.ended).toBe(true);
+  });
 });
 
 describe("buildSmtpData", () => {
