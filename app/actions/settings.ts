@@ -26,6 +26,19 @@ export async function setEmailNotificationsAction(enabled: unknown): Promise<Set
   return { ok: true, emailNotifications: enabled };
 }
 
+/** Turn the site-wide keyboard shortcuts on or off (#287). */
+export async function setKeyboardShortcutsAction(enabled: unknown): Promise<SettingsResult> {
+  if (typeof enabled !== "boolean") return { error: "Invalid setting" };
+  const user = await requireUser();
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { keyboardShortcuts: enabled },
+  });
+  // The layout reads the setting, so every page needs the new value.
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
 /**
  * Light, dark or follow the device (#277). Saved on the user so it follows
  * them, and in a cookie so this device's signed-out pages match.
