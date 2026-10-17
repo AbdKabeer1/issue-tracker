@@ -1,4 +1,5 @@
 import type { ActivityType } from "@prisma/client";
+import { activityNote } from "@/lib/resolution-note";
 import { LocalTime } from "@/components/local-time";
 
 export type ActivityEntry = {
@@ -7,6 +8,7 @@ export type ActivityEntry = {
   summary: string;
   createdAt: Date;
   actor: { name: string };
+  metadata?: unknown;
 };
 
 const typeLabel: Record<ActivityType, string> = {
@@ -74,6 +76,11 @@ export function ActivityTimeline({
                 </span>{" "}
                 {entry.summary}
               </p>
+              {entry.type === "status_changed" && activityNote(entry.metadata) ? (
+                <blockquote className="mt-1 whitespace-pre-wrap break-words border-l-2 border-emerald-300 pl-3 text-sm text-slate-700">
+                  {activityNote(entry.metadata)}
+                </blockquote>
+              ) : null}
             </li>
           ))}
         </ol>
