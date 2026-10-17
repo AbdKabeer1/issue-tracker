@@ -39,6 +39,7 @@ import { RestoreBugButton } from "@/components/restore-bug-button";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { canAssignTicket } from "@/lib/ticket-assignment";
 import { SelfAssignButton } from "@/components/self-assign-button";
+import { CopyLinkButton } from "@/components/copy-link-button";
 import { EditableIssueDescription } from "@/components/editable-issue-description";
 import { withCurrentOption } from "@/lib/triage-options";
 
@@ -315,7 +316,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
-          <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
+          <Link href="/bugs" className="text-sm text-teal-700 hover:underline print:hidden">
             ← Back to issues
           </Link>
           <div className="mt-3 space-y-3">
@@ -381,7 +382,10 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6 print:hidden">
+          {/* The canonical URL from the configured site, not the browser's
+              current one, which may carry a query string or a #comment. */}
+          <CopyLinkButton url={absoluteUrl(`/bugs/${bug.id}`)} label="issue" />
           {!bug.isDeleted ? (
             <WatchButton
               bugId={bug.id}
@@ -559,6 +563,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         </h2>
         <CommentThread
           bugId={bug.id}
+          issueUrl={absoluteUrl(`/bugs/${bug.id}`)}
           reporterId={bug.reporterId}
           comments={commentTree}
           attachmentsByComment={attachmentsByComment}
@@ -570,7 +575,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
       </section>
 
       {canDelete && !bug.isDeleted ? (
-        <section className="rounded-xl border border-red-200 bg-red-50/50 p-4 sm:p-6">
+        <section className="rounded-xl border border-red-200 bg-red-50/50 p-4 sm:p-6 print:hidden">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-red-700">
