@@ -1,13 +1,13 @@
 import type { NotificationEvent } from "@/lib/notifications";
 
 /** The kinds of email a user can be sent, and can switch off one at a time. */
-export type NotificationKind = NotificationEvent["kind"];
-
 export const NOTIFICATION_KINDS = [
   "mentioned",
   "assignee_changed",
   "status_changed",
-] as const satisfies readonly NotificationKind[];
+] as const;
+
+export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
 /** The User column holding the preference for each kind. */
 export const PREF_FIELD = {
@@ -33,7 +33,10 @@ export const notificationDescriptions: Record<NotificationKind, string> = {
 /** The preferences a recipient carries, as far as this module cares. */
 export type RecipientPrefs = {
   emailNotifications: boolean;
-} & Record<PrefField, boolean>;
+  notifyMentions: boolean;
+  notifyAssignments: boolean;
+  notifyStatusChanges: boolean;
+};
 
 /**
  * Whether this recipient should receive mail for this kind of event.
@@ -44,9 +47,10 @@ export type RecipientPrefs = {
  */
 export function shouldNotify(
   prefs: RecipientPrefs,
-  kind: NotificationKind,
+  kind: NotificationEvent["kind"],
 ): boolean {
   if (!prefs.emailNotifications) return false;
+  if (kind === "comment_added") return true;
   return prefs[PREF_FIELD[kind]];
 }
 

@@ -22,6 +22,8 @@ import {
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
+import { WatchButton } from "@/components/watch-button";
+import { isWatchingIssue } from "@/lib/watch";
 import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentThread } from "@/components/comment-thread";
 import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
@@ -146,7 +148,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
   const canTriage = isAdmin(user.role);
   const canDelete = canDeleteTicket(user.role);
 
-  const [bug, users, categories, types, voterSummary, activityCount] =
+  const [bug, users, categories, types, voterSummary, activityCount, watchRow] =
     await Promise.all([
     prisma.bug.findUnique({
       where: { id },
@@ -192,6 +194,10 @@ export default async function BugDetailPage({ params }: BugPageProps) {
     canTriage ? getActiveIssueTypes() : Promise.resolve([]),
     fetchVoterSummary(id),
     prisma.bugActivity.count({ where: { bugId: id } }),
+    prisma.issueWatch.findUnique({
+      where: { userId_bugId: { userId: user.id, bugId: id } },
+      select: { userId: true, watching: true },
+    }),
   ]);
 
   if (!bug) {
@@ -326,6 +332,12 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6">
+          {!bug.isDeleted ? (
+            <WatchButton
+              bugId={bug.id}
+              watching={isWatchingIssue(user.id, [bug.reporterId, bug.assigneeId], watchRow)}
+            />
+          ) : null}
           {canTriage && !bug.isDeleted ? (
             <BoostTicketButton
               bugId={bug.id}

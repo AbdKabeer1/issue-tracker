@@ -72,6 +72,8 @@ model User {
   votes               Vote[]
   activities          BugActivity[]
   passwordResetTokens PasswordResetToken[]
+  watches             IssueWatch[]
+  notifications       Notification[]
 }
 
 /// Single-use password reset tokens (~30 min TTL). Store only the SHA-256 hash.
@@ -124,6 +126,8 @@ model Bug {
   category    Category?     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   comments    Comment[]
   votes       Vote[]
+  watches       IssueWatch[]
+  notifications Notification[]
   activities  BugActivity[]
 
   @@index([categoryId])
@@ -217,4 +221,40 @@ model Vote {
 
   @@unique([userId, bugId])
   @@index([bugId])
+}
+
+/// Who follows an issue (#216). People are watching by default when they
+/// report, are assigned to or comment on an issue; `watching = false` records
+/// an explicit "Unwatch" so they aren't added back automatically.
+model IssueWatch {
+  userId    String
+  bugId     String
+  watching  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bug       Bug      @relation(fields: [bugId], references: [id], onDelete: Cascade)
+
+  @@id([userId, bugId])
+  @@index([bugId])
+}
+
+/// In-app notification feed (#216): one row per person per event, written
+/// whether or not email is configured or wanted.
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  bugId     String?
+  /// Event kind, e.g. "comment_added", "mentioned", "status_changed".
+  kind      String
+  title     String
+  /// App-relative link, e.g. /bugs/<id>#comment-<id>.
+  url       String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bug       Bug?      @relation(fields: [bugId], references: [id], onDelete: SetNull)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
 }

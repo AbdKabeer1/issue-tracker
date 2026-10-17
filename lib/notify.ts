@@ -2,16 +2,51 @@ import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { canSendMail, sendMail } from "@/lib/mail";
 import { getSiteUrl } from "@/lib/site-url";
-import { planNotifications, type NotificationEvent } from "@/lib/notifications";
-import { shouldNotify, type RecipientPrefs } from "@/lib/notification-prefs";
+import {
+  planNotifications,
+  type NotificationEvent,
+  type PlannedNotification,
+} from "@/lib/notifications";
+import { shouldNotify } from "@/lib/notification-prefs";
+import { watchersFor } from "@/lib/watch";
 
-/** Send the emails for one event to everyone who hasn't opted out. */
-export async function deliverNotifications(event: NotificationEvent): Promise<void> {
-  // No SMTP in production: skip quietly rather than fail once per recipient (#210).
+/**
+ * Fills in the audience for events that go to an issue's watchers (#216):
+ * new comments and status changes. Other events name their recipients.
+ */
+async function withWatchers(event: NotificationEvent): Promise<NotificationEvent> {
+  if (event.kind === "comment_added") {
+    return { ...event, recipientIds: await watchersFor(prisma, event.bugId, event.recipientIds) };
+  }
+  if (event.kind === "status_changed") {
+    const bug = await prisma.bug.findUnique({
+      where: { id: event.bugId },
+      select: { assigneeId: true },
+    });
+    return {
+      ...event,
+      recipientIds: await watchersFor(prisma, event.bugId, [event.reporterId, bug?.assigneeId]),
+    };
+  }
+  return event;
+}
+
+/** Writes the in-app feed rows (#216). Always, whatever the email settings. */
+async function recordInApp(event: NotificationEvent, planned: PlannedNotification[]) {
+  await prisma.notification.createMany({
+    data: planned.map((n) => ({
+      userId: n.userId,
+      bugId: event.bugId,
+      kind: n.kind,
+      title: n.title,
+      url: n.url,
+    })),
+  });
+}
+
+/** Emails everyone who hasn't opted out, when email can be sent at all (#210). */
+async function sendEmails(planned: PlannedNotification[]) {
   if (!canSendMail()) return;
-  const planned = planNotifications(event, getSiteUrl());
-  if (planned.length === 0) return;
-
   // Fetch the preferences rather than filtering in the query: which flag
   // matters depends on the kind of each planned notification, and one event
   // can produce several kinds across different recipients.
@@ -31,7 +66,7 @@ export async function deliverNotifications(event: NotificationEvent): Promise<vo
   await Promise.all(
     planned.map(async (n) => {
       const recipient = byId.get(n.userId);
-      if (!recipient || !shouldNotify(recipient as RecipientPrefs, n.kind)) return;
+      if (!recipient || !shouldNotify(recipient, n.kind)) return;
       const to = recipient.email;
       try {
         await sendMail({ to, subject: n.subject, text: n.text });
@@ -40,6 +75,27 @@ export async function deliverNotifications(event: NotificationEvent): Promise<vo
       }
     }),
   );
+}
+
+/** Deliver one event: in-app feed for everyone it concerns, plus email. */
+export async function deliverNotifications(event: NotificationEvent): Promise<void> {
+  // The issue may have been deleted between the action and delivery.
+  const bug = await prisma.bug.findUnique({
+    where: { id: event.bugId },
+    select: { isDeleted: true },
+  });
+  if (!bug || bug.isDeleted) return;
+
+  const planned = planNotifications(await withWatchers(event), getSiteUrl());
+  if (planned.length === 0) return;
+
+  try {
+    await recordInApp(event, planned);
+  } catch (error) {
+    // The feed failing must not stop the emails.
+    console.error("[notify] failed to record in-app notifications", error);
+  }
+  await sendEmails(planned);
 }
 
 /**

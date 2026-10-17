@@ -76,3 +76,62 @@ describe("planNotifications (#151)", () => {
     expect(planned[0]?.subject).toContain("…");
   });
 });
+
+describe("comment and watcher notifications (#216)", () => {
+  const base = { actorId: "alice", actorName: "Alice", bugId: "b1", bugTitle: "Login button does nothing" };
+
+  it("tells every watcher about a new comment, except the commenter", () => {
+    const planned = planNotifications(
+      { ...base, kind: "comment_added", commentId: "c9", excerpt: "Still broken on Safari", recipientIds: ["bob", "alice", "cara"] },
+      SITE,
+    );
+    expect(planned.map((p) => p.userId)).toEqual(["bob", "cara"]);
+    expect(planned[0]?.title).toBe("Alice commented on “Login button does nothing”");
+    expect(planned[0]?.text).toContain("which you're watching");
+    expect(planned[0]?.text).toContain("> Still broken on Safari");
+  });
+
+  it("links straight to the comment, in email and in the feed", () => {
+    const [n] = planNotifications(
+      { ...base, kind: "comment_added", commentId: "c9", recipientIds: ["bob"] },
+      SITE,
+    );
+    expect(n?.url).toBe("/bugs/b1#comment-c9");
+    expect(n?.text).toContain("https://issues.zedu.chat/bugs/b1#comment-c9");
+  });
+
+  it("uses the reply wording for the parent comment's author", () => {
+    const planned = planNotifications(
+      { ...base, kind: "comment_added", commentId: "c9", parentAuthorId: "cara", recipientIds: ["bob", "cara"] },
+      SITE,
+    );
+    expect(planned.find((p) => p.userId === "cara")?.title).toBe("Alice replied to your comment on “Login button does nothing”");
+    expect(planned).toHaveLength(2);
+  });
+
+  it("skips people already notified by a mention in the same comment", () => {
+    const planned = planNotifications(
+      { ...base, kind: "comment_added", commentId: "c9", recipientIds: ["bob", "cara"], excludeIds: ["bob"] },
+      SITE,
+    );
+    expect(planned.map((p) => p.userId)).toEqual(["cara"]);
+  });
+
+  it("sends status changes to watchers, with 'your issue' only for the reporter", () => {
+    const planned = planNotifications(
+      { ...base, kind: "status_changed", reporterId: "bob", from: "open", to: "resolved", recipientIds: ["bob", "cara"] },
+      SITE,
+    );
+    expect(planned.map((p) => p.userId)).toEqual(["bob", "cara"]);
+    expect(planned[0]?.text).toContain("status of your issue");
+    expect(planned[1]?.text).not.toContain("your issue");
+  });
+
+  it("every planned notification carries a feed title and link", () => {
+    const planned = planNotifications(
+      { ...base, kind: "assignee_changed", fromUserId: null, toUserId: "bob" },
+      SITE,
+    );
+    expect(planned[0]).toMatchObject({ kind: "assignee_changed", url: "/bugs/b1", title: "Alice assigned you to “Login button does nothing”" });
+  });
+});
