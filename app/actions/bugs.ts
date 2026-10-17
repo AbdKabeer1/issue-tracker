@@ -65,7 +65,7 @@ import { isUntouchedTemplate, UNFILLED_TEMPLATE_MESSAGE } from "@/lib/issue-temp
 import type { NotificationEvent } from "@/lib/notifications";
 import { getForeignKeyErrorMessage } from "@/lib/foreign-key-errors";
 import { parseAttachmentIds } from "@/lib/attachments";
-import { linkAttachments } from "@/lib/attachment-link";
+import { attachmentIdsInMarkdown, linkAttachments } from "@/lib/attachment-link";
 import {
   consumeRateLimit,
   ACTION_RATE_LIMITS,
@@ -256,8 +256,14 @@ export async function createBugAction(
   }
 
   // Files uploaded while writing the report (#215).
+  // …and images pasted or dropped into the description (#305).
   await linkAttachments(prisma, {
-    ids: parseAttachmentIds(formData.get("attachmentIds")),
+    ids: [
+      ...new Set([
+        ...parseAttachmentIds(formData.get("attachmentIds")),
+        ...attachmentIdsInMarkdown(description),
+      ]),
+    ],
     uploaderId: userId,
     bugId: bug.id,
   });
@@ -717,6 +723,14 @@ export async function editBugContentAction(
       },
     });
 
+    // Images pasted into the edited description (#305); only the editor's
+    // own, not-yet-linked uploads are claimed.
+    await linkAttachments(tx, {
+      ids: attachmentIdsInMarkdown(normalizedDescription),
+      uploaderId: userId,
+      bugId,
+    });
+
     await tx.bugActivity.create({
       data: {
         bugId,
@@ -830,7 +844,12 @@ export async function addCommentAction(
     });
     // Files uploaded with the comment (#215).
     await linkAttachments(tx, {
-      ids: parseAttachmentIds(formData.get("attachmentIds")),
+      ids: [
+        ...new Set([
+          ...parseAttachmentIds(formData.get("attachmentIds")),
+          ...attachmentIdsInMarkdown(normalizedBody),
+        ]),
+      ],
       uploaderId: userId,
       bugId,
       commentId: created.id,
