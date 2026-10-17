@@ -3,11 +3,75 @@ import {
   buildVoterSummaries,
   buildVoterSummary,
   createEmptyVoterSummary,
+  describeOverflowVoters,
+  FETCHED_VOTERS,
   formatOverflowCount,
   getInitials,
+  getOverflowVoters,
   updateVoteCounts,
   type RawVoterRow,
+  type VoterInfo,
 } from "./voters";
+
+const people = (n: number): VoterInfo[] =>
+  Array.from({ length: n }, (_, i) => ({ id: `u${i + 1}`, name: `User ${i + 1}`, image: null }));
+
+describe("getOverflowVoters (#408)", () => {
+  it("is null when every voter already has a face", () => {
+    expect(getOverflowVoters(people(3), 3)).toBeNull();
+    expect(getOverflowVoters([], 0)).toBeNull();
+  });
+
+  it("names the voters after the first three, in order", () => {
+    // #144: 11 likes, 3 faces, "+8".
+    expect(getOverflowVoters(people(11), 11)).toEqual({
+      names: ["User 4", "User 5", "User 6", "User 7", "User 8", "User 9", "User 10", "User 11"],
+      others: 0,
+    });
+  });
+
+  it("lists at most ten names and counts the rest", () => {
+    const overflow = getOverflowVoters(people(FETCHED_VOTERS), 40)!;
+    expect(overflow.names).toHaveLength(10);
+    expect(overflow.names[0]).toBe("User 4");
+    expect(overflow.others).toBe(27);
+  });
+
+  it("still adds up when fewer voters were loaded than the count", () => {
+    // e.g. a vote landed between the count and the list, or none were loaded.
+    expect(getOverflowVoters(people(3), 8)).toEqual({ names: [], others: 5 });
+    expect(getOverflowVoters(people(5), 8)).toEqual({ names: ["User 4", "User 5"], others: 3 });
+  });
+
+  it("doesn't list a voter twice when more were loaded than the count", () => {
+    expect(getOverflowVoters(people(6), 4)).toEqual({ names: ["User 4"], others: 0 });
+  });
+
+  it("gives a blank name something to show", () => {
+    const voters = [...people(3), { id: "x", name: "  ", image: null }];
+    expect(getOverflowVoters(voters, 4)!.names).toEqual(["Unnamed user"]);
+  });
+});
+
+describe("describeOverflowVoters (#408)", () => {
+  it("joins names like a sentence", () => {
+    expect(describeOverflowVoters({ names: ["Ada"], others: 0 })).toBe("Also voted: Ada");
+    expect(describeOverflowVoters({ names: ["Ada", "Bea", "Cal"], others: 0 })).toBe(
+      "Also voted: Ada, Bea and Cal",
+    );
+  });
+
+  it("adds the voters beyond the list", () => {
+    expect(describeOverflowVoters({ names: ["Ada", "Bea"], others: 1 })).toBe(
+      "Also voted: Ada, Bea and 1 other",
+    );
+    expect(describeOverflowVoters({ names: ["Ada"], others: 5 })).toBe("Also voted: Ada and 5 others");
+  });
+
+  it("falls back to a count when no names were loaded", () => {
+    expect(describeOverflowVoters({ names: [], others: 5 })).toBe("5 others voted");
+  });
+});
 
 describe("getInitials", () => {
   it("extracts initials from multi-word names", () => {
@@ -175,6 +239,24 @@ describe("buildVoterSummaries", () => {
     });
     expect(summary.dislikes.count).toBe(1);
     expect(summary.dislikes.voters).toHaveLength(1);
+  });
+
+  it("keeps enough voters to name the ones behind the badge, and no more (#408)", () => {
+    const rows: RawVoterRow[] = Array.from({ length: FETCHED_VOTERS + 2 }, (_, i) => ({
+      bugId: "bug-1",
+      value: 1,
+      userId: `u-${i + 1}`,
+      name: `User ${i + 1}`,
+      image: null,
+      total_count: 40,
+      rn: i + 1,
+    }));
+
+    const summary = buildVoterSummary(rows);
+    expect(FETCHED_VOTERS).toBe(13);
+    expect(summary.likes.count).toBe(40);
+    expect(summary.likes.voters).toHaveLength(FETCHED_VOTERS);
+    expect(summary.likes.voters.at(-1)!.name).toBe("User 13");
   });
 
   it("handles BigInt total_count and rn from PostgreSQL", () => {
