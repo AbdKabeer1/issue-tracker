@@ -44,7 +44,44 @@ async function recordInApp(event: NotificationEvent, planned: PlannedNotificatio
   });
 }
 
-/** Emails everyone who hasn't opted out, when email can be sent at all (#210). */
+/**
+ * Concurrency limit for outgoing SMTP connections (#354).
+ * Defaults to 2 simultaneous connections, configurable via SMTP_MAX_CONCURRENCY.
+ */
+export const DEFAULT_SMTP_CONCURRENCY = 2;
+
+export function getSmtpConcurrency(): number {
+  const envVal = Number(process.env.SMTP_MAX_CONCURRENCY || process.env.EMAIL_CONCURRENCY);
+  return Number.isInteger(envVal) && envVal > 0 ? envVal : DEFAULT_SMTP_CONCURRENCY;
+}
+
+/**
+ * Runs async tasks over items with bounded concurrency (#354).
+ */
+export async function mapConcurrent<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const safeLimit = Math.max(1, limit);
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await fn(items[index]!, index);
+    }
+  }
+
+  const workerCount = Math.min(safeLimit, items.length);
+  const workers = Array.from({ length: workerCount }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
+/** Emails everyone who hasn't opted out, with bounded SMTP concurrency (#210, #354). */
 async function sendEmails(planned: PlannedNotification[]) {
   if (!canSendMail()) return;
   // Fetch the preferences rather than filtering in the query: which flag
@@ -63,18 +100,21 @@ async function sendEmails(planned: PlannedNotification[]) {
   });
   const byId = new Map(recipients.map((u) => [u.id, u]));
 
-  await Promise.all(
-    planned.map(async (n) => {
-      const recipient = byId.get(n.userId);
-      if (!recipient || !shouldNotify(recipient, n.kind)) return;
-      const to = recipient.email;
-      try {
-        await sendMail({ to, subject: n.subject, text: n.text });
-      } catch (error) {
-        console.error("[notify] failed to send", { userId: n.userId, error });
-      }
-    }),
-  );
+  const toSend: { to: string; subject: string; text: string; userId: string }[] = [];
+  for (const n of planned) {
+    const recipient = byId.get(n.userId);
+    if (!recipient || !shouldNotify(recipient, n.kind)) continue;
+    toSend.push({ to: recipient.email, subject: n.subject, text: n.text, userId: n.userId });
+  }
+
+  const concurrency = getSmtpConcurrency();
+  await mapConcurrent(toSend, concurrency, async (item) => {
+    try {
+      await sendMail({ to: item.to, subject: item.subject, text: item.text });
+    } catch (error) {
+      console.error("[notify] failed to send", { userId: item.userId, error });
+    }
+  });
 }
 
 /** Deliver one event: in-app feed for everyone it concerns, plus email. */
