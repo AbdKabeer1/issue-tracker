@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { InUseNotice, type InUse } from "@/components/in-use-notice";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 
@@ -25,9 +26,13 @@ export type CategoryWithCount = {
 
 export function CategoryManager({
   initialCategories,
+  deletedCounts = {},
 }: {
   initialCategories: CategoryWithCount[];
+  /** Soft-deleted issues per platform, which block deletion but are hidden. */
+  deletedCounts?: Record<string, number>;
 }) {
+  const [inUse, setInUse] = useState<InUse | null>(null);
   const [newName, setNewName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
@@ -106,11 +111,19 @@ export function CategoryManager({
 
   const handleDelete = async (category: CategoryWithCount) => {
     if (category._count.bugs > 0) {
-      setError(
-        `Cannot delete "${category.name}": it is currently in use by ${category._count.bugs} issue${category._count.bugs === 1 ? "" : "s"}. Reassign or deactivate it instead.`,
-      );
+      setError(null);
+      setInUse({
+        kind: "platform",
+        id: category.id,
+        name: category.name,
+        filterValue: category.id,
+        total: category._count.bugs,
+        deleted: deletedCounts[category.id] ?? 0,
+        isActive: category.isActive,
+      });
       return;
     }
+    setInUse(null);
 
     const confirmed = await confirm({
       title: `Delete platform "${category.name}"?`,
@@ -163,6 +176,26 @@ export function CategoryManager({
           </Button>
         </form>
       </div>
+
+      {inUse ? (
+        <InUseNotice
+          inUse={inUse}
+          pending={pending}
+          onDismiss={() => setInUse(null)}
+          onDeactivate={() =>
+            startTransition(async () => {
+              const res = await toggleCategoryStatusAction(inUse.id);
+              if (res.error) {
+                toast(res.error, "error");
+              } else {
+                // The row re-renders as inactive from the refreshed props.
+                toast(`Platform “${inUse.name}” deactivated.`);
+                setInUse(null);
+              }
+            })
+          }
+        />
+      ) : null}
 
       {error ? (
         <div
@@ -275,16 +308,20 @@ export function CategoryManager({
                       {cat.isActive ? "Deactivate" : "Activate"}
                     </Button>
 
+                    {/*
+                      Not disabled when the platform is in use (#314): a
+                      disabled button cannot say why, and that is exactly the
+                      question. Clicking it explains instead of deleting.
+                    */}
                     <Button
-                      className="px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
+                      className={`px-2.5 py-1 text-xs ${
+                        cat._count.bugs > 0
+                          ? "text-slate-600 hover:bg-slate-100"
+                          : "text-red-600 hover:bg-red-50 hover:text-red-700"
+                      }`}
                       variant="ghost"
                       onClick={() => handleDelete(cat)}
-                      disabled={pending || cat._count.bugs > 0}
-                      title={
-                        cat._count.bugs > 0
-                          ? "Cannot delete: platform has existing issues"
-                          : "Delete platform"
-                      }
+                      disabled={pending}
                     >
                       Delete
                     </Button>

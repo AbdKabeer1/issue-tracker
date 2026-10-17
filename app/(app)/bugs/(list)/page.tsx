@@ -20,6 +20,7 @@ import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
 import { formatIssueNumber, parseIssueNumberQuery } from "@/lib/issue-number";
+import { isDone, resultCountText } from "@/lib/issue-state";
 import { calculatePagination } from "@/lib/pagination";
 import { PaginationControls } from "@/components/pagination-controls";
 import { fetchVoterSummaries } from "@/lib/voter-summaries";
@@ -269,7 +270,7 @@ export default async function BugsPage({
             ) : null}
           </div>
           <p className="text-sm text-slate-600">
-            {totalCount} result{totalCount === 1 ? "" : "s"} · sorted by{" "}
+            {resultCountText(totalCount, isStatus(statusParam) ? statusParam : null)} · sorted by{" "}
             {bugSortDescriptions[currentSort]}
           </p>
         </div>
@@ -371,7 +372,14 @@ export default async function BugsPage({
                 <Link href={`/bugs/${bug.id}`} className="min-w-0 flex-1 basis-0">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-1">
-                      <p className="font-medium text-slate-900 break-words">
+                      {/* Finished issues are muted so the eye lands on what
+                          still needs work (#313). The check on the badge below
+                          carries the same meaning without relying on colour. */}
+                      <p
+                        className={`font-medium break-words ${
+                          isDone(bug.status) ? "text-slate-500" : "text-slate-900"
+                        }`}
+                      >
                         <span className="font-normal text-slate-500 tabular-nums">
                           {formatIssueNumber(bug.number)}
                         </span>{" "}
@@ -466,6 +474,20 @@ export default async function BugsPage({
                         </Badge>
                       ) : null}
                       <Badge className={statusClass[bug.status]}>
+                        {isDone(bug.status) ? (
+                          <svg
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                            className="-ml-0.5 mr-1 h-3 w-3"
+                            aria-hidden="true"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        ) : null}
                         {statusLabels[bug.status]}
                       </Badge>
                       <Badge className={severityClass[bug.severity]}>
