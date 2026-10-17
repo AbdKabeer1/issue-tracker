@@ -45,7 +45,9 @@ import { DeleteBugButton } from "@/components/delete-bug-button";
 import { RestoreBugButton } from "@/components/restore-bug-button";
 import { canBoostTicket } from "@/lib/ticket-boosting";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
-import { mineFilterWhere, parseMineFilter } from "@/lib/mine-filter";
+import { defaultSortFor, mineFilterWhere, parseMineFilter } from "@/lib/mine-filter";
+import { finishedWatchedWhere } from "@/lib/watching";
+import { UnwatchButton, UnwatchFinishedButton } from "@/components/unwatch-button";
 import { TAGS_PARAM, parseTagFilter, serializeTags, tagTypeIds } from "@/lib/tag-filter";
 import {
   PLATFORM_PARAM,
@@ -118,7 +120,8 @@ export default async function BugsPage({
   const mineFilter = parseMineFilter(params.mine);
   const isDeletedView = canDelete && deletedParam === "true";
 
-  const currentSort = parseBugSort(sortParam);
+  const currentSort = parseBugSort(sortParam, defaultSortFor(mineFilter));
+  const isWatchingView = mineFilter === "watching" && !!userId;
   const where: Prisma.BugWhereInput = {
     isDeleted: isDeletedView,
     ...mineFilterWhere(mineFilter, userId),
@@ -206,7 +209,8 @@ export default async function BugsPage({
           ? { where: { userId }, select: { id: true, value: true }, take: 1 }
           : false,
       },
-      orderBy: getBugOrderBy(currentSort),
+      // A personal list reads newest-activity-first; boosts are for the shared one.
+      orderBy: getBugOrderBy(currentSort, { boostFirst: !isWatchingView }),
       skip: pagination.skip,
       take: pagination.take,
     })
@@ -279,6 +283,17 @@ export default async function BugsPage({
     totalCount === 0 &&
     !isDeletedView &&
     (await prisma.bug.count({ where: { isDeleted: false } })) === 0;
+
+  // Only the watching view offers "stop watching the finished ones", and
+  // only when there are some; everyone else pays for nothing (#312).
+  let finishedWatched = 0;
+  if (isWatchingView && userId) {
+    try {
+      finishedWatched = await prisma.bug.count({ where: finishedWatchedWhere(userId) });
+    } catch (error) {
+      console.error("[bugs] finished watched count failed", error);
+    }
+  }
   let voterSummaries = new Map<string, ReturnType<typeof createEmptyVoterSummary>>();
   try {
     voterSummaries = await fetchVoterSummaries(bugIds);
@@ -327,6 +342,7 @@ export default async function BugsPage({
               {isDeletedView ? "← View active issues" : "View deleted issues"}
             </Link>
           ) : null}
+          {finishedWatched > 0 ? <UnwatchFinishedButton count={finishedWatched} /> : null}
           {totalCount > 0 ? (
             <a
               // A plain link, not a fetch: the browser handles the download
@@ -368,9 +384,15 @@ export default async function BugsPage({
         <FirstRunWelcome isAdmin={canDelete} />
       ) : bugs.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
-          <p className="font-medium text-slate-800">No issues match these filters.</p>
+          <p className="font-medium text-slate-800">
+            {isWatchingView && !qParam && !statusParam && !severityParam && !tagsParam && !selectedPlatform
+              ? "You're not watching any issues."
+              : "No issues match these filters."}
+          </p>
           <p className="mt-1 text-sm text-slate-600">
-            Try clearing filters or report a new issue.
+            {isWatchingView
+              ? "You watch issues you report, are assigned to or comment on, and any you choose to watch from the issue page."
+              : "Try clearing filters or report a new issue."}
           </p>
           <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
             <Link
@@ -547,10 +569,16 @@ export default async function BugsPage({
                     </div>
                   </div>
                 </Link>
-                {canBoost || canDelete ? (
+                {canBoost || canDelete || isWatchingView ? (
                   // Below `md` the actions get their own row so the title keeps
                   // the full width; beside the issue from `md` up (#255).
                   <div className="flex w-full basis-full shrink-0 items-center justify-end gap-1 self-center border-t border-slate-100 pt-2 md:basis-auto md:w-auto md:border-0 md:pt-0 md:pl-1">
+                    {isWatchingView && !bug.isDeleted ? (
+                      <UnwatchButton
+                        bugId={bug.id}
+                        label={`${formatIssueNumber(bug.number)} ${bug.title}`}
+                      />
+                    ) : null}
                     {canBoost && !bug.isDeleted ? (
                       <BoostTicketButton
                         bugId={bug.id}

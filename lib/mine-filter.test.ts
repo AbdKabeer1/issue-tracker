@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mineFilterWhere, parseMineFilter } from "./mine-filter";
 
 describe("parseMineFilter", () => {
-  it("accepts the two options, case-insensitively", () => {
+  it("accepts the options, case-insensitively", () => {
     expect(parseMineFilter("assigned")).toBe("assigned");
     expect(parseMineFilter(" Reported ")).toBe("reported");
   });
