@@ -88,11 +88,15 @@ export async function requireUser(): Promise<SessionAppUser> {
   const isRealAdmin = isRealSuperAdmin || dbUser.role === "admin";
 
   if (dbUser.role !== "super_admin" && isSuperAdminEmail(dbUser.email)) {
-    await prisma.user.update({
-      where: { id: dbUser.id },
-      data: { role: "super_admin" },
-    });
-    dbUser.role = "super_admin";
+    try {
+      await prisma.user.update({
+        where: { id: dbUser.id },
+        data: { role: "super_admin" },
+      });
+      dbUser.role = "super_admin";
+    } catch (error) {
+      console.error("[auth] super admin role update failed", error);
+    }
   }
 
   const cookieStore = await cookies();
