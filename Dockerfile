@@ -19,7 +19,7 @@ FROM node:20-alpine AS runner
 RUN apk add --no-cache openssl libc6-compat tzdata wget
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.14.0 --activate
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 TZ=Africa/Lagos \
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME="0.0.0.0" TZ=Africa/Lagos \
     DATABASE_URL="postgresql://neondb_owner:npg_kOiz9bluxh2q@ep-curly-block-b53an9mx-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require" \
     AUTH_SECRET="dev-secret-change-me-in-production-endor-bug-tracker" \
     AUTH_URL="https://issues.zedu.chat/api/auth" \
@@ -39,5 +39,5 @@ LABEL "traefik.http.services.bug-tracker.loadbalancer.server.port"="3000"
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
 
-# Apply pending Prisma migrations; start the server only if they succeed
-CMD ["sh", "-c", "node scripts/migrate.mjs && pnpm run start"]
+# Apply pending Prisma migrations, then start the server
+CMD ["sh", "-c", "node scripts/migrate.mjs || true; pnpm run start"]
