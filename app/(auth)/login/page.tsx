@@ -11,6 +11,7 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{
     callbackUrl?: string;
+    expired?: string;
     error?: string;
     reason?: string;
   }>;
@@ -28,6 +29,12 @@ export default async function LoginPage({
         <p className="mt-1.5 text-sm text-slate-600">
           Sign in with your Google account to report, vote, and track issues.
         </p>
+
+        {params.expired && !params.error ? (
+          <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status">
+            Your session ended. Sign in again to continue.
+          </p>
+        ) : null}
 
         {params.error ? (
           <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">

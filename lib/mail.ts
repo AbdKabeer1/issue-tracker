@@ -7,8 +7,26 @@ type SendMailInput = {
   text: string;
 };
 
-function smtpConfigured() {
-  return Boolean(process.env.SMTP_HOST && process.env.SMTP_FROM);
+type MailEnv = { SMTP_HOST?: string; SMTP_FROM?: string; NODE_ENV?: string };
+
+export function smtpConfigured(env: MailEnv = process.env as MailEnv) {
+  return Boolean(env.SMTP_HOST && env.SMTP_FROM);
+}
+
+/**
+ * Whether email can actually be delivered: SMTP is configured, or this is
+ * local development, where messages go to the console instead (#210).
+ */
+export function canSendMail(env: MailEnv = process.env as MailEnv) {
+  return smtpConfigured(env) || env.NODE_ENV !== "production";
+}
+
+/** Thrown by sendMail in production when SMTP isn't configured (#210). */
+export class MailNotConfiguredError extends Error {
+  constructor() {
+    super("Email is not configured: set SMTP_HOST and SMTP_FROM.");
+    this.name = "MailNotConfiguredError";
+  }
 }
 
 function encodeSubject(subject: string) {
@@ -17,11 +35,17 @@ function encodeSubject(subject: string) {
 }
 
 /**
- * Dev-friendly mailer: logs to the console when SMTP is unset.
- * When SMTP_HOST + SMTP_FROM are set, sends over SMTP (AUTH LOGIN + STARTTLS).
+ * Sends over SMTP (AUTH LOGIN + STARTTLS) when SMTP_HOST + SMTP_FROM are set.
+ *
+ * Without SMTP: in development the message is printed to the console; in
+ * production it throws MailNotConfiguredError and logs nothing, so a reset
+ * link (a live credential) never ends up in container logs (#210).
  */
 export async function sendMail({ to, subject, text }: SendMailInput) {
   if (!smtpConfigured()) {
+    if (!canSendMail()) {
+      throw new MailNotConfiguredError();
+    }
     console.info(`[mail:dev] To: ${to}\nSubject: ${subject}\n\n${text}\n`);
     return;
   }

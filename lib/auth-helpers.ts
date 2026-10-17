@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import type { Role } from "@prisma/client";
-import { auth, signOut } from "@/auth";
+import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import {
   isAdmin,
@@ -10,6 +10,9 @@ import {
 } from "@/lib/roles";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { isSuperAdminEmail } from "@/lib/super-admin";
+
+/** Route handler that clears an invalid session (see app/session-expired/route.ts). */
+export const SESSION_EXPIRED_PATH = "/session-expired";
 
 export type SessionAppUser = {
   id: string;
@@ -24,8 +27,10 @@ export type SessionAppUser = {
 /**
  * App-layout gate. Uses the same JWT session as edge middleware (auth.config).
  * Missing session → redirect to login.
- * Stale JWT (cookie present, user gone from DB) → signOut to clear cookie,
- * then login — avoids middleware bouncing /login ↔ /bugs.
+ * Stale JWT (cookie present, user gone from DB, or issued before a password
+ * reset) → /session-expired, a route handler that clears the cookie and goes
+ * to login. Calling signOut() here would throw: Server Components can't set
+ * cookies.
  */
 export async function requireUser(): Promise<SessionAppUser> {
   const session = await auth();
@@ -36,8 +41,7 @@ export async function requireUser(): Promise<SessionAppUser> {
   const resolved = await resolveSessionUserId();
   if ("error" in resolved) {
     // Clears Auth.js cookies, then redirects (does not return).
-    await signOut({ redirectTo: "/login" });
-    throw new Error("unreachable: signOut redirects");
+    redirect(SESSION_EXPIRED_PATH);
   }
 
   const dbUser = await prisma.user.findUnique({
@@ -46,8 +50,7 @@ export async function requireUser(): Promise<SessionAppUser> {
   });
 
   if (!dbUser) {
-    await signOut({ redirectTo: "/login" });
-    throw new Error("unreachable: signOut redirects");
+    redirect(SESSION_EXPIRED_PATH);
   }
 
   const isRealSuperAdmin =
