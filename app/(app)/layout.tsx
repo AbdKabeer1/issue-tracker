@@ -47,6 +47,7 @@ export default async function AppLayout({
       <SkipLink />
       <AppHeader
         userName={user.name ?? user.email}
+        userImage={user.image}
         role={user.role}
         isRealSuperAdmin={user.isRealSuperAdmin}
         isRealAdmin={user.isRealAdmin}

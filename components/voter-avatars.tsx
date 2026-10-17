@@ -1,7 +1,5 @@
-"use client";
-
-import { useState } from "react";
-import { formatOverflowCount, getInitials, type VoterInfo } from "@/lib/voters";
+import { Avatar } from "@/components/avatar";
+import { formatOverflowCount, type VoterInfo } from "@/lib/voters";
 
 type VoterAvatarsProps = {
   voters: VoterInfo[];
@@ -17,31 +15,12 @@ function SingleAvatar({
   voter: VoterInfo;
   size: "sm" | "md";
 }) {
-  const [imageError, setImageError] = useState(false);
-  const initials = getInitials(voter.name);
-  const isSm = size === "sm";
-
+  // The group's own label gives the count; each face is decorative, with the
+  // name on hover for sighted users (#290).
   return (
-    <div
-      title={voter.name}
-      aria-label={voter.name}
-      className={`relative inline-flex items-center justify-center rounded-full bg-slate-200 font-semibold text-slate-700 ring-white select-none ${
-        isSm ? "h-5 w-5 text-[9px] ring-1" : "h-7 w-7 text-xs ring-2"
-      }`}
-    >
-      {voter.image && !imageError ? (
-        /* eslint-disable-next-line @next/next/no-img-element */
-        <img
-          src={voter.image}
-          alt={voter.name}
-          title={voter.name}
-          onError={() => setImageError(true)}
-          className="h-full w-full rounded-full object-cover"
-        />
-      ) : (
-        <span>{initials}</span>
-      )}
-    </div>
+    <span title={voter.name} className="inline-flex rounded-full ring-white ring-2">
+      <Avatar name={voter.name} image={voter.image} size={size === "sm" ? "xs" : "sm"} />
+    </span>
   );
 }
 

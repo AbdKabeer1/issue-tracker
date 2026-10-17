@@ -15,7 +15,7 @@ export default async function NewBugPage() {
   // the assignee picker.
   const [users, categories, types] = await Promise.all([
     prisma.user.findMany({
-      select: { id: true, name: true, role: true },
+      select: { id: true, name: true, role: true, image: true },
       orderBy: { name: "asc" },
     }),
     // Cached (#297). getActivePlatforms also seeds the default platforms,

@@ -58,7 +58,7 @@ export type CommentWindow = {
 };
 
 const commentInclude = {
-  author: { select: { name: true, role: true } },
+  author: { select: { name: true, role: true, image: true } },
   parent: {
     select: {
       id: true,
