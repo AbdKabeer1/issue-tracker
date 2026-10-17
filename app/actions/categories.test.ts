@@ -2,6 +2,10 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
+  // lib/lookups (#297): the actions expire the cached lists they change.
+  unstable_cache: (fn: unknown) => fn,
+  updateTag: vi.fn(),
+  revalidateTag: vi.fn(),
 }));
 
 vi.mock("@/lib/auth-helpers", () => ({
@@ -28,6 +32,8 @@ vi.mock("@/lib/prisma", () => {
 });
 
 import { prisma } from "@/lib/prisma";
+import { updateTag } from "next/cache";
+import { TAGS } from "@/lib/lookups";
 import { createCategoryAction, updateCategoryAction } from "./categories";
 
 const findFirstMock = vi.mocked(prisma.category.findFirst) as unknown as ReturnType<typeof vi.fn>;
@@ -79,6 +85,8 @@ describe("categories actions duplicate checks (#139)", () => {
           isActive: true,
         },
       });
+      // The report form and filters read a cached list; it must expire.
+      expect(updateTag).toHaveBeenCalledWith(TAGS.platforms);
     });
   });
 

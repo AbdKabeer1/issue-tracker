@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
 import { resetPasswordAction } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
+import { FieldError, useFieldErrors } from "@/components/ui/field-errors";
 import { PasswordInput } from "@/components/ui/password-input";
 
 export function ResetPasswordForm({ token }: { token: string }) {
@@ -11,13 +12,17 @@ export function ResetPasswordForm({ token }: { token: string }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const formRef = useRef<HTMLFormElement>(null);
+  const errs = useFieldErrors("reset", formRef);
 
   return (
     <form
+      ref={formRef}
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
         setError(null);
+        errs.clear();
         const formData = new FormData();
         formData.set("token", token);
         formData.set("password", password);
@@ -26,7 +31,8 @@ export function ResetPasswordForm({ token }: { token: string }) {
           try {
             const result = await resetPasswordAction(undefined, formData);
             if (result?.error) {
-              setError(result.error);
+              if (result.field) errs.show(result);
+              else setError(result.error);
             }
           } catch (error) {
             unstable_rethrow(error);
@@ -51,7 +57,9 @@ export function ResetPasswordForm({ token }: { token: string }) {
           placeholder="At least 8 characters"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
+          {...errs.attrs("password")}
         />
+        <FieldError formId={errs.formId} field="password" errors={errs.fieldErrors} />
       </div>
       <div className="space-y-1.5">
         <label
@@ -69,7 +77,9 @@ export function ResetPasswordForm({ token }: { token: string }) {
           minLength={8}
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
+          {...errs.attrs("confirmPassword")}
         />
+        <FieldError formId={errs.formId} field="confirmPassword" errors={errs.fieldErrors} />
       </div>
       {error ? (
         <p className="text-sm text-red-600" role="alert">

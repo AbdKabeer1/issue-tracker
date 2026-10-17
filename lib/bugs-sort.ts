@@ -54,9 +54,11 @@ export function isBugSortOption(value: unknown): value is BugSortOption {
 
 export function parseBugSort(
   raw?: string | string[] | null,
+  /** What to use when the value is missing or unrecognised. */
+  fallback: BugSortOption = DEFAULT_BUG_SORT,
 ): BugSortOption {
   const value = Array.isArray(raw) ? raw[0] : raw;
-  if (!value) return DEFAULT_BUG_SORT;
+  if (!value) return fallback;
   const normalized = value.trim().toLowerCase().replace(/-/g, "_");
   if (normalized === "newest" || normalized === "new") {
     return "newest";
@@ -91,11 +93,13 @@ export function parseBugSort(
   ) {
     return "lowest_votes";
   }
-  return DEFAULT_BUG_SORT;
+  return fallback;
 }
 
 export function getBugOrderBy(
   sort: BugSortOption,
+  /** Boosted issues pin to the top. Off for a personal list (#312). */
+  { boostFirst = true }: { boostFirst?: boolean } = {},
 ): Prisma.BugOrderByWithRelationInput[] {
   const baseOrder: Prisma.BugOrderByWithRelationInput[] = (() => {
     switch (sort) {
@@ -126,7 +130,9 @@ export function getBugOrderBy(
   })();
 
   // Boosted tickets always take precedence at the top, followed by active sort
-  return [{ isBoosted: "desc" }, { boostedAt: "desc" }, ...baseOrder];
+  return boostFirst
+    ? [{ isBoosted: "desc" }, { boostedAt: "desc" }, ...baseOrder]
+    : baseOrder;
 }
 
 export function compareBoosted<

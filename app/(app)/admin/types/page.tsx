@@ -17,6 +17,16 @@ export default async function AdminTypesPage() {
     },
   });
 
-  return <AdminIssueTypesManager types={types} />;
+  // As for platforms: deleted issues block deletion but the list hides them.
+  const deletedRows = await prisma.bug.groupBy({
+    by: ["typeId"],
+    where: { isDeleted: true, typeId: { not: null } },
+    _count: { _all: true },
+  });
+  const deletedCounts = Object.fromEntries(
+    deletedRows.map((row) => [row.typeId as string, row._count._all]),
+  );
+
+  return <AdminIssueTypesManager types={types} deletedCounts={deletedCounts} />;
 }
 

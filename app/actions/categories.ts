@@ -1,6 +1,8 @@
 "use server";
 
+import { fromZodError } from "@/lib/form-errors";
 import { revalidatePath } from "next/cache";
+import { expireTag, TAGS } from "@/lib/lookups";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-helpers";
 import { categorySchema } from "@/lib/validations/bug";
@@ -21,7 +23,7 @@ export async function createCategoryAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid platform name" };
+    return fromZodError(parsed.error, "Invalid platform name");
   }
 
   const normalizedName = parsed.data.name.trim();
@@ -58,6 +60,7 @@ export async function createCategoryAction(
     throw err;
   }
 
+  expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
@@ -75,7 +78,7 @@ export async function updateCategoryAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid platform name" };
+    return fromZodError(parsed.error, "Invalid platform name");
   }
 
   const category = await prisma.category.findUnique({
@@ -154,6 +157,7 @@ export async function updateCategoryAction(
     throw err;
   }
 
+  expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
@@ -181,6 +185,7 @@ export async function toggleCategoryStatusAction(
     data: { isActive: !category.isActive },
   });
 
+  expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
@@ -218,6 +223,7 @@ export async function deleteCategoryAction(
     return { error: "Failed to delete platform" };
   }
 
+  expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
