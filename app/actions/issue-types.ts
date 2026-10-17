@@ -130,6 +130,13 @@ export async function updateIssueTypeAction(
 
   try {
     await prisma.$transaction(async (tx) => {
+      const current = await tx.issueType.findUnique({
+        where: { id },
+      });
+      if (!current) {
+        return;
+      }
+
       await tx.issueType.update({
         where: { id },
         data: {
@@ -139,7 +146,7 @@ export async function updateIssueTypeAction(
         },
       });
 
-      if (currentType.name !== normalizedName) {
+      if (current.name !== normalizedName) {
         const linkedBugs = await tx.bug.findMany({
           where: { typeId: id },
           select: { id: true },
@@ -152,10 +159,10 @@ export async function updateIssueTypeAction(
               bugId: b.id,
               actorId: admin.id,
               type: "type_changed",
-              summary: typeChangedSummary(currentType.name, normalizedName),
+              summary: typeChangedSummary(current.name, normalizedName),
               metadata: {
                 field: "type",
-                from: currentType.name,
+                from: current.name,
                 to: normalizedName,
               },
             })),

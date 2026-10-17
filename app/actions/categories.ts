@@ -106,12 +106,19 @@ export async function updateCategoryAction(
 
   try {
     await prisma.$transaction(async (tx) => {
+      const current = await tx.category.findUnique({
+        where: { id: categoryId },
+      });
+      if (!current) {
+        return;
+      }
+
       await tx.category.update({
         where: { id: categoryId },
         data: { name: normalizedName },
       });
 
-      if (category.name !== normalizedName) {
+      if (current.name !== normalizedName) {
         const linkedBugs = await tx.bug.findMany({
           where: { categoryId },
           select: { id: true },
@@ -124,10 +131,10 @@ export async function updateCategoryAction(
               bugId: b.id,
               actorId: admin.id,
               type: "category_changed",
-              summary: categoryChangedSummary(category.name, normalizedName),
+              summary: categoryChangedSummary(current.name, normalizedName),
               metadata: {
                 field: "category",
-                from: category.name,
+                from: current.name,
                 to: normalizedName,
               },
             })),
