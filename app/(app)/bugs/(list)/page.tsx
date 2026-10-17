@@ -244,7 +244,9 @@ export default async function BugsPage({
             return (
               <li
                 key={bug.id}
-                className="flex items-start gap-3 px-3 py-3.5 sm:px-4 sm:py-4 transition hover:bg-slate-50"
+                /* flex-wrap so the admin controls drop to their own line on a
+                   phone instead of squeezing the title (#LIST-ROW). */
+                className="flex flex-wrap items-start gap-3 px-3 py-3.5 sm:flex-nowrap sm:px-4 sm:py-4 transition hover:bg-slate-50"
               >
                 <VoteButton
                   bugId={bug.id}
@@ -255,7 +257,7 @@ export default async function BugsPage({
                   size="sm"
                   readOnly={isDeletedView}
                 />
-                <Link href={`/bugs/${bug.id}`} className="min-w-0 flex-1">
+                <Link href={`/bugs/${bug.id}`} className="min-w-0 flex-1 basis-0">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-1">
                       <p className="font-medium text-slate-900 break-words">{bug.title}</p>
@@ -357,7 +359,7 @@ export default async function BugsPage({
                   </div>
                 </Link>
                 {canBoost || canDelete ? (
-                  <div className="flex shrink-0 items-center gap-1 self-center pl-1">
+                  <div className="flex w-full shrink-0 items-center justify-end gap-1 self-center border-t border-slate-100 pt-2 sm:w-auto sm:border-0 sm:pt-0 sm:pl-1">
                     {canBoost && !bug.isDeleted ? (
                       <BoostTicketButton
                         bugId={bug.id}
