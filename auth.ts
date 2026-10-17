@@ -7,8 +7,8 @@ import { loginSchema } from "@/lib/validations/bug";
 import type { Role } from "@prisma/client";
 import authConfig from "@/auth.config";
 import { cleanEnv } from "@/lib/env-clean";
-import { isSuperAdminEmail } from "@/lib/super-admin";
 import { isPasswordAuthEnabled } from "@/lib/auth-mode";
+import { upsertGoogleUser } from "@/lib/google-user";
 import { checkAuthRateLimit, clientIpFrom } from "@/lib/rate-limit";
 
 const googleClientId = cleanEnv(
@@ -115,64 +115,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             (typeof profile?.picture === "string" && profile.picture) ||
             (typeof user?.image === "string" ? user.image : undefined);
 
-          const isSuperAdmin = isSuperAdminEmail(email);
-
-          let dbUser: { id: string; role: Role | string; sessionVersion?: number } | null = null;
+          let dbUser: { id: string; role: Role } | null = null;
+          let lastError: unknown;
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
-              dbUser = await prisma.user.upsert({
-                where: { email },
-                create: {
-                  email,
-                  name,
-                  image,
-                  emailVerified: new Date(),
-                  ...(isSuperAdmin ? { role: "super_admin" } : {}),
-                },
-                update: {
-                  name,
-                  ...(image ? { image } : {}),
-                  emailVerified: new Date(),
-                  ...(isSuperAdmin ? { role: "super_admin" } : {}),
-                },
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  role: true,
-                },
-              });
+              dbUser = await upsertGoogleUser({ email, name, image });
               break;
             } catch (dbError) {
-              console.error(
-                `[auth] Google user upsert attempt ${attempt} failed:`,
-                dbError,
-              );
-              if (attempt === 3) {
-                try {
-                  dbUser = await prisma.user.findUnique({
-                    where: { email },
-                    select: { id: true, name: true, email: true, role: true },
-                  });
-                } catch (findErr) {
-                  console.error("[auth] Google user findUnique fallback failed:", findErr);
-                }
-              } else {
+              lastError = dbError;
+              console.error(`[auth] Google user save attempt ${attempt} failed:`, dbError);
+              if (attempt < 3) {
                 await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
               }
             }
           }
 
-          const fallbackId =
-            (typeof profile?.sub === "string" && profile.sub) ||
-            user?.id ||
-            `usr_${Buffer.from(email).toString("hex").slice(0, 16)}`;
+          if (!dbUser) {
+            throw lastError instanceof Error
+              ? lastError
+              : new Error("Google sign-in could not save the user");
+          }
 
-          const resolvedId = String(dbUser?.id || fallbackId);
-          token.id = resolvedId;
-          token.sub = resolvedId;
-          token.role = (dbUser?.role || (isSuperAdmin ? "super_admin" : "user")) as Role;
-          token.sv = typeof dbUser?.sessionVersion === "number" ? dbUser.sessionVersion : 0;
+          token.email = email;
+          token.name = name;
+          token.id = dbUser.id;
+          token.sub = dbUser.id;
+          token.role = dbUser.role;
+          token.sv = 0;
           return token;
         }
       }
