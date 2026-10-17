@@ -258,3 +258,14 @@ model Notification {
   @@index([userId, readAt])
   @@index([userId, createdAt])
 }
+
+/// Sliding-window rate-limit attempts, shared by every app instance (#296).
+/// `key` is a SHA-256 of the limiter key (it contains emails and IPs); `at`
+/// is epoch milliseconds. Rows older than the longest window are deleted.
+model RateLimitHit {
+  id  BigInt @id @default(autoincrement())
+  key String
+  at  BigInt
+
+  @@index([key, at])
+}

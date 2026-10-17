@@ -33,7 +33,7 @@ import {
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
 import {
   RATE_LIMIT_MESSAGE,
-  checkAuthRateLimit,
+  consumeAuthRateLimit,
   clientIpFrom,
   type AuthRateLimitAction,
 } from "@/lib/rate-limit";
@@ -62,7 +62,7 @@ async function authRateLimited(
   email: string | null,
 ): Promise<{ error: string } | null> {
   const ip = clientIpFrom(await headers());
-  const result = checkAuthRateLimit(action, { email, ip });
+  const result = await consumeAuthRateLimit(action, { email, ip });
   return result.allowed ? null : { error: RATE_LIMIT_MESSAGE };
 }
 

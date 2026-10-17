@@ -65,7 +65,7 @@ import { getForeignKeyErrorMessage } from "@/lib/foreign-key-errors";
 import { parseAttachmentIds } from "@/lib/attachments";
 import { linkAttachments } from "@/lib/attachment-link";
 import {
-  checkRateLimit,
+  consumeRateLimit,
   ACTION_RATE_LIMITS,
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
@@ -111,7 +111,7 @@ export async function createBugAction(
   const userId = user.id;
   const admin = isAdmin(user.role);
 
-  const limit = checkRateLimit(
+  const limit = await consumeRateLimit(
     `create-bug:${userId}`,
     ACTION_RATE_LIMITS.createBug,
   );
@@ -695,7 +695,7 @@ export async function addCommentAction(
 ): Promise<ActionResult> {
   const userId = await requireUserId();
 
-  const limit = checkRateLimit(
+  const limit = await consumeRateLimit(
     `add-comment:${userId}`,
     ACTION_RATE_LIMITS.addComment,
   );
@@ -850,7 +850,7 @@ export async function toggleVoteAction(
   }
   const { userId } = resolved;
 
-  const limit = checkRateLimit(
+  const limit = await consumeRateLimit(
     `toggle-vote:${userId}`,
     ACTION_RATE_LIMITS.toggleVote,
   );
