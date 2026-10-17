@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import type { Prisma, Severity, Status } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getIssueTypes, getPlatforms } from "@/lib/lookups";
+import { getActiveIssueTypesCached, getActivePlatforms, getIssueTypes, getPlatforms } from "@/lib/lookups";
 import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import type { AppRole } from "@/lib/roles";
@@ -48,6 +48,10 @@ import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { defaultSortFor, mineFilterWhere, parseMineFilter } from "@/lib/mine-filter";
 import { finishedWatchedWhere } from "@/lib/watching";
 import { UnwatchButton, UnwatchFinishedButton } from "@/components/unwatch-button";
+import {
+  BulkCheckbox,
+  BulkSelectionProvider,
+} from "@/components/bulk-selection";
 import { TAGS_PARAM, parseTagFilter, serializeTags, tagTypeIds } from "@/lib/tag-filter";
 import {
   PLATFORM_PARAM,
@@ -294,6 +298,21 @@ export default async function BugsPage({
       console.error("[bugs] finished watched count failed", error);
     }
   }
+
+  // Only admins get bulk actions, so only they pay for these queries.
+  const [bulkTypes, bulkPlatforms, bulkUsers] = canDelete
+    ? await Promise.all([
+        // Cached behind tags (#ENDOR-cache), like the filters above.
+        getActiveIssueTypesCached().then((types) => types.map(({ id, name }) => ({ id, name }))),
+        getActivePlatforms(),
+        prisma.user.findMany({
+          where: { role: { in: ["admin", "super_admin"] } },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        }),
+      ])
+    : [[], [], []];
+
   let voterSummaries = new Map<string, ReturnType<typeof createEmptyVoterSummary>>();
   try {
     voterSummaries = await fetchVoterSummaries(bugIds);
@@ -302,7 +321,17 @@ export default async function BugsPage({
     voterSummaries = new Map();
   }
 
-  return (
+  // The key is the current query string, so changing a filter or a page
+  // remounts the provider and clears the selection — which is what the bar
+  // tells the user will happen.
+  const selectionKey = new URLSearchParams(
+    Object.entries(params).flatMap(([k, v]) => {
+      const single = toSingleQueryParam(v);
+      return single ? [[k, single] as [string, string]] : [];
+    }),
+  ).toString();
+
+  const page = (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -426,6 +455,9 @@ export default async function BugsPage({
                    instead of squeezing the title (#255). */
                 className="flex flex-wrap items-start gap-3 px-3 py-3.5 sm:px-4 sm:py-4 md:flex-nowrap transition hover:bg-slate-50"
               >
+                {canDelete && !isDeletedView ? (
+                  <BulkCheckbox id={bug.id} title={bug.title} />
+                ) : null}
                 <VoteButton
                   bugId={bug.id}
                   voteCount={bug.voteCount}
@@ -634,6 +666,20 @@ export default async function BugsPage({
         </>
       )}
     </div>
+  );
+
+  if (!canDelete || isDeletedView) return page;
+
+  return (
+    <BulkSelectionProvider
+      key={selectionKey}
+      pageIds={bugIds}
+      types={bulkTypes}
+      platforms={bulkPlatforms}
+      users={bulkUsers}
+    >
+      {page}
+    </BulkSelectionProvider>
   );
 }
 
