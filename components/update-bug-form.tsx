@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { AssigneeCombobox } from "@/components/assignee-combobox";
 import { triageFieldsKey } from "@/lib/triage-options";
 
-type UserOption = { id: string; name: string; role: AppRole };
+type UserOption = { id: string; name: string; role: AppRole; image?: string | null };
 type CategoryOption = { id: string; name: string };
 type TypeOption = { id: string; name: string };
 

@@ -200,8 +200,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       where: { id },
       include: {
         type: { select: { id: true, name: true, isActive: true } },
-        reporter: { select: { name: true, email: true, role: true } },
-        assignee: { select: { id: true, name: true, role: true } },
+        reporter: { select: { name: true, email: true, role: true, image: true } },
+        assignee: { select: { id: true, name: true, role: true, image: true } },
         category: { select: { id: true, name: true, isActive: true } },
         votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
       },
@@ -230,7 +230,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       loadOptional("users", [], () =>
         prisma.user.findMany({
           orderBy: { name: "asc" },
-          select: { id: true, name: true, role: true },
+          select: { id: true, name: true, role: true, image: true },
         }),
       ),
       loadOptional("platforms", [], () => getActivePlatforms()),
@@ -454,6 +454,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
               <UserNameWithBadges
                 name={bug.reporter.name}
                 role={bug.reporter.role}
+                image={bug.reporter.image}
+                avatar="sm"
                 userId={bug.reporterId}
                 showAuthor
               />
@@ -466,6 +468,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 <UserNameWithBadges
                   name={bug.assignee.name}
                   role={bug.assignee.role}
+                  image={bug.assignee.image}
+                  avatar="sm"
                   userId={bug.assigneeId}
                 />
               ) : (

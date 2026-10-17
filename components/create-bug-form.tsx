@@ -19,7 +19,7 @@ import { buildDraftKey } from "@/lib/form-drafts";
 import { DraftBanner } from "@/components/draft-banner";
 import { AssigneeCombobox } from "@/components/assignee-combobox";
 
-type UserOption = { id: string; name: string; role: AppRole };
+type UserOption = { id: string; name: string; role: AppRole; image?: string | null };
 type CategoryOption = { id: string; name: string };
 type TypeOption = { id: string; name: string; description?: string | null };
 
