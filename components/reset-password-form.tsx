@@ -59,6 +59,10 @@ export function ResetPasswordForm({ token }: { token: string }) {
           autoComplete="new-password"
           required
           minLength={8}
+          aria-describedby="password-hint"
+          aria-invalid={
+            password.length > 0 && password.length < 8 ? true : undefined
+          }
           placeholder="At least 8 characters"
           value={password}
           onChange={(event) => {
@@ -66,11 +70,11 @@ export function ResetPasswordForm({ token }: { token: string }) {
             if (error) setError(null);
           }}
         />
-        {password.length > 0 && password.length < 8 && !error ? (
-          <p className="text-xs text-amber-600" aria-live="polite">
-            Must be at least 8 characters
-          </p>
-        ) : null}
+        <p id="password-hint" className="text-xs text-amber-600" aria-live="polite">
+          {password.length > 0 && password.length < 8 && !error
+            ? "Must be at least 8 characters"
+            : ""}
+        </p>
       </div>
       <div className="space-y-1.5">
         <label
@@ -86,21 +90,35 @@ export function ResetPasswordForm({ token }: { token: string }) {
           autoComplete="new-password"
           required
           minLength={8}
+          aria-describedby="confirm-password-hint"
+          aria-invalid={
+            confirmPassword.length > 0 && password !== confirmPassword
+              ? true
+              : undefined
+          }
           value={confirmPassword}
           onChange={(event) => {
             setConfirmPassword(event.target.value);
             if (error) setError(null);
           }}
         />
-        {confirmPassword.length > 0 && password !== confirmPassword && !error ? (
-          <p className="text-xs text-red-600" aria-live="polite">
-            Passwords do not match
-          </p>
-        ) : confirmPassword.length > 0 && password === confirmPassword ? (
-          <p className="text-xs text-emerald-600" aria-live="polite">
-            Passwords match
-          </p>
-        ) : null}
+        <p
+          id="confirm-password-hint"
+          className={`text-xs ${
+            confirmPassword.length > 0 && password === confirmPassword
+              ? "text-emerald-600"
+              : "text-red-600"
+          }`}
+          aria-live="polite"
+        >
+          {confirmPassword.length > 0 && !error
+            ? confirmPassword.length > 0 && password === confirmPassword
+              ? "Passwords match"
+              : confirmPassword.length > 0 && password !== confirmPassword
+              ? "Passwords do not match"
+              : ""
+            : ""}
+        </p>
       </div>
       {error ? (
         <p className="text-sm text-red-600" role="alert">

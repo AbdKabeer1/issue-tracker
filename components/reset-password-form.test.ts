@@ -55,4 +55,11 @@ describe("ResetPasswordForm client validation (#359)", () => {
     expect(actionCallIdx).toBeGreaterThan(lengthCheckIdx);
     expect(actionCallIdx).toBeGreaterThan(matchCheckIdx);
   });
+
+  it("associates aria-describedby and field-level aria-invalid with password inputs", () => {
+    expect(source).toContain('aria-describedby="password-hint"');
+    expect(source).toContain('aria-describedby="confirm-password-hint"');
+    expect(source).toContain("password.length > 0 && password.length < 8");
+    expect(source).toContain("confirmPassword.length > 0 && password !== confirmPassword");
+  });
 });
