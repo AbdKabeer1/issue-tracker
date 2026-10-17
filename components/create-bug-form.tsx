@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
 import { createBugAction, type ActionResult } from "@/app/actions/bugs";
 import { submitFailureMessage } from "@/lib/submit-error";
+import { ErrorSummary, FieldError, useFieldErrors } from "@/components/ui/field-errors";
 import { severities } from "@/lib/validations/bug";
 import { severityLabels } from "@/lib/labels";
 import type { AppRole } from "@/lib/roles";
@@ -21,6 +22,17 @@ import { AssigneeCombobox } from "@/components/assignee-combobox";
 type UserOption = { id: string; name: string; role: AppRole };
 type CategoryOption = { id: string; name: string };
 type TypeOption = { id: string; name: string; description?: string | null };
+
+/** Field names as the person sees them, for the error summary. */
+const FIELD_LABELS: Record<string, string> = {
+  title: "Title",
+  typeId: "Type",
+  categoryId: "Platform",
+  description: "Description",
+  proofLinks: "Proof links",
+  severity: "Severity",
+  assigneeId: "Assignee",
+};
 
 export function CreateBugForm({
   users,
@@ -62,6 +74,7 @@ export function CreateBugForm({
   const [canRetry, setCanRetry] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
+  const errs = useFieldErrors("report", formRef);
   const mentionUsers = users.map((user) => ({ id: user.id, name: user.name }));
 
   return (
@@ -72,6 +85,7 @@ export function CreateBugForm({
         event.preventDefault();
         setError(null);
         setCanRetry(false);
+        errs.clear();
         const formData = new FormData();
         formData.set("title", values.title);
         formData.set("typeId", values.typeId);
@@ -89,7 +103,11 @@ export function CreateBugForm({
           try {
             const result: ActionResult = await createBugAction(formData);
             if (result.error) {
-              setError(result.error);
+              // A field-specific error goes beside its control and takes
+              // focus there; only an error about no field in particular
+              // stays as the form-level alert at the bottom.
+              if (result.field || result.fieldErrors) errs.show(result);
+              else setError(result.error);
             } else {
               clearDraft();
             }
@@ -108,6 +126,8 @@ export function CreateBugForm({
         />
       ) : null}
 
+      <ErrorSummary errors={errs.fieldErrors} labels={FIELD_LABELS} />
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <label htmlFor="title" className="text-sm font-medium text-slate-700">
@@ -122,7 +142,9 @@ export function CreateBugForm({
             placeholder="Short summary of the issue"
             value={values.title}
             onChange={(event) => setValue("title", event.target.value)}
+            {...errs.attrs("title")}
           />
+          <FieldError formId={errs.formId} field="title" errors={errs.fieldErrors} />
         </div>
         {types.length > 0 ? (
           <div className="space-y-1.5">
@@ -134,6 +156,7 @@ export function CreateBugForm({
               name="typeId"
               value={values.typeId}
               onChange={(event) => setValue("typeId", event.target.value)}
+              {...errs.attrs("typeId")}
             >
               {types.map((type) => (
                 <option key={type.id} value={type.id}>
@@ -141,6 +164,7 @@ export function CreateBugForm({
                 </option>
               ))}
             </Select>
+            <FieldError formId={errs.formId} field="typeId" errors={errs.fieldErrors} />
           </div>
         ) : null}
       </div>
@@ -156,6 +180,7 @@ export function CreateBugForm({
           name="categoryId"
           value={values.categoryId}
           onChange={(event) => setValue("categoryId", event.target.value)}
+          {...errs.attrs("categoryId")}
         >
           <option value="">Select a platform</option>
           {categories.map((cat) => (
@@ -164,6 +189,7 @@ export function CreateBugForm({
             </option>
           ))}
         </Select>
+        <FieldError formId={errs.formId} field="categoryId" errors={errs.fieldErrors} />
       </div>
       <div className="space-y-1.5">
         <label
@@ -185,6 +211,7 @@ export function CreateBugForm({
           value={values.description}
           onChange={(val) => setValue("description", val)}
           users={mentionUsers}
+          {...errs.attrs("description")}
           footer={
             <p className="text-xs text-slate-500">
               Markdown is supported. Be specific: what should happen, what
@@ -192,6 +219,7 @@ export function CreateBugForm({
             </p>
           }
         />
+        <FieldError formId={errs.formId} field="description" errors={errs.fieldErrors} />
       </div>
       <div className="space-y-1.5">
         <label
@@ -209,7 +237,9 @@ export function CreateBugForm({
           }
           value={values.proofLinks}
           onChange={(event) => setValue("proofLinks", event.target.value)}
+          {...errs.attrs("proofLinks")}
         />
+        <FieldError formId={errs.formId} field="proofLinks" errors={errs.fieldErrors} />
         <p className="text-xs text-slate-500">
           Optional. One GitHub link per line (e.g. https://github.com/org/repo/issues/123). You need to have created the issue on GitHub first or gotten it from GitHub before adding the link here.
         </p>
@@ -240,6 +270,7 @@ export function CreateBugForm({
               onChange={(event) =>
                 setValue("severity", event.target.value as (typeof severities)[number])
               }
+              {...errs.attrs("severity")}
             >
               {severities.map((value) => (
                 <option key={value} value={value}>
@@ -262,6 +293,7 @@ export function CreateBugForm({
               value={values.assigneeId}
               onChange={(val) => setValue("assigneeId", val)}
             />
+            <FieldError formId={errs.formId} field="assigneeId" errors={errs.fieldErrors} />
           </div>
         </div>
       ) : currentUserId ? (

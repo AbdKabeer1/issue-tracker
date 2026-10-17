@@ -1,5 +1,6 @@
 "use server";
 
+import { fromZodError } from "@/lib/form-errors";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-helpers";
@@ -20,7 +21,7 @@ export async function createCategoryAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid platform name" };
+    return fromZodError(parsed.error, "Invalid platform name");
   }
 
   const normalizedName = parsed.data.name.trim();
@@ -74,7 +75,7 @@ export async function updateCategoryAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid platform name" };
+    return fromZodError(parsed.error, "Invalid platform name");
   }
 
   const category = await prisma.category.findUnique({
