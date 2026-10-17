@@ -6,6 +6,9 @@ import { getActiveIssueTypes } from "@/lib/issue-types";
 import { ensureDefaultPlatforms } from "@/lib/categories";
 import { CreateBugForm } from "@/components/create-bug-form";
 
+/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+export const metadata = { title: "Report an issue" };
+
 export default async function NewBugPage() {
   const user = await requireUser();
   const admin = isAdmin(user.role);

@@ -4,6 +4,9 @@ import { LoginForm } from "@/components/login-form";
 import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
 
+/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+export const metadata = { title: "Sign in" };
+
 /**
  * Authenticated users are redirected to /bugs by middleware (`auth` wrapper).
  * Errors show fixed copy per `?error=` code only; any other query text (such

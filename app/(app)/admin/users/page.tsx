@@ -11,6 +11,9 @@ import { PromoteUserButton } from "@/components/promote-user-button";
 import { DemoteUserButton } from "@/components/demote-user-button";
 import { UserSearch } from "@/components/user-search";
 
+/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+export const metadata = { title: "Admins" };
+
 const roleBadgeClass: Record<string, string> = {
   user: "bg-slate-100 text-slate-700",
   admin: "bg-teal-100 text-teal-800",

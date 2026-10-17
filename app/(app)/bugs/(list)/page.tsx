@@ -37,6 +37,9 @@ import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { mineFilterWhere, parseMineFilter } from "@/lib/mine-filter";
 import { TAGS_PARAM, parseTagFilter, serializeTags, tagTypeIds } from "@/lib/tag-filter";
 
+/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+export const metadata = { title: "Issues" };
+
 type SearchParams = Promise<{
   q?: string | string[];
   status?: string | string[];

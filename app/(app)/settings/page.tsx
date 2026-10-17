@@ -3,6 +3,9 @@ import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { NotificationSettings } from "@/components/notification-settings";
 
+/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+export const metadata = { title: "Settings" };
+
 export default async function SettingsPage() {
   const user = await requireUser();
   const settings = await prisma.user.findUnique({

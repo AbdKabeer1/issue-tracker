@@ -4,6 +4,9 @@ import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 import { BrandLockup } from "@/components/brand-lockup";
 import { ResetPasswordForm } from "@/components/reset-password-form";
 
+/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+export const metadata = { title: "Set a new password" };
+
 export default async function ResetPasswordPage({
   searchParams,
 }: {
