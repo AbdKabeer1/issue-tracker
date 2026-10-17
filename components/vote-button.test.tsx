@@ -22,16 +22,22 @@ const serverResult = {
   voted: true,
 };
 
-function renderVoteButton(props: Parameters<typeof VoteButton>[0] = {}) {
+function renderVoteButton(
+  props: Partial<Parameters<typeof VoteButton>[0]> = {},
+) {
   return render(<VoteButton bugId="b1" voteCount={2} {...props} />);
 }
 
 function likeButton() {
-  return screen.getByRole("button", { name: /^(Like|Unlike) this issue$/ });
+  return screen.getByRole("button", {
+    name: /^(Like|Unlike) this issue$/,
+  }) as HTMLButtonElement;
 }
 
 function dislikeButton() {
-  return screen.getByRole("button", { name: /^(Dislike|Remove dislike)$/ });
+  return screen.getByRole("button", {
+    name: /^(Dislike|Remove dislike)$/,
+  }) as HTMLButtonElement;
 }
 
 function countOf(button: HTMLElement) {
