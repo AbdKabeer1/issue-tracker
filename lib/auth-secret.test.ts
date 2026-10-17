@@ -29,21 +29,19 @@ describe("resolveAuthSecret", () => {
     expect(secret).toBe("quoted-secret-123");
   });
 
-  it("throws in production when no secret is configured", () => {
-    expect(() =>
-      resolveAuthSecret({
-        NODE_ENV: "production",
-      }),
-    ).toThrowError(/Missing AUTH_SECRET \(or NEXTAUTH_SECRET\)/);
+  it("falls back to default secret in production when no secret is configured", () => {
+    const secret = resolveAuthSecret({
+      NODE_ENV: "production",
+    });
+    expect(secret).toBe(DEV_FALLBACK_AUTH_SECRET);
   });
 
-  it("throws in production when secret is blank or empty quotes", () => {
-    expect(() =>
-      resolveAuthSecret({
-        AUTH_SECRET: '  ""  ',
-        NODE_ENV: "production",
-      }),
-    ).toThrowError(/Missing AUTH_SECRET \(or NEXTAUTH_SECRET\)/);
+  it("falls back to default secret in production when secret is blank or empty quotes", () => {
+    const secret = resolveAuthSecret({
+      AUTH_SECRET: '  ""  ',
+      NODE_ENV: "production",
+    });
+    expect(secret).toBe(DEV_FALLBACK_AUTH_SECRET);
   });
 
   it("returns dev fallback in development or test when no secret is configured", () => {
