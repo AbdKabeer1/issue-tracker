@@ -302,11 +302,12 @@ type InlineToken =
   | { type: "autolink"; href: string };
 
 /**
- * Links require an http(s) href so soft-mentions `@[Name](userId)` stay text,
+ * Links require an http(s) href (or one of our own uploads, #305) so
+ * soft-mentions `@[Name](userId)` stay text,
  * and bare URLs are linked automatically.
  */
 const INLINE_RE =
-  /(!?\[[^\]]*\]\((?:https?:\/\/|mailto:)[^)\s]*\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\s][^*]*\*|(?<![\w])_[^_\s][^_]*_(?![\w])|(?<![\w/.-])(https?:\/\/[^\s<>()]+))/g;
+  /(!?\[[^\]]*\]\((?:https?:\/\/|mailto:|\/api\/attachments\/)[^)\s]*\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\s][^*]*\*|(?<![\w])_[^_\s][^_]*_(?![\w])|(?<![\w/.-])(https?:\/\/[^\s<>()]+))/g;
 
 const MARKDOWN_TARGET_RE = /^(!?)\[([^\]]*)\]\(([^)\s]+)\)$/;
 const TRAILING_PUNCTUATION_RE = /[.,;:!?]+$/;
