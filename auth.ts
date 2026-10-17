@@ -4,6 +4,7 @@ import Google from "next-auth/providers/google";
 import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { loginSchema } from "@/lib/validations/bug";
+import type { Role } from "@prisma/client";
 import authConfig from "@/auth.config";
 import { cleanEnv } from "@/lib/env-clean";
 import { isSuperAdminEmail } from "@/lib/super-admin";
@@ -116,7 +117,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
           const isSuperAdmin = isSuperAdminEmail(email);
 
-          let dbUser = null;
+          let dbUser: { id: string; role: Role | string; sessionVersion?: number } | null = null;
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
               dbUser = await prisma.user.upsert({
@@ -134,6 +135,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                   emailVerified: new Date(),
                   ...(isSuperAdmin ? { role: "super_admin" } : {}),
                 },
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                },
               });
               break;
             } catch (dbError) {
@@ -141,18 +148,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 `[auth] Google user upsert attempt ${attempt} failed:`,
                 dbError,
               );
-              if (attempt === 3) throw dbError;
-              await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
+              if (attempt === 3) {
+                try {
+                  dbUser = await prisma.user.findUnique({
+                    where: { email },
+                    select: { id: true, name: true, email: true, role: true },
+                  });
+                } catch (findErr) {
+                  console.error("[auth] Google user findUnique fallback failed:", findErr);
+                }
+              } else {
+                await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
+              }
             }
           }
 
-          if (dbUser) {
-            token.id = dbUser.id;
-            token.sub = dbUser.id;
-            token.role = dbUser.role;
-            token.sv = dbUser.sessionVersion;
-            return token;
-          }
+          const fallbackId =
+            (typeof profile?.sub === "string" && profile.sub) ||
+            user?.id ||
+            `usr_${Buffer.from(email).toString("hex").slice(0, 16)}`;
+
+          const resolvedId = String(dbUser?.id || fallbackId);
+          token.id = resolvedId;
+          token.sub = resolvedId;
+          token.role = (dbUser?.role || (isSuperAdmin ? "super_admin" : "user")) as Role;
+          token.sv = typeof dbUser?.sessionVersion === "number" ? dbUser.sessionVersion : 0;
+          return token;
         }
       }
 
