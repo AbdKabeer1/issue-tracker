@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { toggleBoostBugAction } from "@/app/actions/bugs";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 
 type BoostTicketButtonProps = {
   bugId: string;
@@ -24,6 +25,7 @@ export function BoostTicketButton({
   const [boosted, setBoosted] = useState(initialBoosted);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const toast = useToast();
 
   const sizeClasses =
     size === "sm" ? "px-2.5 py-1 text-xs" : "px-3.5 py-2 text-sm";
@@ -56,12 +58,16 @@ export function BoostTicketButton({
               if (result.error) {
                 setBoosted(previous);
                 setError(result.error);
-              } else if (result.isBoosted !== undefined) {
-                setBoosted(result.isBoosted);
+                toast(result.error, "error");
+              } else {
+                const now = result.isBoosted ?? next;
+                setBoosted(now);
+                toast(now ? "Issue boosted." : "Boost removed.");
               }
             } catch {
               setBoosted(previous);
               setError("Failed to update boost status. Please try again.");
+              toast("Failed to update boost status. Please try again.", "error");
             }
           });
         }}

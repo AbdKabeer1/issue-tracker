@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { restoreBugAction } from "@/app/actions/bugs";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 type RestoreBugButtonProps = {
   bugId: string;
@@ -23,6 +25,8 @@ export function RestoreBugButton({
 }: RestoreBugButtonProps) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const confirm = useConfirm();
+  const toast = useToast();
 
   const sizeClasses =
     size === "sm" ? "px-2.5 py-1 text-xs" : "px-3.5 py-2 text-sm";
@@ -34,12 +38,14 @@ export function RestoreBugButton({
         variant={variant}
         disabled={pending}
         className={`${sizeClasses} ${className}`}
-        onClick={(event) => {
+        onClick={async (event) => {
           event.preventDefault();
           event.stopPropagation();
-          const confirmed = window.confirm(
-            `Are you sure you want to restore "${bugTitle}"?\n\nThe issue will become visible again to all users.`,
-          );
+          const confirmed = await confirm({
+            title: `Restore "${bugTitle}"?`,
+            body: "The issue will become visible again to all users.",
+            confirmLabel: "Restore issue",
+          });
           if (!confirmed) return;
 
           setError(null);
@@ -48,9 +54,13 @@ export function RestoreBugButton({
               const result = await restoreBugAction(bugId);
               if (result?.error) {
                 setError(result.error);
+                toast(result.error, "error");
+              } else {
+                toast("Issue restored.");
               }
             } catch {
               setError("Could not restore issue. Please try again.");
+              toast("Could not restore issue. Please try again.", "error");
             }
           });
         }}
