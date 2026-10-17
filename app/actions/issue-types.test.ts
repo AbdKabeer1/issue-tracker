@@ -2,6 +2,10 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
+  // lib/lookups (#297): the actions expire the cached lists they change.
+  unstable_cache: (fn: unknown) => fn,
+  updateTag: vi.fn(),
+  revalidateTag: vi.fn(),
 }));
 
 vi.mock("@/lib/auth-helpers", () => ({

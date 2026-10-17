@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { expireTag, TAGS } from "@/lib/lookups";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-helpers";
 import { categorySchema } from "@/lib/validations/bug";
@@ -57,6 +58,7 @@ export async function createCategoryAction(
     throw err;
   }
 
+  expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
@@ -118,6 +120,7 @@ export async function updateCategoryAction(
     throw err;
   }
 
+  expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
@@ -142,6 +145,7 @@ export async function toggleCategoryStatusAction(
     data: { isActive: !category.isActive },
   });
 
+  expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
@@ -179,6 +183,7 @@ export async function deleteCategoryAction(
     return { error: "Failed to delete platform" };
   }
 
+  expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
