@@ -351,6 +351,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
               <UserNameWithBadges
                 name={bug.reporter.name}
                 role={bug.reporter.role}
+                userId={bug.reporterId}
                 showAuthor
               />
             </dd>
@@ -362,6 +363,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                 <UserNameWithBadges
                   name={bug.assignee.name}
                   role={bug.assignee.role}
+                  userId={bug.assigneeId}
                 />
               ) : (
                 <span className="text-slate-500">Unassigned</span>

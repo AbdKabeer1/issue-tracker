@@ -135,6 +135,7 @@ function CommentItem({
               <UserNameWithBadges
                 name={comment.author.name}
                 role={comment.author.role}
+                userId={comment.authorId}
                 showAuthor={comment.authorId === reporterId}
                 className="font-medium text-slate-700"
               />

@@ -32,7 +32,13 @@ export type NotificationEvent =
       to: Status;
     });
 
-export type PlannedNotification = { userId: string; subject: string; text: string };
+export type PlannedNotification = {
+  userId: string;
+  subject: string;
+  text: string;
+  /** Which event produced it, so delivery can honour per-kind preferences. */
+  kind: NotificationEvent["kind"];
+};
 
 const quote = (title: string) => `“${title.length > 80 ? `${title.slice(0, 79)}…` : title}”`;
 
@@ -55,7 +61,12 @@ export function planNotifications(event: NotificationEvent, siteUrl: string): Pl
   const add = (userId: string | null | undefined, subject: string, lines: (string | false | undefined)[]) => {
     if (!userId || userId === event.actorId) return;
     if (planned.some((p) => p.userId === userId)) return;
-    planned.push({ userId, subject: `[Zedu Issues] ${subject}`, text: body(lines, issueUrl, settingsUrl) });
+    planned.push({
+      userId,
+      subject: `[Zedu Issues] ${subject}`,
+      text: body(lines, issueUrl, settingsUrl),
+      kind: event.kind,
+    });
   };
 
   switch (event.kind) {
