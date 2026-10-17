@@ -10,6 +10,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 export type CategoryWithCount = {
   id: string;
@@ -31,6 +33,8 @@ export function CategoryManager({
   const [editingName, setEditingName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const confirm = useConfirm();
+  const toast = useToast();
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,7 +88,7 @@ export function CategoryManager({
     });
   };
 
-  const handleDelete = (category: CategoryWithCount) => {
+  const handleDelete = async (category: CategoryWithCount) => {
     if (category._count.bugs > 0) {
       setError(
         `Cannot delete "${category.name}": it is currently in use by ${category._count.bugs} issue${category._count.bugs === 1 ? "" : "s"}. Reassign or deactivate it instead.`,
@@ -92,15 +96,22 @@ export function CategoryManager({
       return;
     }
 
-    if (!confirm(`Are you sure you want to delete platform "${category.name}"?`)) {
-      return;
-    }
+    const confirmed = await confirm({
+      title: `Delete platform "${category.name}"?`,
+      body: "This cannot be undone.",
+      confirmLabel: "Delete platform",
+      tone: "danger",
+    });
+    if (!confirmed) return;
 
     setError(null);
     startTransition(async () => {
       const res = await deleteCategoryAction(category.id);
       if (res.error) {
         setError(res.error);
+        toast(res.error, "error");
+      } else {
+        toast(`Platform "${category.name}" deleted.`);
       }
     });
   };

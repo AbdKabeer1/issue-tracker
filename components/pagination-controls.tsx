@@ -8,6 +8,10 @@ export interface PaginationControlsProps {
   from: number;
   to: number;
   queryParams: Record<string, string | undefined>;
+  /** Route the page links point at. Defaults to the issues list. */
+  basePath?: string;
+  /** Singular noun for the "Showing 1-25 of 60 …" line. */
+  itemLabel?: string;
 }
 
 export function PaginationControls({
@@ -17,13 +21,15 @@ export function PaginationControls({
   from,
   to,
   queryParams,
+  basePath = "/bugs",
+  itemLabel = "issue",
 }: PaginationControlsProps) {
   if (totalCount === 0) return null;
 
   const range = getPaginationRange(page, totalPages);
-  const prevUrl = page > 1 ? buildPaginationUrl("/bugs", page - 1, queryParams) : null;
+  const prevUrl = page > 1 ? buildPaginationUrl(basePath, page - 1, queryParams) : null;
   const nextUrl =
-    page < totalPages ? buildPaginationUrl("/bugs", page + 1, queryParams) : null;
+    page < totalPages ? buildPaginationUrl(basePath, page + 1, queryParams) : null;
 
   return (
     <nav
@@ -33,7 +39,8 @@ export function PaginationControls({
       <div className="text-xs text-slate-600">
         Showing <span className="font-medium text-slate-900">{from}</span>–
         <span className="font-medium text-slate-900">{to}</span> of{" "}
-        <span className="font-medium text-slate-900">{totalCount}</span> issue
+        <span className="font-medium text-slate-900">{totalCount}</span>{" "}
+        {itemLabel}
         {totalCount === 1 ? "" : "s"}
       </div>
 
@@ -69,7 +76,7 @@ export function PaginationControls({
               }
 
               const isCurrent = item === page;
-              const url = buildPaginationUrl("/bugs", item, queryParams);
+              const url = buildPaginationUrl(basePath, item, queryParams);
 
               return isCurrent ? (
                 <span

@@ -4,6 +4,9 @@ import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 import { BrandLockup } from "@/components/brand-lockup";
 import { ForgotPasswordForm } from "@/components/forgot-password-form";
 
+/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+export const metadata = { title: "Forgot password" };
+
 export default function ForgotPasswordPage() {
   if (!isPasswordAuthEnabled()) notFound();
 

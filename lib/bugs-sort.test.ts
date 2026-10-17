@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   BUG_SORT_OPTIONS,
@@ -7,6 +8,7 @@ import {
   compareBugsByLowestVotes,
   compareBugsByNewest,
   compareBugsByPopularity,
+  SEVERITY_RANK,
   getBugOrderBy,
   parseBugSort,
   sortBugs,
@@ -14,19 +16,24 @@ import {
 } from "./bugs-sort";
 
 describe("sort options constants and labels", () => {
-  it("includes newest, top_votes, and lowest_votes options", () => {
-    expect(BUG_SORT_OPTIONS).toEqual(["newest", "top_votes", "lowest_votes"]);
+  it("lists every option, with top votes still the default", () => {
+    expect(BUG_SORT_OPTIONS).toEqual([
+      "newest",
+      "recently_updated",
+      "top_votes",
+      "lowest_votes",
+      "severity",
+    ]);
     expect(DEFAULT_BUG_SORT).toBe("top_votes");
-    expect(bugSortLabels).toEqual({
-      newest: "Newest",
-      top_votes: "Top Votes",
-      lowest_votes: "Lowest Votes",
-    });
-    expect(bugSortDescriptions).toEqual({
-      newest: "newest",
-      top_votes: "top votes",
-      lowest_votes: "lowest votes",
-    });
+  });
+
+  it("has a label and a description for every option", () => {
+    for (const option of BUG_SORT_OPTIONS) {
+      expect(bugSortLabels[option], option).toBeTruthy();
+      expect(bugSortDescriptions[option], option).toBeTruthy();
+    }
+    expect(Object.keys(bugSortLabels).sort()).toEqual([...BUG_SORT_OPTIONS].sort());
+    expect(Object.keys(bugSortDescriptions).sort()).toEqual([...BUG_SORT_OPTIONS].sort());
   });
 });
 
@@ -239,5 +246,120 @@ describe("sortBugs", () => {
     ];
     const sorted = sortBugs(multipleBoosted, "top_votes");
     expect(sorted.map((b) => b.id)).toEqual(["boosted-latest", "boosted-first"]);
+  });
+});
+
+describe("severity sort", () => {
+  it("matches the Severity enum declaration order", () => {
+    // `orderBy: { severity: "desc" }` relies on Postgres ordering the enum by
+    // declaration order, so the schema and SEVERITY_RANK have to agree.
+    const schema = readFileSync("prisma/schema.prisma", "utf8");
+    const members = schema
+      .match(/enum Severity \{([^}]*)\}/)![1]
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    expect(members).toEqual(["low", "medium", "high", "critical"]);
+    const ranked = [...members].sort((a, b) => SEVERITY_RANK[a] - SEVERITY_RANK[b]);
+    expect(ranked).toEqual(members);
+  });
+
+  it("puts the most severe first", () => {
+    const made = (severity: string, voteCount = 0) => ({
+      severity,
+      voteCount,
+      createdAt: new Date("2026-01-01"),
+    });
+    const sorted = sortBugs(
+      [made("medium"), made("critical"), made("low"), made("high")],
+      "severity",
+    );
+    expect(sorted.map((b) => b.severity)).toEqual([
+      "critical",
+      "high",
+      "medium",
+      "low",
+    ]);
+  });
+
+  it("breaks ties on votes, then recency", () => {
+    const at = (iso: string, voteCount: number) => ({
+      severity: "high",
+      voteCount,
+      createdAt: new Date(iso),
+    });
+    const sorted = sortBugs([at("2026-01-01", 2), at("2026-03-01", 2), at("2026-01-01", 9)], "severity");
+    expect(sorted.map((b) => [b.voteCount, b.createdAt.getUTCMonth()])).toEqual([
+      [9, 0],
+      [2, 2],
+      [2, 0],
+    ]);
+  });
+
+  it("still puts boosted issues on top", () => {
+    const sorted = sortBugs(
+      [
+        { severity: "critical", voteCount: 0, createdAt: new Date("2026-01-01") },
+        { severity: "low", voteCount: 0, createdAt: new Date("2026-01-01"), isBoosted: true },
+      ],
+      "severity",
+    );
+    expect(sorted[0].severity).toBe("low");
+  });
+});
+
+describe("recently updated sort", () => {
+  it("puts the most recently updated first", () => {
+    const made = (id: string, updatedAt: string) => ({
+      id,
+      voteCount: 0,
+      createdAt: new Date("2026-01-01"),
+      updatedAt: new Date(updatedAt),
+    });
+    const sorted = sortBugs(
+      [made("a", "2026-02-01"), made("b", "2026-05-01"), made("c", "2026-03-01")],
+      "recently_updated",
+    );
+    expect(sorted.map((b) => b.id)).toEqual(["b", "c", "a"]);
+  });
+
+  it("falls back to createdAt when an item has never been updated", () => {
+    const sorted = sortBugs(
+      [
+        { id: "old", voteCount: 0, createdAt: new Date("2026-01-01") },
+        { id: "new", voteCount: 0, createdAt: new Date("2026-06-01") },
+      ],
+      "recently_updated",
+    );
+    expect(sorted.map((b) => b.id)).toEqual(["new", "old"]);
+  });
+});
+
+describe("parseBugSort for the new options", () => {
+  it("accepts the new keys and their aliases", () => {
+    expect(parseBugSort("recently_updated")).toBe("recently_updated");
+    expect(parseBugSort("recently-updated")).toBe("recently_updated");
+    expect(parseBugSort("updated")).toBe("recently_updated");
+    expect(parseBugSort("severity")).toBe("severity");
+    expect(parseBugSort("most_severe")).toBe("severity");
+  });
+
+  it("still defaults to top votes for anything unknown", () => {
+    expect(parseBugSort("sideways")).toBe("top_votes");
+  });
+});
+
+describe("getBugOrderBy for the new options", () => {
+  it("orders by updatedAt, after boosts", () => {
+    expect(getBugOrderBy("recently_updated")).toEqual([
+      { isBoosted: "desc" },
+      { boostedAt: "desc" },
+      { updatedAt: "desc" },
+      { id: "desc" },
+    ]);
+  });
+
+  it("orders by severity descending, after boosts", () => {
+    expect(getBugOrderBy("severity")[2]).toEqual({ severity: "desc" });
   });
 });

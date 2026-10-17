@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { promoteUserToAdminAction } from "@/app/actions/admin";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 export function PromoteUserButton({
   userId,
@@ -13,6 +15,8 @@ export function PromoteUserButton({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const confirm = useConfirm();
+  const toast = useToast();
 
   return (
     <div className="flex flex-col items-end gap-1">
@@ -20,10 +24,12 @@ export function PromoteUserButton({
         type="button"
         variant="secondary"
         disabled={pending}
-        onClick={() => {
-          const confirmed = window.confirm(
-            `Promote ${userName} to admin? They will be able to triage issues.`,
-          );
+        onClick={async () => {
+          const confirmed = await confirm({
+            title: `Promote ${userName} to admin?`,
+            body: "They will be able to triage every issue.",
+            confirmLabel: "Promote to admin",
+          });
           if (!confirmed) return;
 
           setError(null);
@@ -31,6 +37,9 @@ export function PromoteUserButton({
             const result = await promoteUserToAdminAction(userId);
             if (result.error) {
               setError(result.error);
+              toast(result.error, "error");
+            } else {
+              toast(`${userName} is now an admin.`);
             }
           });
         }}

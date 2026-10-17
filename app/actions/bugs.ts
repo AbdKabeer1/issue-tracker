@@ -28,6 +28,7 @@ import {
 import { MAX_COMMENT_DEPTH, commentDepth } from "@/lib/comments";
 import {
   extractMentionedUserIds,
+  newlyMentionedUserIds,
   normalizeMentions,
 } from "@/lib/mentions";
 import {
@@ -42,7 +43,11 @@ import {
   canRestoreTicket,
   TICKET_DELETION_ERRORS,
 } from "@/lib/ticket-deletion";
-import { canBoostTicket, TICKET_BOOST_ERRORS } from "@/lib/ticket-boosting";
+import {
+  canBoostTicket,
+  shouldUnboostOnStatusChange,
+  TICKET_BOOST_ERRORS,
+} from "@/lib/ticket-boosting";
 import { canAssignTicket, TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
 import { canChangeTicketStatus, TICKET_TRIAGE_ERRORS } from "@/lib/ticket-triage";
 import {
@@ -53,8 +58,11 @@ import {
 } from "@/lib/ticket-editing";
 import { Prisma, type ActivityType } from "@prisma/client";
 import { notifyLater } from "@/lib/notify";
+import { ensureWatching } from "@/lib/watch";
 import type { NotificationEvent } from "@/lib/notifications";
 import { getForeignKeyErrorMessage } from "@/lib/foreign-key-errors";
+import { parseAttachmentIds } from "@/lib/attachments";
+import { linkAttachments } from "@/lib/attachment-link";
 import {
   checkRateLimit,
   ACTION_RATE_LIMITS,
@@ -201,6 +209,12 @@ export async function createBugAction(
         reporterId: userId,
         assigneeId,
         categoryId,
+        // Reporter and assignee watch the issue from the start (#216).
+        watches: {
+          create: [...new Set([userId, assigneeId].filter((id): id is string => Boolean(id)))].map(
+            (watcherId) => ({ userId: watcherId }),
+          ),
+        },
         activities: {
           create: {
             actorId: userId,
@@ -227,6 +241,13 @@ export async function createBugAction(
     }
     throw error;
   }
+
+  // Files uploaded while writing the report (#215).
+  await linkAttachments(prisma, {
+    ids: parseAttachmentIds(formData.get("attachmentIds")),
+    uploaderId: userId,
+    bugId: bug.id,
+  });
 
   const events: NotificationEvent[] = [];
   const actor = { actorId: userId, actorName: user.name ?? "Someone", bugId: bug.id, bugTitle: bug.title };
@@ -354,6 +375,8 @@ export async function updateBugAction(
     typeId?: string | null;
     assigneeId?: string | null;
     categoryId?: string | null;
+    isBoosted?: boolean;
+    boostedAt?: Date | null;
   } = {};
 
   if (parsed.data.status) data.status = parsed.data.status;
@@ -388,6 +411,23 @@ export async function updateBugAction(
         from: existing.status,
         to: data.status,
       },
+    });
+  }
+
+  // #256: a resolved or closed issue shouldn't stay pinned above open work.
+  if (
+    shouldUnboostOnStatusChange({
+      isBoosted: existing.isBoosted,
+      from: existing.status,
+      to: data.status,
+    })
+  ) {
+    data.isBoosted = false;
+    data.boostedAt = null;
+    pending.push({
+      type: "unboosted",
+      summary: unboostedSummary(),
+      metadata: { field: "isBoosted", to: "false" },
     });
   }
 
@@ -497,6 +537,10 @@ export async function updateBugAction(
           where: { id: bugId },
           data,
         });
+      }
+      if (data.assigneeId) {
+        // The new assignee starts watching (#216).
+        await ensureWatching(tx, bugId, [data.assigneeId]);
       }
       if (pending.length > 0) {
         await tx.bugActivity.createMany({
@@ -616,6 +660,22 @@ export async function editBugContentAction(
     });
   });
 
+  const newlyMentioned = newlyMentionedUserIds(
+    existing.description,
+    normalizedDescription,
+  );
+  if (newlyMentioned.length > 0) {
+    notifyLater({
+      kind: "mentioned",
+      actorId: userId,
+      actorName: user.name ?? "Someone",
+      bugId,
+      bugTitle: parsed.data.title,
+      place: "description",
+      recipientIds: newlyMentioned,
+    });
+  }
+
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
@@ -647,18 +707,19 @@ export async function addCommentAction(
 
   const bug = await prisma.bug.findUnique({
     where: { id: bugId },
-    select: { id: true, isDeleted: true, title: true },
+    select: { id: true, isDeleted: true, title: true, reporterId: true, assigneeId: true },
   });
   if (!bug || bug.isDeleted) {
     return { error: "Issue not found" };
   }
 
   const parentId = parsed.data.parentId;
+  let parentAuthorId: string | null = null;
 
   if (parentId) {
     const parent = await prisma.comment.findUnique({
       where: { id: parentId },
-      select: { id: true, bugId: true, parentId: true, deletedAt: true },
+      select: { id: true, bugId: true, parentId: true, deletedAt: true, authorId: true },
     });
 
     if (!parent || parent.bugId !== bugId) {
@@ -667,6 +728,7 @@ export async function addCommentAction(
     if (parent.deletedAt) {
       return { error: "You can't reply to a deleted comment" };
     }
+    parentAuthorId = parent.authorId;
 
     const threadComments = await prisma.comment.findMany({
       where: { bugId },
@@ -686,7 +748,7 @@ export async function addCommentAction(
 
   const normalizedBody = await normalizeMentionTags(parsed.data.body);
 
-  await prisma.$transaction(async (tx) => {
+  const commentId = await prisma.$transaction(async (tx) => {
     const created = await tx.comment.create({
       data: {
         bugId,
@@ -695,6 +757,13 @@ export async function addCommentAction(
         parentId: parentId ?? null,
       },
       select: { id: true },
+    });
+    // Files uploaded with the comment (#215).
+    await linkAttachments(tx, {
+      ids: parseAttachmentIds(formData.get("attachmentIds")),
+      uploaderId: userId,
+      bugId,
+      commentId: created.id,
     });
     await tx.bugActivity.create({
       data: {
@@ -713,22 +782,36 @@ export async function addCommentAction(
       where: { id: bugId },
       data: { updatedAt: new Date() },
     });
+    // Commenting on an issue means you want to hear about replies (#216).
+    await ensureWatching(tx, bugId, [userId]);
+    return created.id;
   });
 
   const mentioned = extractMentionedUserIds(normalizedBody);
+  const author = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+  const actor = {
+    actorId: userId,
+    actorName: author?.name ?? "Someone",
+    bugId,
+    bugTitle: bug.title,
+  };
+  const excerpt = commentPreview(normalizedBody);
+  const events: NotificationEvent[] = [];
   if (mentioned.length > 0) {
-    const author = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
-    notifyLater({
-      kind: "mentioned",
-      actorId: userId,
-      actorName: author?.name ?? "Someone",
-      bugId,
-      bugTitle: bug.title,
-      place: "comment",
-      recipientIds: mentioned,
-      excerpt: commentPreview(normalizedBody),
-    });
+    events.push({ ...actor, kind: "mentioned", place: "comment", recipientIds: mentioned, excerpt, commentId });
   }
+  // Watchers hear about every new comment (#216). The reporter and assignee
+  // are the default audience; delivery adds anyone else watching.
+  events.push({
+    ...actor,
+    kind: "comment_added",
+    commentId,
+    excerpt,
+    parentAuthorId,
+    recipientIds: [bug.reporterId, bug.assigneeId].filter((id): id is string => Boolean(id)),
+    excludeIds: mentioned,
+  });
+  notifyLater(...events);
 
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
@@ -1061,6 +1144,8 @@ export async function selfAssignBugAction(
         where: { id: bugId },
         data: { assigneeId: targetAssigneeId },
       });
+      // Taking an issue means watching it (#216).
+      await ensureWatching(tx, bugId, [targetAssigneeId]);
 
       await tx.bugActivity.create({
         data: {

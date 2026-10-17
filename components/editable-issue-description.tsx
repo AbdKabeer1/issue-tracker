@@ -118,6 +118,7 @@ export function EditableIssueDescription({
 
           <div className="space-y-1.5">
             <label
+              id="edit-issue-description-label"
               htmlFor="edit-issue-description"
               className="text-xs font-medium text-slate-700"
             >
@@ -125,6 +126,7 @@ export function EditableIssueDescription({
             </label>
             <MarkdownEditor
               id="edit-issue-description"
+              labelId="edit-issue-description-label"
               name="description"
               value={description}
               onChange={setDescription}

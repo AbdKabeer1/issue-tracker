@@ -1,0 +1,65 @@
+import { BASE_PATH } from "@/lib/base-path";
+import { attachmentKind, formatBytes } from "@/lib/attachments";
+
+export type AttachmentView = {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+};
+
+/** Attachments on an issue or comment (#215): images inline, other files as links. */
+export function AttachmentList({ attachments }: { attachments: AttachmentView[] }) {
+  if (attachments.length === 0) return null;
+  const href = (id: string) => `${BASE_PATH}/api/attachments/${id}`;
+  const images = attachments.filter((a) => attachmentKind(a.contentType) === "image");
+  const files = attachments.filter((a) => attachmentKind(a.contentType) !== "image");
+
+  return (
+    <div className="mt-3 space-y-2">
+      {images.length > 0 ? (
+        <ul className="flex flex-wrap gap-2">
+          {images.map((a) => (
+            <li key={a.id}>
+              <a
+                href={href(a.id)}
+                target="_blank"
+                rel="noopener"
+                className="block overflow-hidden rounded-lg border border-slate-200 bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+                title={`${a.filename} (${formatBytes(a.size)})`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- served by our own auth-checked route */}
+                <img
+                  src={href(a.id)}
+                  alt={a.filename}
+                  loading="lazy"
+                  className="h-28 w-auto max-w-[16rem] object-contain"
+                />
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {files.length > 0 ? (
+        <ul className="flex flex-wrap gap-2">
+          {files.map((a) => (
+            <li key={a.id}>
+              <a
+                href={href(a.id)}
+                target="_blank"
+                rel="noopener"
+                className="inline-flex max-w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+              >
+                <span aria-hidden="true" className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                  {attachmentKind(a.contentType) === "pdf" ? "PDF" : "TXT"}
+                </span>
+                <span className="truncate">{a.filename}</span>
+                <span className="shrink-0 text-xs text-slate-500">{formatBytes(a.size)}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}

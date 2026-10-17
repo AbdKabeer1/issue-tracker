@@ -3,11 +3,20 @@ import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { NotificationSettings } from "@/components/notification-settings";
 
+/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+export const metadata = { title: "Settings" };
+
 export default async function SettingsPage() {
   const user = await requireUser();
   const settings = await prisma.user.findUnique({
     where: { id: user.id },
-    select: { email: true, emailNotifications: true },
+    select: {
+      email: true,
+      emailNotifications: true,
+      notifyMentions: true,
+      notifyAssignments: true,
+      notifyStatusChanges: true,
+    },
   });
 
   return (
@@ -23,11 +32,17 @@ export default async function SettingsPage() {
           Email notifications
         </h2>
         <p className="mt-2 text-sm text-slate-600">
-          Sent to <span className="font-medium text-slate-800">{settings?.email}</span> when
-          someone @mentions you, assigns an issue to you or takes it from you, or changes the
-          status of an issue you reported. You&apos;re never emailed about your own changes.
+          Sent to <span className="font-medium text-slate-800">{settings?.email}</span>.
+          You&apos;re never emailed about your own changes.
         </p>
-        <NotificationSettings initialEnabled={settings?.emailNotifications ?? true} />
+        <NotificationSettings
+          initialEnabled={settings?.emailNotifications ?? true}
+          initialPrefs={{
+            notifyMentions: settings?.notifyMentions ?? true,
+            notifyAssignments: settings?.notifyAssignments ?? true,
+            notifyStatusChanges: settings?.notifyStatusChanges ?? true,
+          }}
+        />
       </section>
     </div>
   );

@@ -15,6 +15,11 @@ import { CommentBody, MentionText } from "@/components/comment-body";
 import { CommentForm } from "@/components/comment-form";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
+import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
+
+type AttachmentsByComment = Record<string, AttachmentView[]>;
 
 type UserOption = { id: string; name: string };
 
@@ -87,17 +92,21 @@ function CommentItem({
   users,
   currentUserId,
   currentUserRole,
+  attachmentsByComment = {},
   readOnly = false,
 }: {
   comment: CommentNode;
   bugId: string;
   reporterId: string;
   users: UserOption[];
+  attachmentsByComment?: AttachmentsByComment;
 } & ViewerProps) {
   const [replying, setReplying] = useState(false);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const confirm = useConfirm();
+  const toast = useToast();
   const isDeleted = Boolean(comment.deletedAt);
   const canReply =
     !readOnly && comment.depth < MAX_COMMENT_DEPTH && !isDeleted;
@@ -105,18 +114,26 @@ function CommentItem({
   const canDelete =
     !readOnly && canDeleteComment(currentUserId, currentUserRole, comment);
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     const own = comment.authorId === currentUserId;
-    const confirmed = window.confirm(
-      own
-        ? "Delete your comment? Replies will stay, and the comment will show as deleted."
-        : `Delete ${comment.author.name}'s comment? This is recorded in the activity log.`,
-    );
+    const confirmed = await confirm({
+      title: own ? "Delete your comment?" : `Delete ${comment.author.name}'s comment?`,
+      body: own
+        ? "Replies will stay, and the comment will show as deleted."
+        : "This is recorded in the activity log.",
+      confirmLabel: "Delete comment",
+      tone: "danger",
+    });
     if (!confirmed) return;
     setError(null);
     startTransition(async () => {
       const result = await deleteCommentAction(comment.id);
-      if (result.error) setError(result.error);
+      if (result.error) {
+        setError(result.error);
+        toast(result.error, "error");
+      } else {
+        toast("Comment deleted.");
+      }
     });
   };
 
@@ -135,6 +152,7 @@ function CommentItem({
               <UserNameWithBadges
                 name={comment.author.name}
                 role={comment.author.role}
+                userId={comment.authorId}
                 showAuthor={comment.authorId === reporterId}
                 className="font-medium text-slate-700"
               />
@@ -173,7 +191,10 @@ function CommentItem({
                 onDone={() => setEditing(false)}
               />
             ) : (
-              <CommentBody body={comment.body} users={users} />
+              <>
+                <CommentBody body={comment.body} users={users} />
+                <AttachmentList attachments={attachmentsByComment[comment.id] ?? []} />
+              </>
             )}
           </>
         )}
@@ -244,6 +265,7 @@ function CommentItem({
               users={users}
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
+              attachmentsByComment={attachmentsByComment}
               readOnly={readOnly}
             />
           ))}
@@ -260,12 +282,15 @@ export function CommentThread({
   users,
   currentUserId,
   currentUserRole,
+  attachmentsByComment = {},
   readOnly = false,
 }: {
   bugId: string;
   reporterId: string;
   comments: CommentNode[];
   users: UserOption[];
+  /** Files attached to each comment, by comment id (#215). */
+  attachmentsByComment?: AttachmentsByComment;
 } & ViewerProps) {
   return (
     <div className="mt-4 space-y-6">
@@ -286,6 +311,7 @@ export function CommentThread({
               users={users}
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
+              attachmentsByComment={attachmentsByComment}
               readOnly={readOnly}
             />
           ))}
