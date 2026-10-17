@@ -689,6 +689,20 @@ export async function editBugContentAction(
   const summary = formatEditSummary(changedFields);
 
   await prisma.$transaction(async (tx) => {
+    // #303: keep the version this edit replaces. Read again under a row
+    // lock so two edits at once each store the version they replaced and
+    // none goes missing from the history.
+    const [previous] = await tx.$queryRaw<{ title: string; description: string }[]>`
+      SELECT "title", "description" FROM "Bug" WHERE "id" = ${bugId} FOR UPDATE`;
+    await tx.bugRevision.create({
+      data: {
+        bugId,
+        title: previous?.title ?? existing.title,
+        description: previous?.description ?? existing.description,
+        editedById: userId,
+      },
+    });
+
     await tx.bug.update({
       where: { id: bugId },
       data: {
