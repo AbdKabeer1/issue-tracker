@@ -36,11 +36,17 @@ import { canBoostTicket } from "@/lib/ticket-boosting";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { mineFilterWhere, parseMineFilter } from "@/lib/mine-filter";
 import { TAGS_PARAM, parseTagFilter, serializeTags, tagTypeIds } from "@/lib/tag-filter";
+import {
+  PLATFORM_PARAM,
+  parsePlatformFilter,
+  platformFilterWhere,
+} from "@/lib/platform-filter";
 
 type SearchParams = Promise<{
   q?: string | string[];
   status?: string | string[];
   severity?: string | string[];
+  platform?: string | string[];
   sort?: string | string[];
   page?: string | string[];
   deleted?: string | string[];
@@ -91,10 +97,19 @@ export default async function BugsPage({
   };
 
   // Tag filter (#102): issue types picked from the search box.
-  const tagTypes = await prisma.issueType.findMany({
-    select: { id: true, name: true, isActive: true },
-    orderBy: { name: "asc" },
-  });
+  const [tagTypes, platforms] = await Promise.all([
+    prisma.issueType.findMany({
+      select: { id: true, name: true, isActive: true },
+      orderBy: { name: "asc" },
+    }),
+    // Every platform, not just active ones: a link filtered on a platform
+    // that was since deactivated still has to resolve. BugFilters narrows
+    // the dropdown itself.
+    prisma.category.findMany({
+      select: { id: true, name: true, isActive: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
   const selectedTags = parseTagFilter(params.tags, tagTypes);
   if (selectedTags.length > 0) {
     where.typeId = { in: tagTypeIds(selectedTags, tagTypes) };
@@ -107,6 +122,9 @@ export default async function BugsPage({
   if (isSeverity(severityParam)) {
     where.severity = severityParam;
   }
+  // Platform filter: one category, or the issues with none set.
+  const selectedPlatform = parsePlatformFilter(params.platform, platforms);
+  Object.assign(where, platformFilterWhere(selectedPlatform));
   if (qParam?.trim()) {
     const q = escapeSearchQuery(qParam.trim());
     where.OR = [
@@ -207,7 +225,11 @@ export default async function BugsPage({
         fallback={<div className="h-12 animate-pulse rounded-lg bg-slate-100" />}
       >
         {/* #204: keyed on the search query so BugFilters remounts on URL change */}
-        <BugFilters key={qParam ?? ""} tagTypes={tagTypes} />
+        <BugFilters
+          key={qParam ?? ""}
+          tagTypes={tagTypes}
+          platforms={platforms}
+        />
       </Suspense>
 
       {bugs.length === 0 ? (
@@ -405,6 +427,7 @@ export default async function BugsPage({
             ...(mineFilter ? { mine: mineFilter } : {}),
             ...(qParam ? { q: qParam } : {}),
             ...(tagsParam ? { [TAGS_PARAM]: tagsParam } : {}),
+            ...(selectedPlatform ? { [PLATFORM_PARAM]: selectedPlatform } : {}),
             ...(isDeletedView ? { deleted: "true" } : {}),
             sort: sortParam,
           }}

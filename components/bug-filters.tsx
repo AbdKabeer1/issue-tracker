@@ -20,10 +20,23 @@ import {
   mineFilterLabels,
   parseMineFilter,
 } from "@/lib/mine-filter";
+import {
+  PLATFORM_NONE,
+  PLATFORM_PARAM,
+  parsePlatformFilter,
+  platformChoices,
+  type PlatformOption,
+} from "@/lib/platform-filter";
 
 type TagType = { id: string; name: string; isActive?: boolean };
 
-export function BugFilters({ tagTypes = [] }: { tagTypes?: TagType[] }) {
+export function BugFilters({
+  tagTypes = [],
+  platforms = [],
+}: {
+  tagTypes?: TagType[];
+  platforms?: PlatformOption[];
+}) {
   const router = useRouter();
   const params = useSearchParams();
   const listId = useId();
@@ -90,6 +103,9 @@ export function BugFilters({ tagTypes = [] }: { tagTypes?: TagType[] }) {
   }
 
   const currentSort = parseBugSort(params.get("sort"));
+  const currentPlatform =
+    parsePlatformFilter(params.get(PLATFORM_PARAM), platforms) ?? "";
+  const platformOptions = platformChoices(platforms, currentPlatform || null);
   const currentMine = parseMineFilter(params.get("mine")) ?? "";
 
   return (
@@ -264,6 +280,31 @@ export function BugFilters({ tagTypes = [] }: { tagTypes?: TagType[] }) {
           ))}
         </select>
       </div>
+      {platformOptions.length > 0 ? (
+        <div className="w-full sm:w-auto">
+          <label
+            htmlFor="platform"
+            className="mb-1 block text-xs font-medium text-slate-600"
+          >
+            Platform
+          </label>
+          <select
+            id="platform"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:w-auto"
+            value={currentPlatform}
+            onChange={(event) => update(PLATFORM_PARAM, event.target.value)}
+          >
+            <option value="">All</option>
+            {platformOptions.map((platform) => (
+              <option key={platform.id} value={platform.id}>
+                {platform.name}
+              </option>
+            ))}
+            {/* Unset is a real state, and the only way to find those issues. */}
+            <option value={PLATFORM_NONE}>No platform</option>
+          </select>
+        </div>
+      ) : null}
       <div className="w-full sm:w-auto">
         <label
           htmlFor="sort"
