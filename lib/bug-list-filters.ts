@@ -10,6 +10,7 @@ import {
 } from "@/lib/mine-filter";
 import { parseTagFilter, tagTypeIds } from "@/lib/tag-filter";
 import { parseBugSort, type BugSortOption } from "@/lib/bugs-sort";
+import { DUPLICATES_PARAM, duplicatesWhere, parseShowDuplicates } from "@/lib/duplicates";
 
 export type RawParams = Record<string, string | string[] | undefined>;
 
@@ -64,6 +65,8 @@ export function parseBugListFilters({
   const where: Prisma.BugWhereInput = {
     isDeleted: isDeletedView,
     ...mineFilterWhere(mine, userId),
+    // #285: same rule as the list, so the export matches what's on screen.
+    ...duplicatesWhere(parseShowDuplicates(params[DUPLICATES_PARAM])),
   };
 
   const selectedTags = parseTagFilter(params.tags, tagTypes);
