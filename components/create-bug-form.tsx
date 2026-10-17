@@ -140,6 +140,7 @@ export function CreateBugForm({
       </div>
       <div className="space-y-1.5">
         <label
+          id="description-label"
           htmlFor="description"
           className="text-sm font-medium text-slate-700"
         >
@@ -147,6 +148,7 @@ export function CreateBugForm({
         </label>
         <MarkdownEditor
           id="description"
+          labelId="description-label"
           name="description"
           required
           minLength={10}

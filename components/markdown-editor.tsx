@@ -118,6 +118,12 @@ export type MarkdownEditorProps = {
   renderMentions?: (text: string) => ReactNode;
   className?: string;
   "aria-label"?: string;
+  /**
+   * Id of the <label> for this field. The mention wrapper carries the
+   * combobox role and needs a name of its own; pass this wherever the field
+   * is named by a visible label rather than by `aria-label`.
+   */
+  labelId?: string;
 } & Omit<
   TextareaHTMLAttributes<HTMLTextAreaElement>,
   "value" | "onChange" | "children"
@@ -189,6 +195,7 @@ export const MarkdownEditor = forwardRef<
     onPaste,
     onBlur,
     onInvalid,
+    labelId,
     ...rest
   },
   ref,
@@ -395,7 +402,26 @@ export const MarkdownEditor = forwardRef<
           </div>
         </div>
 
-        <div className={writing ? "relative" : "hidden"}>
+        {/*
+          ARIA allows role="combobox" on an input, not on a textarea — axe
+          reports it as aria-allowed-role, and the role is simply ignored.
+          The wrapper carries the combobox semantics instead (the ARIA 1.1
+          pattern, which is what a multi-line autocomplete has to use), while
+          the textarea keeps the attributes that belong to the text field.
+        */}
+        <div
+          className={writing ? "relative" : "hidden"}
+          role={users?.length ? "combobox" : undefined}
+          // The wrapper owns the combobox role, so it needs the same name the
+          // field has, or it is an unnamed widget (axe: aria-input-field-name).
+          aria-label={users?.length ? ariaLabel : undefined}
+          aria-labelledby={users?.length && !ariaLabel ? labelId : undefined}
+          aria-haspopup={users?.length ? "listbox" : undefined}
+          aria-owns={
+            users?.length && mention.showSuggestions ? listboxId : undefined
+          }
+          aria-expanded={users?.length ? mention.showSuggestions : undefined}
+        >
           <Textarea
             {...rest}
             ref={textareaRef}
@@ -448,13 +474,9 @@ export const MarkdownEditor = forwardRef<
             }}
             onInvalid={handleInvalid}
             onPaste={handlePaste}
-            role={users?.length ? "combobox" : undefined}
             aria-autocomplete={users?.length ? "list" : undefined}
             aria-controls={
               users?.length && mention.showSuggestions ? listboxId : undefined
-            }
-            aria-expanded={
-              users?.length ? mention.showSuggestions : undefined
             }
             aria-activedescendant={
               users?.length && mention.showSuggestions
