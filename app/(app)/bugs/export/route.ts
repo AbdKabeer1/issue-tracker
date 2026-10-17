@@ -45,11 +45,12 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.entries(),
   );
 
-  const [tagTypes, platforms] = await Promise.all([
+  const [tagTypes, platforms, milestones] = await Promise.all([
     getIssueTypes(),
     // Every platform, active or not: a filter on a platform that was since
     // deactivated still has to resolve, exactly as it does on the list.
     getPlatforms(),
+    prisma.milestone.findMany({ select: { id: true } }),
   ]);
 
   const { where, sort, mine } = parseBugListFilters({
@@ -60,6 +61,7 @@ export async function GET(request: NextRequest) {
     canSeeDeleted: canDeleteTicket(user.role),
     tagTypes,
     platforms,
+    milestones,
   });
 
   const orderBy = getBugOrderBy(sort, { boostFirst: mine !== "watching" });

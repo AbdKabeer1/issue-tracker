@@ -287,6 +287,7 @@ export async function updateBugAction(
       assignee: { select: { id: true, name: true } },
       category: { select: { id: true, name: true } },
       type: { select: { id: true, name: true } },
+      milestone: { select: { id: true, title: true } },
     },
   });
   if (!existing || existing.isDeleted) {
@@ -391,6 +392,7 @@ export async function updateBugAction(
     typeId?: string | null;
     assigneeId?: string | null;
     categoryId?: string | null;
+    milestoneId?: string | null;
     isBoosted?: boolean;
     boostedAt?: Date | null;
   } = {};
@@ -540,6 +542,38 @@ export async function updateBugAction(
     });
     if (!cat) {
       return { error: "Platform not found" };
+    }
+  }
+
+  // #289: admins put an issue in at most one milestone. Absent from the
+  // form means "leave it"; "" or "none" takes it out.
+  const milestoneRaw = admin ? formData.get("milestoneId") : null;
+  if (typeof milestoneRaw === "string") {
+    const nextMilestoneId = milestoneRaw === "" || milestoneRaw === "none" ? null : milestoneRaw.trim();
+    if (nextMilestoneId !== existing.milestoneId) {
+      let toTitle: string | null = null;
+      if (nextMilestoneId) {
+        const milestone = await prisma.milestone.findUnique({
+          where: { id: nextMilestoneId },
+          select: { title: true, isClosed: true },
+        });
+        if (!milestone) return fieldError("milestoneId", "That milestone no longer exists.");
+        if (milestone.isClosed) {
+          return fieldError("milestoneId", `"${milestone.title}" is closed. Reopen it to add issues.`);
+        }
+        toTitle = milestone.title;
+      }
+      data.milestoneId = nextMilestoneId;
+      const fromTitle = existing.milestone?.title ?? null;
+      pending.push({
+        type: "milestone_changed",
+        summary: toTitle
+          ? fromTitle
+            ? `moved this from milestone "${fromTitle}" to "${toTitle}"`
+            : `added this to milestone "${toTitle}"`
+          : `removed this from milestone "${fromTitle}"`,
+        metadata: { field: "milestone", from: fromTitle, to: toTitle },
+      });
     }
   }
 
