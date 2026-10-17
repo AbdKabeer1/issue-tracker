@@ -41,6 +41,9 @@ type BugPageProps = {
   params: Promise<{ id: string }>;
 };
 
+/** How much of the activity log a single page render is allowed to load. */
+const ACTIVITY_PAGE_SIZE = 50;
+
 export async function generateMetadata({
   params,
 }: BugPageProps): Promise<Metadata> {
@@ -138,7 +141,8 @@ export default async function BugDetailPage({ params }: BugPageProps) {
   const canTriage = isAdmin(user.role);
   const canDelete = canDeleteTicket(user.role);
 
-  const [bug, users, categories, types, voterSummary] = await Promise.all([
+  const [bug, users, categories, types, voterSummary, activityCount] =
+    await Promise.all([
     prisma.bug.findUnique({
       where: { id },
       include: {
@@ -160,9 +164,13 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           },
           orderBy: { createdAt: "asc" },
         },
+        // The activity log is append-only and never pruned, so a long-lived
+        // issue would load every row it has ever had. Take the newest page
+        // in the database and reverse it below for display (#ACTIVITY-CAP).
         activities: {
           include: { actor: { select: { name: true } } },
-          orderBy: { createdAt: "asc" },
+          orderBy: { createdAt: "desc" },
+          take: ACTIVITY_PAGE_SIZE,
         },
         votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
       },
@@ -178,6 +186,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
     }),
     canTriage ? getActiveIssueTypes() : Promise.resolve([]),
     fetchVoterSummary(id),
+    prisma.bugActivity.count({ where: { bugId: id } }),
   ]);
 
   if (!bug) {
@@ -446,7 +455,10 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         />
       ) : null}
 
-      <ActivityTimeline activities={bug.activities} />
+      <ActivityTimeline
+        activities={[...bug.activities].reverse()}
+        totalCount={activityCount}
+      />
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
