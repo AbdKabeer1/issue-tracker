@@ -1,4 +1,5 @@
 import type { Status } from "@prisma/client";
+import { commentPermalinkPath } from "@/lib/comment-window";
 import { statusLabel } from "@/lib/labels";
 
 /**
@@ -80,7 +81,11 @@ export function planNotifications(event: NotificationEvent, siteUrl: string): Pl
   const base = siteUrl.replace(/\/$/, "");
   const commentId =
     event.kind === "comment_added" || event.kind === "mentioned" ? event.commentId : undefined;
-  const path = `/bugs/${event.bugId}${commentId ? `#comment-${commentId}` : ""}`;
+  // The query lets the page load down to the comment's thread even when
+  // it's older than the default window (#280).
+  const path = commentId
+    ? commentPermalinkPath(event.bugId, commentId)
+    : `/bugs/${event.bugId}`;
   const issueUrl = `${base}${path}`;
   const settingsUrl = `${base}/settings`;
   const title = quote(event.bugTitle);

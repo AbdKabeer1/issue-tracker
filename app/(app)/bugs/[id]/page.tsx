@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -7,7 +8,16 @@ import { requireUser } from "@/lib/auth-helpers";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { LocalTime } from "@/components/local-time";
 import { formatIssueNumber } from "@/lib/issue-number";
-import { buildCommentTree, countVisibleComments, type FlatComment } from "@/lib/comments";
+import { buildCommentTree } from "@/lib/comments";
+import {
+  COMMENT_THREADS_PER_PAGE,
+  earlierThreadsHref,
+  loadCommentWindow,
+  parseCommentTarget,
+  parseThreadWindow,
+  type CommentWindow,
+} from "@/lib/comment-window";
+import { CommentPermalinkResolver } from "@/components/comment-permalink-resolver";
 import {
   bugLinkPreviewDescription,
 } from "@/lib/link-preview";
@@ -45,6 +55,14 @@ import { withCurrentOption } from "@/lib/triage-options";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+const NO_COMMENTS: CommentWindow = {
+  comments: [],
+  shownThreads: 0,
+  hiddenThreads: 0,
+  visibleCount: 0,
 };
 
 /** How much of the activity log a single page render is allowed to load. */
@@ -131,8 +149,9 @@ export async function generateMetadata({
   };
 }
 
-export default async function BugDetailPage({ params }: BugPageProps) {
+export default async function BugDetailPage({ params, searchParams }: BugPageProps) {
   const { id } = await params;
+  const query = (await searchParams) ?? {};
   const resolved = await resolveSessionUserId();
   const userId = "userId" in resolved ? resolved.userId : undefined;
 
@@ -238,21 +257,12 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           select: { userId: true, watching: true },
         }),
       ),
-      loadOptional("comments", [] as FlatComment[], () =>
-        prisma.comment.findMany({
-          where: { bugId: id },
-          include: {
-            author: { select: { name: true, role: true } },
-            parent: {
-              select: {
-                id: true,
-                body: true,
-                deletedAt: true,
-                author: { select: { name: true, role: true } },
-              },
-            },
-          },
-          orderBy: { createdAt: "asc" },
+      // The newest threads only (#280); a permalink widens the window to
+      // reach its comment.
+      loadOptional("comments", NO_COMMENTS, () =>
+        loadCommentWindow(prisma, id, {
+          threads: parseThreadWindow(query.threads),
+          target: parseCommentTarget(query.comment),
         }),
       ),
       // Files on the issue and on its comments (#215); never the file contents here.
@@ -290,7 +300,11 @@ export default async function BugDetailPage({ params }: BugPageProps) {
     Array.isArray(bug.votes) && bug.votes.length > 0
       ? (bug.votes[0].value ?? 1)
       : 0;
-  const commentTree = buildCommentTree(comments);
+  const commentTree = buildCommentTree(comments.comments);
+  const pageQuery = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (typeof value === "string") pageQuery.set(key, value);
+  }
   const proofLinks = bug.proofLinks ?? [];
 
   return (
@@ -557,10 +571,40 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         totalCount={activityCount}
       />
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section
+        id="comments"
+        className="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-4 sm:p-6"
+      >
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Comments ({countVisibleComments(comments)})
+          Comments ({comments.visibleCount})
         </h2>
+        {comments.hiddenThreads > 0 ? (
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600 print:hidden">
+            <span>
+              {comments.hiddenThreads} earlier{" "}
+              {comments.hiddenThreads === 1 ? "thread" : "threads"} not shown.
+            </span>
+            <Link
+              href={earlierThreadsHref(pageQuery, comments.shownThreads)}
+              scroll={false}
+              className="font-medium text-teal-700 hover:underline"
+            >
+              Show {Math.min(comments.hiddenThreads, COMMENT_THREADS_PER_PAGE)} earlier
+            </Link>
+            {comments.hiddenThreads > COMMENT_THREADS_PER_PAGE ? (
+              <Link
+                href={earlierThreadsHref(pageQuery, comments.shownThreads, true)}
+                scroll={false}
+                className="font-medium text-teal-700 hover:underline"
+              >
+                Show all
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
+        <Suspense fallback={null}>
+          <CommentPermalinkResolver />
+        </Suspense>
         <CommentThread
           bugId={bug.id}
           issueUrl={absoluteUrl(`/bugs/${bug.id}`)}
