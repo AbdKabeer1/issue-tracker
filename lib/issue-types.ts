@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { DEFAULT_BUG_TEMPLATE, DEFAULT_TEMPLATE_TYPE, TEMPLATE_MAX } from "@/lib/issue-templates";
 
 export const DEFAULT_ISSUE_TYPES = [
   { name: "Marketing", description: "Marketing and promotion related tasks" },
@@ -15,6 +16,11 @@ export const issueTypeInputSchema = z.object({
     .min(2, "Type name must be at least 2 characters")
     .max(50, "Type name must be at most 50 characters"),
   description: z.string().trim().max(300).optional().nullable(),
+  template: z
+    .string()
+    .max(TEMPLATE_MAX, `Keep the template to ${TEMPLATE_MAX} characters or fewer`)
+    .optional()
+    .nullable(),
   isActive: z.boolean().optional().default(true),
 });
 
@@ -56,6 +62,7 @@ export async function ensureDefaultIssueTypes(): Promise<void> {
       create: {
         name: item.name,
         description: item.description,
+        template: item.name === DEFAULT_TEMPLATE_TYPE ? DEFAULT_BUG_TEMPLATE : null,
         isActive: true,
       },
     });
