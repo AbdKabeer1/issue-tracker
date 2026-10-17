@@ -182,10 +182,12 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
       },
     }),
-    prisma.user.findMany({
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, role: true },
-    }),
+    canTriage
+      ? prisma.user.findMany({
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, role: true },
+        })
+      : Promise.resolve([]),
     prisma.category.findMany({
       where: { isActive: true },
       select: { id: true, name: true },
