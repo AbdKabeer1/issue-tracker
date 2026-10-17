@@ -12,6 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownEditor } from "@/components/markdown-editor";
+import { useFormDraft } from "@/components/use-form-draft";
+import { buildDraftKey } from "@/lib/form-drafts";
+import { DraftBanner } from "@/components/draft-banner";
 import { AssigneeCombobox } from "@/components/assignee-combobox";
 
 type UserOption = { id: string; name: string; role: AppRole };
@@ -33,14 +36,26 @@ export function CreateBugForm({
 }) {
   const defaultTypeId =
     types.find((t) => t.name.toLowerCase() === "fix")?.id ?? types[0]?.id ?? "";
-  const [title, setTitle] = useState("");
-  const [typeId, setTypeId] = useState(defaultTypeId);
-  const [description, setDescription] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [proofLinks, setProofLinks] = useState("");
-  const [severity, setSeverity] = useState<(typeof severities)[number]>("medium");
-  const [assigneeId, setAssigneeId] = useState("");
-  const [assignToMe, setAssignToMe] = useState(false);
+
+  const draftKey = buildDraftKey({
+    userId: currentUserId,
+    formType: "create-bug",
+  });
+
+  const { values, setValue, isRestored, clearDraft, discardDraft } = useFormDraft(
+    draftKey,
+    {
+      title: "",
+      typeId: defaultTypeId,
+      description: "",
+      categoryId: "",
+      proofLinks: "",
+      severity: "medium" as (typeof severities)[number],
+      assigneeId: "",
+      assignToMe: false,
+    },
+  );
+
   const [error, setError] = useState<string | null>(null);
   // True when the request itself failed (network / server error), so the
   // person can simply retry; validation errors from the server aren't retryable.
@@ -58,21 +73,25 @@ export function CreateBugForm({
         setError(null);
         setCanRetry(false);
         const formData = new FormData();
-        formData.set("title", title);
-        formData.set("typeId", typeId);
-        formData.set("description", description);
-        formData.set("categoryId", categoryId);
-        formData.set("proofLinks", proofLinks);
+        formData.set("title", values.title);
+        formData.set("typeId", values.typeId);
+        formData.set("description", values.description);
+        formData.set("categoryId", values.categoryId);
+        formData.set("proofLinks", values.proofLinks);
         if (isAdmin) {
-          formData.set("severity", severity);
-          formData.set("assigneeId", assigneeId);
-        } else if (assignToMe && currentUserId) {
+          formData.set("severity", values.severity);
+          formData.set("assigneeId", values.assigneeId);
+        } else if (values.assignToMe && currentUserId) {
           formData.set("assigneeId", currentUserId);
         }
         startTransition(async () => {
           try {
             const result: ActionResult = await createBugAction(formData);
-            if (result.error) setError(result.error);
+            if (result.error) {
+              setError(result.error);
+            } else {
+              clearDraft();
+            }
           } catch (error) {
             unstable_rethrow(error);
             setError(submitFailureMessage(navigator.onLine));
@@ -81,6 +100,13 @@ export function CreateBugForm({
         });
       }}
     >
+      {isRestored ? (
+        <DraftBanner
+          onDiscard={discardDraft}
+          message="Restored unsaved draft from this browser"
+        />
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <label htmlFor="title" className="text-sm font-medium text-slate-700">
@@ -93,8 +119,8 @@ export function CreateBugForm({
             minLength={3}
             maxLength={200}
             placeholder="Short summary of the issue"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
+            value={values.title}
+            onChange={(event) => setValue("title", event.target.value)}
           />
         </div>
         {types.length > 0 ? (
@@ -105,8 +131,8 @@ export function CreateBugForm({
             <Select
               id="typeId"
               name="typeId"
-              value={typeId}
-              onChange={(event) => setTypeId(event.target.value)}
+              value={values.typeId}
+              onChange={(event) => setValue("typeId", event.target.value)}
             >
               {types.map((type) => (
                 <option key={type.id} value={type.id}>
@@ -127,8 +153,8 @@ export function CreateBugForm({
         <Select
           id="categoryId"
           name="categoryId"
-          value={categoryId}
-          onChange={(event) => setCategoryId(event.target.value)}
+          value={values.categoryId}
+          onChange={(event) => setValue("categoryId", event.target.value)}
         >
           <option value="">Select a platform</option>
           {categories.map((cat) => (
@@ -155,8 +181,8 @@ export function CreateBugForm({
           maxLength={5000}
           rows={6}
           placeholder="Steps to reproduce, expected vs actual, environment…"
-          value={description}
-          onChange={setDescription}
+          value={values.description}
+          onChange={(val) => setValue("description", val)}
           users={mentionUsers}
           footer={
             <p className="text-xs text-slate-500">
@@ -180,8 +206,8 @@ export function CreateBugForm({
           placeholder={
             "https://github.com/organization/repo/issues/123\nhttps://github.com/organization/repo/pull/456"
           }
-          value={proofLinks}
-          onChange={(event) => setProofLinks(event.target.value)}
+          value={values.proofLinks}
+          onChange={(event) => setValue("proofLinks", event.target.value)}
         />
         <p className="text-xs text-slate-500">
           Optional. One GitHub link per line (e.g. https://github.com/org/repo/issues/123). You need to have created the issue on GitHub first or gotten it from GitHub before adding the link here.
@@ -199,9 +225,9 @@ export function CreateBugForm({
             <Select
               id="severity"
               name="severity"
-              value={severity}
+              value={values.severity}
               onChange={(event) =>
-                setSeverity(event.target.value as (typeof severities)[number])
+                setValue("severity", event.target.value as (typeof severities)[number])
               }
             >
               {severities.map((value) => (
@@ -222,8 +248,8 @@ export function CreateBugForm({
               id="assigneeId"
               name="assigneeId"
               people={users}
-              value={assigneeId}
-              onChange={setAssigneeId}
+              value={values.assigneeId}
+              onChange={(val) => setValue("assigneeId", val)}
             />
           </div>
         </div>
@@ -232,8 +258,8 @@ export function CreateBugForm({
           <input
             type="checkbox"
             id="assignToMe"
-            checked={assignToMe}
-            onChange={(e) => setAssignToMe(e.target.checked)}
+            checked={values.assignToMe}
+            onChange={(e) => setValue("assignToMe", e.target.checked)}
             className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
           />
           <label

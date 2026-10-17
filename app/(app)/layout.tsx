@@ -40,6 +40,7 @@ export default async function AppLayout({
         role={user.role}
         isRealSuperAdmin={user.isRealSuperAdmin}
         isRealAdmin={user.isRealAdmin}
+        userId={user.id}
       />
       <main
         id={MAIN_CONTENT_ID}

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { logoutAction } from "@/app/actions/auth";
 import { BrandLockup } from "@/components/brand-lockup";
 import { RoleSwitcher } from "@/components/role-switcher";
+import { clearUserDrafts } from "@/lib/form-drafts";
 import {
   headerNavItems,
   initialsOf,
@@ -71,11 +72,13 @@ export function AppHeader({
   role,
   isRealSuperAdmin,
   isRealAdmin,
+  userId,
 }: {
   userName?: string | null;
   role?: AppRole | null;
   isRealSuperAdmin?: boolean;
   isRealAdmin?: boolean;
+  userId?: string | null;
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -202,7 +205,7 @@ export function AppHeader({
                   <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")}>
                     Settings
                   </MenuLink>
-                  <form action={logoutAction}>
+                  <form action={logoutAction} onSubmit={() => clearUserDrafts(userId)}>
                     <button
                       type="submit"
                       className={`w-full rounded-md px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50 ${linkFocus}`}
@@ -271,7 +274,11 @@ export function AppHeader({
                 <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
               </div>
             ) : null}
-            <form action={logoutAction} className="border-t border-slate-200 p-2">
+            <form
+              action={logoutAction}
+              className="border-t border-slate-200 p-2"
+              onSubmit={() => clearUserDrafts(userId)}
+            >
               <button
                 type="submit"
                 className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-white ${linkFocus}`}
