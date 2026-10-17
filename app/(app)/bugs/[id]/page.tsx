@@ -7,6 +7,7 @@ import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { LocalTime } from "@/components/local-time";
+import { ClearDuplicateButton, MarkDuplicateButton } from "@/components/duplicate-controls";
 import { currentResolution, isFinishedStatus, type StatusChangeActivity } from "@/lib/resolution-note";
 import { statusLabel as resolutionStatusLabel } from "@/lib/labels";
 import { formatIssueNumber } from "@/lib/issue-number";
@@ -206,6 +207,15 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         assignee: { select: { id: true, name: true, role: true, image: true } },
         category: { select: { id: true, name: true, isActive: true } },
         votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
+        // #285: both sides of a duplicate link.
+        duplicateOf: { select: { id: true, number: true, title: true, status: true, isDeleted: true } },
+        duplicates: {
+          where: { isDeleted: false },
+          select: { id: true, number: true, title: true, status: true },
+          orderBy: { number: "asc" },
+          take: 20,
+        },
+        _count: { select: { duplicates: { where: { isDeleted: false } } } },
       },
     })
     .then((bug) => ({ bug }))
@@ -337,6 +347,55 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         </div>
       ) : null}
 
+      {bug.duplicateOf ? (
+        <section
+          aria-label="Duplicate"
+          className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"
+        >
+          <p className="text-sm text-amber-950">
+            <span className="font-semibold">This issue is a duplicate of </span>
+            {bug.duplicateOf.isDeleted && !canDelete ? (
+              <span>{formatIssueNumber(bug.duplicateOf.number)} (since deleted)</span>
+            ) : (
+              <Link href={`/bugs/${bug.duplicateOf.id}`} className="font-semibold text-teal-800 underline-offset-2 hover:underline">
+                {formatIssueNumber(bug.duplicateOf.number)} {bug.duplicateOf.title}
+              </Link>
+            )}{" "}
+            <span className="text-amber-900">({statusLabels[bug.duplicateOf.status]})</span>.{" "}
+            Follow and vote there instead. It&apos;s hidden from the issues list.
+          </p>
+          {canTriage ? (
+            <div className="flex shrink-0 items-center gap-1 print:hidden">
+              <MarkDuplicateButton bugId={bug.id} label="Change" />
+              <ClearDuplicateButton bugId={bug.id} />
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {bug._count.duplicates > 0 ? (
+        <section aria-label="Duplicates of this issue" className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+          <h2 className="text-sm font-semibold text-slate-900">
+            {bug._count.duplicates} duplicate{bug._count.duplicates === 1 ? "" : "s"} of this issue
+          </h2>
+          <ul className="mt-2 space-y-1 text-sm">
+            {bug.duplicates.map((d) => (
+              <li key={d.id}>
+                <Link href={`/bugs/${d.id}`} className="text-teal-800 hover:underline">
+                  <span className="text-slate-500 tabular-nums">{formatIssueNumber(d.number)}</span> {d.title}
+                </Link>{" "}
+                <span className="text-xs text-slate-500">· {statusLabels[d.status]}</span>
+              </li>
+            ))}
+          </ul>
+          {bug._count.duplicates > bug.duplicates.length ? (
+            <p className="mt-1 text-xs text-slate-500">
+              And {bug._count.duplicates - bug.duplicates.length} more.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
       {resolution ? (
         <section
           aria-label="Resolution note"
@@ -431,6 +490,9 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
               bugId={bug.id}
               watching={isWatchingIssue(user.id, [bug.reporterId, bug.assigneeId], watchRow)}
             />
+          ) : null}
+          {canTriage && !bug.isDeleted && !bug.duplicateOf ? (
+            <MarkDuplicateButton bugId={bug.id} />
           ) : null}
           {canTriage && !bug.isDeleted ? (
             <BoostTicketButton

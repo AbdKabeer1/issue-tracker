@@ -45,6 +45,7 @@ enum ActivityType {
   comment_deleted
   type_changed
   category_changed
+  duplicate_changed
 }
 
 model User {
@@ -118,6 +119,11 @@ model Bug {
   reporterId  String
   assigneeId  String?
   categoryId  String?
+  /// #285: set when this issue is a duplicate of another. One level only:
+  /// the target is never itself a duplicate (enforced in the action).
+  duplicateOfId String?
+  duplicateOf   Bug?        @relation("BugDuplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates    Bug[]       @relation("BugDuplicates")
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   reporter    User          @relation("BugReporter", fields: [reporterId], references: [id])
@@ -132,6 +138,7 @@ model Bug {
 
   @@index([categoryId])
   @@index([typeId])
+  @@index([duplicateOfId])
   @@index([isBoosted])
   @@index([isDeleted])
   // #217: foreign keys behind the "Assigned to me" / "Reported by me" filters.

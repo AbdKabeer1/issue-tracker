@@ -25,6 +25,7 @@ const typeLabel: Record<ActivityType, string> = {
   comment_deleted: "Moderation",
   type_changed: "Type",
   category_changed: "Category",
+  duplicate_changed: "Duplicate",
 };
 
 export function ActivityTimeline({

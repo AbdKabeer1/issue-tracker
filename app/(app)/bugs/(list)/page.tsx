@@ -31,6 +31,7 @@ import { Highlighted, SearchSnippet } from "@/components/search-highlight";
 import { formatIssueNumber, parseIssueNumberQuery } from "@/lib/issue-number";
 import { isDone, resultCountText } from "@/lib/issue-state";
 import { calculatePagination } from "@/lib/pagination";
+import { DUPLICATES_PARAM, SHOW_DUPLICATES, duplicatesWhere, parseShowDuplicates } from "@/lib/duplicates";
 import { PaginationControls } from "@/components/pagination-controls";
 import { fetchVoterSummaries } from "@/lib/voter-summaries";
 import { createEmptyVoterSummary } from "@/lib/voters";
@@ -126,9 +127,12 @@ export default async function BugsPage({
 
   const currentSort = parseBugSort(sortParam, defaultSortFor(mineFilter));
   const isWatchingView = mineFilter === "watching" && !!userId;
+  // #285: duplicates are hidden unless asked for, and the count says so.
+  const showDuplicates = parseShowDuplicates(params[DUPLICATES_PARAM]);
   const where: Prisma.BugWhereInput = {
     isDeleted: isDeletedView,
     ...mineFilterWhere(mineFilter, userId),
+    ...duplicatesWhere(showDuplicates),
   };
 
   // Tag filter (#102): issue types picked from the search box.
@@ -183,6 +187,28 @@ export default async function BugsPage({
     const detail = error instanceof Error ? error.message : "Could not load issues";
     return issuesQueryError(detail);
   }
+  // How many the default view is hiding, so "Show duplicates" can say so.
+  let hiddenDuplicates = 0;
+  if (!showDuplicates) {
+    try {
+      hiddenDuplicates = await prisma.bug.count({
+        where: { ...where, duplicateOfId: { not: null } },
+      });
+    } catch (error) {
+      console.error("[bugs] duplicate count failed", error);
+    }
+  }
+  const duplicatesHref = (() => {
+    const next = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      const v = Array.isArray(value) ? value[0] : value;
+      if (v && key !== DUPLICATES_PARAM && key !== "page") next.set(key, v);
+    }
+    if (!showDuplicates) next.set(DUPLICATES_PARAM, SHOW_DUPLICATES);
+    const qs = next.toString();
+    return qs ? `/bugs?${qs}` : "/bugs";
+  })();
+
   const pagination = calculatePagination({
     page: pageParam,
     totalCount,
@@ -203,6 +229,7 @@ export default async function BugsPage({
         proofLinks: true,
         isDeleted: true,
         isBoosted: true,
+        duplicateOf: showDuplicates ? { select: { number: true } } : false,
         createdAt: true,
         updatedAt: true,
         type: { select: { name: true } },
@@ -271,6 +298,7 @@ export default async function BugsPage({
     // Set by the platform filter once that lands; inert until then.
     ["platform", toSingleQueryParam(params.platform)],
     ["deleted", isDeletedView ? "true" : undefined],
+    [DUPLICATES_PARAM, showDuplicates ? SHOW_DUPLICATES : undefined],
   ] as const) {
     if (value) exportParams.set(key, value);
   }
@@ -356,6 +384,16 @@ export default async function BugsPage({
           <p className="text-sm text-slate-600">
             {resultCountText(totalCount, isStatus(statusParam) ? statusParam : null)} · sorted by{" "}
             {bugSortDescriptions[currentSort]}
+            {hiddenDuplicates > 0 || showDuplicates ? (
+              <>
+                {" · "}
+                <Link href={duplicatesHref} className="font-medium text-teal-700 hover:underline print:hidden">
+                  {showDuplicates
+                    ? "Hide duplicates"
+                    : `Show ${hiddenDuplicates} duplicate${hiddenDuplicates === 1 ? "" : "s"}`}
+                </Link>
+              </>
+            ) : null}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
@@ -559,6 +597,11 @@ export default async function BugsPage({
                           🗑️ Deleted
                         </span>
                       ) : null}
+                      {bug.duplicateOf ? (
+                        <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-900">
+                          Duplicate of {formatIssueNumber(bug.duplicateOf.number)}
+                        </span>
+                      ) : null}
                       {bug.isBoosted && !bug.isDeleted ? (
                         <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
                           <span aria-hidden="true">⚡</span> Boosted
@@ -660,6 +703,7 @@ export default async function BugsPage({
             ...(tagsParam ? { [TAGS_PARAM]: tagsParam } : {}),
             ...(selectedPlatform ? { [PLATFORM_PARAM]: selectedPlatform } : {}),
             ...(isDeletedView ? { deleted: "true" } : {}),
+            ...(showDuplicates ? { [DUPLICATES_PARAM]: SHOW_DUPLICATES } : {}),
             sort: sortParam,
           }}
         />
