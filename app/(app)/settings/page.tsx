@@ -1,3 +1,5 @@
+import { ThemeSettings } from "@/components/theme-settings";
+import { parseTheme } from "@/lib/theme";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
@@ -14,6 +16,7 @@ export default async function SettingsPage() {
     select: {
       name: true,
       email: true,
+      theme: true,
       emailNotifications: true,
       notifyMentions: true,
       notifyAssignments: true,
@@ -39,6 +42,12 @@ export default async function SettingsPage() {
             See how your profile looks to others
           </Link>
         </p>
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Appearance
+        </h2>
+        <ThemeSettings initialTheme={parseTheme(settings?.theme)} />
       </section>
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
