@@ -14,7 +14,7 @@ import {
   realRoleOf,
   roleViewLabels,
 } from "@/lib/header-nav";
-import type { AppRole } from "@/lib/roles";
+import { isAdmin, type AppRole } from "@/lib/roles";
 
 /** Closes a popover on outside click or Escape, returning focus to its trigger. */
 function useDismiss(
@@ -202,6 +202,14 @@ export function AppHeader({
                   </div>
                 ) : null}
                 <div className="border-t border-slate-100 pt-1.5">
+                  {isAdmin(effectiveRole) ? (
+                    <MenuLink
+                      href="/admin/dashboard"
+                      active={isNavItemActive(pathname, "/admin/dashboard")}
+                    >
+                      Dashboard
+                    </MenuLink>
+                  ) : null}
                   <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")}>
                     Settings
                   </MenuLink>
@@ -262,6 +270,15 @@ export function AppHeader({
                 {item.label}
               </MenuLink>
             ))}
+            {isAdmin(effectiveRole) ? (
+              <MenuLink
+                href="/admin/dashboard"
+                active={isNavItemActive(pathname, "/admin/dashboard")}
+                large
+              >
+                Dashboard
+              </MenuLink>
+            ) : null}
             <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")} large>
               Settings
             </MenuLink>
