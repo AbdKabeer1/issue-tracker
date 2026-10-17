@@ -109,7 +109,7 @@ export function BugFilters({
   const currentMine = parseMineFilter(params.get("mine")) ?? "";
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end">
+    <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end print:hidden">
       <div className="col-span-2 min-w-0 sm:min-w-[200px] sm:flex-1">
         <label htmlFor="q" className="mb-1 block text-xs font-medium text-slate-600">
           Search

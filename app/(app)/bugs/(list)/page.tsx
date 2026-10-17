@@ -274,7 +274,7 @@ export default async function BugsPage({
             {bugSortDescriptions[currentSort]}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
           {canDelete ? (
             <Link
               href={isDeletedView ? "/bugs" : "/bugs?deleted=true"}
