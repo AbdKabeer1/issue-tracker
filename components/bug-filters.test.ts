@@ -32,6 +32,7 @@ describe("BugFilters (#132, #361)", () => {
     expect(source).toContain('window.removeEventListener("keydown", handleKeyDown)');
     expect(source).toContain('event.key === "/"');
     expect(source).toContain('event.key.toLowerCase() === "k"');
+    expect(source).toContain("event.isComposing");
     expect(source).toContain("isSlash && isEditable");
     expect(source).toContain("inputRef.current?.focus()");
     expect(source).toContain("inputRef.current?.select()");

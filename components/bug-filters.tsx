@@ -53,6 +53,7 @@ export function BugFilters({
         !event.altKey;
 
       if (!isCmdOrCtrlK && !isSlash) return;
+      if (event.isComposing) return;
 
       const target = event.target as HTMLElement | null;
       const isEditable =
