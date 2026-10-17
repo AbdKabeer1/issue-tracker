@@ -177,6 +177,27 @@ export default async function BugsPage({
     take: pagination.take,
   });
 
+  // The export must return exactly what is on screen, so it is handed the
+  // same filters — by name, rather than forwarding whatever else is in the
+  // URL. `page` is left out deliberately: the export is the whole result,
+  // not the page being looked at.
+  const exportParams = new URLSearchParams();
+  for (const [key, value] of [
+    ["q", qParam],
+    ["status", statusParam],
+    ["severity", severityParam],
+    ["sort", sortParam],
+    ["mine", mineFilter],
+    [TAGS_PARAM, tagsParam],
+    // Set by the platform filter once that lands; inert until then.
+    ["platform", toSingleQueryParam(params.platform)],
+    ["deleted", isDeletedView ? "true" : undefined],
+  ] as const) {
+    if (value) exportParams.set(key, value);
+  }
+  const exportQuery = exportParams.toString();
+  const exportHref = exportQuery ? `/bugs/export?${exportQuery}` : "/bugs/export";
+
   const bugIds = bugs.map((bug) => bug.id);
   const voterSummaries = await fetchVoterSummaries(bugIds);
 
@@ -219,6 +240,19 @@ export default async function BugsPage({
             >
               {isDeletedView ? "← View active issues" : "View deleted issues"}
             </Link>
+          ) : null}
+          {totalCount > 0 ? (
+            <a
+              // A plain link, not a fetch: the browser handles the download
+              // and the streamed response never passes through React.
+              // `download` is advisory here — Content-Disposition on the
+              // route is what names the file.
+              href={exportHref}
+              download
+              className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              Export CSV
+            </a>
           ) : null}
           {!isDeletedView ? (
             <Link
