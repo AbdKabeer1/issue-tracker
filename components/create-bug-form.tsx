@@ -5,12 +5,13 @@ import { unstable_rethrow } from "next/navigation";
 import { createBugAction, type ActionResult } from "@/app/actions/bugs";
 import { severities } from "@/lib/validations/bug";
 import { severityLabels } from "@/lib/labels";
-import { formatUserLabel, type AppRole } from "@/lib/roles";
+import type { AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownEditor } from "@/components/markdown-editor";
+import { AssigneeCombobox } from "@/components/assignee-combobox";
 
 type UserOption = { id: string; name: string; role: AppRole };
 type CategoryOption = { id: string; name: string };
@@ -207,19 +208,13 @@ export function CreateBugForm({
             >
               Assignee
             </label>
-            <Select
+            <AssigneeCombobox
               id="assigneeId"
               name="assigneeId"
+              people={users}
               value={assigneeId}
-              onChange={(event) => setAssigneeId(event.target.value)}
-            >
-              <option value="">Unassigned</option>
-              {users.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {formatUserLabel(user.name, user.role)}
-                </option>
-              ))}
-            </Select>
+              onChange={setAssigneeId}
+            />
           </div>
         </div>
       ) : currentUserId ? (

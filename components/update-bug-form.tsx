@@ -5,8 +5,9 @@ import type { Severity, Status } from "@prisma/client";
 import { updateBugAction } from "@/app/actions/bugs";
 import { severities, statuses } from "@/lib/validations/bug";
 import { severityLabel, statusLabel } from "@/lib/labels";
-import { formatUserLabel, type AppRole } from "@/lib/roles";
+import type { AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
+import { AssigneeCombobox } from "@/components/assignee-combobox";
 
 type UserOption = { id: string; name: string; role: AppRole };
 type CategoryOption = { id: string; name: string };
@@ -151,19 +152,12 @@ export function UpdateBugForm({
               >
                 Assignee
               </label>
-              <select
+              <AssigneeCombobox
                 id="assigneeId"
                 name="assigneeId"
+                people={users}
                 defaultValue={assigneeId ?? ""}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-              >
-                <option value="">Unassigned</option>
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {formatUserLabel(user.name, user.role)}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
           </>
         ) : assigneeId ? (
