@@ -81,6 +81,36 @@ export async function mapConcurrent<T, R>(
   return results;
 }
 
+/**
+ * Shared concurrency limiter across all notification deliveries (#354).
+ */
+export class SmtpLimiter {
+  private activeCount = 0;
+  private queue: Array<() => void> = [];
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    const limit = getSmtpConcurrency();
+    if (this.activeCount >= limit) {
+      await new Promise<void>((resolve) => this.queue.push(resolve));
+    } else {
+      this.activeCount++;
+    }
+
+    try {
+      return await fn();
+    } finally {
+      const next = this.queue.shift();
+      if (next) {
+        next();
+      } else {
+        this.activeCount--;
+      }
+    }
+  }
+}
+
+export const sharedSmtpLimiter = new SmtpLimiter();
+
 /** Emails everyone who hasn't opted out, with bounded SMTP concurrency (#210, #354). */
 async function sendEmails(planned: PlannedNotification[]) {
   if (!canSendMail()) return;
@@ -107,14 +137,17 @@ async function sendEmails(planned: PlannedNotification[]) {
     toSend.push({ to: recipient.email, subject: n.subject, text: n.text, userId: n.userId });
   }
 
-  const concurrency = getSmtpConcurrency();
-  await mapConcurrent(toSend, concurrency, async (item) => {
-    try {
-      await sendMail({ to: item.to, subject: item.subject, text: item.text });
-    } catch (error) {
-      console.error("[notify] failed to send", { userId: item.userId, error });
-    }
-  });
+  await Promise.all(
+    toSend.map(async (item) => {
+      try {
+        await sharedSmtpLimiter.run(() =>
+          sendMail({ to: item.to, subject: item.subject, text: item.text }),
+        );
+      } catch (error) {
+        console.error("[notify] failed to send", { userId: item.userId, error });
+      }
+    }),
+  );
 }
 
 /** Deliver one event: in-app feed for everyone it concerns, plus email. */

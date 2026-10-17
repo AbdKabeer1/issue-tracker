@@ -108,15 +108,75 @@ describe("deliverNotifications", () => {
       inFlight--;
     });
 
-    await deliverNotifications({
-      ...base,
-      kind: "mentioned",
-      recipientIds: users.map((u) => u.id),
-      place: "comment",
+    const previousSmtp = process.env.SMTP_MAX_CONCURRENCY;
+    const previousEmail = process.env.EMAIL_CONCURRENCY;
+    process.env.SMTP_MAX_CONCURRENCY = String(DEFAULT_SMTP_CONCURRENCY);
+    delete process.env.EMAIL_CONCURRENCY;
+
+    try {
+      await deliverNotifications({
+        ...base,
+        kind: "mentioned",
+        recipientIds: users.map((u) => u.id),
+        place: "comment",
+      });
+
+      expect(send).toHaveBeenCalledTimes(6);
+      expect(peakInFlight).toBeLessThanOrEqual(DEFAULT_SMTP_CONCURRENCY);
+    } finally {
+      if (previousSmtp === undefined) delete process.env.SMTP_MAX_CONCURRENCY;
+      else process.env.SMTP_MAX_CONCURRENCY = previousSmtp;
+      if (previousEmail === undefined) delete process.env.EMAIL_CONCURRENCY;
+      else process.env.EMAIL_CONCURRENCY = previousEmail;
+    }
+  });
+
+  it("limits concurrency across overlapping deliverNotifications calls", async () => {
+    const usersA = Array.from({ length: 4 }, (_, i) => who(`userA${i}`));
+    const usersB = Array.from({ length: 4 }, (_, i) => who(`userB${i}`));
+    findMany.mockImplementation(async ({ where }) => {
+      const ids: string[] = where.id.in;
+      return [...usersA, ...usersB].filter((u) => ids.includes(u.id));
     });
 
-    expect(send).toHaveBeenCalledTimes(6);
-    expect(peakInFlight).toBeLessThanOrEqual(DEFAULT_SMTP_CONCURRENCY);
+    let inFlight = 0;
+    let peakInFlight = 0;
+    send.mockImplementation(async () => {
+      inFlight++;
+      peakInFlight = Math.max(peakInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 15));
+      inFlight--;
+    });
+
+    const previousSmtp = process.env.SMTP_MAX_CONCURRENCY;
+    const previousEmail = process.env.EMAIL_CONCURRENCY;
+    process.env.SMTP_MAX_CONCURRENCY = String(DEFAULT_SMTP_CONCURRENCY);
+    delete process.env.EMAIL_CONCURRENCY;
+
+    try {
+      await Promise.all([
+        deliverNotifications({
+          ...base,
+          kind: "mentioned",
+          recipientIds: usersA.map((u) => u.id),
+          place: "comment",
+        }),
+        deliverNotifications({
+          ...base,
+          kind: "mentioned",
+          recipientIds: usersB.map((u) => u.id),
+          place: "comment",
+        }),
+      ]);
+
+      expect(send).toHaveBeenCalledTimes(8);
+      expect(peakInFlight).toBeLessThanOrEqual(DEFAULT_SMTP_CONCURRENCY);
+    } finally {
+      if (previousSmtp === undefined) delete process.env.SMTP_MAX_CONCURRENCY;
+      else process.env.SMTP_MAX_CONCURRENCY = previousSmtp;
+      if (previousEmail === undefined) delete process.env.EMAIL_CONCURRENCY;
+      else process.env.EMAIL_CONCURRENCY = previousEmail;
+    }
   });
 });
 
