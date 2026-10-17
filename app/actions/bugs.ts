@@ -61,6 +61,7 @@ import { Prisma, type ActivityType } from "@prisma/client";
 import { notifyLater } from "@/lib/notify";
 import { ensureWatching } from "@/lib/watch";
 import { parseResolutionNote } from "@/lib/resolution-note";
+import { isUntouchedTemplate, UNFILLED_TEMPLATE_MESSAGE } from "@/lib/issue-templates";
 import type { NotificationEvent } from "@/lib/notifications";
 import { getForeignKeyErrorMessage } from "@/lib/foreign-key-errors";
 import { parseAttachmentIds } from "@/lib/attachments";
@@ -179,10 +180,14 @@ export async function createBugAction(
   if (typeId) {
     const issueType = await prisma.issueType.findUnique({
       where: { id: typeId },
-      select: { id: true, isActive: true },
+      select: { id: true, isActive: true, template: true },
     });
     if (!issueType || !issueType.isActive) {
       return fieldError("typeId", "That type no longer exists. Please pick another.");
+    }
+    // #307: headings alone pass the length check but say nothing.
+    if (isUntouchedTemplate(parsed.data.description, issueType.template)) {
+      return fieldError("description", UNFILLED_TEMPLATE_MESSAGE);
     }
   }
 

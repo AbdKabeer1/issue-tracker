@@ -5,6 +5,7 @@ import { expireTag, TAGS } from "@/lib/lookups";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-helpers";
 import { canDeleteIssueType, issueTypeInputSchema } from "@/lib/issue-types";
+import { normalizeTemplate } from "@/lib/issue-templates";
 
 export type IssueTypeActionResult = { error?: string; ok?: boolean };
 
@@ -24,12 +25,15 @@ export async function createIssueTypeAction(
 
   const rawName = formData.get("name")?.toString() ?? "";
   const rawDesc = formData.get("description")?.toString() ?? "";
+  // Absent (an older client) leaves the template as it was on update.
+  const rawTemplate = formData.get("template");
   const rawActive = formData.get("isActive");
   const isActive = rawActive !== null ? rawActive === "true" || rawActive === "on" : true;
 
   const parsed = issueTypeInputSchema.safeParse({
     name: rawName,
     description: rawDesc ? rawDesc : null,
+    template: typeof rawTemplate === "string" ? rawTemplate : null,
     isActive,
   });
 
@@ -57,6 +61,7 @@ export async function createIssueTypeAction(
       data: {
         name: normalizedName,
         description: parsed.data.description,
+        template: normalizeTemplate(parsed.data.template),
         isActive: parsed.data.isActive,
       },
     });
@@ -90,12 +95,15 @@ export async function updateIssueTypeAction(
 
   const rawName = formData.get("name")?.toString() ?? "";
   const rawDesc = formData.get("description")?.toString() ?? "";
+  // Absent (an older client) leaves the template as it was on update.
+  const rawTemplate = formData.get("template");
   const rawActive = formData.get("isActive");
   const isActive = rawActive !== null ? rawActive === "true" || rawActive === "on" : true;
 
   const parsed = issueTypeInputSchema.safeParse({
     name: rawName,
     description: rawDesc ? rawDesc : null,
+    template: typeof rawTemplate === "string" ? rawTemplate : null,
     isActive,
   });
 
@@ -125,6 +133,9 @@ export async function updateIssueTypeAction(
       data: {
         name: normalizedName,
         description: parsed.data.description,
+        ...(typeof rawTemplate === "string"
+          ? { template: normalizeTemplate(parsed.data.template) }
+          : {}),
         isActive: parsed.data.isActive,
       },
     });

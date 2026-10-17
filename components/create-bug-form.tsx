@@ -19,10 +19,18 @@ import { useFormDraft } from "@/components/use-form-draft";
 import { buildDraftKey } from "@/lib/form-drafts";
 import { DraftBanner } from "@/components/draft-banner";
 import { AssigneeCombobox } from "@/components/assignee-combobox";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { initialDescription, templateSwitch } from "@/lib/issue-templates";
 
 type UserOption = { id: string; name: string; role: AppRole; image?: string | null };
 type CategoryOption = { id: string; name: string };
-type TypeOption = { id: string; name: string; description?: string | null };
+type TypeOption = {
+  id: string;
+  name: string;
+  description?: string | null;
+  /** Pre-fills the description (#307). */
+  template?: string | null;
+};
 
 /** Field names as the person sees them, for the error summary. */
 const FIELD_LABELS: Record<string, string> = {
@@ -50,6 +58,30 @@ export function CreateBugForm({
 }) {
   const defaultTypeId =
     types.find((t) => t.name.toLowerCase() === "fix")?.id ?? types[0]?.id ?? "";
+  const templateOf = (id: string) => types.find((t) => t.id === id)?.template ?? null;
+  const confirm = useConfirm();
+
+  // #307: changing type offers that type's template. An untouched template
+  // or a blank field is swapped silently; anything typed is only replaced
+  // after asking.
+  async function changeType(nextTypeId: string) {
+    const current = values.description;
+    const decision = templateSwitch(current, templateOf(values.typeId), templateOf(nextTypeId));
+    setValue("typeId", nextTypeId);
+    if (decision.kind === "replace") {
+      setValue("description", decision.text);
+    } else if (decision.kind === "confirm") {
+      const typeName = types.find((t) => t.id === nextTypeId)?.name ?? "this type";
+      const ok = await confirm({
+        title: `Use the ${typeName} template?`,
+        body: "It replaces what you've written in the description. Keep your text to change only the type.",
+        confirmLabel: "Replace with template",
+        cancelLabel: "Keep my text",
+      });
+      if (ok) setValue("description", decision.text);
+    }
+  }
+
   const draftKey = buildDraftKey({
     userId: currentUserId,
     formType: "create-bug",
@@ -60,7 +92,7 @@ export function CreateBugForm({
     {
       title: "",
       typeId: defaultTypeId,
-      description: "",
+      description: initialDescription(templateOf(defaultTypeId)),
       categoryId: "",
       proofLinks: "",
       severity: "medium" as (typeof severities)[number],
@@ -157,7 +189,7 @@ export function CreateBugForm({
               id="typeId"
               name="typeId"
               value={values.typeId}
-              onChange={(event) => setValue("typeId", event.target.value)}
+              onChange={(event) => void changeType(event.target.value)}
               {...errs.attrs("typeId")}
             >
               {types.map((type) => (

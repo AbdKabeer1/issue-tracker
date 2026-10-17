@@ -96,6 +96,8 @@ model IssueType {
   id          String   @id @default(cuid())
   name        String   @unique
   description String?
+  /// Markdown that pre-fills the report form's description (#307). Null: none.
+  template    String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

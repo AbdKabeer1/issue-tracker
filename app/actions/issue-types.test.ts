@@ -86,6 +86,7 @@ describe("issue-types actions duplicate checks (#139)", () => {
         data: {
           name: "Feat",
           description: null,
+          template: null,
           isActive: true,
         },
       });
@@ -152,5 +153,46 @@ describe("issue-types actions on a type that no longer exists (#227)", () => {
 
     expect(result).toEqual({ ok: true });
     expect(deleteMock).toHaveBeenCalledWith({ where: { id: "type-1" } });
+  });
+});
+
+describe("issue type templates (#307)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    findFirstMock.mockResolvedValue(null);
+  });
+
+  it("stores a template on create, normalised", async () => {
+    createMock.mockResolvedValue({ id: "t" });
+    const fd = new FormData();
+    fd.set("name", "Docs");
+    fd.set("template", "### Page\r\n\r\n### What's wrong\n\n\n");
+    expect(await createIssueTypeAction(fd)).toEqual({ ok: true });
+    expect(createMock.mock.calls[0][0].data.template).toBe("### Page\n\n### What's wrong\n");
+  });
+
+  it("stores a blank template as none", async () => {
+    updateMock.mockResolvedValue({ id: "t" });
+    const fd = new FormData();
+    fd.set("name", "Docs");
+    fd.set("template", "   \n ");
+    await updateIssueTypeAction("t", fd);
+    expect(updateMock.mock.calls[0][0].data.template).toBeNull();
+  });
+
+  it("leaves the template alone when an update doesn't send one", async () => {
+    updateMock.mockResolvedValue({ id: "t" });
+    const fd = new FormData();
+    fd.set("name", "Docs");
+    await updateIssueTypeAction("t", fd);
+    expect(updateMock.mock.calls[0][0].data).not.toHaveProperty("template");
+  });
+
+  it("rejects a template over the limit", async () => {
+    const fd = new FormData();
+    fd.set("name", "Docs");
+    fd.set("template", "x".repeat(5001));
+    expect((await createIssueTypeAction(fd)).error).toMatch(/5000 characters/);
+    expect(createMock).not.toHaveBeenCalled();
   });
 });
