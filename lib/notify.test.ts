@@ -24,11 +24,22 @@ const send = sendMail as unknown as ReturnType<typeof vi.fn>;
 
 const base = { actorId: "actor", actorName: "Alice", bugId: "b1", bugTitle: "Broken button" };
 
+/** A recipient who wants every kind of mail, unless told otherwise. */
+const who = (id: string, over: Record<string, boolean> = {}) => ({
+  id,
+  email: `${id}@x.dev`,
+  emailNotifications: true,
+  notifyMentions: true,
+  notifyAssignments: true,
+  notifyStatusChanges: true,
+  ...over,
+});
+
 beforeEach(() => vi.clearAllMocks());
 
 describe("deliverNotifications", () => {
   it("only emails people who haven't opted out", async () => {
-    findMany.mockResolvedValue([{ id: "bob", email: "bob@x.dev" }]);
+    findMany.mockResolvedValue([who("bob")]);
     await deliverNotifications({ ...base, kind: "mentioned", recipientIds: ["bob", "cara"], place: "comment" });
 
     expect(findMany).toHaveBeenCalledWith(
@@ -39,10 +50,7 @@ describe("deliverNotifications", () => {
   });
 
   it("keeps sending to others when one recipient fails", async () => {
-    findMany.mockResolvedValue([
-      { id: "bob", email: "bob@x.dev" },
-      { id: "cara", email: "cara@x.dev" },
-    ]);
+    findMany.mockResolvedValue([who("bob"), who("cara")]);
     send.mockRejectedValueOnce(new Error("SMTP 550")).mockResolvedValueOnce(undefined);
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -52,6 +60,28 @@ describe("deliverNotifications", () => {
     expect(send).toHaveBeenCalledTimes(2);
     expect(log).toHaveBeenCalledOnce();
     log.mockRestore();
+  });
+
+  it("skips a recipient who switched off that kind of email", async () => {
+    findMany.mockResolvedValue([
+      who("bob", { notifyMentions: false }),
+      who("cara"),
+    ]);
+    await deliverNotifications({ ...base, kind: "mentioned", recipientIds: ["bob", "cara"], place: "comment" });
+    expect(send).toHaveBeenCalledOnce();
+    expect(send.mock.calls[0][0].to).toBe("cara@x.dev");
+  });
+
+  it("still sends the kinds that recipient kept", async () => {
+    findMany.mockResolvedValue([who("bob", { notifyMentions: false })]);
+    await deliverNotifications({
+      ...base,
+      kind: "assignee_changed",
+      fromUserId: null,
+      toUserId: "bob",
+    });
+    expect(send).toHaveBeenCalledOnce();
+    expect(send.mock.calls[0][0].to).toBe("bob@x.dev");
   });
 
   it("never emails the person who acted, and skips the query when nobody's left", async () => {

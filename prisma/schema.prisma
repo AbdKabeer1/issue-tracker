@@ -57,7 +57,11 @@ model User {
   image         String?
   role          Role          @default(user)
   /// Email when mentioned, assigned, or when an issue you reported changes status (#151).
+  /// Master switch. The notify* flags below pick which kinds when it is on.
   emailNotifications Boolean  @default(true)
+  notifyMentions     Boolean       @default(true)
+  notifyAssignments  Boolean       @default(true)
+  notifyStatusChanges Boolean      @default(true)
   /// Bumped on password reset; JWTs carrying an older value are rejected (#208).
   sessionVersion Int          @default(0)
   createdAt     DateTime      @default(now())
