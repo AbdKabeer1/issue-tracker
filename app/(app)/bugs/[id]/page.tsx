@@ -45,6 +45,8 @@ import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { fetchVoterSummary } from "@/lib/voter-summaries";
 import { createEmptyVoterSummary } from "@/lib/voters";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
+import { MilestoneDue } from "@/components/milestone-due";
+import { dueDateValue } from "@/lib/milestones";
 import { canEditTicket } from "@/lib/ticket-editing";
 import { DeleteBugButton } from "@/components/delete-bug-button";
 import { RestoreBugButton } from "@/components/restore-bug-button";
@@ -193,6 +195,17 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   const user = await requireUser();
   const canTriage = isAdmin(user.role);
   const canDelete = canDeleteTicket(user.role);
+  // #289: open milestones for the triage panel (admins only). Started here,
+  // alongside the issue query, and awaited where the form needs them.
+  const milestoneOptionsPromise: Promise<{ id: string; title: string; isClosed: boolean }[]> = canTriage
+    ? loadOptional("milestones", [], () =>
+        prisma.milestone.findMany({
+          where: { isClosed: false },
+          select: { id: true, title: true, isClosed: true },
+          orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { title: "asc" }],
+        }),
+      )
+    : Promise.resolve([]);
 
   // The list page already proved the issue row itself can be read. Comments,
   // the activity log, watches and attachments are newer tables. One of them
@@ -203,6 +216,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       include: {
         type: { select: { id: true, name: true, isActive: true } },
         reporter: { select: { name: true, email: true, role: true, image: true } },
+        milestone: { select: { id: true, title: true, dueDate: true, isClosed: true } },
         assignee: { select: { id: true, name: true, role: true, image: true } },
         category: { select: { id: true, name: true, isActive: true } },
         votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
@@ -287,6 +301,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
     if (a.commentId) (attachmentsByComment[a.commentId] ??= []).push(a);
   }
 
+  const milestoneOptions = await milestoneOptionsPromise;
   const isAssignee = !!userId && bug.assigneeId === userId;
   const canUpdateStatus = canTriage || isAssignee;
   const canEdit =
@@ -523,6 +538,17 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
               <dd>{bug.category.name}</dd>
             </div>
           ) : null}
+          {bug.milestone ? (
+            <div>
+              <dt className="font-medium text-slate-500">Milestone</dt>
+              <dd className="flex flex-wrap items-center gap-2">
+                <Link href={`/bugs?milestone=${bug.milestone.id}`} className="text-teal-700 hover:underline">
+                  {bug.milestone.title}
+                </Link>
+                <MilestoneDue due={dueDateValue(bug.milestone.dueDate) || null} isClosed={bug.milestone.isClosed} />
+              </dd>
+            </div>
+          ) : null}
           <div>
             <dt className="font-medium text-slate-500">Created</dt>
             <dd><LocalTime date={bug.createdAt} /></dd>
@@ -592,6 +618,12 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           users={users}
           categories={withCurrentOption(categories, bug.category)}
           types={withCurrentOption(types, bug.type)}
+          milestoneId={bug.milestoneId}
+          milestones={
+            bug.milestone && !milestoneOptions.some((m) => m.id === bug.milestone?.id)
+              ? [...milestoneOptions, { id: bug.milestone.id, title: bug.milestone.title, isClosed: bug.milestone.isClosed }]
+              : milestoneOptions
+          }
           canEditTriage={canTriage}
         />
       ) : null}

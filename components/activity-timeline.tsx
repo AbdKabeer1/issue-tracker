@@ -18,6 +18,7 @@ const typeLabel: Record<ActivityType, string> = {
   assignee_changed: "Assignee",
   commented: "Comment",
   edited: "Edit",
+  milestone_changed: "Milestone",
   boosted: "Boost",
   unboosted: "Unboost",
   deleted: "Deleted",

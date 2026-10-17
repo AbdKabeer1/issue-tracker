@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { severities, statuses } from "@/lib/validations/bug";
 import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
+import { MILESTONE_PARAM, milestoneWhere, parseMilestoneFilter } from "@/lib/milestones";
 import {
   defaultSortFor,
   mineFilterWhere,
@@ -40,6 +41,7 @@ export function parseBugListFilters({
   canSeeDeleted,
   tagTypes = [],
   platforms = [],
+  milestones = [],
 }: {
   params: RawParams;
   userId: string | undefined;
@@ -48,6 +50,8 @@ export function parseBugListFilters({
   tagTypes?: readonly TagType[];
   /** Known platforms, so an id that no longer exists falls back to no filter. */
   platforms?: readonly PlatformLike[];
+  /** Known milestones (#289); an unknown id means no filter, like platforms. */
+  milestones?: readonly { id: string }[];
 }): ParsedBugFilters {
   const q = toSingleQueryParam(params.q);
   const status = toSingleQueryParam(params.status);
@@ -83,6 +87,8 @@ export function parseBugListFilters({
   } else if (platform && platforms.some((p) => p.id === platform)) {
     where.categoryId = platform;
   }
+
+  Object.assign(where, milestoneWhere(parseMilestoneFilter(params[MILESTONE_PARAM], milestones)));
 
   if (q?.trim()) {
     const escaped = escapeSearchQuery(q.trim());
