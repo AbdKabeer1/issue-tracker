@@ -864,6 +864,10 @@ export async function toggleVoteAction(
   }
 
   const result = await prisma.$transaction(async (tx) => {
+    // Acquire a row lock on the Bug to serialize concurrent vote updates
+    // and prevent race-condition drift in voteCount (#362).
+    await tx.$queryRaw`SELECT id FROM "Bug" WHERE id = ${bugId} FOR UPDATE`;
+
     const existing = await tx.vote.findUnique({
       where: { userId_bugId: { userId, bugId } },
     });

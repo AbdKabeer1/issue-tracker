@@ -91,5 +91,8 @@ describe("reconcileVoteCount (#362)", () => {
     expect(source).toContain("const voteCount = reconcileVoteCount(likeCount, dislikeCount)");
     expect(source).toContain("await tx.bug.update({");
     expect(source).toContain("data: { voteCount }");
+
+    // Guard: serialize vote changes using row-level locking
+    expect(source).toContain('SELECT id FROM "Bug" WHERE id = ${bugId} FOR UPDATE');
   });
 });
