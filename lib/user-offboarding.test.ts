@@ -53,13 +53,13 @@ describe("user offboarding (#356)", () => {
 
   it("throws UserHasReportedBugsError if user reported bugs but no fallback is provided", async () => {
     mockClient.user.findUnique.mockResolvedValue({ id: "user-reporter" });
-    mockClient.bug.updateMany.mockResolvedValue({ count: 0 });
     mockClient.bug.count.mockResolvedValue(5);
 
     await expect(
       offboardUser(mockClient as never, "user-reporter"),
     ).rejects.toThrow(UserHasReportedBugsError);
 
+    expect(mockClient.bug.updateMany).not.toHaveBeenCalled();
     expect(mockClient.user.delete).not.toHaveBeenCalled();
   });
 
@@ -67,7 +67,6 @@ describe("user offboarding (#356)", () => {
     mockClient.user.findUnique
       .mockResolvedValueOnce({ id: "user-reporter" })
       .mockResolvedValueOnce(null); // fallback lookup
-    mockClient.bug.updateMany.mockResolvedValue({ count: 0 });
     mockClient.bug.count.mockResolvedValue(2);
 
     await expect(
@@ -76,6 +75,21 @@ describe("user offboarding (#356)", () => {
       }),
     ).rejects.toThrow('Fallback reporter user "fallback-missing" not found.');
 
+    expect(mockClient.bug.updateMany).not.toHaveBeenCalled();
+    expect(mockClient.user.delete).not.toHaveBeenCalled();
+  });
+
+  it("throws if fallbackReporterId is the user being offboarded", async () => {
+    mockClient.user.findUnique.mockResolvedValue({ id: "user-same" });
+    mockClient.bug.count.mockResolvedValue(2);
+
+    await expect(
+      offboardUser(mockClient as never, "user-same", {
+        fallbackReporterId: "user-same",
+      }),
+    ).rejects.toThrow("fallbackReporterId must differ from the user being offboarded.");
+
+    expect(mockClient.bug.updateMany).not.toHaveBeenCalled();
     expect(mockClient.user.delete).not.toHaveBeenCalled();
   });
 
@@ -110,5 +124,26 @@ describe("user offboarding (#356)", () => {
     expect(mockClient.user.delete).toHaveBeenCalledWith({
       where: { id: "user-retiring" },
     });
+  });
+
+  it("wraps in transaction when client has $transaction method", async () => {
+    const txMock = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ id: "user-tx" }),
+        delete: vi.fn().mockResolvedValue({ id: "user-tx" }),
+      },
+      bug: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        count: vi.fn().mockResolvedValue(0),
+      },
+    };
+    const clientWithTx = {
+      $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(txMock)),
+    };
+
+    const result = await offboardUser(clientWithTx as never, "user-tx");
+    expect(clientWithTx.$transaction).toHaveBeenCalledOnce();
+    expect(result.ok).toBe(true);
+    expect(result.userId).toBe("user-tx");
   });
 });

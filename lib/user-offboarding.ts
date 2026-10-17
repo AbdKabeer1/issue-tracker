@@ -43,6 +43,19 @@ export async function offboardUser(
   userId: string,
   options: OffboardUserOptions = {},
 ): Promise<OffboardUserResult> {
+  if ("$transaction" in client && typeof client.$transaction === "function") {
+    return (client as PrismaClient).$transaction((tx) =>
+      runOffboard(tx, userId, options),
+    );
+  }
+  return runOffboard(client, userId, options);
+}
+
+async function runOffboard(
+  client: PrismaClient | Prisma.TransactionClient,
+  userId: string,
+  options: OffboardUserOptions = {},
+): Promise<OffboardUserResult> {
   const user = await client.user.findUnique({
     where: { id: userId },
     select: { id: true },
@@ -52,21 +65,17 @@ export async function offboardUser(
     throw new Error(`User with ID "${userId}" not found.`);
   }
 
-  // Count assigned bugs and unassign them
-  const assignedBugs = await client.bug.updateMany({
-    where: { assigneeId: userId },
-    data: { assigneeId: null },
-  });
-
-  // Check reported bugs
+  // Check reported bugs before any writes
   const reportedCount = await client.bug.count({
     where: { reporterId: userId },
   });
 
-  let reassignedCount = 0;
   if (reportedCount > 0) {
     if (!options.fallbackReporterId) {
       throw new UserHasReportedBugsError(reportedCount);
+    }
+    if (options.fallbackReporterId === userId) {
+      throw new Error("fallbackReporterId must differ from the user being offboarded.");
     }
 
     // Verify fallback reporter exists
@@ -77,7 +86,16 @@ export async function offboardUser(
     if (!fallback) {
       throw new Error(`Fallback reporter user "${options.fallbackReporterId}" not found.`);
     }
+  }
 
+  // All validation passed; perform writes.
+  const assignedBugs = await client.bug.updateMany({
+    where: { assigneeId: userId },
+    data: { assigneeId: null },
+  });
+
+  let reassignedCount = 0;
+  if (reportedCount > 0 && options.fallbackReporterId) {
     const reassigned = await client.bug.updateMany({
       where: { reporterId: userId },
       data: { reporterId: options.fallbackReporterId },
