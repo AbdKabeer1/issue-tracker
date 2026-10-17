@@ -37,7 +37,7 @@ export function BrandLockup({
           className={
             size === "md"
               ? "text-2xl font-semibold tracking-tight text-slate-900"
-              : "text-lg font-semibold text-slate-900"
+              : "whitespace-nowrap text-lg font-semibold tracking-tight text-slate-900"
           }
         >
           Zedu Issues
