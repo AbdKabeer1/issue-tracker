@@ -7,7 +7,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { LocalTime } from "@/components/local-time";
 import { formatIssueNumber } from "@/lib/issue-number";
-import { buildCommentTree, countVisibleComments } from "@/lib/comments";
+import { buildCommentTree, countVisibleComments, type FlatComment } from "@/lib/comments";
 import {
   bugLinkPreviewDescription,
 } from "@/lib/link-preview";
@@ -19,7 +19,7 @@ import {
   statusClass,
   statusLabels,
 } from "@/lib/labels";
-import { ActivityTimeline } from "@/components/activity-timeline";
+import { ActivityTimeline, type ActivityEntry } from "@/components/activity-timeline";
 import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { WatchButton } from "@/components/watch-button";
@@ -31,6 +31,7 @@ import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getActiveIssueTypes } from "@/lib/issue-types";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { fetchVoterSummary } from "@/lib/voter-summaries";
+import { createEmptyVoterSummary } from "@/lib/voters";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
 import { canEditTicket } from "@/lib/ticket-editing";
 import { DeleteBugButton } from "@/components/delete-bug-button";
@@ -47,6 +48,29 @@ type BugPageProps = {
 
 /** How much of the activity log a single page render is allowed to load. */
 const ACTIVITY_PAGE_SIZE = 50;
+
+async function loadOptional<T>(label: string, fallback: T, load: () => Promise<T>): Promise<T> {
+  try {
+    return await load();
+  } catch (error) {
+    console.error(`[issue] ${label} failed`, error);
+    return fallback;
+  }
+}
+
+function issueLoadError(detail: string) {
+  return (
+    <div className="rounded-xl border border-red-200 bg-white px-6 py-10">
+      <h1 className="text-xl font-semibold text-slate-900">This issue could not be loaded</h1>
+      <p className="mt-2 text-sm text-slate-600">
+        The issue query failed. The message below is the database error.
+      </p>
+      <pre className="mt-4 overflow-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-800">
+        {detail}
+      </pre>
+    </div>
+  );
+}
 
 export async function generateMetadata({
   params,
@@ -148,16 +172,74 @@ export default async function BugDetailPage({ params }: BugPageProps) {
   const canTriage = isAdmin(user.role);
   const canDelete = canDeleteTicket(user.role);
 
-  const [bug, users, categories, types, voterSummary, activityCount, watchRow] =
-    await Promise.all([
-    prisma.bug.findUnique({
+  // The list page already proved the issue row itself can be read. Comments,
+  // the activity log, watches and attachments are newer tables. One of them
+  // missing used to reject this whole Promise and blank the page.
+  const loadedBug = await prisma.bug
+    .findUnique({
       where: { id },
       include: {
-        type: true,
+        type: { select: { id: true, name: true, isActive: true } },
         reporter: { select: { name: true, email: true, role: true } },
         assignee: { select: { id: true, name: true, role: true } },
         category: { select: { id: true, name: true, isActive: true } },
-        comments: {
+        votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
+      },
+    })
+    .then((bug) => ({ bug }))
+    .catch((error: unknown) => {
+      console.error("[issue] detail query failed", error);
+      const detail = error instanceof Error ? error.message : "Could not load issue";
+      return { detail };
+    });
+  if ("detail" in loadedBug) {
+    return issueLoadError(loadedBug.detail);
+  }
+  const bug = loadedBug.bug;
+
+  if (!bug) {
+    notFound();
+  }
+
+  if (bug.isDeleted && !canDelete) {
+    notFound();
+  }
+
+  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, attachments] =
+    await Promise.all([
+      loadOptional("users", [], () =>
+        prisma.user.findMany({
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, role: true },
+        }),
+      ),
+      loadOptional("platforms", [], () =>
+        prisma.category.findMany({
+          where: { isActive: true },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        }),
+      ),
+      canTriage ? loadOptional("types", [], () => getActiveIssueTypes()) : Promise.resolve([]),
+      loadOptional("votes", createEmptyVoterSummary(), () => fetchVoterSummary(id)),
+      loadOptional("activity", [] as ActivityEntry[], () =>
+        prisma.bugActivity.findMany({
+          where: { bugId: id },
+          include: { actor: { select: { name: true } } },
+          orderBy: { createdAt: "desc" },
+          take: ACTIVITY_PAGE_SIZE,
+        }),
+      ),
+      loadOptional("activity count", 0, () => prisma.bugActivity.count({ where: { bugId: id } })),
+      loadOptional<{ userId: string; watching: boolean } | null>("watch", null, () =>
+        prisma.issueWatch.findUnique({
+          where: { userId_bugId: { userId: user.id, bugId: id } },
+          select: { userId: true, watching: true },
+        }),
+      ),
+      loadOptional("comments", [] as FlatComment[], () =>
+        prisma.comment.findMany({
+          where: { bugId: id },
           include: {
             author: { select: { name: true, role: true } },
             parent: {
@@ -170,50 +252,17 @@ export default async function BugDetailPage({ params }: BugPageProps) {
             },
           },
           orderBy: { createdAt: "asc" },
-        },
-        // The activity log is append-only and never pruned, so a long-lived
-        // issue would load every row it has ever had. Take the newest page
-        // in the database and reverse it below for display (#ACTIVITY-CAP).
-        activities: {
-          include: { actor: { select: { name: true } } },
-          orderBy: { createdAt: "desc" },
-          take: ACTIVITY_PAGE_SIZE,
-        },
-        votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
-      },
-    }),
-    prisma.user.findMany({
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, role: true },
-    }),
-    prisma.category.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    canTriage ? getActiveIssueTypes() : Promise.resolve([]),
-    fetchVoterSummary(id),
-    prisma.bugActivity.count({ where: { bugId: id } }),
-    prisma.issueWatch.findUnique({
-      where: { userId_bugId: { userId: user.id, bugId: id } },
-      select: { userId: true, watching: true },
-    }),
-  ]);
-
-  if (!bug) {
-    notFound();
-  }
-
-  if (bug.isDeleted && !canDelete) {
-    notFound();
-  }
-
-  // Files on the issue and on its comments (#215); never the file contents here.
-  const attachments = await prisma.attachment.findMany({
-    where: { bugId: id },
-    select: { id: true, filename: true, contentType: true, size: true, commentId: true },
-    orderBy: { createdAt: "asc" },
-  });
+        }),
+      ),
+      // Files on the issue and on its comments (#215); never the file contents here.
+      loadOptional("attachments", [], () =>
+        prisma.attachment.findMany({
+          where: { bugId: id },
+          select: { id: true, filename: true, contentType: true, size: true, commentId: true },
+          orderBy: { createdAt: "asc" },
+        }),
+      ),
+    ]);
   const issueAttachments: AttachmentView[] = attachments.filter((a) => !a.commentId);
   const attachmentsByComment: Record<string, AttachmentView[]> = {};
   for (const a of attachments) {
@@ -240,7 +289,8 @@ export default async function BugDetailPage({ params }: BugPageProps) {
     Array.isArray(bug.votes) && bug.votes.length > 0
       ? (bug.votes[0].value ?? 1)
       : 0;
-  const commentTree = buildCommentTree(bug.comments);
+  const commentTree = buildCommentTree(comments);
+  const proofLinks = bug.proofLinks ?? [];
 
   return (
     <div className="space-y-6">
@@ -449,13 +499,13 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Proof links
         </h2>
-        {bug.proofLinks.length === 0 ? (
+        {proofLinks.length === 0 ? (
           <p className="mt-3 text-sm text-slate-500">
             No proof links attached to this report.
           </p>
         ) : (
           <ul className="mt-3 space-y-2">
-            {bug.proofLinks.map((url, index) => (
+            {proofLinks.map((url, index) => (
               <li key={`${index}-${url}`}>
                 <a
                   href={url}
@@ -499,13 +549,13 @@ export default async function BugDetailPage({ params }: BugPageProps) {
       ) : null}
 
       <ActivityTimeline
-        activities={[...bug.activities].reverse()}
+        activities={[...activities].reverse()}
         totalCount={activityCount}
       />
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Comments ({countVisibleComments(bug.comments)})
+          Comments ({countVisibleComments(comments)})
         </h2>
         <CommentThread
           bugId={bug.id}
