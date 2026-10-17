@@ -218,7 +218,9 @@ function renderBlocks(
       }
       if (i < lines.length) i += 1;
       nodes.push(
-        <pre key={`pre-${key++}`}>
+        /* Focusable so a keyboard user can scroll a long line: a code block
+           overflows on purpose, and axe flags an unreachable scroll region. */
+        <pre key={`pre-${key++}`} tabIndex={0} role="group" aria-label="Code block">
           <code>{fence.join("\n")}</code>
         </pre>,
       );
