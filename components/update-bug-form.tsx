@@ -8,6 +8,7 @@ import { severityLabel, statusLabel } from "@/lib/labels";
 import type { AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 import { AssigneeCombobox } from "@/components/assignee-combobox";
+import { triageFieldsKey } from "@/lib/triage-options";
 
 type UserOption = { id: string; name: string; role: AppRole };
 type CategoryOption = { id: string; name: string };
@@ -128,7 +129,10 @@ export function UpdateBugForm({
       <h2 className="text-sm font-semibold text-slate-900">
         {canEditTriage ? "Triage" : "Update status"}
       </h2>
+      {/* Remount the fields when the saved values change so they never show
+          (and re-submit) stale values after a save (#261). */}
       <div
+        key={triageFieldsKey({ status, severity, typeId, categoryId, assigneeId })}
         className={
           canEditTriage
             ? "grid gap-3 sm:grid-cols-4"
