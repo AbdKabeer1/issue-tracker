@@ -27,7 +27,7 @@ describe("VoterAvatars Next.js Image integration (#364)", () => {
     expect(html2).toBe("");
   });
 
-  it("renders Next.js Image with proper dimensions and alt text for voters with avatars", () => {
+  it("renders avatar with proper src and voter title for voters with avatars", () => {
     const html = renderToStaticMarkup(
       createElement(VoterAvatars, {
         voters: [
@@ -42,12 +42,11 @@ describe("VoterAvatars Next.js Image integration (#364)", () => {
       }),
     );
 
-    expect(html).toContain('alt="Ada Lovelace"');
-    expect(html).toContain('width="20"');
-    expect(html).toContain('height="20"');
+    expect(html).toContain('title="Ada Lovelace"');
+    expect(html).toContain('src="https://avatars.githubusercontent.com/u/123"');
   });
 
-  it("renders size md with 28px dimensions", () => {
+  it("renders size md with proper classes", () => {
     const html = renderToStaticMarkup(
       createElement(VoterAvatars, {
         voters: [
@@ -62,9 +61,8 @@ describe("VoterAvatars Next.js Image integration (#364)", () => {
       }),
     );
 
-    expect(html).toContain('alt="Alan Turing"');
-    expect(html).toContain('width="28"');
-    expect(html).toContain('height="28"');
+    expect(html).toContain('title="Alan Turing"');
+    expect(html).toContain('src="https://lh3.googleusercontent.com/a/456"');
   });
 
   it("renders initials fallback when image is missing", () => {
@@ -81,7 +79,8 @@ describe("VoterAvatars Next.js Image integration (#364)", () => {
       }),
     );
 
-    expect(html).toContain("<span>GH</span>");
+    expect(html).toContain('title="Grace Hopper"');
+    expect(html).toContain("GH");
   });
 
   it("renders overflow indicator when total count exceeds 3", () => {

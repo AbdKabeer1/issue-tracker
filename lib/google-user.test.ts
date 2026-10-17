@@ -29,6 +29,16 @@ describe("upsertGoogleUser", () => {
     expect(upsert.mock.calls[0][0].where).toEqual({ email: "a@x.dev" });
   });
 
+  it("never overwrites the name of an existing account (#293)", async () => {
+    // A display name chosen in Settings must survive the next Google sign-in.
+    upsert.mockResolvedValueOnce({ id: "db1", role: "user" });
+    await upsertGoogleUser({ email: "a@x.dev", name: "Google Name", image: "https://img.test/a.png" });
+    const { create, update } = upsert.mock.calls[0][0];
+    expect(create.name).toBe("Google Name");
+    expect(update).not.toHaveProperty("name");
+    expect(update.image).toBe("https://img.test/a.png");
+  });
+
   it("retries with email and name when the full upsert fails", async () => {
     upsert.mockRejectedValueOnce(new Error("column image does not exist"));
     upsert.mockResolvedValueOnce({ id: "db2" });

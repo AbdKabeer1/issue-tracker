@@ -7,12 +7,15 @@ import { severities, statuses } from "@/lib/validations/bug";
 import { severityLabel, statusLabel } from "@/lib/labels";
 import type { AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { RESOLUTION_NOTE_MAX, isFinishedStatus } from "@/lib/resolution-note";
 import { AssigneeCombobox } from "@/components/assignee-combobox";
 import { triageFieldsKey } from "@/lib/triage-options";
 
-type UserOption = { id: string; name: string; role: AppRole };
+type UserOption = { id: string; name: string; role: AppRole; image?: string | null };
 type CategoryOption = { id: string; name: string };
 type TypeOption = { id: string; name: string };
+type MilestoneOption = { id: string; title: string; isClosed: boolean };
 
 /** The editable triage fields, as strings so they compare cleanly. */
 type Draft = {
@@ -21,6 +24,7 @@ type Draft = {
   severity: string;
   categoryId: string;
   assigneeId: string;
+  milestoneId: string;
 };
 
 const sameDraft = (a: Draft, b: Draft) =>
@@ -36,9 +40,11 @@ export function UpdateBugForm({
   typeId,
   assigneeId,
   categoryId,
+  milestoneId,
   users,
   categories = [],
   types = [],
+  milestones = [],
   canEditTriage = true,
 }: {
   bugId: string;
@@ -47,14 +53,19 @@ export function UpdateBugForm({
   typeId?: string | null;
   assigneeId: string | null;
   categoryId?: string | null;
+  /** #289: the issue's milestone, if any. */
+  milestoneId?: string | null;
   users: UserOption[];
   categories?: CategoryOption[];
   types?: TypeOption[];
+  /** Open milestones, plus the current one even if it was since closed. */
+  milestones?: MilestoneOption[];
   /** Admins can edit severity/type/category/assignee; assignees only change status. */
   canEditTriage?: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [note, setNote] = useState("");
   const [pending, startTransition] = useTransition();
 
   // What the server currently holds.
@@ -64,6 +75,7 @@ export function UpdateBugForm({
     severity,
     categoryId: categoryId ?? "",
     assigneeId: assigneeId ?? "",
+    milestoneId: milestoneId ?? "",
   };
 
   // The selects are controlled: `defaultValue` is only read when the node
@@ -81,6 +93,8 @@ export function UpdateBugForm({
   }
 
   const dirty = !sameDraft(draft, serverDraft);
+  // #316: only a move into resolved/closed can carry a note.
+  const asksForNote = draft.status !== status && isFinishedStatus(draft.status);
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     setSaved(false);
     setDraft((d) => ({ ...d, [key]: value }));
@@ -108,11 +122,13 @@ export function UpdateBugForm({
         setSaved(false);
         const formData = new FormData();
         formData.set("status", draft.status);
+        if (asksForNote) formData.set("resolutionNote", note);
         if (canEditTriage) {
           formData.set("typeId", draft.typeId);
           formData.set("severity", draft.severity);
           formData.set("categoryId", draft.categoryId);
           formData.set("assigneeId", draft.assigneeId);
+          formData.set("milestoneId", draft.milestoneId);
         } else if (assigneeId) {
           formData.set("assigneeId", draft.assigneeId);
         }
@@ -122,6 +138,7 @@ export function UpdateBugForm({
             setError(result.error);
           } else {
             setSaved(true);
+            setNote("");
           }
         });
       }}
@@ -132,7 +149,7 @@ export function UpdateBugForm({
       {/* Remount the fields when the saved values change so they never show
           (and re-submit) stale values after a save (#261). */}
       <div
-        key={triageFieldsKey({ status, severity, typeId, categoryId, assigneeId })}
+        key={triageFieldsKey({ status, severity, typeId, categoryId, assigneeId, milestoneId })}
         className={
           canEditTriage
             ? "grid gap-3 sm:grid-cols-4"
@@ -223,6 +240,29 @@ export function UpdateBugForm({
             </div>
             <div>
               <label
+                htmlFor="milestoneId"
+                className="mb-1 block text-xs font-medium text-slate-700"
+              >
+                Milestone
+              </label>
+              <select
+                id="milestoneId"
+                name="milestoneId"
+                value={draft.milestoneId}
+                onChange={(event) => set("milestoneId", event.target.value)}
+                className={selectClass}
+              >
+                <option value="">None</option>
+                {milestones.map((m) => (
+                  <option key={m.id} value={m.id} disabled={m.isClosed && m.id !== milestoneId}>
+                    {m.title}
+                    {m.isClosed ? " (closed)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
                 htmlFor="assigneeId"
                 className="mb-1 block text-xs font-medium text-slate-700"
               >
@@ -258,6 +298,30 @@ export function UpdateBugForm({
           </div>
         ) : null}
       </div>
+
+      {asksForNote ? (
+        <div>
+          <label htmlFor="resolutionNote" className="mb-1 block text-xs font-medium text-slate-700">
+            Resolution note <span className="font-normal text-slate-500">(optional)</span>
+          </label>
+          <Textarea
+            id="resolutionNote"
+            name="resolutionNote"
+            rows={3}
+            maxLength={RESOLUTION_NOTE_MAX}
+            value={note}
+            onChange={(event) => {
+              setSaved(false);
+              setNote(event.target.value);
+            }}
+            placeholder="What happened? e.g. Fixed in the 2.4 release. Clear your cache if you still see it."
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            Shown at the top of the issue and sent to the reporter and watchers.{" "}
+            {[...note].length}/{RESOLUTION_NOTE_MAX}
+          </p>
+        </div>
+      ) : null}
 
       {error ? (
         <p className="text-sm text-red-600" role="alert">
