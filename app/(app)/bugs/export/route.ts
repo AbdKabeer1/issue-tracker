@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     getPlatforms(),
   ]);
 
-  const { where, sort } = parseBugListFilters({
+  const { where, sort, mine } = parseBugListFilters({
     params,
     userId: user.id,
     // Deleted issues are admin-only on the list, and must stay admin-only
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     platforms,
   });
 
-  const orderBy = getBugOrderBy(sort);
+  const orderBy = getBugOrderBy(sort, { boostFirst: mine !== "watching" });
 
   const encoder = new TextEncoder();
   let sent = 0;

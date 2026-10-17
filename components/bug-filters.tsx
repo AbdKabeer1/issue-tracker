@@ -19,6 +19,7 @@ import {
   MINE_FILTER_OPTIONS,
   mineFilterLabels,
   parseMineFilter,
+  defaultSortFor,
 } from "@/lib/mine-filter";
 import {
   PLATFORM_NONE,
@@ -102,7 +103,10 @@ export function BugFilters({
     return qs ? `/bugs?${qs}` : "/bugs";
   }
 
-  const currentSort = parseBugSort(params.get("sort"));
+  const currentSort = parseBugSort(
+    params.get("sort"),
+    defaultSortFor(parseMineFilter(params.get("mine"))),
+  );
   const currentPlatform =
     parsePlatformFilter(params.get(PLATFORM_PARAM), platforms) ?? "";
   const platformOptions = platformChoices(platforms, currentPlatform || null);

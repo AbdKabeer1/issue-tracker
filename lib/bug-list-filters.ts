@@ -1,7 +1,12 @@
 import type { Prisma } from "@prisma/client";
 import { severities, statuses } from "@/lib/validations/bug";
 import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
-import { mineFilterWhere, parseMineFilter } from "@/lib/mine-filter";
+import {
+  defaultSortFor,
+  mineFilterWhere,
+  parseMineFilter,
+  type MineFilter,
+} from "@/lib/mine-filter";
 import { parseTagFilter, tagTypeIds } from "@/lib/tag-filter";
 import { parseBugSort, type BugSortOption } from "@/lib/bugs-sort";
 
@@ -23,6 +28,8 @@ export const PLATFORM_NONE = "none";
 export type ParsedBugFilters = {
   where: Prisma.BugWhereInput;
   sort: BugSortOption;
+  /** The "Show" filter, which also decides the default order (#312). */
+  mine: MineFilter | null;
   /** True when the caller asked for deleted issues and is allowed to see them. */
   isDeletedView: boolean;
 };
@@ -85,5 +92,5 @@ export function parseBugListFilters({
     ];
   }
 
-  return { where, sort: parseBugSort(toSingleQueryParam(params.sort)), isDeletedView };
+  return { where, sort: parseBugSort(toSingleQueryParam(params.sort), defaultSortFor(mine)), mine, isDeletedView };
 }
