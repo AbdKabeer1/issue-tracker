@@ -7,7 +7,7 @@ on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
-    branches: [main]
+    branches: [main, staging]
 
 permissions:
   contents: read
@@ -31,6 +31,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           set -euo pipefail
           echo "Verifying Malware Scan (CI Gate) for commit $HEAD_SHA in $GH_REPO..."
@@ -68,7 +69,8 @@ jobs:
       - name: Trigger Coolify deployment
         shell: bash
         env:
-          COOLIFY_WEBHOOK_URL: ${{ secrets.COOLIFY_WEBHOOK_URL }}
+          # main -> production app, staging -> staging app
+          COOLIFY_WEBHOOK_URL: ${{ github.event.workflow_run.head_branch == 'staging' && secrets.COOLIFY_STAGING_WEBHOOK_URL || secrets.COOLIFY_WEBHOOK_URL }}
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
         run: |
           set -uo pipefail
