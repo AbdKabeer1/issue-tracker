@@ -6,6 +6,7 @@ import { expireTag, TAGS } from "@/lib/lookups";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-helpers";
 import { categorySchema } from "@/lib/validations/bug";
+import { categoryChangedSummary } from "@/lib/activity-log";
 
 export type CategoryActionResult = {
   error?: string;
@@ -70,7 +71,7 @@ export async function updateCategoryAction(
   categoryId: string,
   formData: FormData,
 ): Promise<CategoryActionResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
 
   const parsed = categorySchema.safeParse({
     name: formData.get("name"),
@@ -104,10 +105,45 @@ export async function updateCategoryAction(
     return { error: `A platform named "${duplicate.name}" already exists.` };
   }
 
+  let linkedBugIds: string[] = [];
+
   try {
-    await prisma.category.update({
-      where: { id: categoryId },
-      data: { name: normalizedName },
+    await prisma.$transaction(async (tx) => {
+      const current = await tx.category.findUnique({
+        where: { id: categoryId },
+      });
+      if (!current) {
+        return;
+      }
+
+      await tx.category.update({
+        where: { id: categoryId },
+        data: { name: normalizedName },
+      });
+
+      if (current.name !== normalizedName) {
+        const linkedBugs = await tx.bug.findMany({
+          where: { categoryId },
+          select: { id: true },
+        });
+
+        if (linkedBugs.length > 0) {
+          linkedBugIds = linkedBugs.map((b) => b.id);
+          await tx.bugActivity.createMany({
+            data: linkedBugs.map((b) => ({
+              bugId: b.id,
+              actorId: admin.id,
+              type: "category_changed",
+              summary: categoryChangedSummary(current.name, normalizedName),
+              metadata: {
+                field: "category",
+                from: current.name,
+                to: normalizedName,
+              },
+            })),
+          });
+        }
+      }
     });
   } catch (err: unknown) {
     if (
@@ -125,6 +161,9 @@ export async function updateCategoryAction(
   revalidatePath("/admin/categories");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
+  for (const bugId of linkedBugIds) {
+    revalidatePath(`/bugs/${bugId}`);
+  }
   return { ok: true };
 }
 
