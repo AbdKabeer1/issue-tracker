@@ -191,7 +191,9 @@ export function AppHeader({
   const canSwitchRole = Boolean((isRealSuperAdmin || isRealAdmin) && role);
   const realRole = realRoleOf({ isRealSuperAdmin, isRealAdmin });
   const viewingAsOther = canSwitchRole && role !== realRole;
-  const onNewIssue = pathname?.replace(/\/+$/, "") === "/bugs/new";
+  const onNewIssue =
+    pathname?.replace(/\/+$/, "") === "/issues/new" ||
+    pathname?.replace(/\/+$/, "") === "/bugs/new";
   const effectiveRole: AppRole = role ?? "user";
 
   return (
@@ -201,7 +203,7 @@ export function AppHeader({
     >
       <div className="mx-auto flex h-14 max-w-5xl items-center gap-4 px-4 sm:gap-6">
         <div className="shrink-0">
-          <BrandLockup href="/bugs" size="sm" />
+          <BrandLockup href="/issues" size="sm" />
         </div>
 
         {/* Desktop navigation: the active page is underlined on the header's edge. */}
@@ -243,7 +245,7 @@ export function AppHeader({
           />
 
           <Link
-            href="/bugs/new"
+            href="/issues/new"
             aria-current={onNewIssue ? "page" : undefined}
             aria-label="New issue"
             className={`inline-flex h-9 items-center gap-1.5 rounded-lg bg-teal-700 px-2.5 text-sm font-medium text-white shadow-xs transition-colors hover:bg-teal-800 sm:px-3.5 ${linkFocus}`}

@@ -7,7 +7,7 @@ import { readFileSync } from "fs";
  * both are covered by the editor's counter; the title is a plain input and
  * gets its own.
  */
-const createForm = readFileSync("components/create-bug-form.tsx", "utf8");
+const createForm = readFileSync("components/create-issue-form.tsx", "utf8");
 const markdownEditor = readFileSync("components/markdown-editor.tsx", "utf8");
 
 describe("create issue form character counter", () => {

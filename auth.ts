@@ -3,7 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { loginSchema } from "@/lib/validations/bug";
+import { loginSchema } from "@/lib/validations/issue";
 import authConfig from "@/auth.config";
 import { cleanEnv } from "@/lib/env-clean";
 import { isPasswordAuthEnabled } from "@/lib/auth-mode";

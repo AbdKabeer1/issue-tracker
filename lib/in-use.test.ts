@@ -38,12 +38,12 @@ describe("inUseText", () => {
 describe("inUseHrefs", () => {
   it("filters the list by platform id", () => {
     expect(inUseHrefs("platform", "cat_web")).toEqual({
-      live: "/bugs?platform=cat_web",
-      deleted: "/bugs?deleted=true&platform=cat_web",
+      live: "/issues?platform=cat_web",
+      deleted: "/issues?deleted=true&platform=cat_web",
     });
   });
 
   it("filters the list by type through the tag filter, escaping the name", () => {
-    expect(inUseHrefs("type", "UX research").live).toBe("/bugs?tags=UX%20research");
+    expect(inUseHrefs("type", "UX research").live).toBe("/issues?tags=UX%20research");
   });
 });

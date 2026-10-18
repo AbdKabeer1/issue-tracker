@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { categorySchema, platformSchema, createBugSchema, updateBugSchema } from "./validations/bug";
+import { categorySchema, platformSchema, createBugSchema, updateBugSchema } from "./validations/issue";
 
 describe("categorySchema and platformSchema", () => {
   it("accepts valid platform names", () => {

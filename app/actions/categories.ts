@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { expireTag, TAGS } from "@/lib/lookups";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-helpers";
-import { categorySchema } from "@/lib/validations/bug";
+import { categorySchema } from "@/lib/validations/issue";
 import { categoryChangedSummary } from "@/lib/activity-log";
 
 export type CategoryActionResult = {
@@ -62,6 +62,8 @@ export async function createCategoryAction(
 
   expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
+  revalidatePath("/issues/new");
+  revalidatePath("/issues");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
   return { ok: true };
@@ -159,9 +161,12 @@ export async function updateCategoryAction(
 
   expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
+  revalidatePath("/issues/new");
+  revalidatePath("/issues");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
   for (const bugId of linkedBugIds) {
+    revalidatePath(`/issues/${bugId}`);
     revalidatePath(`/bugs/${bugId}`);
   }
   return { ok: true };
@@ -187,6 +192,8 @@ export async function toggleCategoryStatusAction(
 
   expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
+  revalidatePath("/issues/new");
+  revalidatePath("/issues");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
   return { ok: true };
@@ -225,6 +232,8 @@ export async function deleteCategoryAction(
 
   expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
+  revalidatePath("/issues/new");
+  revalidatePath("/issues");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
   return { ok: true };

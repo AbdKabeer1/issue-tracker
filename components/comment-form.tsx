@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { addCommentAction } from "@/app/actions/bugs";
+import { addCommentAction } from "@/app/actions/issues";
 import { Button } from "@/components/ui/button";
 import {
   MarkdownEditor,

@@ -1,4 +1,4 @@
-import { severities, statuses } from "@/lib/validations/bug";
+import { severities, statuses } from "@/lib/validations/issue";
 
 /**
  * Validation for bulk triage, kept away from the server action so the rules

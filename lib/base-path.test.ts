@@ -37,6 +37,8 @@ describe("resolveBasePath", () => {
 
 describe("toAppPath", () => {
   it("strips the legacy /bug-tracker prefix", () => {
+    expect(toAppPath("/bug-tracker/issues")).toBe("/issues");
+    expect(toAppPath("/bug-tracker/issues/42")).toBe("/issues/42");
     expect(toAppPath("/bug-tracker/bugs")).toBe("/bugs");
     expect(toAppPath("/bug-tracker/bugs/42")).toBe("/bugs/42");
     expect(toAppPath("/bug-tracker/api/auth/session")).toBe(

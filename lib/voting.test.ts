@@ -81,7 +81,7 @@ describe("reconcileVoteCount (#362)", () => {
 
   it("ensures toggleVoteAction in app/actions/bugs.ts reconciles count from Vote rows (#362)", async () => {
     const { readFileSync } = await import("fs");
-    const source = readFileSync("app/actions/bugs.ts", "utf8");
+    const source = readFileSync("app/actions/issues.ts", "utf8");
 
     // Guard: relative increment must not be used to prevent race-condition counter drift
     expect(source).not.toContain('"voteCount" + ${countDelta}');

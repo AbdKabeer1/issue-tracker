@@ -58,8 +58,8 @@ describe("isPublicPath (#348)", () => {
   });
 
   it("treats application routes as non-public", () => {
-    expect(isPublicPath("/bugs")).toBe(false);
-    expect(isPublicPath("/bugs/new")).toBe(false);
+    expect(isPublicPath("/issues")).toBe(false);
+    expect(isPublicPath("/issues/new")).toBe(false);
     expect(isPublicPath("/admin")).toBe(false);
     expect(isPublicPath("/admin/users")).toBe(false);
   });
@@ -75,26 +75,34 @@ describe("middleware routing (#348)", () => {
     expect(res.headers.get("location")).toBeNull();
   });
 
-  it("redirects unauthenticated requests to protected pages to /login with callbackUrl", () => {
+  it("redirects legacy /bugs requests to /issues with 308 permanent redirect", () => {
     const req = createMockReq({ pathname: "/bugs", isLoggedIn: false });
+    const res = runMiddleware(req);
+
+    expect(res.status).toBe(308);
+    expect(res.headers.get("location")).toBe("https://issues.zedu.chat/issues");
+  });
+
+  it("redirects unauthenticated requests to protected pages to /login with callbackUrl", () => {
+    const req = createMockReq({ pathname: "/issues", isLoggedIn: false });
     const res = runMiddleware(req);
 
     expect(res.status).toBe(307);
     const location = res.headers.get("location");
     expect(location).toContain("/login");
-    expect(location).toContain("callbackUrl=%2Fbugs");
+    expect(location).toContain("callbackUrl=%2Fissues");
   });
 
-  it("redirects logged-in users visiting /login to /bugs", () => {
+  it("redirects logged-in users visiting /login to /issues", () => {
     const req = createMockReq({ pathname: "/login", isLoggedIn: true });
     const res = runMiddleware(req);
 
     expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toBe("https://issues.zedu.chat/bugs");
+    expect(res.headers.get("location")).toBe("https://issues.zedu.chat/issues");
   });
 
   it("allows logged-in users to proceed to protected pages", () => {
-    const req = createMockReq({ pathname: "/bugs", isLoggedIn: true });
+    const req = createMockReq({ pathname: "/issues", isLoggedIn: true });
     const res = runMiddleware(req);
 
     expect(res.status).not.toBe(307);

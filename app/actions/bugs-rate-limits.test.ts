@@ -26,7 +26,9 @@ vi.mock("@/lib/prisma", () => ({
       const tx = {
         bug: { update: vi.fn() },
         bugActivity: { create: vi.fn() },
+        bugRevision: { create: vi.fn() },
         issueWatch: { createMany: vi.fn(), upsert: vi.fn() },
+        $queryRaw: vi.fn().mockResolvedValue([{ title: "Old title", description: "Old description" }]),
       };
       return fn(tx);
     }),
@@ -39,7 +41,7 @@ import {
   RATE_LIMIT_MESSAGE,
   resetRateLimits,
 } from "@/lib/rate-limit";
-import { editBugContentAction, selfAssignBugAction } from "./bugs";
+import { editBugContentAction, selfAssignBugAction } from "./issues";
 
 const mockBugFindUnique = vi.mocked(prisma.bug.findUnique) as unknown as ReturnType<typeof vi.fn>;
 

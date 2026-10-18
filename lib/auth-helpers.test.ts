@@ -116,17 +116,17 @@ describe("requireAdmin / requireSuperAdmin", () => {
     signedInAs(role);
     const adminGate = requireAdmin();
     if (admin) await expect(adminGate).resolves.toMatchObject({ role });
-    else await expect(adminGate).rejects.toMatchObject({ to: "/bugs" });
+    else await expect(adminGate).rejects.toMatchObject({ to: "/issues" });
 
     signedInAs(role);
     const superGate = requireSuperAdmin();
     if (superAdmin) await expect(superGate).resolves.toMatchObject({ role });
-    else await expect(superGate).rejects.toMatchObject({ to: "/bugs" });
+    else await expect(superGate).rejects.toMatchObject({ to: "/issues" });
   });
 
   it("treats an admin previewing as a normal user as a normal user", async () => {
     cookieJar.set(ACTIVE_ROLE_COOKIE_NAME, "user:u1");
     signedInAs("admin");
-    await expect(requireAdmin()).rejects.toMatchObject({ to: "/bugs" });
+    await expect(requireAdmin()).rejects.toMatchObject({ to: "/issues" });
   });
 });

@@ -22,6 +22,8 @@ export async function setWatchingAction(
     create: { userId: user.id, bugId, watching: Boolean(watching) },
     update: { watching: Boolean(watching) },
   });
+  revalidatePath(`/issues/${bugId}`);
+  revalidatePath("/issues");
   revalidatePath(`/bugs/${bugId}`);
   // The "Issues I'm watching" list (#312).
   revalidatePath("/bugs");
@@ -48,6 +50,7 @@ export async function unwatchFinishedAction(): Promise<{
   });
   const ids = bugs.map((b) => b.id);
   if (ids.length === 0) {
+    revalidatePath("/issues");
     revalidatePath("/bugs");
     return { ok: true, count: 0 };
   }
@@ -61,6 +64,7 @@ export async function unwatchFinishedAction(): Promise<{
       skipDuplicates: true,
     }),
   ]);
+  revalidatePath("/issues");
   revalidatePath("/bugs");
   return { ok: true, count: ids.length };
 }

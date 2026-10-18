@@ -29,10 +29,10 @@ export default function GlobalError({
           fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
         }}
       >
-        <title>Something went wrong · Zedu Issues</title>
+        <title>Something went wrong · Ziki Issues</title>
         <main style={{ maxWidth: 448, margin: "0 auto", padding: "96px 16px" }}>
           <h1 style={{ fontSize: 24, fontWeight: 600, margin: "0 0 12px" }}>
-            Zedu Issues couldn&apos;t load
+            Ziki Issues couldn&apos;t load
           </h1>
           <p style={{ fontSize: 14, lineHeight: "24px", color: "#475569", margin: "0 0 20px" }}>
             Something went wrong on our side. Trying again usually works.
@@ -57,7 +57,7 @@ export default function GlobalError({
             {/* A plain link: the app's router may be what failed. */}
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a
-              href="/bugs"
+              href="/issues"
               style={{
                 border: "1px solid #cbd5e1",
                 borderRadius: 8,

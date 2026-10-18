@@ -103,7 +103,7 @@ describe("parseCommentTarget", () => {
 
 describe("links", () => {
   it("permalinks carry both the query and the fragment", () => {
-    expect(commentPermalinkPath("b1", "c9")).toBe("/bugs/b1?comment=c9#comment-c9");
+    expect(commentPermalinkPath("b1", "c9")).toBe("/issues/b1?comment=c9#comment-c9");
   });
   it("'show earlier' keeps other params and drops a stale target", () => {
     const href = earlierThreadsHref(new URLSearchParams("comment=c1&x=1"), 50);

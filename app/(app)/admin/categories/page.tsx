@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureDefaultPlatforms } from "@/lib/categories";
 import { CategoryManager } from "@/components/category-manager";
 
-/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Platforms" };
 
 export default async function AdminCategoriesPage() {
@@ -35,7 +35,7 @@ export default async function AdminCategoriesPage() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
+        <Link href="/issues" className="text-sm text-teal-700 hover:underline">
           ← Back to issues
         </Link>
         <h1 className="text-2xl font-semibold text-slate-900">
