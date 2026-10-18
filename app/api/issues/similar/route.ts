@@ -37,7 +37,7 @@ async function trigramMatches(query: string): Promise<ScoredIssue[]> {
 /** Without pg_trgm (the extension needs privileges some hosts lack). */
 async function plainMatches(query: string): Promise<SimilarIssue[]> {
   const terms = fallbackTerms(query);
-  if (terms.length < 2) return [];
+  if (terms.length < 1) return [];
   return prisma.bug.findMany({
     where: {
       isDeleted: false,

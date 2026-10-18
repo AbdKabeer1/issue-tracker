@@ -67,4 +67,14 @@ describe("GET /api/issues/similar (#284)", () => {
     expect(body.issues).toHaveLength(1);
     expect(findMany.mock.calls[0][0].where.isDeleted).toBe(false);
   });
+
+  it("supports single-term fallback queries meeting the length threshold", async () => {
+    raw.mockRejectedValue(new Error('operator does not exist: text % text'));
+    findMany.mockResolvedValue([{ id: "d", number: 5, title: "Authentication fails silently", status: "open", voteCount: 3 }]);
+    const body = await (await get("Authentication")).json();
+    expect(body.issues).toHaveLength(1);
+    expect(findMany.mock.calls[0][0].where.AND).toEqual([
+      { title: { contains: "authentication", mode: "insensitive" } },
+    ]);
+  });
 });

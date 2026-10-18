@@ -82,8 +82,10 @@ jobs:
         id: check-secrets
         shell: bash
         run: |
-          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
-            echo "::warning::VERCEL_TOKEN secret is not configured in this repository. Skipping Vercel deployment. Add VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID in Settings -> Secrets and variables -> Actions to enable automatic deployments."
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ] || \
+             [ -z "${{ secrets.VERCEL_ORG_ID }}" ] || \
+             [ -z "${{ secrets.VERCEL_PROJECT_ID }}" ]; then
+            echo "::warning::VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID must be configured in Settings -> Secrets and variables -> Actions. Skipping Vercel deployment."
             echo "configured=false" >> "$GITHUB_OUTPUT"
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
