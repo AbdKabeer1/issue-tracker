@@ -2,11 +2,12 @@
 
 import { useId, useMemo, useRef, useState } from "react";
 import { filterPeopleByName } from "@/lib/assignee-search";
+import { Avatar } from "@/components/avatar";
 import { formatUserLabel, type AppRole } from "@/lib/roles";
 
-type Person = { id: string; name: string; role?: AppRole | null };
+type Person = { id: string; name: string; role?: AppRole | null; image?: string | null };
 
-type Option = { id: string; label: string };
+type Option = { id: string; label: string; person?: Person };
 
 const UNASSIGNED: Option = { id: "", label: "Unassigned" };
 
@@ -23,6 +24,8 @@ export function AssigneeCombobox({
   defaultValue = "",
   onChange,
   inputClassName = "",
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
 }: {
   id: string;
   name: string;
@@ -32,6 +35,8 @@ export function AssigneeCombobox({
   defaultValue?: string;
   onChange?: (assigneeId: string) => void;
   inputClassName?: string;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
 }) {
   const listId = useId();
   const [ownValue, setOwnValue] = useState(defaultValue);
@@ -53,6 +58,7 @@ export function AssigneeCombobox({
     const matches = filterPeopleByName(people, query).map((p) => ({
       id: p.id,
       label: formatUserLabel(p.name, p.role),
+      person: p,
     }));
     // "Unassigned" stays available unless the person is clearly searching for someone.
     return query.trim() ? matches : [UNASSIGNED, ...matches];
@@ -130,9 +136,12 @@ export function AssigneeCombobox({
         role="combobox"
         autoComplete="off"
         spellCheck={false}
+        aria-label={ariaLabel ?? (ariaLabelledBy ? undefined : "Assignee")}
+        aria-labelledby={ariaLabelledBy}
+        aria-haspopup="listbox"
         aria-autocomplete="list"
         aria-expanded={open}
-        aria-controls={listId}
+        aria-controls={open ? listId : undefined}
         aria-activedescendant={activeOption ? `${listId}-${activeOption.id || "none"}` : undefined}
         placeholder={open ? "Search by name" : undefined}
         value={open ? query : labelFor(selectedId)}
@@ -168,7 +177,7 @@ export function AssigneeCombobox({
           ref={listRef}
           id={listId}
           role="listbox"
-          aria-label="People"
+          aria-label="Assignees"
           tabIndex={-1}
           className="absolute left-0 z-30 mt-1 max-h-64 w-full min-w-[14rem] overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-sm shadow-lg"
         >
@@ -195,7 +204,12 @@ export function AssigneeCombobox({
                     active ? "bg-teal-50 text-teal-900" : "text-slate-800"
                   } ${option.id ? "" : "text-slate-500"}`}
                 >
-                  <span className="truncate">{option.label}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    {option.person ? (
+                      <Avatar name={option.person.name} image={option.person.image} size="xs" />
+                    ) : null}
+                    <span className="truncate">{option.label}</span>
+                  </span>
                   {selected ? (
                     <svg className="h-4 w-4 shrink-0 text-teal-700" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                       <path

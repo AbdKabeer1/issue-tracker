@@ -1,9 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { expireTag, TAGS } from "@/lib/lookups";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-helpers";
 import { canDeleteIssueType, issueTypeInputSchema } from "@/lib/issue-types";
+import { typeChangedSummary } from "@/lib/activity-log";
+import { normalizeTemplate } from "@/lib/issue-templates";
 
 export type IssueTypeActionResult = { error?: string; ok?: boolean };
 
@@ -23,12 +26,15 @@ export async function createIssueTypeAction(
 
   const rawName = formData.get("name")?.toString() ?? "";
   const rawDesc = formData.get("description")?.toString() ?? "";
+  // Absent (an older client) leaves the template as it was on update.
+  const rawTemplate = formData.get("template");
   const rawActive = formData.get("isActive");
   const isActive = rawActive !== null ? rawActive === "true" || rawActive === "on" : true;
 
   const parsed = issueTypeInputSchema.safeParse({
     name: rawName,
     description: rawDesc ? rawDesc : null,
+    template: typeof rawTemplate === "string" ? rawTemplate : null,
     isActive,
   });
 
@@ -56,6 +62,7 @@ export async function createIssueTypeAction(
       data: {
         name: normalizedName,
         description: parsed.data.description,
+        template: normalizeTemplate(parsed.data.template),
         isActive: parsed.data.isActive,
       },
     });
@@ -71,6 +78,7 @@ export async function createIssueTypeAction(
     throw err;
   }
 
+  expireTag(TAGS.issueTypes);
   revalidatePath("/admin/types");
   revalidatePath("/bugs/new");
   return { ok: true };
@@ -80,7 +88,7 @@ export async function updateIssueTypeAction(
   id: string,
   formData: FormData,
 ): Promise<IssueTypeActionResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
 
   if (!id || typeof id !== "string") {
     return { error: "Invalid type ID" };
@@ -88,12 +96,15 @@ export async function updateIssueTypeAction(
 
   const rawName = formData.get("name")?.toString() ?? "";
   const rawDesc = formData.get("description")?.toString() ?? "";
+  // Absent (an older client) leaves the template as it was on update.
+  const rawTemplate = formData.get("template");
   const rawActive = formData.get("isActive");
   const isActive = rawActive !== null ? rawActive === "true" || rawActive === "on" : true;
 
   const parsed = issueTypeInputSchema.safeParse({
     name: rawName,
     description: rawDesc ? rawDesc : null,
+    template: typeof rawTemplate === "string" ? rawTemplate : null,
     isActive,
   });
 
@@ -102,6 +113,14 @@ export async function updateIssueTypeAction(
   }
 
   const normalizedName = parsed.data.name.trim();
+
+  const currentType = await prisma.issueType.findUnique({
+    where: { id },
+  });
+
+  if (!currentType) {
+    return { error: TYPE_NOT_FOUND };
+  }
 
   const existing = await prisma.issueType.findFirst({
     where: {
@@ -117,14 +136,52 @@ export async function updateIssueTypeAction(
     return { error: `Another type named "${existing.name}" already exists.` };
   }
 
+  let linkedBugIds: string[] = [];
+
   try {
-    await prisma.issueType.update({
-      where: { id },
-      data: {
-        name: normalizedName,
-        description: parsed.data.description,
-        isActive: parsed.data.isActive,
-      },
+    await prisma.$transaction(async (tx) => {
+      const current = await tx.issueType.findUnique({
+        where: { id },
+      });
+      if (!current) {
+        return;
+      }
+
+      await tx.issueType.update({
+        where: { id },
+        data: {
+          name: normalizedName,
+          description: parsed.data.description,
+          ...(typeof rawTemplate === "string"
+            ? { template: normalizeTemplate(parsed.data.template) }
+            : {}),
+          isActive: parsed.data.isActive,
+        },
+      });
+
+      if (current.name !== normalizedName) {
+        const linkedBugs = await tx.bug.findMany({
+          where: { typeId: id },
+          select: { id: true },
+        });
+
+        if (linkedBugs.length > 0) {
+          linkedBugIds = linkedBugs.map((b) => b.id);
+          await tx.bugActivity.createMany({
+            data: linkedBugs.map((b) => ({
+              bugId: b.id,
+              actorId: admin.id,
+              type: "type_changed",
+              summary: typeChangedSummary(current.name, normalizedName),
+              metadata: {
+                field: "type",
+                from: current.name,
+                to: normalizedName,
+              },
+            })),
+          });
+        }
+      }
     });
   } catch (err: unknown) {
     if (
@@ -141,9 +198,13 @@ export async function updateIssueTypeAction(
     throw err;
   }
 
+  expireTag(TAGS.issueTypes);
   revalidatePath("/admin/types");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
+  for (const bugId of linkedBugIds) {
+    revalidatePath(`/bugs/${bugId}`);
+  }
   return { ok: true };
 }
 
@@ -170,6 +231,7 @@ export async function toggleIssueTypeActiveAction(
     data: { isActive: !existing.isActive },
   });
 
+  expireTag(TAGS.issueTypes);
   revalidatePath("/admin/types");
   revalidatePath("/bugs/new");
   return { ok: true };
@@ -213,6 +275,7 @@ export async function deleteIssueTypeAction(
     throw err;
   }
 
+  expireTag(TAGS.issueTypes);
   revalidatePath("/admin/types");
   revalidatePath("/bugs/new");
   return { ok: true };

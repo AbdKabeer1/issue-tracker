@@ -39,6 +39,7 @@ describe("CommentThread permalinks (#142)", () => {
     const html = renderToStaticMarkup(
       createElement(CommentThread, {
         bugId: "b1",
+        issueUrl: "https://issues.example/bugs/b1",
         reporterId: "u1",
         comments,
         users: [{ id: "u1", name: "Alice" }],
@@ -48,6 +49,8 @@ describe("CommentThread permalinks (#142)", () => {
     expect(html).toContain('id="comment-c1"');
     expect(html).toContain("scroll-mt-24");
     expect(html).toContain('href="#comment-c1"');
+    // A permalink copy control beside the timestamp, with a real name (#279).
+    expect(html).toContain('aria-label="Copy link to this comment"');
   });
 });
 
@@ -72,6 +75,7 @@ describe("CommentThread read-only mode (#122)", () => {
     renderToStaticMarkup(
       createElement(CommentThread, {
         bugId: "b1",
+        issueUrl: "https://issues.example/bugs/b1",
         reporterId: "u1",
         comments,
         users: [{ id: "u1", name: "Alice" }],

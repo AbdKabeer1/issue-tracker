@@ -19,6 +19,7 @@ import {
   MINE_FILTER_OPTIONS,
   mineFilterLabels,
   parseMineFilter,
+  defaultSortFor,
 } from "@/lib/mine-filter";
 import {
   PLATFORM_NONE,
@@ -27,15 +28,30 @@ import {
   platformChoices,
   type PlatformOption,
 } from "@/lib/platform-filter";
+import { MILESTONE_NONE, MILESTONE_PARAM } from "@/lib/milestones";
 
 type TagType = { id: string; name: string; isActive?: boolean };
+
+/** URL params owned by the filter bar. `page` is paging, not a filter. */
+const FILTER_PARAMS = [
+  "q",
+  TAGS_PARAM,
+  "mine",
+  "status",
+  "severity",
+  PLATFORM_PARAM,
+  "sort",
+];
 
 export function BugFilters({
   tagTypes = [],
   platforms = [],
+  milestones = [],
 }: {
   tagTypes?: TagType[];
   platforms?: PlatformOption[];
+  /** #289: open milestones first; closed ones stay selectable for history. */
+  milestones?: { id: string; title: string; isClosed: boolean }[];
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -136,14 +152,29 @@ export function BugFilters({
     return qs ? `/bugs?${qs}` : "/bugs";
   }
 
-  const currentSort = parseBugSort(params.get("sort"));
+  const currentSort = parseBugSort(
+    params.get("sort"),
+    defaultSortFor(parseMineFilter(params.get("mine"))),
+  );
   const currentPlatform =
     parsePlatformFilter(params.get(PLATFORM_PARAM), platforms) ?? "";
   const platformOptions = platformChoices(platforms, currentPlatform || null);
   const currentMine = parseMineFilter(params.get("mine")) ?? "";
 
+  // Only worth offering when there is something to clear (#336).
+  const hasActiveFilters = FILTER_PARAMS.some((key) => (params.get(key) ?? "") !== "");
+
+  function clearAllFilters() {
+    // Empty the box straight away: until the navigation lands, the local draft
+    // would otherwise keep showing the text that was just cleared.
+    setText("");
+    setOpen(false);
+    setActive(-1);
+    router.push("/bugs");
+  }
+
   return (
-    <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end">
+    <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end print:hidden">
       <div className="col-span-2 min-w-0 sm:min-w-[200px] sm:flex-1">
         <label htmlFor="q" className="mb-1 block text-xs font-medium text-slate-600">
           Search
@@ -154,9 +185,10 @@ export function BugFilters({
             id="q"
             name="q"
             role="combobox"
+            aria-haspopup="listbox"
             aria-autocomplete="list"
             aria-expanded={suggestions.length > 0}
-            aria-controls={listId}
+            aria-controls={suggestions.length > 0 ? listId : undefined}
             aria-activedescendant={active >= 0 && suggestions[active] ? `${listId}-${active}` : undefined}
             autoComplete="off"
             value={text}
@@ -347,6 +379,33 @@ export function BugFilters({
           </select>
         </div>
       ) : null}
+      {milestones.length > 0 ? (
+        <div className="w-full sm:w-auto">
+          <label htmlFor="milestone" className="mb-1 block text-xs font-medium text-slate-600">
+            Milestone
+          </label>
+          <select
+            id="milestone"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:w-auto"
+            value={
+              milestones.some((m) => m.id === params.get(MILESTONE_PARAM)) ||
+              params.get(MILESTONE_PARAM) === MILESTONE_NONE
+                ? (params.get(MILESTONE_PARAM) ?? "")
+                : ""
+            }
+            onChange={(event) => update(MILESTONE_PARAM, event.target.value)}
+          >
+            <option value="">All</option>
+            {milestones.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title}
+                {m.isClosed ? " (closed)" : ""}
+              </option>
+            ))}
+            <option value={MILESTONE_NONE}>No milestone</option>
+          </select>
+        </div>
+      ) : null}
       <div className="w-full sm:w-auto">
         <label
           htmlFor="sort"
@@ -367,6 +426,17 @@ export function BugFilters({
           ))}
         </select>
       </div>
+      {hasActiveFilters ? (
+        <div className="col-span-2 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-xs hover:bg-slate-50 hover:text-slate-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:w-auto"
+          >
+            Clear all filters
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

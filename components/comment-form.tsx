@@ -40,6 +40,9 @@ export function CommentForm({
   const [pending, startTransition] = useTransition();
   const isReply = Boolean(parentId);
   const key = draftKey(bugId, parentId);
+  const bodyId = parentId ? `body-${parentId}` : "body";
+  const errorId = `${bodyId}-error`;
+  const [bodyInvalid, setBodyInvalid] = useState(false);
 
   // localStorage only exists on the client, so this cannot be a state
   // initializer without the server and client rendering different markup,
@@ -70,10 +73,16 @@ export function CommentForm({
       className="space-y-3"
       action={(formData) => {
         setError(null);
+        setBodyInvalid(false);
         startTransition(async () => {
           const result = await addCommentAction(bugId, formData);
           if (result.error) {
             setError(result.error);
+            // The only field is the body, so a field error is about it (#309).
+            if (result.field) {
+              setBodyInvalid(true);
+              document.getElementById(bodyId)?.focus();
+            }
           } else {
             setBody("");
             setRestored(false);
@@ -107,6 +116,7 @@ export function CommentForm({
         maxLength={2000}
         value={body}
         onChange={update}
+        {...(bodyInvalid ? { "aria-invalid": true, "aria-describedby": errorId } : {})}
         users={users}
         renderMentions={(text) => <MentionText text={text} users={users} />}
         placeholder={
@@ -125,7 +135,7 @@ export function CommentForm({
       />
       <AttachmentPicker key={pickerKey} disabled={pending} />
       {error ? (
-        <p className="text-sm text-red-600" role="alert">
+        <p id={errorId} className="text-sm text-red-600" role="alert">
           {error}
         </p>
       ) : null}

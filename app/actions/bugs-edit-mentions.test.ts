@@ -25,6 +25,8 @@ vi.mock("@/lib/prisma", () => {
   const tx = {
     bug: { update: vi.fn() },
     bugActivity: { create: vi.fn() },
+    bugRevision: { create: vi.fn() },
+    $queryRaw: vi.fn(async () => []),
   };
   return {
     prisma: {
@@ -106,5 +108,44 @@ describe("editBugContentAction mention notifications (#228)", () => {
     await edit(`Clicking Login does nothing on Chrome. cc @[Bob](${bobId})`);
 
     expect(notifyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("editBugContentAction history (#303)", () => {
+  type TxMock = {
+    bugRevision: { create: ReturnType<typeof vi.fn> };
+    $queryRaw: ReturnType<typeof vi.fn>;
+  };
+  let tx: TxMock;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    findUsersMock.mockResolvedValue([]);
+    const txMock = vi.mocked(prisma.$transaction) as unknown as ReturnType<typeof vi.fn>;
+    txMock.mockImplementationOnce(async (fn: (client: unknown) => unknown) => {
+      const inner = {
+        bug: { update: vi.fn() },
+        bugActivity: { create: vi.fn() },
+        bugRevision: { create: vi.fn() },
+        $queryRaw: vi.fn(async () => [{ title: "Locked title", description: "Locked text" }]),
+      };
+      tx = inner;
+      return fn(inner);
+    });
+  });
+
+  it("stores the version the edit replaced, read under the row lock", async () => {
+    findBugMock.mockResolvedValue(existingBug("Clicking Login does nothing at all."));
+    await edit("Clicking Login does nothing at all on Safari.");
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.bugRevision.create).toHaveBeenCalledWith({
+      data: { bugId: "bug-1", title: "Locked title", description: "Locked text", editedById: "reporter-1" },
+    });
+  });
+
+  it("stores nothing when nothing changed", async () => {
+    findBugMock.mockResolvedValue(existingBug("Clicking Login does nothing at all."));
+    await edit("Clicking Login does nothing at all.");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
 import { resetPasswordAction } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
+import { FieldError, useFieldErrors } from "@/components/ui/field-errors";
 import { PasswordInput } from "@/components/ui/password-input";
 
 export function ResetPasswordForm({ token }: { token: string }) {
@@ -11,13 +12,28 @@ export function ResetPasswordForm({ token }: { token: string }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const formRef = useRef<HTMLFormElement>(null);
+  const errs = useFieldErrors("reset", formRef);
 
   return (
     <form
+      ref={formRef}
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
         setError(null);
+        errs.clear();
+
+        if (password.length < 8) {
+          setError("Password must be at least 8 characters");
+          return;
+        }
+
+        if (password !== confirmPassword) {
+          setError("Passwords do not match");
+          return;
+        }
+
         const formData = new FormData();
         formData.set("token", token);
         formData.set("password", password);
@@ -26,7 +42,8 @@ export function ResetPasswordForm({ token }: { token: string }) {
           try {
             const result = await resetPasswordAction(undefined, formData);
             if (result?.error) {
-              setError(result.error);
+              if (result.field) errs.show(result);
+              else setError(result.error);
             }
           } catch (error) {
             unstable_rethrow(error);
@@ -48,10 +65,24 @@ export function ResetPasswordForm({ token }: { token: string }) {
           autoComplete="new-password"
           required
           minLength={8}
+          aria-describedby="password-hint"
+          aria-invalid={
+            password.length > 0 && password.length < 8 ? true : undefined
+          }
           placeholder="At least 8 characters"
           value={password}
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={(event) => {
+            setPassword(event.target.value);
+            if (error) setError(null);
+          }}
+          {...errs.attrs("password")}
         />
+        <p id="password-hint" className="text-xs text-amber-600" aria-live="polite">
+          {password.length > 0 && password.length < 8 && !error
+            ? "Must be at least 8 characters"
+            : ""}
+        </p>
+        <FieldError formId={errs.formId} field="password" errors={errs.fieldErrors} />
       </div>
       <div className="space-y-1.5">
         <label
@@ -67,9 +98,37 @@ export function ResetPasswordForm({ token }: { token: string }) {
           autoComplete="new-password"
           required
           minLength={8}
+          aria-describedby="confirm-password-hint"
+          aria-invalid={
+            confirmPassword.length > 0 && password !== confirmPassword
+              ? true
+              : undefined
+          }
           value={confirmPassword}
-          onChange={(event) => setConfirmPassword(event.target.value)}
+          onChange={(event) => {
+            setConfirmPassword(event.target.value);
+            if (error) setError(null);
+          }}
+          {...errs.attrs("confirmPassword")}
         />
+        <p
+          id="confirm-password-hint"
+          className={`text-xs ${
+            confirmPassword.length > 0 && password === confirmPassword
+              ? "text-emerald-600"
+              : "text-red-600"
+          }`}
+          aria-live="polite"
+        >
+          {confirmPassword.length > 0 && !error
+            ? confirmPassword.length > 0 && password === confirmPassword
+              ? "Passwords match"
+              : confirmPassword.length > 0 && password !== confirmPassword
+              ? "Passwords do not match"
+              : ""
+            : ""}
+        </p>
+        <FieldError formId={errs.formId} field="confirmPassword" errors={errs.fieldErrors} />
       </div>
       {error ? (
         <p className="text-sm text-red-600" role="alert">

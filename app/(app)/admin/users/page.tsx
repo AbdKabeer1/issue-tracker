@@ -6,6 +6,7 @@ import { roleLabels } from "@/lib/roles";
 import { buildUserSearchWhere } from "@/lib/user-search";
 import { toSingleQueryParam } from "@/lib/search";
 import { LocalTime } from "@/components/local-time";
+import { Avatar } from "@/components/avatar";
 import { Badge } from "@/components/ui/badge";
 import { PromoteUserButton } from "@/components/promote-user-button";
 import { DemoteUserButton } from "@/components/demote-user-button";
@@ -64,6 +65,7 @@ export default async function AdminUsersPage({
       id: true,
       name: true,
       email: true,
+      image: true,
       role: true,
       createdAt: true,
     },
@@ -107,8 +109,13 @@ export default async function AdminUsersPage({
               {users.map((user) => (
                 <tr key={user.id} className="hover:bg-slate-50/80">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-slate-900">{user.name}</div>
-                    <div className="text-xs sm:text-sm text-slate-500 break-all">{user.email}</div>
+                    <div className="flex items-center gap-3">
+                      <Avatar name={user.name} image={user.image} size="md" />
+                      <div className="min-w-0">
+                        <div className="font-medium text-slate-900">{user.name}</div>
+                        <div className="text-xs sm:text-sm text-slate-500 break-all">{user.email}</div>
+                      </div>
+                    </div>
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
                     <Badge className={roleBadgeClass[user.role]}>
