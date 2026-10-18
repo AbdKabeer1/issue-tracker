@@ -25,3 +25,13 @@ describe("linkAttachments (#215)", () => {
     expect(updateMany).not.toHaveBeenCalled();
   });
 });
+
+describe("attachmentIdsInMarkdown (#305)", () => {
+  it("finds pasted images and file links, once each", async () => {
+    const { attachmentIdsInMarkdown } = await import("./attachment-link");
+    const md = "![a](/api/attachments/clabc12345) and [log](/api/attachments/cldef67890) and ![a](/api/attachments/clabc12345)";
+    expect(attachmentIdsInMarkdown(md)).toEqual(["clabc12345", "cldef67890"]);
+    expect(attachmentIdsInMarkdown("no files")).toEqual([]);
+    expect(attachmentIdsInMarkdown(null)).toEqual([]);
+  });
+});

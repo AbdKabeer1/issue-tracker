@@ -1,8 +1,11 @@
 @import "tailwindcss";
+/* Dark mode (#277): the palette, mirrored. Generated; see the file header. */
+@import "./theme-dark.css";
 
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
+  color-scheme: light;
 }
 
 @theme inline {

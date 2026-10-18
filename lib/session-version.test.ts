@@ -67,6 +67,12 @@ describe("resolveSessionUserId with session versions (#208)", () => {
     findUnique.mockResolvedValue({ id: "u1", sessionVersion: 1 });
     await expect(resolveSessionUserId()).resolves.toEqual({ userId: "u1" });
   });
+
+  it("fails closed and expires session when version-aware lookup throws or rejects (#347)", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "u1", email: "a@x.dev", sessionVersion: 1 } });
+    findUnique.mockRejectedValue(new Error("database connection error"));
+    await expect(resolveSessionUserId()).resolves.toEqual({ error: SESSION_EXPIRED_MESSAGE });
+  });
 });
 
 afterEach(() => {

@@ -7,7 +7,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: { user: { update: vi.fn() } } }));
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { updateDisplayNameAction } from "./settings";
+import { setKeyboardShortcutsAction, updateDisplayNameAction } from "./settings";
 
 const update = prisma.user.update as unknown as ReturnType<typeof vi.fn>;
 const form = (name: string) => {
@@ -58,5 +58,21 @@ describe("updateDisplayNameAction (#293)", () => {
   it("treats a missing field as blank", async () => {
     const result = await updateDisplayNameAction(undefined, new FormData());
     expect(result.field).toBe("name");
+  });
+});
+
+describe("setKeyboardShortcutsAction (#287)", () => {
+  it("saves the switch for the signed-in user and refreshes every page", async () => {
+    vi.clearAllMocks();
+    requireUser.mockResolvedValue({ id: "u1", role: "user" });
+    expect(await setKeyboardShortcutsAction(false)).toEqual({ ok: true });
+    expect(prisma.user.update).toHaveBeenCalledWith({ where: { id: "u1" }, data: { keyboardShortcuts: false } });
+    expect(revalidatePath).toHaveBeenCalledWith("/", "layout");
+  });
+
+  it("rejects anything but a boolean", async () => {
+    vi.clearAllMocks();
+    expect(await setKeyboardShortcutsAction("off")).toEqual({ error: "Invalid setting" });
+    expect(prisma.user.update).not.toHaveBeenCalled();
   });
 });

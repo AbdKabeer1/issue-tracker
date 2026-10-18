@@ -58,15 +58,7 @@ export async function resolveSessionUserId(): Promise<
         return { userId: byId.id };
       }
     } catch {
-      try {
-        const byId = await prisma.user.findUnique({
-          where: { id: sessionId },
-          select: { id: true },
-        });
-        if (byId) return { userId: byId.id };
-      } catch {
-        // Fall through
-      }
+      // Fail closed when the version lookup fails or errors (#347)
     }
   }
 
@@ -83,15 +75,7 @@ export async function resolveSessionUserId(): Promise<
         return { userId: byEmail.id };
       }
     } catch {
-      try {
-        const byEmail = await prisma.user.findUnique({
-          where: { email },
-          select: { id: true },
-        });
-        if (byEmail) return { userId: byEmail.id };
-      } catch {
-        // Fall through
-      }
+      // Fail closed when the version lookup fails or errors (#347)
     }
   }
 

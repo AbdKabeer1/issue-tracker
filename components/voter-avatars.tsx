@@ -1,5 +1,11 @@
 import { Avatar } from "@/components/avatar";
-import { formatOverflowCount, type VoterInfo } from "@/lib/voters";
+import { VoterOverflowBadge } from "@/components/voter-overflow-badge";
+import {
+  formatOverflowCount,
+  getOverflowVoters,
+  VISIBLE_VOTERS,
+  type VoterInfo,
+} from "@/lib/voters";
 
 type VoterAvatarsProps = {
   voters: VoterInfo[];
@@ -35,8 +41,9 @@ export function VoterAvatars({
   }
 
   const isSm = size === "sm";
-  const visibleVoters = voters.slice(0, 3);
-  const overflow = formatOverflowCount(totalCount, 3);
+  const visibleVoters = voters.slice(0, VISIBLE_VOTERS);
+  const overflow = formatOverflowCount(totalCount, VISIBLE_VOTERS);
+  const hidden = getOverflowVoters(voters, totalCount);
 
   return (
     <div
@@ -48,16 +55,8 @@ export function VoterAvatars({
       {visibleVoters.map((voter) => (
         <SingleAvatar key={voter.id} voter={voter} size={size} />
       ))}
-      {overflow ? (
-        <div
-          title={`${totalCount - 3} more`}
-          aria-label={`${totalCount - 3} more voters`}
-          className={`relative inline-flex items-center justify-center rounded-full bg-slate-100 font-bold text-slate-600 ring-white tabular-nums select-none ${
-            isSm ? "h-5 w-5 text-[9px] ring-1" : "h-7 w-7 text-xs ring-2"
-          }`}
-        >
-          {overflow}
-        </div>
+      {overflow && hidden ? (
+        <VoterOverflowBadge label={overflow} overflow={hidden} size={size} />
       ) : null}
     </div>
   );

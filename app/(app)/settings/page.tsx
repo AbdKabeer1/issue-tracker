@@ -1,8 +1,11 @@
+import { ThemeSettings } from "@/components/theme-settings";
+import { parseTheme } from "@/lib/theme";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { NotificationSettings } from "@/components/notification-settings";
 import { DisplayNameForm } from "@/components/display-name-form";
+import { KeyboardShortcutSettings } from "@/components/keyboard-shortcut-settings";
 
 /* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
 export const metadata = { title: "Settings" };
@@ -14,10 +17,12 @@ export default async function SettingsPage() {
     select: {
       name: true,
       email: true,
+      theme: true,
       emailNotifications: true,
       notifyMentions: true,
       notifyAssignments: true,
       notifyStatusChanges: true,
+      keyboardShortcuts: true,
     },
   });
 
@@ -42,6 +47,12 @@ export default async function SettingsPage() {
       </section>
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Appearance
+        </h2>
+        <ThemeSettings initialTheme={parseTheme(settings?.theme)} />
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Email notifications
         </h2>
         <p className="mt-2 text-sm text-slate-600">
@@ -56,6 +67,12 @@ export default async function SettingsPage() {
             notifyStatusChanges: settings?.notifyStatusChanges ?? true,
           }}
         />
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Keyboard shortcuts
+        </h2>
+        <KeyboardShortcutSettings initialEnabled={settings?.keyboardShortcuts ?? true} />
       </section>
     </div>
   );

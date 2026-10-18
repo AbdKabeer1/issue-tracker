@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { THEME_COOKIE, THEME_COOKIE_MAX_AGE, isTheme } from "@/lib/theme";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { PREF_FIELD, isNotificationKind } from "@/lib/notification-prefs";
@@ -22,6 +24,37 @@ export async function setEmailNotificationsAction(enabled: unknown): Promise<Set
   });
   revalidatePath("/settings");
   return { ok: true, emailNotifications: enabled };
+}
+
+/** Turn the site-wide keyboard shortcuts on or off (#287). */
+export async function setKeyboardShortcutsAction(enabled: unknown): Promise<SettingsResult> {
+  if (typeof enabled !== "boolean") return { error: "Invalid setting" };
+  const user = await requireUser();
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { keyboardShortcuts: enabled },
+  });
+  // The layout reads the setting, so every page needs the new value.
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/**
+ * Light, dark or follow the device (#277). Saved on the user so it follows
+ * them, and in a cookie so this device's signed-out pages match.
+ */
+export async function setThemeAction(theme: unknown): Promise<SettingsResult> {
+  if (!isTheme(theme)) return { error: "Invalid setting" };
+  const user = await requireUser();
+  await prisma.user.update({ where: { id: user.id }, data: { theme } });
+  (await cookies()).set(THEME_COOKIE, theme, {
+    path: "/",
+    maxAge: THEME_COOKIE_MAX_AGE,
+    sameSite: "lax",
+    httpOnly: true,
+  });
+  revalidatePath("/", "layout");
+  return { ok: true };
 }
 
 /**
