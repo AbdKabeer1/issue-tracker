@@ -28,6 +28,15 @@ export default auth((req) => {
     targetUrl.search = req.nextUrl.search;
     return NextResponse.redirect(targetUrl, 308);
   }
+  if (pathWithoutBase.startsWith("/api/bugs/")) {
+    const newPath = pathWithoutBase.replace(/^\/api\/bugs\//, "/api/issues/");
+    const targetUrl = new URL(
+      BASE_PATH ? `${BASE_PATH}${newPath}` : newPath,
+      req.nextUrl.origin,
+    );
+    targetUrl.search = req.nextUrl.search;
+    return NextResponse.redirect(targetUrl, 308);
+  }
 
   const isAuthPage =
     pathWithoutBase.startsWith("/login") || pathWithoutBase.startsWith("/signup");

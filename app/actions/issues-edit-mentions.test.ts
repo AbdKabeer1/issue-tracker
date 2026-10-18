@@ -39,7 +39,7 @@ vi.mock("@/lib/prisma", () => {
 
 import { prisma } from "@/lib/prisma";
 import { notifyLater } from "@/lib/notify";
-import { editBugContentAction } from "./bugs";
+import { editBugContentAction } from "./issues";
 
 const findBugMock = vi.mocked(prisma.bug.findUnique) as unknown as ReturnType<typeof vi.fn>;
 const findUsersMock = vi.mocked(prisma.user.findMany) as unknown as ReturnType<typeof vi.fn>;

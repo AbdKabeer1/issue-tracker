@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildVersions, DELETED_EDITOR } from "./bug-revisions";
+import { buildVersions, DELETED_EDITOR } from "./issue-revisions";
 
 const d = (s: string) => new Date(s);
 

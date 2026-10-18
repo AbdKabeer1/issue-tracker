@@ -7,9 +7,9 @@ import { readFileSync } from "fs";
  *  - submitted by hand, because React 19 resets a form after an action and
  *    that reset was what put the old value back.
  */
-const source = readFileSync("components/update-bug-form.tsx", "utf8");
+const source = readFileSync("components/update-issue-form.tsx", "utf8");
 
-describe("UpdateBugForm", () => {
+describe("UpdateIssueForm", () => {
   it("has no uncontrolled field left", () => {
     expect(source).not.toMatch(/defaultValue=\{/);
   });

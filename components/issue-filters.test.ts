@@ -5,13 +5,13 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams("page=2&q=crash"),
 }));
 
-describe("BugFilters (#132)", () => {
+describe("IssueFilters (#132)", () => {
   it("renders correctly with search param default value", async () => {
-    const { BugFilters } = await import("./bug-filters");
+    const { IssueFilters } = await import("./issue-filters");
     const { createElement } = await import("react");
     const { renderToStaticMarkup } = await import("react-dom/server");
 
-    const html = renderToStaticMarkup(createElement(BugFilters));
+    const html = renderToStaticMarkup(createElement(IssueFilters));
     expect(html).toContain('value="crash"');
   });
 });

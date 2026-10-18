@@ -2,10 +2,10 @@
 
 import { useRef, useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
-import { createBugAction, type ActionResult } from "@/app/actions/bugs";
+import { createBugAction, type ActionResult } from "@/app/actions/issues";
 import { submitFailureMessage } from "@/lib/submit-error";
 import { ErrorSummary, FieldError, useFieldErrors } from "@/components/ui/field-errors";
-import { severities } from "@/lib/validations/bug";
+import { severities } from "@/lib/validations/issue";
 import { severityLabels } from "@/lib/labels";
 import type { AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,7 @@ const FIELD_LABELS: Record<string, string> = {
   assigneeId: "Assignee",
 };
 
-export function CreateBugForm({
+export function CreateIssueForm({
   users,
   categories = [],
   types = [],
@@ -368,3 +368,5 @@ export function CreateBugForm({
     </form>
   );
 }
+
+export { CreateIssueForm as CreateBugForm };

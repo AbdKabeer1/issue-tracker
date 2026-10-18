@@ -26,7 +26,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { notifyLater } from "@/lib/notify";
 import { TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
 import { TICKET_TRIAGE_ERRORS } from "@/lib/ticket-triage";
-import { updateBugAction } from "./bugs";
+import { updateBugAction } from "./issues";
 
 const db = prisma as unknown as {
   bug: { findUnique: ReturnType<typeof vi.fn> };

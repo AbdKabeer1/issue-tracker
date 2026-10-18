@@ -8,7 +8,7 @@ import {
   resetPasswordSchema,
   signupSchema,
   updateBugSchema,
-} from "./bug";
+} from "./issue";
 
 const validCuid = "clxxxxxxxxxxxxxxxxxxxxxxxxx";
 

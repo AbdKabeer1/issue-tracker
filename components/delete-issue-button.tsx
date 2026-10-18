@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
-import { deleteBugAction } from "@/app/actions/bugs";
+import { deleteBugAction } from "@/app/actions/issues";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
@@ -17,7 +17,7 @@ type DeleteBugButtonProps = {
   className?: string;
 };
 
-export function DeleteBugButton({
+export function DeleteIssueButton({
   bugId,
   bugTitle,
   variant = "danger-secondary",
@@ -99,3 +99,5 @@ export function DeleteBugButton({
     </div>
   );
 }
+
+export { DeleteIssueButton as DeleteBugButton };

@@ -13,7 +13,7 @@ import {
   parseBugSort,
   sortBugs,
   sortBugsByPopularity,
-} from "./bugs-sort";
+} from "./issues-sort";
 
 describe("sort options constants and labels", () => {
   it("lists every option, with top votes still the default", () => {

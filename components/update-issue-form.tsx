@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useTransition } from "react";
 import type { Severity, Status } from "@prisma/client";
-import { updateBugAction } from "@/app/actions/bugs";
-import { severities, statuses } from "@/lib/validations/bug";
+import { updateBugAction } from "@/app/actions/issues";
+import { severities, statuses } from "@/lib/validations/issue";
 import { severityLabel, statusLabel } from "@/lib/labels";
 import type { AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,7 @@ const sameDraft = (a: Draft, b: Draft) =>
 const selectClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500";
 
-export function UpdateBugForm({
+export function UpdateIssueForm({
   bugId,
   status,
   severity,
@@ -345,3 +345,5 @@ export function UpdateBugForm({
     </form>
   );
 }
+
+export { UpdateIssueForm as UpdateBugForm };

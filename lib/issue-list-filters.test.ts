@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBugListFilters } from "./bug-list-filters";
+import { parseBugListFilters } from "./issue-list-filters";
 
 const tagTypes = [
   { id: "t1", name: "Design" },

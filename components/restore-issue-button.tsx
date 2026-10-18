@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { restoreBugAction } from "@/app/actions/bugs";
+import { restoreBugAction } from "@/app/actions/issues";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
@@ -15,7 +15,7 @@ type RestoreBugButtonProps = {
   className?: string;
 };
 
-export function RestoreBugButton({
+export function RestoreIssueButton({
   bugId,
   bugTitle,
   variant = "primary",
@@ -90,3 +90,5 @@ export function RestoreBugButton({
     </div>
   );
 }
+
+export { RestoreIssueButton as RestoreBugButton };

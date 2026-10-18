@@ -2,13 +2,13 @@
 
 import { useId, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { severities, statuses } from "@/lib/validations/bug";
+import { severities, statuses } from "@/lib/validations/issue";
 import { severityLabel, statusLabel } from "@/lib/labels";
 import {
   BUG_SORT_OPTIONS,
   bugSortLabels,
   parseBugSort,
-} from "@/lib/bugs-sort";
+} from "@/lib/issues-sort";
 import {
   TAGS_PARAM,
   parseTagFilter,
@@ -32,7 +32,7 @@ import { MILESTONE_NONE, MILESTONE_PARAM } from "@/lib/milestones";
 
 type TagType = { id: string; name: string; isActive?: boolean };
 
-export function BugFilters({
+export function IssueFilters({
   tagTypes = [],
   platforms = [],
   milestones = [],
@@ -363,3 +363,5 @@ export function BugFilters({
     </div>
   );
 }
+
+export { IssueFilters as BugFilters };

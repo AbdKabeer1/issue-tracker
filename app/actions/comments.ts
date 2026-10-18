@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { attachmentIdsInMarkdown, linkAttachments } from "@/lib/attachment-link";
 import { requireUser } from "@/lib/auth-helpers";
-import { commentSchema } from "@/lib/validations/bug";
+import { commentSchema } from "@/lib/validations/issue";
 import {
   extractMentionedUserIds,
   newlyMentionedUserIds,

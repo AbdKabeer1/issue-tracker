@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
  * gets, not a component's props.
  */
 
-vi.mock("@/app/actions/bugs", () => ({
+vi.mock("@/app/actions/issues", () => ({
   toggleBoostBugAction: vi.fn(),
   voteBugAction: vi.fn(),
 }));

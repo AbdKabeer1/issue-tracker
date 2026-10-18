@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { categorySchema, createBugSchema, updateBugSchema } from "./validations/bug";
+import { categorySchema, createBugSchema, updateBugSchema } from "./validations/issue";
 
 describe("categorySchema", () => {
   it("accepts valid category names", () => {

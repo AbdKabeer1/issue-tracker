@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { toggleBoostBugAction } from "@/app/actions/bugs";
+import { toggleBoostBugAction } from "@/app/actions/issues";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 

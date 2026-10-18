@@ -4,8 +4,8 @@ import { getIssueTypes, getPlatforms } from "@/lib/lookups";
 import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
-import { getBugOrderBy } from "@/lib/bugs-sort";
-import { parseBugListFilters, type RawParams } from "@/lib/bug-list-filters";
+import { getBugOrderBy } from "@/lib/issues-sort";
+import { parseBugListFilters, type RawParams } from "@/lib/issue-list-filters";
 import { CSV_EOL, csvRow } from "@/lib/csv";
 import { severityLabel, statusLabel } from "@/lib/labels";
 

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
-import { CreateBugForm } from "@/components/create-bug-form";
+import { CreateIssueForm } from "@/components/create-issue-form";
 
 /* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
 export const metadata = { title: "Report an issue" };
@@ -38,7 +38,7 @@ export default async function NewBugPage() {
         </p>
       </div>
       <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
-        <CreateBugForm
+        <CreateIssueForm
           users={users}
           categories={categories}
           types={types}

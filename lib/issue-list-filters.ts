@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { severities, statuses } from "@/lib/validations/bug";
+import { severities, statuses } from "@/lib/validations/issue";
 import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
 import { MILESTONE_PARAM, milestoneWhere, parseMilestoneFilter } from "@/lib/milestones";
 import {
@@ -9,7 +9,7 @@ import {
   type MineFilter,
 } from "@/lib/mine-filter";
 import { parseTagFilter, tagTypeIds } from "@/lib/tag-filter";
-import { parseBugSort, type BugSortOption } from "@/lib/bugs-sort";
+import { parseBugSort, type BugSortOption } from "@/lib/issues-sort";
 import { DUPLICATES_PARAM, duplicatesWhere, parseShowDuplicates } from "@/lib/duplicates";
 
 export type RawParams = Record<string, string | string[] | undefined>;

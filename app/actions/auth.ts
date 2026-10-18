@@ -41,7 +41,7 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
   signupSchema,
-} from "@/lib/validations/bug";
+} from "@/lib/validations/issue";
 
 const RESET_LINK_INVALID =
   "This reset link is invalid or has expired. Request a new one.";

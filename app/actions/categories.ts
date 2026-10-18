@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { expireTag, TAGS } from "@/lib/lookups";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-helpers";
-import { categorySchema } from "@/lib/validations/bug";
+import { categorySchema } from "@/lib/validations/issue";
 
 export type CategoryActionResult = {
   error?: string;

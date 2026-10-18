@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
 import { formatIssueNumber } from "@/lib/issue-number";
-import { buildVersions } from "@/lib/bug-revisions";
+import { buildVersions } from "@/lib/issue-revisions";
 import { LocalTime } from "@/components/local-time";
 import { RichText } from "@/components/rich-text";
 import { TextDiffView } from "@/components/text-diff-view";

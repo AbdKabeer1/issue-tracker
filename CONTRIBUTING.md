@@ -97,7 +97,7 @@ When adding or modifying backend route handlers, write corresponding `*.test.ts`
 
 ### Validations & Schemas
 
-Zod schemas live in `lib/validations/bug.ts`. Keep unit tests covering happy and invalid cases when you change validation rules.
+Zod schemas live in `lib/validations/issue.ts`. Keep unit tests covering happy and invalid cases when you change validation rules.
 
 ## Continuous Deployment Flow
 

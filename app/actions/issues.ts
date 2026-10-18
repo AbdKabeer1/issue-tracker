@@ -37,7 +37,7 @@ import {
   createBugSchema,
   editBugContentSchema,
   updateBugSchema,
-} from "@/lib/validations/bug";
+} from "@/lib/validations/issue";
 import { calculateVoteChange, isValidVoteDirection } from "@/lib/voting";
 import {
   canDeleteTicket,

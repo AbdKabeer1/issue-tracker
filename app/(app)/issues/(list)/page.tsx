@@ -6,7 +6,7 @@ import { getActiveIssueTypesCached, getActivePlatforms, getIssueTypes, getPlatfo
 import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import type { AppRole } from "@/lib/roles";
-import { BugFilters } from "@/components/bug-filters";
+import { IssueFilters } from "@/components/issue-filters";
 import { VoteButton } from "@/components/vote-button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -16,7 +16,7 @@ import {
   statusLabels,
 } from "@/lib/labels";
 import { LocalTime } from "@/components/local-time";
-import { severities, statuses } from "@/lib/validations/bug";
+import { severities, statuses } from "@/lib/validations/issue";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
@@ -44,10 +44,10 @@ import {
   bugSortDescriptions,
   getBugOrderBy,
   parseBugSort,
-} from "@/lib/bugs-sort";
+} from "@/lib/issues-sort";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
-import { DeleteBugButton } from "@/components/delete-bug-button";
-import { RestoreBugButton } from "@/components/restore-bug-button";
+import { DeleteIssueButton } from "@/components/delete-issue-button";
+import { RestoreIssueButton } from "@/components/restore-issue-button";
 import { canBoostTicket } from "@/lib/ticket-boosting";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { defaultSortFor, mineFilterWhere, parseMineFilter } from "@/lib/mine-filter";
@@ -462,8 +462,8 @@ export default async function BugsPage({
       <Suspense
         fallback={<div className="h-12 animate-pulse rounded-lg bg-slate-100" />}
       >
-        {/* #204: keyed on the search query so BugFilters remounts on URL change */}
-        <BugFilters
+        {/* #204: keyed on the search query so IssueFilters remounts on URL change */}
+        <IssueFilters
           key={qParam ?? ""}
           tagTypes={tagTypes}
           platforms={platforms}
@@ -715,7 +715,7 @@ export default async function BugsPage({
                     ) : null}
                     {canDelete ? (
                       bug.isDeleted ? (
-                        <RestoreBugButton
+                        <RestoreIssueButton
                           bugId={bug.id}
                           bugTitle={bug.title}
                           variant="ghost"
@@ -724,7 +724,7 @@ export default async function BugsPage({
                           className="text-teal-700 hover:text-teal-900 hover:bg-teal-50"
                         />
                       ) : (
-                        <DeleteBugButton
+                        <DeleteIssueButton
                           bugId={bug.id}
                           bugTitle={bug.title}
                           variant="ghost"

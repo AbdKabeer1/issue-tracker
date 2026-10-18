@@ -63,6 +63,11 @@ const nextConfig: NextConfig = {
         destination: "/issues/:path*",
         permanent: true,
       },
+      {
+        source: "/api/bugs/:path*",
+        destination: "/api/issues/:path*",
+        permanent: true,
+      },
     ];
     if (!BASE_PATH) {
       return [

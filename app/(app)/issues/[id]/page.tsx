@@ -37,7 +37,7 @@ import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { WatchButton } from "@/components/watch-button";
 import { isWatchingIssue } from "@/lib/watch";
-import { UpdateBugForm } from "@/components/update-bug-form";
+import { UpdateIssueForm } from "@/components/update-issue-form";
 import { CommentThread } from "@/components/comment-thread";
 import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
@@ -49,8 +49,8 @@ import { canDeleteTicket } from "@/lib/ticket-deletion";
 import { MilestoneDue } from "@/components/milestone-due";
 import { dueDateValue } from "@/lib/milestones";
 import { canEditTicket } from "@/lib/ticket-editing";
-import { DeleteBugButton } from "@/components/delete-bug-button";
-import { RestoreBugButton } from "@/components/restore-bug-button";
+import { DeleteIssueButton } from "@/components/delete-issue-button";
+import { RestoreIssueButton } from "@/components/restore-issue-button";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { canAssignTicket } from "@/lib/ticket-assignment";
 import { SelfAssignButton } from "@/components/self-assign-button";
@@ -365,7 +365,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 </p>
               </div>
             </div>
-            <RestoreBugButton bugId={bug.id} bugTitle={bug.title} size="sm" />
+            <RestoreIssueButton bugId={bug.id} bugTitle={bug.title} size="sm" />
           </div>
         </div>
       ) : null}
@@ -526,13 +526,13 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           ) : null}
           {canDelete ? (
             bug.isDeleted ? (
-              <RestoreBugButton
+              <RestoreIssueButton
                 bugId={bug.id}
                 bugTitle={bug.title}
                 size="sm"
               />
             ) : (
-              <DeleteBugButton
+              <DeleteIssueButton
                 bugId={bug.id}
                 bugTitle={bug.title}
                 variant="danger-secondary"
@@ -680,7 +680,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       </section>
 
       {canUpdateStatus && !bug.isDeleted ? (
-        <UpdateBugForm
+        <UpdateIssueForm
           bugId={bug.id}
           status={bug.status}
           severity={bug.severity}
@@ -763,7 +763,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 Delete this issue. It will be hidden from everyone except admins, who can restore it.
               </p>
             </div>
-            <DeleteBugButton
+            <DeleteIssueButton
               bugId={bug.id}
               bugTitle={bug.title}
               variant="danger"
