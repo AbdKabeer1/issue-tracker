@@ -14,6 +14,31 @@ const { auth } = NextAuth(authConfig);
 /** Issue detail paths only — enough for unfurl bots to hit generateMetadata. */
 const ISSUE_DETAIL_PATH = /^\/(?:issues|bugs)\/[^/]+\/?$/;
 
+export function isPublicPath(
+  pathWithoutBase: string,
+  userAgent?: string | null,
+): boolean {
+  const isAuthPage =
+    pathWithoutBase.startsWith("/login") || pathWithoutBase.startsWith("/signup");
+  const isPasswordResetPage =
+    pathWithoutBase.startsWith("/forgot-password") ||
+    pathWithoutBase.startsWith("/reset-password");
+  const isIssuePreview =
+    ISSUE_DETAIL_PATH.test(pathWithoutBase) &&
+    isLinkPreviewBot(userAgent);
+
+  return (
+    isAuthPage ||
+    isPasswordResetPage ||
+    isIssuePreview ||
+    pathWithoutBase.startsWith("/session-expired") ||
+    pathWithoutBase.startsWith("/api/auth") ||
+    pathWithoutBase.startsWith("/api/health") ||
+    pathWithoutBase.startsWith("/_next") ||
+    pathWithoutBase === "/favicon.ico"
+  );
+}
+
 export default auth((req) => {
   const pathWithoutBase = toAppPath(req.nextUrl.pathname);
   const isLoggedIn = !!req.auth?.user;
@@ -40,20 +65,7 @@ export default auth((req) => {
 
   const isAuthPage =
     pathWithoutBase.startsWith("/login") || pathWithoutBase.startsWith("/signup");
-  const isPasswordResetPage =
-    pathWithoutBase.startsWith("/forgot-password") ||
-    pathWithoutBase.startsWith("/reset-password");
-  const isIssuePreview =
-    ISSUE_DETAIL_PATH.test(pathWithoutBase) &&
-    isLinkPreviewBot(req.headers.get("user-agent"));
-  const isPublic =
-    isAuthPage ||
-    isPasswordResetPage ||
-    isIssuePreview ||
-    pathWithoutBase.startsWith("/api/auth") ||
-    pathWithoutBase.startsWith("/api/health") ||
-    pathWithoutBase.startsWith("/_next") ||
-    pathWithoutBase === "/favicon.ico";
+  const isPublic = isPublicPath(pathWithoutBase, req.headers.get("user-agent"));
 
   if (!isLoggedIn && !isPublic) {
     const url = new URL(

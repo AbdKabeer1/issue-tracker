@@ -35,4 +35,20 @@ describe("safeCallbackUrl", () => {
     expect(safeCallbackUrl("/bug-tracker/bugs/new")).toBe("/bugs/new");
     expect(safeCallbackUrl("/bug-tracker")).toBe("/");
   });
+
+  it("rejects auth routes to prevent bounce loops (#352)", () => {
+    expect(safeCallbackUrl("/login")).toBe("/issues");
+    expect(safeCallbackUrl("/login?callbackUrl=%2Fbugs")).toBe("/issues");
+    expect(safeCallbackUrl("/signup")).toBe("/issues");
+    expect(safeCallbackUrl("/forgot-password")).toBe("/issues");
+    expect(safeCallbackUrl("/reset-password")).toBe("/issues");
+    expect(safeCallbackUrl("/reset-password?token=xyz")).toBe("/issues");
+    expect(safeCallbackUrl("/session-expired")).toBe("/issues");
+    expect(safeCallbackUrl("/api/auth/signout")).toBe("/issues");
+    expect(safeCallbackUrl("/api/auth/callback/google")).toBe("/issues");
+    expect(safeCallbackUrl("/bug-tracker/login")).toBe("/issues");
+    expect(safeCallbackUrl("/login#section")).toBe("/issues");
+    expect(safeCallbackUrl("/bugs/../login")).toBe("/issues");
+    expect(safeCallbackUrl("/bugs#section")).toBe("/bugs#section");
+  });
 });

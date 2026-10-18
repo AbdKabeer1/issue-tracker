@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { CharacterCounter } from "@/components/ui/character-counter";
 import { AttachmentPicker } from "@/components/attachment-picker";
 import { SimilarIssues } from "@/components/similar-issues";
 import { MarkdownEditor } from "@/components/markdown-editor";
@@ -21,6 +22,9 @@ import { DraftBanner } from "@/components/draft-banner";
 import { AssigneeCombobox } from "@/components/assignee-combobox";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { initialDescription, templateSwitch } from "@/lib/issue-templates";
+
+/** Must match the title limit enforced by createBugSchema. */
+const TITLE_MAX_LENGTH = 200;
 
 type UserOption = { id: string; name: string; role: AppRole; image?: string | null };
 type CategoryOption = { id: string; name: string };
@@ -171,11 +175,16 @@ export function CreateIssueForm({
             name="title"
             required
             minLength={3}
-            maxLength={200}
+            maxLength={TITLE_MAX_LENGTH}
             placeholder="Short summary of the issue"
             value={values.title}
             onChange={(event) => setValue("title", event.target.value)}
             {...errs.attrs("title")}
+          />
+          <CharacterCounter
+            length={values.title.length}
+            max={TITLE_MAX_LENGTH}
+            className="text-right"
           />
           <FieldError formId={errs.formId} field="title" errors={errs.fieldErrors} />
           <SimilarIssues title={values.title} />
