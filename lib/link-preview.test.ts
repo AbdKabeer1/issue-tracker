@@ -25,7 +25,7 @@ describe("snippetText", () => {
 describe("bugLinkPreviewDescription (#117)", () => {
   it("gives the status only", () => {
     expect(bugLinkPreviewDescription({ status: "open" })).toBe(
-      "Open issue on Zedu Issues. Sign in to view the details.",
+      "Open issue on Ziki Issues. Sign in to view the details.",
     );
   });
 

@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
 import { CreateIssueForm } from "@/components/create-issue-form";
 
-/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Report an issue" };
 
 export default async function NewBugPage() {

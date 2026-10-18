@@ -10,7 +10,7 @@
  */
 export const SHARE_IMAGE = {
   url: "/Zedu.png",
-  alt: "Zedu Issues",
+  alt: "Ziki Issues",
   width: 460,
   height: 200,
   type: "image/png",

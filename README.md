@@ -1,10 +1,10 @@
-# Zedu Bugs
+# Ziki Issues
 
 Team **Zendor** fork of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug-tracker).
 
 Report bugs, filter the board, triage status/assignee, vote, and leave comments.
 
-Brand mark: `public/zedu-mark.svg`.
+Brand mark: `public/ziki-mark.svg`.
 
 ## Stack
 

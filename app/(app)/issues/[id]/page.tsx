@@ -138,7 +138,7 @@ export async function generateMetadata({
       description,
       url: canonical,
       type: "article",
-      siteName: "Zedu Issues",
+      siteName: "Ziki Issues",
       modifiedTime: bug.updatedAt.toISOString(),
       images: [{ ...SHARE_IMAGE, url: image }],
     },
@@ -176,7 +176,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
 
     return (
       <div className="mx-auto max-w-2xl space-y-4 py-10">
-        <p className="text-sm text-slate-500">Zedu Issues</p>
+        <p className="text-sm text-slate-500">Ziki Issues</p>
         <h1 className="text-2xl font-semibold text-slate-900">{bug.title}</h1>
         <div className="flex flex-wrap gap-2">
           <Badge className={statusClass[bug.status]}>

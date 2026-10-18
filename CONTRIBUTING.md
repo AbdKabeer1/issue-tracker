@@ -1,8 +1,8 @@
-# Contributing to Zedu Issues
+# Contributing to Ziki Issues
 
 Team **Zendor (Zedu-Endor)** — lead: [@Goodnessmbakara](https://github.com/Goodnessmbakara).
 
-This is Team Zendor's **Task 1** **Zedu Issues** project (HNG15) — a fork of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug-tracker). It is **not** part of `zedu-fe`, `zedu-mobile`, or `zedu-desktop`. All PRs target **this** repository's `main`.
+This is Team Zendor's **Task 1** **Ziki Issues** project (HNG15) — a fork of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug-tracker). It is **not** part of `zedu-fe`, `zedu-mobile`, or `zedu-desktop`. All PRs target **this** repository's `main`.
 
 ## Default branch
 

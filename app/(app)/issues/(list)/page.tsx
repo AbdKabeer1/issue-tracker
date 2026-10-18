@@ -64,7 +64,7 @@ import {
   platformFilterWhere,
 } from "@/lib/platform-filter";
 
-/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Issues" };
 
 type SearchParams = Promise<{
@@ -388,7 +388,7 @@ export default async function BugsPage({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            {/* The header already says "Zedu Issues", so the list's own title is
+            {/* The header already says "Ziki Issues", so the list's own title is
                 for screen readers only; "Deleted Issues" stays visible (#198). */}
             <h1
               className={

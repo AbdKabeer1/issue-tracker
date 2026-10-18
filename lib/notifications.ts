@@ -98,7 +98,7 @@ export function planNotifications(event: NotificationEvent, siteUrl: string): Pl
     planned.push({
       userId,
       kind: event.kind,
-      subject: `[Zedu Issues] ${subject}`,
+      subject: `[Ziki Issues] ${subject}`,
       title: subject,
       url: path,
       text: body(lines, issueUrl, settingsUrl),

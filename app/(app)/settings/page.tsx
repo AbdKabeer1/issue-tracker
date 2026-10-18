@@ -7,7 +7,7 @@ import { NotificationSettings } from "@/components/notification-settings";
 import { DisplayNameForm } from "@/components/display-name-form";
 import { KeyboardShortcutSettings } from "@/components/keyboard-shortcut-settings";
 
-/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {

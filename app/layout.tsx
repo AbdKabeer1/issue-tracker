@@ -23,12 +23,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),
   title: {
-    default: "Zedu Issues",
-    template: "%s · Zedu Issues",
+    default: "Ziki Issues",
+    template: "%s · Ziki Issues",
   },
-  description: "Zedu issue tracking interface — HNG15 mini-project",
+  description: "Ziki issue tracking interface — HNG15 mini-project",
   openGraph: {
-    siteName: "Zedu Issues",
+    siteName: "Ziki Issues",
     type: "website",
     images: [{ ...SHARE_IMAGE }],
   },
