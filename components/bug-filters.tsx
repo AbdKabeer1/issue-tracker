@@ -28,15 +28,19 @@ import {
   platformChoices,
   type PlatformOption,
 } from "@/lib/platform-filter";
+import { MILESTONE_NONE, MILESTONE_PARAM } from "@/lib/milestones";
 
 type TagType = { id: string; name: string; isActive?: boolean };
 
 export function BugFilters({
   tagTypes = [],
   platforms = [],
+  milestones = [],
 }: {
   tagTypes?: TagType[];
   platforms?: PlatformOption[];
+  /** #289: open milestones first; closed ones stay selectable for history. */
+  milestones?: { id: string; title: string; isClosed: boolean }[];
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -170,6 +174,9 @@ export function BugFilters({
               className="absolute left-0 right-0 z-20 mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-sm shadow-lg"
             >
               {suggestions.map((type, index) => (
+                // Same combobox pattern as the assignee picker: the input owns
+                // the keyboard handling via aria-activedescendant.
+                // eslint-disable-next-line jsx-a11y/click-events-have-key-events
                 <li
                   key={type.id}
                   id={`${listId}-${index}`}
@@ -306,6 +313,33 @@ export function BugFilters({
             ))}
             {/* Unset is a real state, and the only way to find those issues. */}
             <option value={PLATFORM_NONE}>No platform</option>
+          </select>
+        </div>
+      ) : null}
+      {milestones.length > 0 ? (
+        <div className="w-full sm:w-auto">
+          <label htmlFor="milestone" className="mb-1 block text-xs font-medium text-slate-600">
+            Milestone
+          </label>
+          <select
+            id="milestone"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:w-auto"
+            value={
+              milestones.some((m) => m.id === params.get(MILESTONE_PARAM)) ||
+              params.get(MILESTONE_PARAM) === MILESTONE_NONE
+                ? (params.get(MILESTONE_PARAM) ?? "")
+                : ""
+            }
+            onChange={(event) => update(MILESTONE_PARAM, event.target.value)}
+          >
+            <option value="">All</option>
+            {milestones.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title}
+                {m.isClosed ? " (closed)" : ""}
+              </option>
+            ))}
+            <option value={MILESTONE_NONE}>No milestone</option>
           </select>
         </div>
       ) : null}

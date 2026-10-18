@@ -31,8 +31,13 @@ import { Highlighted, SearchSnippet } from "@/components/search-highlight";
 import { formatIssueNumber, parseIssueNumberQuery } from "@/lib/issue-number";
 import { isDone, resultCountText } from "@/lib/issue-state";
 import { calculatePagination } from "@/lib/pagination";
+import { DUPLICATES_PARAM, SHOW_DUPLICATES, duplicatesWhere, parseShowDuplicates } from "@/lib/duplicates";
 import { PaginationControls } from "@/components/pagination-controls";
 import { fetchVoterSummaries } from "@/lib/voter-summaries";
+import { dueDateValue, MILESTONE_PARAM, milestoneParamValue, milestoneWhere, parseMilestoneFilter } from "@/lib/milestones";
+import { loadMilestoneSummaries } from "@/lib/milestone-stats";
+import { MilestoneProgressBar } from "@/components/milestone-progress";
+import { MilestoneDue } from "@/components/milestone-due";
 import { createEmptyVoterSummary } from "@/lib/voters";
 import { VoterAvatars } from "@/components/voter-avatars";
 import {
@@ -126,27 +131,38 @@ export default async function BugsPage({
 
   const currentSort = parseBugSort(sortParam, defaultSortFor(mineFilter));
   const isWatchingView = mineFilter === "watching" && !!userId;
+  // #285: duplicates are hidden unless asked for, and the count says so.
+  const showDuplicates = parseShowDuplicates(params[DUPLICATES_PARAM]);
   const where: Prisma.BugWhereInput = {
     isDeleted: isDeletedView,
     ...mineFilterWhere(mineFilter, userId),
+    ...duplicatesWhere(showDuplicates),
   };
 
   // Tag filter (#102): issue types picked from the search box.
   // These lookups are filters only. A missing table must not blank the list.
   let tagTypes: { id: string; name: string; isActive: boolean }[] = [];
   let platforms: { id: string; name: string; isActive: boolean }[] = [];
+  let milestones: { id: string; title: string; isClosed: boolean }[] = [];
   try {
     // Cached, expired by the admin actions that change them (#297).
-    [tagTypes, platforms] = await Promise.all([
+    [tagTypes, platforms, milestones] = await Promise.all([
       getIssueTypes(),
       // Every platform, not just active ones: a link filtered on a platform
       // that was since deactivated still has to resolve. BugFilters narrows
       // the dropdown itself.
       getPlatforms(),
+      // #289: few rows; closed ones too, so an old link still resolves.
+      prisma.milestone.findMany({
+        select: { id: true, title: true, isClosed: true },
+        orderBy: [{ isClosed: "asc" }, { dueDate: { sort: "asc", nulls: "last" } }, { title: "asc" }],
+      }),
     ]);
   } catch (error) {
     console.error("[bugs] filter options failed", error);
   }
+  const selectedMilestone = parseMilestoneFilter(params[MILESTONE_PARAM], milestones);
+  const milestoneParam = milestoneParamValue(selectedMilestone);
   const selectedTags = parseTagFilter(params.tags, tagTypes);
   if (selectedTags.length > 0) {
     where.typeId = { in: tagTypeIds(selectedTags, tagTypes) };
@@ -162,6 +178,7 @@ export default async function BugsPage({
   // Platform filter: one category, or the issues with none set.
   const selectedPlatform = parsePlatformFilter(params.platform, platforms);
   Object.assign(where, platformFilterWhere(selectedPlatform));
+  Object.assign(where, milestoneWhere(selectedMilestone));
   if (qParam?.trim()) {
     const q = escapeSearchQuery(qParam.trim());
     where.OR = [
@@ -183,6 +200,28 @@ export default async function BugsPage({
     const detail = error instanceof Error ? error.message : "Could not load issues";
     return issuesQueryError(detail);
   }
+  // How many the default view is hiding, so "Show duplicates" can say so.
+  let hiddenDuplicates = 0;
+  if (!showDuplicates) {
+    try {
+      hiddenDuplicates = await prisma.bug.count({
+        where: { ...where, duplicateOfId: { not: null } },
+      });
+    } catch (error) {
+      console.error("[bugs] duplicate count failed", error);
+    }
+  }
+  const duplicatesHref = (() => {
+    const next = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      const v = Array.isArray(value) ? value[0] : value;
+      if (v && key !== DUPLICATES_PARAM && key !== "page") next.set(key, v);
+    }
+    if (!showDuplicates) next.set(DUPLICATES_PARAM, SHOW_DUPLICATES);
+    const qs = next.toString();
+    return qs ? `/bugs?${qs}` : "/bugs";
+  })();
+
   const pagination = calculatePagination({
     page: pageParam,
     totalCount,
@@ -203,6 +242,7 @@ export default async function BugsPage({
         proofLinks: true,
         isDeleted: true,
         isBoosted: true,
+        duplicateOf: showDuplicates ? { select: { number: true } } : false,
         createdAt: true,
         updatedAt: true,
         type: { select: { name: true } },
@@ -267,10 +307,12 @@ export default async function BugsPage({
     ["severity", severityParam],
     ["sort", sortParam],
     ["mine", mineFilter],
+    [MILESTONE_PARAM, milestoneParam],
     [TAGS_PARAM, tagsParam],
     // Set by the platform filter once that lands; inert until then.
     ["platform", toSingleQueryParam(params.platform)],
     ["deleted", isDeletedView ? "true" : undefined],
+    [DUPLICATES_PARAM, showDuplicates ? SHOW_DUPLICATES : undefined],
   ] as const) {
     if (value) exportParams.set(key, value);
   }
@@ -278,6 +320,16 @@ export default async function BugsPage({
   const exportHref = exportQuery ? `/bugs/export?${exportQuery}` : "/bugs/export";
 
   const bugIds = bugs.map((bug) => bug.id);
+
+  // #289: filtering on one milestone shows its progress above the list.
+  let milestoneSummary: Awaited<ReturnType<typeof loadMilestoneSummaries>>[number] | null = null;
+  if (selectedMilestone && selectedMilestone !== "none") {
+    try {
+      [milestoneSummary] = await loadMilestoneSummaries({ id: selectedMilestone.id });
+    } catch (error) {
+      console.error("[bugs] milestone summary failed", error);
+    }
+  }
 
   // "No issues match" and "there are no issues yet" need different pages
   // (#292): filter advice on an empty tracker sends people looking for a
@@ -356,6 +408,16 @@ export default async function BugsPage({
           <p className="text-sm text-slate-600">
             {resultCountText(totalCount, isStatus(statusParam) ? statusParam : null)} · sorted by{" "}
             {bugSortDescriptions[currentSort]}
+            {hiddenDuplicates > 0 || showDuplicates ? (
+              <>
+                {" · "}
+                <Link href={duplicatesHref} className="font-medium text-teal-700 hover:underline print:hidden">
+                  {showDuplicates
+                    ? "Hide duplicates"
+                    : `Show ${hiddenDuplicates} duplicate${hiddenDuplicates === 1 ? "" : "s"}`}
+                </Link>
+              </>
+            ) : null}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
@@ -405,16 +467,38 @@ export default async function BugsPage({
           key={qParam ?? ""}
           tagTypes={tagTypes}
           platforms={platforms}
+          milestones={milestones}
         />
       </Suspense>
       )}
+
+      {milestoneSummary ? (
+        <section
+          aria-label={`Milestone ${milestoneSummary.title}`}
+          className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold text-slate-900">{milestoneSummary.title}</h2>
+            <MilestoneDue due={dueDateValue(milestoneSummary.dueDate) || null} isClosed={milestoneSummary.isClosed} />
+            <Link href="/milestones" className="ml-auto text-sm text-teal-700 hover:underline">
+              All milestones
+            </Link>
+          </div>
+          {milestoneSummary.description ? (
+            <p className="mt-1 text-sm text-slate-600">{milestoneSummary.description}</p>
+          ) : null}
+          <div className="mt-3 max-w-md">
+            <MilestoneProgressBar progress={milestoneSummary.progress} label={milestoneSummary.title} />
+          </div>
+        </section>
+      ) : null}
 
       {isFirstRun ? (
         <FirstRunWelcome isAdmin={canDelete} />
       ) : bugs.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
           <p className="font-medium text-slate-800">
-            {isWatchingView && !qParam && !statusParam && !severityParam && !tagsParam && !selectedPlatform
+            {isWatchingView && !qParam && !statusParam && !severityParam && !tagsParam && !selectedPlatform && !selectedMilestone
               ? "You're not watching any issues."
               : "No issues match these filters."}
           </p>
@@ -453,7 +537,7 @@ export default async function BugsPage({
                 key={bug.id}
                 /* flex-wrap so the admin controls drop to their own line on small screens
                    instead of squeezing the title (#255). */
-                className="flex flex-wrap items-start gap-3 px-3 py-3.5 sm:px-4 sm:py-4 md:flex-nowrap transition hover:bg-slate-50"
+                className="flex flex-wrap items-start gap-3 px-3 py-3.5 sm:px-4 sm:py-4 md:flex-nowrap transition hover:bg-slate-50 has-[a[data-issue-link]:focus-visible]:bg-teal-50/70"
               >
                 {canDelete && !isDeletedView ? (
                   <BulkCheckbox id={bug.id} title={bug.title} />
@@ -467,7 +551,12 @@ export default async function BugsPage({
                   size="sm"
                   readOnly={isDeletedView}
                 />
-                <Link href={`/bugs/${bug.id}`} className="min-w-0 flex-1 basis-0">
+                <Link
+                  href={`/bugs/${bug.id}`}
+                  // j / k move focus between these (#287).
+                  data-issue-link=""
+                  className="min-w-0 flex-1 basis-0 rounded-md scroll-my-24 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-teal-600"
+                >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-1">
                       {/* Finished issues are muted so the eye lands on what
@@ -557,6 +646,11 @@ export default async function BugsPage({
                       {bug.isDeleted ? (
                         <span className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-900">
                           🗑️ Deleted
+                        </span>
+                      ) : null}
+                      {bug.duplicateOf ? (
+                        <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-900">
+                          Duplicate of {formatIssueNumber(bug.duplicateOf.number)}
                         </span>
                       ) : null}
                       {bug.isBoosted && !bug.isDeleted ? (
@@ -654,12 +748,14 @@ export default async function BugsPage({
           to={pagination.to}
           queryParams={{
             ...(statusParam ? { status: statusParam } : {}),
+            ...(milestoneParam ? { [MILESTONE_PARAM]: milestoneParam } : {}),
             ...(severityParam ? { severity: severityParam } : {}),
             ...(mineFilter ? { mine: mineFilter } : {}),
             ...(qParam ? { q: qParam } : {}),
             ...(tagsParam ? { [TAGS_PARAM]: tagsParam } : {}),
             ...(selectedPlatform ? { [PLATFORM_PARAM]: selectedPlatform } : {}),
             ...(isDeletedView ? { deleted: "true" } : {}),
+            ...(showDuplicates ? { [DUPLICATES_PARAM]: SHOW_DUPLICATES } : {}),
             sort: sortParam,
           }}
         />

@@ -43,7 +43,12 @@ function titleInput() {
 }
 
 function descriptionTextarea() {
-  return screen.getByLabelText("Description") as HTMLTextAreaElement;
+  // The MarkdownEditor gives the mention combobox wrapper the same accessible
+  // name as the textarea ("Description"), so getByLabelText matches twice.
+  // Query by role to pin the actual text field (#326).
+  return screen.getByRole("textbox", {
+    name: "Description",
+  }) as HTMLTextAreaElement;
 }
 
 function submitButton() {
@@ -140,7 +145,13 @@ describe("CreateBugForm optimistic submission", () => {
 
     await fillValidForm(user);
     await user.selectOptions(screen.getByLabelText("Severity"), "critical");
-    await user.selectOptions(screen.getByLabelText("Assignee"), "u1");
+
+    // Assignee is a searchable combobox (#174), not a <select>: open it, then
+    // click the matching person in the listbox.
+    await user.click(screen.getByLabelText("Assignee"));
+    await user.click(
+      await screen.findByRole("option", { name: "Alice" }),
+    );
 
     await user.click(submitButton());
     await waitFor(() => expect(mockedCreateBug).toHaveBeenCalledTimes(1));

@@ -61,10 +61,11 @@ import { Prisma, type ActivityType } from "@prisma/client";
 import { notifyLater } from "@/lib/notify";
 import { ensureWatching } from "@/lib/watch";
 import { parseResolutionNote } from "@/lib/resolution-note";
+import { isUntouchedTemplate, UNFILLED_TEMPLATE_MESSAGE } from "@/lib/issue-templates";
 import type { NotificationEvent } from "@/lib/notifications";
 import { getForeignKeyErrorMessage } from "@/lib/foreign-key-errors";
 import { parseAttachmentIds } from "@/lib/attachments";
-import { linkAttachments } from "@/lib/attachment-link";
+import { attachmentIdsInMarkdown, linkAttachments } from "@/lib/attachment-link";
 import {
   consumeRateLimit,
   ACTION_RATE_LIMITS,
@@ -179,10 +180,14 @@ export async function createBugAction(
   if (typeId) {
     const issueType = await prisma.issueType.findUnique({
       where: { id: typeId },
-      select: { id: true, isActive: true },
+      select: { id: true, isActive: true, template: true },
     });
     if (!issueType || !issueType.isActive) {
       return fieldError("typeId", "That type no longer exists. Please pick another.");
+    }
+    // #307: headings alone pass the length check but say nothing.
+    if (isUntouchedTemplate(parsed.data.description, issueType.template)) {
+      return fieldError("description", UNFILLED_TEMPLATE_MESSAGE);
     }
   }
 
@@ -251,8 +256,14 @@ export async function createBugAction(
   }
 
   // Files uploaded while writing the report (#215).
+  // …and images pasted or dropped into the description (#305).
   await linkAttachments(prisma, {
-    ids: parseAttachmentIds(formData.get("attachmentIds")),
+    ids: [
+      ...new Set([
+        ...parseAttachmentIds(formData.get("attachmentIds")),
+        ...attachmentIdsInMarkdown(description),
+      ]),
+    ],
     uploaderId: userId,
     bugId: bug.id,
   });
@@ -287,6 +298,7 @@ export async function updateBugAction(
       assignee: { select: { id: true, name: true } },
       category: { select: { id: true, name: true } },
       type: { select: { id: true, name: true } },
+      milestone: { select: { id: true, title: true } },
     },
   });
   if (!existing || existing.isDeleted) {
@@ -391,6 +403,7 @@ export async function updateBugAction(
     typeId?: string | null;
     assigneeId?: string | null;
     categoryId?: string | null;
+    milestoneId?: string | null;
     isBoosted?: boolean;
     boostedAt?: Date | null;
   } = {};
@@ -543,6 +556,38 @@ export async function updateBugAction(
     }
   }
 
+  // #289: admins put an issue in at most one milestone. Absent from the
+  // form means "leave it"; "" or "none" takes it out.
+  const milestoneRaw = admin ? formData.get("milestoneId") : null;
+  if (typeof milestoneRaw === "string") {
+    const nextMilestoneId = milestoneRaw === "" || milestoneRaw === "none" ? null : milestoneRaw.trim();
+    if (nextMilestoneId !== existing.milestoneId) {
+      let toTitle: string | null = null;
+      if (nextMilestoneId) {
+        const milestone = await prisma.milestone.findUnique({
+          where: { id: nextMilestoneId },
+          select: { title: true, isClosed: true },
+        });
+        if (!milestone) return fieldError("milestoneId", "That milestone no longer exists.");
+        if (milestone.isClosed) {
+          return fieldError("milestoneId", `"${milestone.title}" is closed. Reopen it to add issues.`);
+        }
+        toTitle = milestone.title;
+      }
+      data.milestoneId = nextMilestoneId;
+      const fromTitle = existing.milestone?.title ?? null;
+      pending.push({
+        type: "milestone_changed",
+        summary: toTitle
+          ? fromTitle
+            ? `moved this from milestone "${fromTitle}" to "${toTitle}"`
+            : `added this to milestone "${toTitle}"`
+          : `removed this from milestone "${fromTitle}"`,
+        metadata: { field: "milestone", from: fromTitle, to: toTitle },
+      });
+    }
+  }
+
   if (pending.length === 0 && Object.keys(data).length === 0) {
     return { ok: true };
   }
@@ -655,6 +700,20 @@ export async function editBugContentAction(
   const summary = formatEditSummary(changedFields);
 
   await prisma.$transaction(async (tx) => {
+    // #303: keep the version this edit replaces. Read again under a row
+    // lock so two edits at once each store the version they replaced and
+    // none goes missing from the history.
+    const [previous] = await tx.$queryRaw<{ title: string; description: string }[]>`
+      SELECT "title", "description" FROM "Bug" WHERE "id" = ${bugId} FOR UPDATE`;
+    await tx.bugRevision.create({
+      data: {
+        bugId,
+        title: previous?.title ?? existing.title,
+        description: previous?.description ?? existing.description,
+        editedById: userId,
+      },
+    });
+
     await tx.bug.update({
       where: { id: bugId },
       data: {
@@ -662,6 +721,14 @@ export async function editBugContentAction(
         description: normalizedDescription,
         updatedAt: new Date(),
       },
+    });
+
+    // Images pasted into the edited description (#305); only the editor's
+    // own, not-yet-linked uploads are claimed.
+    await linkAttachments(tx, {
+      ids: attachmentIdsInMarkdown(normalizedDescription),
+      uploaderId: userId,
+      bugId,
     });
 
     await tx.bugActivity.create({
@@ -777,7 +844,12 @@ export async function addCommentAction(
     });
     // Files uploaded with the comment (#215).
     await linkAttachments(tx, {
-      ids: parseAttachmentIds(formData.get("attachmentIds")),
+      ids: [
+        ...new Set([
+          ...parseAttachmentIds(formData.get("attachmentIds")),
+          ...attachmentIdsInMarkdown(normalizedBody),
+        ]),
+      ],
       uploaderId: userId,
       bugId,
       commentId: created.id,

@@ -219,7 +219,9 @@ function renderBlocks(
       if (i < lines.length) i += 1;
       nodes.push(
         /* Focusable so a keyboard user can scroll a long line: a code block
-           overflows on purpose, and axe flags an unreachable scroll region. */
+           overflows on purpose, and axe flags an unreachable scroll region.
+           A focusable scroll container is the fix, not the bug. */
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
         <pre key={`pre-${key++}`} tabIndex={0} role="group" aria-label="Code block">
           <code>{fence.join("\n")}</code>
         </pre>,
@@ -302,11 +304,12 @@ type InlineToken =
   | { type: "autolink"; href: string };
 
 /**
- * Links require an http(s) href so soft-mentions `@[Name](userId)` stay text,
+ * Links require an http(s) href (or one of our own uploads, #305) so
+ * soft-mentions `@[Name](userId)` stay text,
  * and bare URLs are linked automatically.
  */
 const INLINE_RE =
-  /(!?\[[^\]]*\]\((?:https?:\/\/|mailto:)[^)\s]*\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\s][^*]*\*|(?<![\w])_[^_\s][^_]*_(?![\w])|(?<![\w/.-])(https?:\/\/[^\s<>()]+))/g;
+  /(!?\[[^\]]*\]\((?:https?:\/\/|mailto:|\/api\/attachments\/)[^)\s]*\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\s][^*]*\*|(?<![\w])_[^_\s][^_]*_(?![\w])|(?<![\w/.-])(https?:\/\/[^\s<>()]+))/g;
 
 const MARKDOWN_TARGET_RE = /^(!?)\[([^\]]*)\]\(([^)\s]+)\)$/;
 const TRAILING_PUNCTUATION_RE = /[.,;:!?]+$/;

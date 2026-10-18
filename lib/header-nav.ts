@@ -4,7 +4,11 @@ export type HeaderNavItem = { href: string; label: string };
 
 /** Links shown in the header for the role the user is currently viewing as. */
 export function headerNavItems(role?: AppRole | null): HeaderNavItem[] {
-  const items: HeaderNavItem[] = [{ href: "/bugs", label: "Issues" }];
+  const items: HeaderNavItem[] = [
+    { href: "/bugs", label: "Issues" },
+    // #289: everyone can see what's left for a release.
+    { href: "/milestones", label: "Milestones" },
+  ];
   if (isAdmin(role)) {
     items.push(
       { href: "/admin/categories", label: "Platforms" },

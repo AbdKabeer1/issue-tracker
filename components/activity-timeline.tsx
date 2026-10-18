@@ -18,6 +18,7 @@ const typeLabel: Record<ActivityType, string> = {
   assignee_changed: "Assignee",
   commented: "Comment",
   edited: "Edit",
+  milestone_changed: "Milestone",
   boosted: "Boost",
   unboosted: "Unboost",
   deleted: "Deleted",
@@ -25,6 +26,7 @@ const typeLabel: Record<ActivityType, string> = {
   comment_deleted: "Moderation",
   type_changed: "Type",
   category_changed: "Category",
+  duplicate_changed: "Duplicate",
 };
 
 export function ActivityTimeline({

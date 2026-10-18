@@ -8,7 +8,9 @@ export default defineConfig({
     // happily — a DOM is available but not required.
     environment: "jsdom",
     include: ["**/*.{test,spec}.{ts,tsx}"],
-    exclude: ["node_modules", ".next", "prisma"],
+    // `e2e` holds Playwright specs. They are a different runner, and the
+    // glob above would otherwise collect them (#299).
+    exclude: ["node_modules", ".next", "prisma", "e2e"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],

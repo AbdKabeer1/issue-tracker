@@ -176,7 +176,11 @@ export function VoteButton({
               type="button"
               disabled={pending || readOnly}
               aria-pressed={isLiked}
-              aria-label={isLiked ? "Unlike this issue" : "Like this issue"}
+              aria-label={
+                isLiked
+                  ? `Liked, ${likeCount} likes, click to remove`
+                  : `Like, ${likeCount} likes, click to like`
+              }
               title={isLiked ? "Unlike" : "Like"}
               onClick={(e) => handleVote(1, e)}
               className={`group inline-flex items-center justify-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50 ${
@@ -189,7 +193,11 @@ export function VoteButton({
                 filled={isLiked}
                 className="h-4 w-4 transition-transform group-hover:scale-110"
               />
-              <span>{isLiked ? "Liked" : "Like"}</span>
+              {/* The explicit space matters: axe's "label in name" check
+                  (WCAG 2.5.3) otherwise reads the two spans as one word
+                  ("Like0"), and the visible text has to appear in the
+                  aria-label. Flexbox ignores the whitespace-only node. */}
+              <span>{isLiked ? "Liked" : "Like"}</span>{" "}
               <span
                 className={`rounded-full px-2 py-0.5 text-xs font-bold tabular-nums ${
                   isLiked
@@ -215,7 +223,11 @@ export function VoteButton({
               type="button"
               disabled={pending || readOnly}
               aria-pressed={isDisliked}
-              aria-label={isDisliked ? "Remove dislike" : "Dislike this issue"}
+              aria-label={
+                isDisliked
+                  ? `Disliked, ${dislikeCount} dislikes, click to remove`
+                  : `Dislike, ${dislikeCount} dislikes, click to dislike`
+              }
               title={isDisliked ? "Remove dislike" : "Dislike"}
               onClick={(e) => handleVote(-1, e)}
               className={`group inline-flex items-center justify-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50 ${
@@ -228,7 +240,8 @@ export function VoteButton({
                 filled={isDisliked}
                 className="h-4 w-4 transition-transform group-hover:scale-110"
               />
-              <span>{isDisliked ? "Disliked" : "Dislike"}</span>
+              {/* Space for the same reason as the like button above. */}
+              <span>{isDisliked ? "Disliked" : "Dislike"}</span>{" "}
               <span
                 className={`rounded-full px-2 py-0.5 text-xs font-bold tabular-nums ${
                   isDisliked
@@ -266,7 +279,11 @@ export function VoteButton({
           type="button"
           disabled={pending || readOnly}
           aria-pressed={isLiked}
-          aria-label={isLiked ? "Unlike this issue" : "Like this issue"}
+          aria-label={
+            isLiked
+              ? `Unlike this issue, ${likeCount} likes`
+              : `Like this issue, ${likeCount} likes`
+          }
           title={isLiked ? "Unlike" : "Like"}
           onClick={(e) => handleVote(1, e)}
           className={`group inline-flex min-w-[2.75rem] flex-col items-center justify-center rounded-lg border px-2 py-1 text-xs font-semibold shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50 ${
@@ -286,7 +303,11 @@ export function VoteButton({
           type="button"
           disabled={pending || readOnly}
           aria-pressed={isDisliked}
-          aria-label={isDisliked ? "Remove dislike" : "Dislike this issue"}
+          aria-label={
+            isDisliked
+              ? `Remove dislike, ${dislikeCount} dislikes`
+              : `Dislike this issue, ${dislikeCount} dislikes`
+          }
           title={isDisliked ? "Remove dislike" : "Dislike"}
           onClick={(e) => handleVote(-1, e)}
           className={`group inline-flex min-w-[2.75rem] flex-col items-center justify-center rounded-lg border px-2 py-1 text-xs font-semibold shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50 ${

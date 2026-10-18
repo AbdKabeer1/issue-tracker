@@ -3,12 +3,14 @@
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useId,
   useImperativeHandle,
   useRef,
   useState,
   useSyncExternalStore,
   type ClipboardEvent,
+  type DragEvent,
   type FormEvent,
   type KeyboardEvent,
   type MouseEvent,
@@ -43,6 +45,14 @@ import {
   type FormatAction,
 } from "@/lib/markdown-toolbar";
 import { applyTextChange } from "@/lib/editor-dom";
+import {
+  filesFrom,
+  isFileDrag,
+  markdownFor,
+  nameForPasted,
+  placeholderFor,
+  replacePlaceholder,
+} from "@/lib/editor-upload";
 
 export type MarkdownEditorHandle = {
   focus: () => void;
@@ -67,20 +77,21 @@ const WRITE_TOOLS: ToolbarButtonSpec[] = [
   { action: "italic", label: "Italic", icon: <ItalicIcon /> },
   // Strikethrough: S crossed by a horizontal line.
   { action: "strikethrough", label: "Strikethrough", icon: <StrikethroughIcon /> },
-  // Heading levels use their explicit H1, H2, and H3 labels.
+  // Heading levels use their explicit H1, H2, and H3 labels, so the visible
+  // text stays inside the accessible name (WCAG 2.5.3).
   {
     action: "heading1",
-    label: "Heading 1",
+    label: "H1",
     icon: <span className="text-xs font-bold leading-none">H1</span>,
   },
   {
     action: "heading2",
-    label: "Heading 2",
+    label: "H2",
     icon: <span className="text-xs font-bold leading-none">H2</span>,
   },
   {
     action: "heading3",
-    label: "Heading 3",
+    label: "H3",
     icon: <span className="text-xs font-bold leading-none">H3</span>,
   },
   // Quote: paired quotation marks.
@@ -205,6 +216,17 @@ export const MarkdownEditor = forwardRef<
   const listboxId = `${fieldId}-mention-listbox`;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [tab, setTab] = useState<EditorTab>("write");
+  // #305: uploads finish after the person has kept typing, so they patch
+  // the latest text, not the text from when they started.
+  const valueRef = useRef(value);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    valueRef.current = value;
+    onChangeRef.current = onChange;
+  });
+  const [uploading, setUploading] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   // `false` on the server so the first client render matches the server HTML.
   const isApple = useSyncExternalStore(
     subscribeToNothing,
@@ -323,11 +345,105 @@ export const MarkdownEditor = forwardRef<
     onKeyDown?.(event);
   };
 
+  /**
+   * #305: upload pasted or dropped files. A placeholder goes in at the caret
+   * straight away and is swapped for the real Markdown, or removed with a
+   * message if the upload fails, so no broken image is ever left behind.
+   */
+  const uploadFiles = (files: File[], pasted: boolean) => {
+    if (files.length === 0 || disabled) return;
+    setUploadError(null);
+    const jobs = files.map((file) => ({
+      file,
+      name: pasted ? nameForPasted(file) : file.name,
+      token: Math.random().toString(36).slice(2, 10),
+    }));
+    const textarea = textareaRef.current;
+    // Each file on its own line, like GitHub, so two never run together.
+    const caret = textarea?.selectionStart ?? value.length;
+    const before = caret > 0 && value[caret - 1] !== "\n" ? "\n" : "";
+    const text = before + jobs.map((j) => placeholderFor(j.token, j.name)).join("\n");
+    const selected = textarea ? (textarea.selectionEnd ?? 0) - (textarea.selectionStart ?? 0) : 0;
+    if (maxLength && value.length - selected + text.length > maxLength) {
+      setUploadError("There isn't room left in this field for another file.");
+      return;
+    }
+    setTab("write");
+    insertAtCaret(text);
+
+    for (const job of jobs) {
+      setUploading((n) => n + 1);
+      const body = new FormData();
+      body.set("file", job.file, job.name);
+      void fetch("/api/uploads", { method: "POST", body })
+        .then(async (res) => {
+          const data = (await res.json().catch(() => ({}))) as {
+            id?: string;
+            filename?: string;
+            contentType?: string;
+            error?: string;
+          };
+          if (!res.ok || !data.id) throw new Error(data.error || "The upload failed. Try again.");
+          return markdownFor(
+            { filename: data.filename ?? job.name, contentType: data.contentType ?? job.file.type },
+            data.id,
+          );
+        })
+        .then(
+          (markdown) => ({ markdown, error: null as string | null }),
+          (error: unknown) => ({
+            markdown: "",
+            error: `${job.name}: ${error instanceof Error ? error.message : "The upload failed."}`,
+          }),
+        )
+        .then(({ markdown, error }) => {
+          const next = replacePlaceholder(valueRef.current, job.token, markdown);
+          if (next !== null) {
+            valueRef.current = next;
+            onChangeRef.current(next);
+          }
+          if (error) setUploadError(error);
+          setUploading((n) => n - 1);
+        });
+    }
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!isFileDrag(event.dataTransfer?.types)) return;
+    // Without this the browser opens the dropped file and the draft is lost.
+    event.preventDefault();
+    event.dataTransfer.dropEffect = disabled ? "none" : "copy";
+    if (!disabled) setDragging(true);
+  };
+
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    const to = event.relatedTarget as Node | null;
+    if (!to || !event.currentTarget.contains(to)) setDragging(false);
+  };
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!isFileDrag(event.dataTransfer?.types)) return;
+    event.preventDefault();
+    setDragging(false);
+    if (disabled) return;
+    textareaRef.current?.focus();
+    uploadFiles(filesFrom(event.dataTransfer), false);
+  };
+
   const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     onPaste?.(event);
     if (disabled) return;
     const clipboard = event.clipboardData;
     if (!clipboard) return;
+
+    // A screenshot (or a file copied in the file manager) comes as files;
+    // that wins over any text/HTML description of it.
+    const files = filesFrom(clipboard);
+    if (files.length > 0) {
+      event.preventDefault();
+      uploadFiles(files, true);
+      return;
+    }
 
     const markdown = pasteToMarkdown({
       text: clipboard.getData("text/plain"),
@@ -349,7 +465,14 @@ export const MarkdownEditor = forwardRef<
           rendered outside the shell - typing "@a" showed no dropdown at all.
           The shell must not clip. Rounded corners are preserved by clipping
           the toolbar row itself, which is the only child that needs it. */}
-      <div className="rounded-lg border border-slate-300 bg-white shadow-sm focus-within:border-teal-600 focus-within:ring-2 focus-within:ring-teal-600/20">
+      <div
+        className={`rounded-lg border bg-white shadow-sm focus-within:border-teal-600 focus-within:ring-2 focus-within:ring-teal-600/20 ${
+          dragging ? "border-teal-600 ring-2 ring-teal-600/30" : "border-slate-300"
+        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         <div className="flex flex-wrap items-center gap-1 overflow-hidden rounded-t-lg border-b border-slate-200 bg-slate-50 px-1.5 py-1">
           <div
             className="flex items-center gap-1 border-r border-slate-200 pr-1.5"
@@ -505,6 +628,22 @@ export const MarkdownEditor = forwardRef<
         ) : null}
       </div>
 
+      {uploadError ? (
+        <div role="alert" className="flex items-start justify-between gap-2 rounded-md bg-red-50 px-2 py-1 text-xs text-red-700">
+          <span>{uploadError}</span>
+          <button
+            type="button"
+            className="shrink-0 font-medium underline-offset-2 hover:underline"
+            onClick={() => setUploadError(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+      <p aria-live="polite" className="text-xs text-slate-500 empty:hidden">
+        {uploading > 0 ? `Uploading ${uploading} file${uploading === 1 ? "" : "s"}…` : ""}
+      </p>
+
       <div className="flex flex-wrap items-start justify-between gap-2">
         {footer}
         {maxLength ? (
@@ -513,6 +652,7 @@ export const MarkdownEditor = forwardRef<
               value.length > maxLength ? "text-red-600" : "text-slate-500"
             }`}
           >
+            {!disabled ? <span className="text-slate-500">Paste or drop images · </span> : null}
             {value.length}/{maxLength}
           </p>
         ) : null}

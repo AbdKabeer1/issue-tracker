@@ -17,8 +17,13 @@ const parse = (params: Record<string, string | string[] | undefined>, over = {})
 
 describe("parseBugListFilters", () => {
   it("shows live issues by default", () => {
-    expect(parse({}).where).toEqual({ isDeleted: false });
+    expect(parse({}).where).toEqual({ isDeleted: false, duplicateOfId: null });
     expect(parse({}).isDeletedView).toBe(false);
+  });
+
+  it("hides duplicates unless asked for, like the list (#285)", () => {
+    expect(parse({}).where.duplicateOfId).toBeNull();
+    expect(parse({ duplicates: "show" }).where).not.toHaveProperty("duplicateOfId");
   });
 
   it("keeps deleted issues away from anyone who may not see them", () => {

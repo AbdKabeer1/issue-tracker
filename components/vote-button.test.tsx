@@ -30,13 +30,13 @@ function renderVoteButton(
 
 function likeButton() {
   return screen.getByRole("button", {
-    name: /^(Like|Unlike) this issue$/,
+    name: /^(Like|Unlike) this issue/,
   }) as HTMLButtonElement;
 }
 
 function dislikeButton() {
   return screen.getByRole("button", {
-    name: /^(Dislike|Remove dislike)$/,
+    name: /^(Dislike|Remove dislike)/,
   }) as HTMLButtonElement;
 }
 

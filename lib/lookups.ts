@@ -37,6 +37,7 @@ export type IssueTypeLookup = {
   id: string;
   name: string;
   description: string | null;
+  template: string | null;
   isActive: boolean;
 };
 export type PlatformLookup = { id: string; name: string; isActive: boolean };
@@ -62,7 +63,7 @@ export function expireTag(tag: string): void {
 
 const readIssueTypes = (): Promise<IssueTypeLookup[]> =>
   prisma.issueType.findMany({
-    select: { id: true, name: true, description: true, isActive: true },
+    select: { id: true, name: true, description: true, template: true, isActive: true },
     orderBy: { name: "asc" },
   });
 
@@ -72,7 +73,7 @@ const readPlatforms = (): Promise<PlatformLookup[]> =>
     orderBy: { name: "asc" },
   });
 
-const cachedIssueTypes = unstable_cache(readIssueTypes, ["lookup", "issue-types", "v1"], {
+const cachedIssueTypes = unstable_cache(readIssueTypes, ["lookup", "issue-types", "v2"], {
   tags: [TAGS.issueTypes],
   revalidate: LOOKUP_TTL_SECONDS,
 });

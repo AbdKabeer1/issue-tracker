@@ -16,6 +16,7 @@ vi.mock("@/lib/prisma", () => ({
     user: { findUnique: vi.fn() },
     issueType: { findUnique: vi.fn() },
     category: { findUnique: vi.fn() },
+    milestone: { findUnique: vi.fn() },
     $transaction: vi.fn(),
   },
 }));
@@ -32,6 +33,7 @@ const db = prisma as unknown as {
   user: { findUnique: ReturnType<typeof vi.fn> };
   issueType: { findUnique: ReturnType<typeof vi.fn> };
   category: { findUnique: ReturnType<typeof vi.fn> };
+  milestone: { findUnique: ReturnType<typeof vi.fn> };
   $transaction: ReturnType<typeof vi.fn>;
 };
 const mockUser = requireUser as unknown as ReturnType<typeof vi.fn>;
@@ -169,5 +171,50 @@ describe("updateBugAction unboosts finished issues (#256)", () => {
     await runBoosted("closed", { status: "closed" });
     expect(written).toEqual({ status: "closed" });
     expect(activities).toEqual([]);
+  });
+});
+
+describe("milestones in triage (#289)", () => {
+  const withMilestone = (milestoneId: string | null, title: string | null = null) =>
+    issue(null, { milestoneId, milestone: milestoneId ? { id: milestoneId, title } : null });
+
+  it("lets an admin put an issue in a milestone, with an activity entry", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "admin" });
+    db.bug.findUnique.mockResolvedValue(withMilestone(null));
+    db.milestone.findUnique.mockResolvedValue({ title: "v2.4", isClosed: false });
+    expect(await updateBugAction("bug1", form({ milestoneId: "m1" }))).toEqual({ ok: true });
+    expect(written).toEqual({ milestoneId: "m1" });
+    expect(activities).toEqual(["milestone_changed"]);
+  });
+
+  it("takes it out again with an empty value", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "admin" });
+    db.bug.findUnique.mockResolvedValue(withMilestone("m1", "v2.4"));
+    expect(await updateBugAction("bug1", form({ milestoneId: "" }))).toEqual({ ok: true });
+    expect(written).toEqual({ milestoneId: null });
+  });
+
+  it("refuses a closed milestone", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "admin" });
+    db.bug.findUnique.mockResolvedValue(withMilestone(null));
+    db.milestone.findUnique.mockResolvedValue({ title: "v2.3", isClosed: true });
+    const result = await updateBugAction("bug1", form({ milestoneId: "m0" }));
+    expect(result.error).toMatch(/closed/);
+    expect(written).toBeNull();
+  });
+
+  it("ignores the field from a non-admin", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "user" });
+    db.bug.findUnique.mockResolvedValue(issue(ME));
+    await updateBugAction("bug1", form({ status: "in_progress", milestoneId: "m1" }));
+    expect(written).toEqual({ status: "in_progress" });
+    expect(db.milestone.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when the milestone is unchanged", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "admin" });
+    db.bug.findUnique.mockResolvedValue(withMilestone("m1", "v2.4"));
+    expect(await updateBugAction("bug1", form({ milestoneId: "m1" }))).toEqual({ ok: true });
+    expect(written).toBeNull();
   });
 });

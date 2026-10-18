@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { DEFAULT_BUG_TEMPLATE, TEMPLATE_MAX } from "@/lib/issue-templates";
 import { InUseNotice, type InUse } from "@/components/in-use-notice";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
@@ -20,6 +21,7 @@ export interface IssueTypeWithCount {
   id: string;
   name: string;
   description: string | null;
+  template?: string | null;
   isActive: boolean;
   createdAt: Date | string;
   _count: {
@@ -40,6 +42,7 @@ export function AdminIssueTypesManager({
   const [isCreating, setIsCreating] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [template, setTemplate] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -49,6 +52,7 @@ export function AdminIssueTypesManager({
   function startCreate() {
     setName("");
     setDescription("");
+    setTemplate("");
     setIsActive(true);
     setError(null);
     setEditingType(null);
@@ -58,6 +62,7 @@ export function AdminIssueTypesManager({
   function startEdit(type: IssueTypeWithCount) {
     setName(type.name);
     setDescription(type.description ?? "");
+    setTemplate(type.template ?? "");
     setIsActive(type.isActive);
     setError(null);
     setIsCreating(false);
@@ -77,6 +82,7 @@ export function AdminIssueTypesManager({
     const formData = new FormData();
     formData.set("name", name);
     formData.set("description", description);
+    formData.set("template", template);
     formData.set("isActive", String(isActive));
 
     startTransition(async () => {
@@ -236,6 +242,37 @@ export function AdminIssueTypesManager({
               />
             </div>
 
+            <div className="space-y-1.5">
+              <label htmlFor="typeTemplate" className="text-sm font-medium text-slate-700">
+                Report template (optional)
+              </label>
+              <Textarea
+                id="typeTemplate"
+                rows={8}
+                maxLength={TEMPLATE_MAX}
+                aria-describedby="typeTemplateHelp"
+                className="font-mono text-xs"
+                placeholder={"### Steps to reproduce\n1.\n\n### Expected\n\n### Actual"}
+                value={template}
+                onChange={(e) => setTemplate(e.target.value)}
+              />
+              <div id="typeTemplateHelp" className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                <span>
+                  Markdown. Pre-fills the description when a reporter picks this type. Leave
+                  empty for no template.
+                </span>
+                {!template.trim() ? (
+                  <button
+                    type="button"
+                    className="font-medium text-teal-700 hover:underline"
+                    onClick={() => setTemplate(DEFAULT_BUG_TEMPLATE)}
+                  >
+                    Use the bug template
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -294,6 +331,9 @@ export function AdminIssueTypesManager({
                 </td>
                 <td className="max-w-xs px-4 py-3 text-slate-600">
                   {type.description || <span className="text-slate-500">—</span>}
+                  {type.template ? (
+                    <span className="mt-1 block text-xs text-teal-700">Has a report template</span>
+                  ) : null}
                 </td>
                 <td className="px-4 py-3">
                   <Badge
