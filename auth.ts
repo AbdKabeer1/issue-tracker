@@ -9,7 +9,7 @@ import authConfig from "@/auth.config";
 import { cleanEnv } from "@/lib/env-clean";
 import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 import { upsertGoogleUser } from "@/lib/google-user";
-import { checkAuthRateLimit, clientIpFrom } from "@/lib/rate-limit";
+import { clientIpFrom, consumeAuthRateLimit } from "@/lib/rate-limit";
 
 const googleClientId = cleanEnv(
   process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID,
@@ -62,7 +62,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         // Per-email and per-IP limit on password attempts (#207). Every
         // password sign-in comes through here, whichever entry point it used.
-        const limit = checkAuthRateLimit("login", {
+        // Shared across instances (#296).
+        const limit = await consumeAuthRateLimit("login", {
           email: parsed.data.email,
           ip: request?.headers ? clientIpFrom(request.headers) : null,
         });

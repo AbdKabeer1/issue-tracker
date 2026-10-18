@@ -44,6 +44,10 @@ const prismaBin = existsSync("./node_modules/.bin/prisma")
   : "pnpm exec prisma";
 
 const bugNumberMigration = "20261017140000_bug_reference_number";
+const detailMigrations = [
+  "20261017140000_issue_watch_and_notifications",
+  "20261017150000_attachments",
+];
 
 function runPrisma(args, inherit = false) {
   return execSync(`${prismaBin} ${args}`, {
@@ -79,6 +83,32 @@ try {
     true,
   );
   console.log("[db:migrate] Bug.number is present.");
+  try {
+    console.log("[db:migrate] Ensuring issue detail tables exist...");
+    runPrisma(
+      "db execute --schema prisma/schema.prisma --file scripts/sql/ensure-issue-detail.sql",
+      true,
+    );
+    console.log("[db:migrate] Issue detail tables are present.");
+    for (const name of detailMigrations) {
+      try {
+        runPrisma(`migrate resolve --applied ${name}`, true);
+        console.log(`[db:migrate] Recorded ${name} as applied.`);
+      } catch (detailResolveError) {
+        console.log(
+          `[db:migrate] ${name} was already recorded:`,
+          detailResolveError instanceof Error
+            ? detailResolveError.message.split("\n")[0]
+            : detailResolveError,
+        );
+      }
+    }
+  } catch (detailError) {
+    console.error(
+      "[db:migrate] Could not add issue detail tables:",
+      detailError instanceof Error ? detailError.message : String(detailError),
+    );
+  }
   try {
     runPrisma(`migrate resolve --applied ${bugNumberMigration}`, true);
     console.log(`[db:migrate] Recorded ${bugNumberMigration} as applied.`);

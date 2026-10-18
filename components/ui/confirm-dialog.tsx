@@ -85,7 +85,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
             event.preventDefault();
             settle(false);
           }}
-          className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-xl backdrop:bg-slate-900/40"
+          className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-xl backdrop:bg-black/50"
         >
           <h2 id="confirm-title" className="text-base font-semibold">
             {options?.title}

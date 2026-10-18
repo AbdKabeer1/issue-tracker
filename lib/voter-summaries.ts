@@ -5,11 +5,14 @@ import {
   type RawVoterRow,
   buildVoterSummaries,
   createEmptyVoterSummary,
+  FETCHED_VOTERS,
 } from "@/lib/voters";
 
 /**
- * Fetches voter summaries (counts and up to 3 voters for likes and dislikes)
- * for a list of bug IDs using a single SQL query with ROW_NUMBER() and windowed COUNT.
+ * Fetches voter summaries (counts and the first FETCHED_VOTERS voters for
+ * likes and dislikes) for a list of bug IDs using a single SQL query with
+ * ROW_NUMBER() and windowed COUNT. Three become faces; the rest are named
+ * behind the "+N" badge (#408).
  */
 export async function fetchVoterSummaries(
   bugIds: string[],
@@ -49,7 +52,7 @@ export async function fetchVoterSummaries(
       total_count,
       rn
     FROM ranked_voters
-    WHERE rn <= 3
+    WHERE rn <= ${FETCHED_VOTERS}
     ORDER BY "bugId", "value", rn ASC
   `;
 

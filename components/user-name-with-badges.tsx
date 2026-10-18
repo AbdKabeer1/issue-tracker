@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { AdminBadge } from "@/components/admin-badge";
+import { Avatar } from "@/components/avatar";
 import { Badge } from "@/components/ui/badge";
+import type { AvatarSize } from "@/lib/avatar";
 import { authorBadgeClass } from "@/lib/labels";
 import { isAdmin, type AppRole } from "@/lib/roles";
 
@@ -9,6 +11,8 @@ export function UserNameWithBadges({
   role,
   userId,
   showAuthor = false,
+  avatar,
+  image,
   className = "",
 }: {
   name: string;
@@ -20,10 +24,14 @@ export function UserNameWithBadges({
    */
   userId?: string | null;
   showAuthor?: boolean;
+  /** Draw the person's avatar before the name, at this size (#290). */
+  avatar?: AvatarSize;
+  image?: string | null;
   className?: string;
 }) {
   return (
     <span className={`inline-flex max-w-full flex-wrap items-center gap-1.5 ${className}`}>
+      {avatar ? <Avatar name={name} image={image} size={avatar} /> : null}
       {userId ? (
         <Link
           href={`/users/${userId}`}

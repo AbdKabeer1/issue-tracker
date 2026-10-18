@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { attachmentIdsInMarkdown, linkAttachments } from "@/lib/attachment-link";
 import { requireUser } from "@/lib/auth-helpers";
 import { commentSchema } from "@/lib/validations/bug";
 import {
@@ -73,6 +74,13 @@ export async function updateCommentAction(
     await tx.comment.update({
       where: { id: comment.id },
       data: { body, editedAt: new Date() },
+    });
+    // Images pasted while editing (#305).
+    await linkAttachments(tx, {
+      ids: attachmentIdsInMarkdown(body),
+      uploaderId: user.id,
+      bugId: comment.bugId,
+      commentId: comment.id,
     });
 
     await tx.bugActivity.updateMany({

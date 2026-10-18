@@ -96,8 +96,8 @@ describe("comment and watcher notifications (#216)", () => {
       { ...base, kind: "comment_added", commentId: "c9", recipientIds: ["bob"] },
       SITE,
     );
-    expect(n?.url).toBe("/bugs/b1#comment-c9");
-    expect(n?.text).toContain("https://issues.zedu.chat/bugs/b1#comment-c9");
+    expect(n?.url).toBe("/bugs/b1?comment=c9#comment-c9");
+    expect(n?.text).toContain("https://issues.zedu.chat/bugs/b1?comment=c9#comment-c9");
   });
 
   it("uses the reply wording for the parent comment's author", () => {
@@ -133,5 +133,20 @@ describe("comment and watcher notifications (#216)", () => {
       SITE,
     );
     expect(planned[0]).toMatchObject({ kind: "assignee_changed", url: "/bugs/b1", title: "Alice assigned you to “Login button does nothing”" });
+  });
+});
+
+describe("resolution note in the status email (#316)", () => {
+  const resolved = { ...base, kind: "status_changed", reporterId: "bob", from: "open", to: "resolved" } as const;
+
+  it("includes the note when there is one", () => {
+    const [planned] = planNotifications({ ...resolved, note: "Fixed in 2.4." }, SITE);
+    expect(planned?.text).toContain("Resolution note from Alice:");
+    expect(planned?.text).toContain("Fixed in 2.4.");
+  });
+
+  it("is unchanged without a note", () => {
+    const [planned] = planNotifications({ ...resolved, note: null }, SITE);
+    expect(planned?.text).not.toContain("Resolution note");
   });
 });

@@ -34,6 +34,9 @@ export async function upsertGoogleUser(input: {
         emailVerified: new Date(),
         ...(role === "super_admin" ? { role } : {}),
       },
+      // `name` is only used when the account is created. Updating it here
+      // would undo a display name the person chose in Settings (#293) at
+      // their next sign-in.
       update: {
         ...(image ? { image } : {}),
         emailVerified: new Date(),

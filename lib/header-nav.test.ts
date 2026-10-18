@@ -7,13 +7,14 @@ import {
 } from "./header-nav";
 
 describe("headerNavItems", () => {
-  it("shows only Issues to normal users", () => {
-    expect(headerNavItems("user").map((i) => i.label)).toEqual(["Issues"]);
+  it("shows Issues and Milestones to normal users", () => {
+    expect(headerNavItems("user").map((i) => i.label)).toEqual(["Issues", "Milestones"]);
   });
 
   it("adds Platforms and Types for admins", () => {
     expect(headerNavItems("admin").map((i) => i.label)).toEqual([
       "Issues",
+      "Milestones",
       "Platforms",
       "Types",
     ]);
@@ -22,6 +23,7 @@ describe("headerNavItems", () => {
   it("adds Admins for super admins", () => {
     expect(headerNavItems("super_admin").map((i) => i.label)).toEqual([
       "Issues",
+      "Milestones",
       "Platforms",
       "Types",
       "Admins",
