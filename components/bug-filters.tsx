@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { severities, statuses } from "@/lib/validations/bug";
 import { severityLabel, statusLabel } from "@/lib/labels";
@@ -19,6 +19,7 @@ import {
   MINE_FILTER_OPTIONS,
   mineFilterLabels,
   parseMineFilter,
+  defaultSortFor,
 } from "@/lib/mine-filter";
 import {
   PLATFORM_NONE,
@@ -27,19 +28,68 @@ import {
   platformChoices,
   type PlatformOption,
 } from "@/lib/platform-filter";
+import { MILESTONE_NONE, MILESTONE_PARAM } from "@/lib/milestones";
 
 type TagType = { id: string; name: string; isActive?: boolean };
+
+/** URL params owned by the filter bar. `page` is paging, not a filter. */
+const FILTER_PARAMS = [
+  "q",
+  TAGS_PARAM,
+  "mine",
+  "status",
+  "severity",
+  PLATFORM_PARAM,
+  "sort",
+];
 
 export function BugFilters({
   tagTypes = [],
   platforms = [],
+  milestones = [],
 }: {
   tagTypes?: TagType[];
   platforms?: PlatformOption[];
+  /** #289: open milestones first; closed ones stay selectable for history. */
+  milestones?: { id: string; title: string; isClosed: boolean }[];
 }) {
   const router = useRouter();
   const params = useSearchParams();
   const listId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const isCmdOrCtrlK =
+        (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k";
+      const isSlash =
+        event.key === "/" &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey;
+
+      if (!isCmdOrCtrlK && !isSlash) return;
+      if (event.isComposing) return;
+
+      const target = event.target as HTMLElement | null;
+      const isEditable =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable ||
+          Boolean(target.closest?.("[contenteditable='true']")));
+
+      if (isSlash && isEditable) return;
+
+      event.preventDefault();
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   function updateMany(changes: Record<string, string>) {
     // Nothing changed: don't navigate (and don't reset the page, #132).
@@ -102,31 +152,48 @@ export function BugFilters({
     return qs ? `/bugs?${qs}` : "/bugs";
   }
 
-  const currentSort = parseBugSort(params.get("sort"));
+  const currentSort = parseBugSort(
+    params.get("sort"),
+    defaultSortFor(parseMineFilter(params.get("mine"))),
+  );
   const currentPlatform =
     parsePlatformFilter(params.get(PLATFORM_PARAM), platforms) ?? "";
   const platformOptions = platformChoices(platforms, currentPlatform || null);
   const currentMine = parseMineFilter(params.get("mine")) ?? "";
 
+  // Only worth offering when there is something to clear (#336).
+  const hasActiveFilters = FILTER_PARAMS.some((key) => (params.get(key) ?? "") !== "");
+
+  function clearAllFilters() {
+    // Empty the box straight away: until the navigation lands, the local draft
+    // would otherwise keep showing the text that was just cleared.
+    setText("");
+    setOpen(false);
+    setActive(-1);
+    router.push("/bugs");
+  }
+
   return (
-    <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end">
+    <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end print:hidden">
       <div className="col-span-2 min-w-0 sm:min-w-[200px] sm:flex-1">
         <label htmlFor="q" className="mb-1 block text-xs font-medium text-slate-600">
           Search
         </label>
         <div className="relative">
           <input
+            ref={inputRef}
             id="q"
             name="q"
             role="combobox"
+            aria-haspopup="listbox"
             aria-autocomplete="list"
             aria-expanded={suggestions.length > 0}
-            aria-controls={listId}
+            aria-controls={suggestions.length > 0 ? listId : undefined}
             aria-activedescendant={active >= 0 && suggestions[active] ? `${listId}-${active}` : undefined}
             autoComplete="off"
             value={text}
-            placeholder="Search, or type a tag like Design"
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+            placeholder="Search, or type a tag like Design (/)"
+            className="w-full rounded-lg border border-slate-300 pl-3 pr-8 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
             onChange={(event) => {
               setText(event.target.value);
               setOpen(true);
@@ -158,6 +225,13 @@ export function BugFilters({
               update("q", text.trim());
             }}
           />
+          {!text ? (
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
+              <kbd className="hidden sm:inline-flex items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 select-none">
+                /
+              </kbd>
+            </div>
+          ) : null}
           {suggestions.length > 0 ? (
             <ul
               id={listId}
@@ -305,6 +379,33 @@ export function BugFilters({
           </select>
         </div>
       ) : null}
+      {milestones.length > 0 ? (
+        <div className="w-full sm:w-auto">
+          <label htmlFor="milestone" className="mb-1 block text-xs font-medium text-slate-600">
+            Milestone
+          </label>
+          <select
+            id="milestone"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:w-auto"
+            value={
+              milestones.some((m) => m.id === params.get(MILESTONE_PARAM)) ||
+              params.get(MILESTONE_PARAM) === MILESTONE_NONE
+                ? (params.get(MILESTONE_PARAM) ?? "")
+                : ""
+            }
+            onChange={(event) => update(MILESTONE_PARAM, event.target.value)}
+          >
+            <option value="">All</option>
+            {milestones.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title}
+                {m.isClosed ? " (closed)" : ""}
+              </option>
+            ))}
+            <option value={MILESTONE_NONE}>No milestone</option>
+          </select>
+        </div>
+      ) : null}
       <div className="w-full sm:w-auto">
         <label
           htmlFor="sort"
@@ -325,6 +426,17 @@ export function BugFilters({
           ))}
         </select>
       </div>
+      {hasActiveFilters ? (
+        <div className="col-span-2 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-xs hover:bg-slate-50 hover:text-slate-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:w-auto"
+          >
+            Clear all filters
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -2,8 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
-import { getActiveIssueTypes } from "@/lib/issue-types";
-import { ensureDefaultPlatforms } from "@/lib/categories";
+import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
 import { CreateBugForm } from "@/components/create-bug-form";
 
 /* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
@@ -12,21 +11,18 @@ export const metadata = { title: "Report an issue" };
 export default async function NewBugPage() {
   const user = await requireUser();
   const admin = isAdmin(user.role);
-  await ensureDefaultPlatforms();
-
   // Every signed-in user is needed for @mentions; admins additionally get
   // the assignee picker.
   const [users, categories, types] = await Promise.all([
     prisma.user.findMany({
-      select: { id: true, name: true, role: true },
+      select: { id: true, name: true, role: true, image: true },
       orderBy: { name: "asc" },
     }),
-    prisma.category.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    getActiveIssueTypes(),
+    // Cached (#297). getActivePlatforms also seeds the default platforms,
+    // but only when they're actually missing — it used to upsert all three
+    // on every render of this form.
+    getActivePlatforms(),
+    getActiveIssueTypesCached(),
   ]);
 
   return (

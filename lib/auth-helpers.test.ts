@@ -14,7 +14,12 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("@/auth", () => ({ auth: vi.fn(), signOut: vi.fn() }));
 vi.mock("@/lib/session-user", () => ({ resolveSessionUserId: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: { user: { findUnique: vi.fn(), update: vi.fn() } } }));
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    user: { findUnique: vi.fn(), update: vi.fn(), upsert: vi.fn() },
+    $executeRaw: vi.fn(),
+  },
+}));
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
@@ -34,6 +39,7 @@ function signedInAs(role: "user" | "admin" | "super_admin", email = `${role}@zed
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
   cookieJar.clear();
   vi.stubEnv("SUPER_ADMIN_EMAIL", "");
   vi.stubEnv("SUPER_ADMIN_EMAILS", "");
@@ -43,6 +49,46 @@ describe("requireUser", () => {
   it("redirects to /login without a session", async () => {
     mockAuth.mockResolvedValue(null);
     await expect(requireUser()).rejects.toMatchObject({ to: "/login" });
+  });
+
+  it("creates the Google user when the session id is not a database id", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_PASSWORD_LOGIN", "false");
+    mockAuth.mockResolvedValue({
+      user: { id: "google-sub", email: "Ada@zedu.chat", name: "Ada" },
+    });
+    mockResolve.mockResolvedValue({ error: "Session expired, sign in again" });
+    const upsert = prisma.user.upsert as unknown as ReturnType<typeof vi.fn>;
+    upsert.mockResolvedValue({ id: "db1", role: "user", sessionVersion: 0 });
+    findUser.mockResolvedValue({
+      id: "db1",
+      name: "Ada",
+      email: "ada@zedu.chat",
+      image: null,
+      role: "user",
+    });
+
+    await expect(requireUser()).resolves.toMatchObject({ id: "db1", email: "ada@zedu.chat" });
+    expect(upsert.mock.calls[0][0].where).toEqual({ email: "ada@zedu.chat" });
+  });
+
+  it("redirects to /session-expired when Google relink sessionVersion does not match", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_PASSWORD_LOGIN", "false");
+    mockAuth.mockResolvedValue({
+      user: { id: "google-sub", email: "ada@zedu.chat", name: "Ada", sessionVersion: 0 },
+    });
+    mockResolve.mockResolvedValue({ error: "Session expired, sign in again" });
+    const upsert = prisma.user.upsert as unknown as ReturnType<typeof vi.fn>;
+    upsert.mockResolvedValue({ id: "db1", role: "user", sessionVersion: 1 });
+
+    await expect(requireUser()).rejects.toMatchObject({ to: "/session-expired" });
+  });
+
+  it("still clears a session that has no email", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "google-sub" } });
+    mockResolve.mockResolvedValue({ error: "Session expired, sign in again" });
+    await expect(requireUser()).rejects.toMatchObject({ to: "/session-expired" });
   });
 
   it("returns the database role, not the JWT's", async () => {

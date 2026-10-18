@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: { user: { findUnique: vi.fn() } } }));
@@ -40,9 +40,41 @@ describe("resolveSessionUserId with session versions (#208)", () => {
     await expect(resolveSessionUserId()).resolves.toEqual({ error: SESSION_EXPIRED_MESSAGE });
   });
 
+  it("rejects a session issued before a role change bumped the session version (#347)", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "u1", email: "a@x.dev", sessionVersion: 1 } });
+    findUnique.mockResolvedValue({ id: "u1", sessionVersion: 2 });
+    await expect(resolveSessionUserId()).resolves.toEqual({ error: SESSION_EXPIRED_MESSAGE });
+  });
+
   it("also checks the version on the email fallback path", async () => {
     mockAuth.mockResolvedValue({ user: { id: "stale", email: "a@x.dev", sessionVersion: 0 } });
     findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: "u1", sessionVersion: 2 });
     await expect(resolveSessionUserId()).resolves.toEqual({ error: SESSION_EXPIRED_MESSAGE });
   });
+
+  it("rejects a Google session when role is changed (sessionVersion bumped) even when password sign-in is off", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_PASSWORD_LOGIN", "false");
+    mockAuth.mockResolvedValue({ user: { id: "u1", email: "a@x.dev", sessionVersion: 0 } });
+    findUnique.mockResolvedValue({ id: "u1", sessionVersion: 1 });
+    await expect(resolveSessionUserId()).resolves.toEqual({ error: SESSION_EXPIRED_MESSAGE });
+  });
+
+  it("accepts a Google session when sessionVersion matches even when password sign-in is off", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_PASSWORD_LOGIN", "false");
+    mockAuth.mockResolvedValue({ user: { id: "u1", email: "a@x.dev", sessionVersion: 1 } });
+    findUnique.mockResolvedValue({ id: "u1", sessionVersion: 1 });
+    await expect(resolveSessionUserId()).resolves.toEqual({ userId: "u1" });
+  });
+
+  it("fails closed and expires session when version-aware lookup throws or rejects (#347)", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "u1", email: "a@x.dev", sessionVersion: 1 } });
+    findUnique.mockRejectedValue(new Error("database connection error"));
+    await expect(resolveSessionUserId()).resolves.toEqual({ error: SESSION_EXPIRED_MESSAGE });
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });

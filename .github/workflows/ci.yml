@@ -56,3 +56,74 @@ jobs:
           AUTH_SECRET: "ci-build-secret-dummy-must-be-long-enough-32-chars"
           NEXTAUTH_URL: "http://localhost:3000"
         run: pnpm build
+
+  # #299: the critical paths in a real browser, at desktop and 375px, against
+  # a production build and a freshly migrated, seeded database.
+  e2e:
+    name: End-to-end (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bug_tracker_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # The seed only wipes a database named for tests (e2e/seed.ts).
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/bug_tracker_e2e"
+      AUTH_SECRET: "ci-e2e-secret-dummy-must-be-long-enough-32-chars"
+      AUTH_URL: "http://localhost:3000/api/auth"
+      NEXTAUTH_URL: "http://localhost:3000"
+      AUTH_TRUST_HOST: "true"
+      AUTH_PASSWORD_LOGIN: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for Playwright
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Migrate and seed a clean database
+        run: |
+          pnpm exec prisma migrate deploy
+          pnpm e2e:seed
+
+      - name: Build
+        run: pnpm build
+
+      - name: Run end-to-end tests
+        run: pnpm e2e
+
+      - name: Upload screenshots and traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7

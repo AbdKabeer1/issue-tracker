@@ -17,6 +17,18 @@ export function isSessionVersionCurrent(
 }
 
 /**
+ * Validates that the session version matches the user's stored version.
+ * Applies across credentials and Google-only sessions so role changes
+ * and password resets invalidate active JWTs (#347).
+ */
+function sessionVersionAllowsSignIn(
+  sessionVersion: number | null | undefined,
+  userVersion: number,
+): boolean {
+  return isSessionVersionCurrent(sessionVersion, userVersion);
+}
+
+/**
  * Resolve the Prisma User.id for the current JWT session.
  * After a DB reseed, the cookie may still hold a stale cuid — re-resolve by
  * email when possible; otherwise the caller should force re-login.
@@ -34,28 +46,36 @@ export async function resolveSessionUserId(): Promise<
   }
 
   if (sessionId) {
-    const byId = await prisma.user.findUnique({
-      where: { id: sessionId },
-      select: { id: true, sessionVersion: true },
-    });
-    if (byId) {
-      if (!isSessionVersionCurrent(sessionVersion, byId.sessionVersion)) {
-        return { error: SESSION_EXPIRED_MESSAGE };
+    try {
+      const byId = await prisma.user.findUnique({
+        where: { id: sessionId },
+        select: { id: true, sessionVersion: true },
+      });
+      if (byId) {
+        if (!sessionVersionAllowsSignIn(sessionVersion, byId.sessionVersion)) {
+          return { error: SESSION_EXPIRED_MESSAGE };
+        }
+        return { userId: byId.id };
       }
-      return { userId: byId.id };
+    } catch {
+      // Fail closed when the version lookup fails or errors (#347)
     }
   }
 
   if (email) {
-    const byEmail = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true, sessionVersion: true },
-    });
-    if (byEmail) {
-      if (!isSessionVersionCurrent(sessionVersion, byEmail.sessionVersion)) {
-        return { error: SESSION_EXPIRED_MESSAGE };
+    try {
+      const byEmail = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true, sessionVersion: true },
+      });
+      if (byEmail) {
+        if (!sessionVersionAllowsSignIn(sessionVersion, byEmail.sessionVersion)) {
+          return { error: SESSION_EXPIRED_MESSAGE };
+        }
+        return { userId: byEmail.id };
       }
-      return { userId: byEmail.id };
+    } catch {
+      // Fail closed when the version lookup fails or errors (#347)
     }
   }
 

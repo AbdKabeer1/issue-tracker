@@ -4,10 +4,12 @@ import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import { isLinkPreviewBot } from "@/lib/link-preview";
 import { AppHeader } from "@/components/app-header";
-import { prisma } from "@/lib/prisma";
+import { getUnreadCount } from "@/lib/lookups";
 import { REPORT_FORM_URL } from "@/lib/report-form";
 import { MAIN_CONTENT_ID, SkipLink } from "@/components/skip-link";
 import { FocusMainOnNavigate } from "@/components/focus-main-on-navigate";
+import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
+import { prisma } from "@/lib/prisma";
 
 export default async function AppLayout({
   children,
@@ -32,15 +34,34 @@ export default async function AppLayout({
   }
 
   const user = await requireUser();
-  const unreadCount = await prisma.notification.count({
-    where: { userId: user.id, readAt: null },
-  });
+  // A missing Notification table must not take down every signed-in page.
+  let unreadCount = 0;
+  try {
+    // Cached per user and expired by every write that changes it (#317), so
+    // ordinary navigation doesn't pay for a count query.
+    unreadCount = await getUnreadCount(user.id);
+  } catch (error) {
+    console.error("[layout] notification count failed", error);
+  }
+
+  // #287: one primary-key read; a failure leaves shortcuts on, the default.
+  let shortcutsEnabled = true;
+  try {
+    const prefs = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { keyboardShortcuts: true },
+    });
+    shortcutsEnabled = prefs?.keyboardShortcuts ?? true;
+  } catch (error) {
+    console.error("[layout] shortcut setting failed", error);
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <SkipLink />
       <AppHeader
         userName={user.name ?? user.email}
+        userImage={user.image}
         role={user.role}
         isRealSuperAdmin={user.isRealSuperAdmin}
         isRealAdmin={user.isRealAdmin}
@@ -64,6 +85,7 @@ export default async function AppLayout({
       </main>
       <ReportIssueFab href={REPORT_FORM_URL} />
       <FocusMainOnNavigate />
+      <KeyboardShortcuts enabled={shortcutsEnabled} />
     </div>
   );
 }

@@ -8,6 +8,8 @@ import {
   resolveEffectiveRole,
   ACTIVE_ROLE_COOKIE_NAME,
 } from "@/lib/roles";
+import { isPasswordAuthEnabled } from "@/lib/auth-mode";
+import { upsertGoogleUser } from "@/lib/google-user";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { isSuperAdminEmail } from "@/lib/super-admin";
 
@@ -39,15 +41,44 @@ export async function requireUser(): Promise<SessionAppUser> {
   }
 
   const resolved = await resolveSessionUserId();
+  let userId: string;
   if ("error" in resolved) {
-    // Clears Auth.js cookies, then redirects (does not return).
-    redirect(SESSION_EXPIRED_PATH);
+    const email = session.user.email?.toLowerCase();
+    // A session with an email and no matching row was saved under Google's subject, not User.id.
+    if (!email || isPasswordAuthEnabled()) {
+      redirect(SESSION_EXPIRED_PATH);
+    }
+    try {
+      const googleAccount = await upsertGoogleUser({
+        email,
+        name: session.user.name,
+        image: session.user.image,
+      });
+      if ((session.user.sessionVersion ?? 0) !== googleAccount.sessionVersion) {
+        redirect(SESSION_EXPIRED_PATH);
+      }
+      userId = googleAccount.id;
+    } catch (error) {
+      console.error("[auth] Google session could not be linked to a user", error);
+      redirect(SESSION_EXPIRED_PATH);
+    }
+  } else {
+    userId = resolved.userId;
   }
 
-  const dbUser = await prisma.user.findUnique({
-    where: { id: resolved.userId },
-    select: { id: true, name: true, email: true, image: true, role: true },
-  });
+  const dbUser = await prisma.user
+    .findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true, image: true, role: true },
+    })
+    .catch(async () => {
+      const basic = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, name: true, email: true },
+      });
+      if (!basic) return null;
+      return { ...basic, image: null, role: "user" as Role };
+    });
 
   if (!dbUser) {
     redirect(SESSION_EXPIRED_PATH);
@@ -58,11 +89,15 @@ export async function requireUser(): Promise<SessionAppUser> {
   const isRealAdmin = isRealSuperAdmin || dbUser.role === "admin";
 
   if (dbUser.role !== "super_admin" && isSuperAdminEmail(dbUser.email)) {
-    await prisma.user.update({
-      where: { id: dbUser.id },
-      data: { role: "super_admin" },
-    });
-    dbUser.role = "super_admin";
+    try {
+      await prisma.user.update({
+        where: { id: dbUser.id },
+        data: { role: "super_admin" },
+      });
+      dbUser.role = "super_admin";
+    } catch (error) {
+      console.error("[auth] super admin role update failed", error);
+    }
   }
 
   const cookieStore = await cookies();

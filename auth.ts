@@ -6,9 +6,9 @@ import { prisma } from "@/lib/prisma";
 import { loginSchema } from "@/lib/validations/bug";
 import authConfig from "@/auth.config";
 import { cleanEnv } from "@/lib/env-clean";
-import { isSuperAdminEmail } from "@/lib/super-admin";
 import { isPasswordAuthEnabled } from "@/lib/auth-mode";
-import { checkAuthRateLimit, clientIpFrom } from "@/lib/rate-limit";
+import { upsertGoogleUser, type GoogleAccount } from "@/lib/google-user";
+import { clientIpFrom, consumeAuthRateLimit } from "@/lib/rate-limit";
 
 const googleClientId = cleanEnv(
   process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID,
@@ -61,7 +61,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         // Per-email and per-IP limit on password attempts (#207). Every
         // password sign-in comes through here, whichever entry point it used.
-        const limit = checkAuthRateLimit("login", {
+        // Shared across instances (#296).
+        const limit = await consumeAuthRateLimit("login", {
           email: parsed.data.email,
           ip: request?.headers ? clientIpFrom(request.headers) : null,
         });
@@ -114,45 +115,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             (typeof profile?.picture === "string" && profile.picture) ||
             (typeof user?.image === "string" ? user.image : undefined);
 
-          const isSuperAdmin = isSuperAdminEmail(email);
-
-          let dbUser = null;
+          let dbUser: GoogleAccount | null = null;
+          let lastError: unknown;
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
-              dbUser = await prisma.user.upsert({
-                where: { email },
-                create: {
-                  email,
-                  name,
-                  image,
-                  emailVerified: new Date(),
-                  ...(isSuperAdmin ? { role: "super_admin" } : {}),
-                },
-                update: {
-                  name,
-                  ...(image ? { image } : {}),
-                  emailVerified: new Date(),
-                  ...(isSuperAdmin ? { role: "super_admin" } : {}),
-                },
-              });
+              dbUser = await upsertGoogleUser({ email, name, image });
               break;
             } catch (dbError) {
-              console.error(
-                `[auth] Google user upsert attempt ${attempt} failed:`,
-                dbError,
-              );
-              if (attempt === 3) throw dbError;
-              await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
+              lastError = dbError;
+              console.error(`[auth] Google user save attempt ${attempt} failed:`, dbError);
+              if (attempt < 3) {
+                await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
+              }
             }
           }
 
-          if (dbUser) {
-            token.id = dbUser.id;
-            token.sub = dbUser.id;
-            token.role = dbUser.role;
-            token.sv = dbUser.sessionVersion;
-            return token;
+          if (!dbUser) {
+            throw lastError instanceof Error
+              ? lastError
+              : new Error("Google sign-in could not save the user");
           }
+
+          token.email = email;
+          token.name = dbUser.name || name;
+          token.id = dbUser.id;
+          token.sub = dbUser.id;
+          token.role = dbUser.role;
+          token.sv = dbUser.sessionVersion;
+          return token;
         }
       }
 

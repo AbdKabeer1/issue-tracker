@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
 import { createBugAction, type ActionResult } from "@/app/actions/bugs";
 import { submitFailureMessage } from "@/lib/submit-error";
+import { ErrorSummary, FieldError, useFieldErrors } from "@/components/ui/field-errors";
 import { severities } from "@/lib/validations/bug";
 import { severityLabels } from "@/lib/labels";
 import type { AppRole } from "@/lib/roles";
@@ -13,18 +14,38 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { CharacterCounter } from "@/components/ui/character-counter";
 import { AttachmentPicker } from "@/components/attachment-picker";
+import { SimilarIssues } from "@/components/similar-issues";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { useFormDraft } from "@/components/use-form-draft";
 import { buildDraftKey } from "@/lib/form-drafts";
 import { DraftBanner } from "@/components/draft-banner";
 import { AssigneeCombobox } from "@/components/assignee-combobox";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { initialDescription, templateSwitch } from "@/lib/issue-templates";
 
 /** Must match the title limit enforced by createBugSchema. */
 const TITLE_MAX_LENGTH = 200;
 
-type UserOption = { id: string; name: string; role: AppRole };
+type UserOption = { id: string; name: string; role: AppRole; image?: string | null };
 type CategoryOption = { id: string; name: string };
-type TypeOption = { id: string; name: string; description?: string | null };
+type TypeOption = {
+  id: string;
+  name: string;
+  description?: string | null;
+  /** Pre-fills the description (#307). */
+  template?: string | null;
+};
+
+/** Field names as the person sees them, for the error summary. */
+const FIELD_LABELS: Record<string, string> = {
+  title: "Title",
+  typeId: "Type",
+  categoryId: "Platform",
+  description: "Description",
+  proofLinks: "Proof links",
+  severity: "Severity",
+  assigneeId: "Assignee",
+};
 
 export function CreateBugForm({
   users,
@@ -41,6 +62,30 @@ export function CreateBugForm({
 }) {
   const defaultTypeId =
     types.find((t) => t.name.toLowerCase() === "fix")?.id ?? types[0]?.id ?? "";
+  const templateOf = (id: string) => types.find((t) => t.id === id)?.template ?? null;
+  const confirm = useConfirm();
+
+  // #307: changing type offers that type's template. An untouched template
+  // or a blank field is swapped silently; anything typed is only replaced
+  // after asking.
+  async function changeType(nextTypeId: string) {
+    const current = values.description;
+    const decision = templateSwitch(current, templateOf(values.typeId), templateOf(nextTypeId));
+    setValue("typeId", nextTypeId);
+    if (decision.kind === "replace") {
+      setValue("description", decision.text);
+    } else if (decision.kind === "confirm") {
+      const typeName = types.find((t) => t.id === nextTypeId)?.name ?? "this type";
+      const ok = await confirm({
+        title: `Use the ${typeName} template?`,
+        body: "It replaces what you've written in the description. Keep your text to change only the type.",
+        confirmLabel: "Replace with template",
+        cancelLabel: "Keep my text",
+      });
+      if (ok) setValue("description", decision.text);
+    }
+  }
+
   const draftKey = buildDraftKey({
     userId: currentUserId,
     formType: "create-bug",
@@ -51,7 +96,7 @@ export function CreateBugForm({
     {
       title: "",
       typeId: defaultTypeId,
-      description: "",
+      description: initialDescription(templateOf(defaultTypeId)),
       categoryId: "",
       proofLinks: "",
       severity: "medium" as (typeof severities)[number],
@@ -66,6 +111,7 @@ export function CreateBugForm({
   const [canRetry, setCanRetry] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
+  const errs = useFieldErrors("report", formRef);
   const mentionUsers = users.map((user) => ({ id: user.id, name: user.name }));
 
   return (
@@ -76,6 +122,7 @@ export function CreateBugForm({
         event.preventDefault();
         setError(null);
         setCanRetry(false);
+        errs.clear();
         const formData = new FormData();
         formData.set("title", values.title);
         formData.set("typeId", values.typeId);
@@ -93,7 +140,11 @@ export function CreateBugForm({
           try {
             const result: ActionResult = await createBugAction(formData);
             if (result.error) {
-              setError(result.error);
+              // A field-specific error goes beside its control and takes
+              // focus there; only an error about no field in particular
+              // stays as the form-level alert at the bottom.
+              if (result.field || result.fieldErrors) errs.show(result);
+              else setError(result.error);
             } else {
               clearDraft();
             }
@@ -112,6 +163,8 @@ export function CreateBugForm({
         />
       ) : null}
 
+      <ErrorSummary errors={errs.fieldErrors} labels={FIELD_LABELS} />
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <label htmlFor="title" className="text-sm font-medium text-slate-700">
@@ -126,12 +179,15 @@ export function CreateBugForm({
             placeholder="Short summary of the issue"
             value={values.title}
             onChange={(event) => setValue("title", event.target.value)}
+            {...errs.attrs("title")}
           />
           <CharacterCounter
             length={values.title.length}
             max={TITLE_MAX_LENGTH}
             className="text-right"
           />
+          <FieldError formId={errs.formId} field="title" errors={errs.fieldErrors} />
+          <SimilarIssues title={values.title} />
         </div>
         {types.length > 0 ? (
           <div className="space-y-1.5">
@@ -142,7 +198,8 @@ export function CreateBugForm({
               id="typeId"
               name="typeId"
               value={values.typeId}
-              onChange={(event) => setValue("typeId", event.target.value)}
+              onChange={(event) => void changeType(event.target.value)}
+              {...errs.attrs("typeId")}
             >
               {types.map((type) => (
                 <option key={type.id} value={type.id}>
@@ -150,6 +207,7 @@ export function CreateBugForm({
                 </option>
               ))}
             </Select>
+            <FieldError formId={errs.formId} field="typeId" errors={errs.fieldErrors} />
           </div>
         ) : null}
       </div>
@@ -165,6 +223,7 @@ export function CreateBugForm({
           name="categoryId"
           value={values.categoryId}
           onChange={(event) => setValue("categoryId", event.target.value)}
+          {...errs.attrs("categoryId")}
         >
           <option value="">Select a platform</option>
           {categories.map((cat) => (
@@ -173,6 +232,7 @@ export function CreateBugForm({
             </option>
           ))}
         </Select>
+        <FieldError formId={errs.formId} field="categoryId" errors={errs.fieldErrors} />
       </div>
       <div className="space-y-1.5">
         <label
@@ -194,6 +254,7 @@ export function CreateBugForm({
           value={values.description}
           onChange={(val) => setValue("description", val)}
           users={mentionUsers}
+          {...errs.attrs("description")}
           footer={
             <p className="text-xs text-slate-500">
               Markdown is supported. Be specific: what should happen, what
@@ -201,6 +262,7 @@ export function CreateBugForm({
             </p>
           }
         />
+        <FieldError formId={errs.formId} field="description" errors={errs.fieldErrors} />
       </div>
       <div className="space-y-1.5">
         <label
@@ -218,7 +280,9 @@ export function CreateBugForm({
           }
           value={values.proofLinks}
           onChange={(event) => setValue("proofLinks", event.target.value)}
+          {...errs.attrs("proofLinks")}
         />
+        <FieldError formId={errs.formId} field="proofLinks" errors={errs.fieldErrors} />
         <p className="text-xs text-slate-500">
           Optional. One GitHub link per line (e.g. https://github.com/org/repo/issues/123). You need to have created the issue on GitHub first or gotten it from GitHub before adding the link here.
         </p>
@@ -249,6 +313,7 @@ export function CreateBugForm({
               onChange={(event) =>
                 setValue("severity", event.target.value as (typeof severities)[number])
               }
+              {...errs.attrs("severity")}
             >
               {severities.map((value) => (
                 <option key={value} value={value}>
@@ -271,6 +336,7 @@ export function CreateBugForm({
               value={values.assigneeId}
               onChange={(val) => setValue("assigneeId", val)}
             />
+            <FieldError formId={errs.formId} field="assigneeId" errors={errs.fieldErrors} />
           </div>
         </div>
       ) : currentUserId ? (
