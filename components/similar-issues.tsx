@@ -23,7 +23,7 @@ export function SimilarIssues({ title, id }: { title: string; id?: string }) {
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/bugs/similar?q=${encodeURIComponent(query)}`, {
+        const res = await fetch(`/api/issues/similar?q=${encodeURIComponent(query)}`, {
           signal: controller.signal,
         });
         if (!res.ok) return;
@@ -53,7 +53,7 @@ export function SimilarIssues({ title, id }: { title: string; id?: string }) {
             {issues.map((issue) => (
               <li key={issue.id} className="flex flex-wrap items-baseline gap-x-2 text-sm">
                 <a
-                  href={`/bugs/${issue.id}`}
+                  href={`/issues/${issue.id}`}
                   target="_blank"
                   rel="noopener"
                   className="min-w-0 break-words font-medium text-teal-800 hover:underline"

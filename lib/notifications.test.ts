@@ -15,10 +15,10 @@ describe("planNotifications (#151)", () => {
     };
     const planned = planNotifications(event, SITE);
     expect(planned.map((p) => p.userId)).toEqual(["bob", "cara"]);
-    expect(planned[0]?.subject).toBe("[Zedu Issues] Alice mentioned you on “Login button does nothing”");
+    expect(planned[0]?.subject).toBe("[Ziki Issues] Alice mentioned you on “Login button does nothing”");
     expect(planned[0]?.text).toContain("mentioned you in a comment on");
     expect(planned[0]?.text).toContain("> @Bob can you check?");
-    expect(planned[0]?.text).toContain("https://issues.zedu.chat/bugs/b1");
+    expect(planned[0]?.text).toContain("https://issues.zedu.chat/issues/b1");
     expect(planned[0]?.text).toContain("https://issues.zedu.chat/settings");
   });
 
@@ -60,7 +60,7 @@ describe("planNotifications (#151)", () => {
       SITE,
     );
     expect(planned).toHaveLength(1);
-    expect(planned[0]?.subject).toBe("[Zedu Issues] “Login button does nothing” is now Resolved");
+    expect(planned[0]?.subject).toBe("[Ziki Issues] “Login button does nothing” is now Resolved");
     expect(planned[0]?.text).toContain("from Open to Resolved");
     expect(
       planNotifications({ ...base, kind: "status_changed", reporterId: "alice", from: "open", to: "closed" }, SITE),
@@ -96,8 +96,8 @@ describe("comment and watcher notifications (#216)", () => {
       { ...base, kind: "comment_added", commentId: "c9", recipientIds: ["bob"] },
       SITE,
     );
-    expect(n?.url).toBe("/bugs/b1?comment=c9#comment-c9");
-    expect(n?.text).toContain("https://issues.zedu.chat/bugs/b1?comment=c9#comment-c9");
+    expect(n?.url).toBe("/issues/b1?comment=c9#comment-c9");
+    expect(n?.text).toContain("https://issues.zedu.chat/issues/b1?comment=c9#comment-c9");
   });
 
   it("uses the reply wording for the parent comment's author", () => {
@@ -132,7 +132,7 @@ describe("comment and watcher notifications (#216)", () => {
       { ...base, kind: "assignee_changed", fromUserId: null, toUserId: "bob" },
       SITE,
     );
-    expect(planned[0]).toMatchObject({ kind: "assignee_changed", url: "/bugs/b1", title: "Alice assigned you to “Login button does nothing”" });
+    expect(planned[0]).toMatchObject({ kind: "assignee_changed", url: "/issues/b1", title: "Alice assigned you to “Login button does nothing”" });
   });
 });
 

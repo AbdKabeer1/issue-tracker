@@ -1,5 +1,4 @@
 import { auth } from "@/auth";
-import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 import { prisma } from "@/lib/prisma";
 
 export const SESSION_EXPIRED_MESSAGE =
@@ -18,15 +17,14 @@ export function isSessionVersionCurrent(
 }
 
 /**
- * Password reset is the only writer of sessionVersion. Google-only
- * deployments never change it, so the check would only reject a valid
- * Google session.
+ * Validates that the session version matches the user's stored version.
+ * Applies across credentials and Google-only sessions so role changes
+ * and password resets invalidate active JWTs (#347).
  */
 function sessionVersionAllowsSignIn(
   sessionVersion: number | null | undefined,
   userVersion: number,
 ): boolean {
-  if (!isPasswordAuthEnabled()) return true;
   return isSessionVersionCurrent(sessionVersion, userVersion);
 }
 
@@ -60,15 +58,7 @@ export async function resolveSessionUserId(): Promise<
         return { userId: byId.id };
       }
     } catch {
-      try {
-        const byId = await prisma.user.findUnique({
-          where: { id: sessionId },
-          select: { id: true },
-        });
-        if (byId) return { userId: byId.id };
-      } catch {
-        // Fall through
-      }
+      // Fail closed when the version lookup fails or errors (#347)
     }
   }
 
@@ -85,15 +75,7 @@ export async function resolveSessionUserId(): Promise<
         return { userId: byEmail.id };
       }
     } catch {
-      try {
-        const byEmail = await prisma.user.findUnique({
-          where: { email },
-          select: { id: true },
-        });
-        if (byEmail) return { userId: byEmail.id };
-      } catch {
-        // Fall through
-      }
+      // Fail closed when the version lookup fails or errors (#347)
     }
   }
 

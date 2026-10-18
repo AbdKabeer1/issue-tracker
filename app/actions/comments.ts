@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { attachmentIdsInMarkdown, linkAttachments } from "@/lib/attachment-link";
 import { requireUser } from "@/lib/auth-helpers";
-import { commentSchema } from "@/lib/validations/bug";
+import { commentSchema } from "@/lib/validations/issue";
 import {
   extractMentionedUserIds,
   newlyMentionedUserIds,
@@ -22,6 +22,11 @@ import {
   commentPreview,
 } from "@/lib/activity-log";
 import { notifyLater } from "@/lib/notify";
+import {
+  checkRateLimit,
+  ACTION_RATE_LIMITS,
+  RATE_LIMIT_MESSAGE,
+} from "@/lib/rate-limit";
 
 export type CommentActionResult = { error?: string; ok?: boolean };
 
@@ -47,6 +52,15 @@ export async function updateCommentAction(
   formData: FormData,
 ): Promise<CommentActionResult> {
   const user = await requireUser();
+
+  const limit = checkRateLimit(
+    `edit-comment:${user.id}`,
+    ACTION_RATE_LIMITS.editComment,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
+
   const comment = await loadComment(commentId);
   if (!comment) return { error: COMMENT_ERRORS.notFound };
   if (comment.bug.isDeleted) return { error: COMMENT_ERRORS.issueDeleted };
@@ -114,6 +128,7 @@ export async function updateCommentAction(
     });
   }
 
+  revalidatePath(`/issues/${comment.bugId}`);
   revalidatePath(`/bugs/${comment.bugId}`);
   return { ok: true };
 }
@@ -177,6 +192,7 @@ export async function deleteCommentAction(
     return { error: COMMENT_ERRORS.failed };
   }
 
+  revalidatePath(`/issues/${comment.bugId}`);
   revalidatePath(`/bugs/${comment.bugId}`);
   return { ok: true };
 }

@@ -21,7 +21,7 @@ function MilestoneCard({ m }: { m: MilestoneSummary }) {
         <MilestoneProgressBar progress={m.progress} label={m.title} />
       </div>
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-        <Link href={`/bugs?milestone=${m.id}`} className="font-medium text-teal-700 hover:underline">
+        <Link href={`/issues?milestone=${m.id}`} className="font-medium text-teal-700 hover:underline">
           All {m.progress.total} issue{m.progress.total === 1 ? "" : "s"}
         </Link>
         {/* No link: "left" spans open and in progress, which no single

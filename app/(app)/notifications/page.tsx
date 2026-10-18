@@ -41,7 +41,7 @@ export default async function NotificationsPage() {
             New comments, mentions, assignments and status changes on issues
             you&apos;re watching will show up here.
           </p>
-          <Link href="/bugs" className="mt-3 inline-flex text-sm font-medium text-teal-700 hover:underline">
+          <Link href="/issues" className="mt-3 inline-flex text-sm font-medium text-teal-700 hover:underline">
             Go to issues
           </Link>
         </div>

@@ -55,7 +55,7 @@ describe("list filter", () => {
 describe("parseIssueRef", () => {
   it("reads numbers, ids and issue URLs", () => {
     expect(parseIssueRef("#42")).toEqual({ number: 42 });
-    expect(parseIssueRef(" 7 ")).toEqual({ number: 7 });
+    expect(parseIssueRef("https://issues.zedu.chat/issues/clx123abcdef456?comment=c1")).toEqual({ id: "clx123abcdef456" });
     expect(parseIssueRef("https://issues.zedu.chat/bugs/clx123abcdef456?comment=c1")).toEqual({ id: "clx123abcdef456" });
     expect(parseIssueRef("cmgxyz0123456789abcdefghi")).toEqual({ id: "cmgxyz0123456789abcdefghi" });
   });

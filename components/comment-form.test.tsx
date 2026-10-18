@@ -1,12 +1,13 @@
+// @vitest-environment jsdom
 "use client";
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
-import { addCommentAction } from "@/app/actions/bugs";
+import { addCommentAction } from "@/app/actions/issues";
 import { CommentForm } from "./comment-form";
 
-vi.mock("@/app/actions/bugs", () => ({
+vi.mock("@/app/actions/issues", () => ({
   addCommentAction: vi.fn(),
 }));
 

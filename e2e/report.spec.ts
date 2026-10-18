@@ -6,17 +6,17 @@ test("reports an issue and finds it in the list", async ({ page, uniq, me }) => 
   await expect(page.getByText(me).filter({ visible: true }).first()).toBeVisible();
   await expectNoHorizontalScroll(page);
 
-  await page.goto(`/bugs?q=${encodeURIComponent(title)}`);
+  await page.goto(`/issues?q=${encodeURIComponent(title)}`);
   const row = page.getByRole("link", { name: new RegExp(title) });
   await expect(row).toBeVisible();
   await expectNoHorizontalScroll(page);
 });
 
 test("says what's missing instead of submitting a bad report", async ({ page }) => {
-  await page.goto("/bugs/new");
+  await page.goto("/issues/new");
   await page.getByLabel("Title").fill("ab");
   await page.locator("#description").fill("short");
   await page.getByRole("button", { name: "Create issue" }).click();
-  await expect(page).toHaveURL(/\/bugs\/new/);
+  await expect(page).toHaveURL(/\/issues\/new/);
   await expectNoHorizontalScroll(page);
 });

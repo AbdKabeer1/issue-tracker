@@ -6,7 +6,7 @@ import {
   displayNameSchemaFor,
   normalizeDisplayName,
 } from "./display-name";
-import { signupSchema } from "./validations/bug";
+import { signupSchema } from "./validations/issue";
 
 describe("normalizeDisplayName", () => {
   it("trims and collapses whitespace", () => {

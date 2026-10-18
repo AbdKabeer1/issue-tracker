@@ -7,7 +7,7 @@ import { NotificationSettings } from "@/components/notification-settings";
 import { DisplayNameForm } from "@/components/display-name-form";
 import { KeyboardShortcutSettings } from "@/components/keyboard-shortcut-settings";
 
-/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
@@ -29,7 +29,7 @@ export default async function SettingsPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="space-y-1">
-        <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
+        <Link href="/issues" className="text-sm text-teal-700 hover:underline">
           ← Back to issues
         </Link>
         <h1 className="text-2xl font-semibold text-slate-900">Settings</h1>

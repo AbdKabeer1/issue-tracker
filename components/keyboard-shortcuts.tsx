@@ -83,7 +83,7 @@ export function KeyboardShortcuts({ enabled }: { enabled: boolean }) {
           event.preventDefault(); // or the "/" lands in the box
           if (!focusSearch()) {
             searchAfterNavigation.current = true;
-            router.push("/bugs");
+            router.push("/issues");
           }
           break;
         case "next-row":
@@ -100,11 +100,11 @@ export function KeyboardShortcuts({ enabled }: { enabled: boolean }) {
         }
         case "new-issue":
           event.preventDefault();
-          router.push("/bugs/new");
+          router.push("/issues/new");
           break;
         case "go-issues":
           event.preventDefault();
-          router.push("/bugs");
+          router.push("/issues");
           break;
         case "go-notifications":
           event.preventDefault();

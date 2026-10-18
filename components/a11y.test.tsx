@@ -1,14 +1,15 @@
+// @vitest-environment jsdom
 "use client";
 
 import axe from "axe-core";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { CommentForm } from "./comment-form";
-import { CreateBugForm } from "./create-bug-form";
+import { CreateBugForm } from "./create-issue-form";
 import { UserSearch } from "./user-search";
 import { VoteButton } from "./vote-button";
 
-vi.mock("@/app/actions/bugs", () => ({
+vi.mock("@/app/actions/issues", () => ({
   addCommentAction: vi.fn(),
   createBugAction: vi.fn(),
   toggleVoteAction: vi.fn(),

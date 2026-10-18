@@ -87,7 +87,7 @@ export function planNotifications(event: NotificationEvent, siteUrl: string): Pl
   // it's older than the default window (#280).
   const path = commentId
     ? commentPermalinkPath(event.bugId, commentId)
-    : `/bugs/${event.bugId}`;
+    : `/issues/${event.bugId}`;
   const issueUrl = `${base}${path}`;
   const settingsUrl = `${base}/settings`;
   const title = quote(event.bugTitle);
@@ -98,7 +98,7 @@ export function planNotifications(event: NotificationEvent, siteUrl: string): Pl
     planned.push({
       userId,
       kind: event.kind,
-      subject: `[Zedu Issues] ${subject}`,
+      subject: `[Ziki Issues] ${subject}`,
       title: subject,
       url: path,
       text: body(lines, issueUrl, settingsUrl),

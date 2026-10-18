@@ -1,11 +1,12 @@
+// @vitest-environment jsdom
 "use client";
 
 import { cleanup, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
-import { toggleVoteAction } from "@/app/actions/bugs";
+import { toggleVoteAction } from "@/app/actions/issues";
 import { VoteButton } from "./vote-button";
 
-vi.mock("@/app/actions/bugs", () => ({
+vi.mock("@/app/actions/issues", () => ({
   toggleVoteAction: vi.fn(),
 }));
 

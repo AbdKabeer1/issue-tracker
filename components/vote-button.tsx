@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { toggleVoteAction } from "@/app/actions/bugs";
+import { toggleVoteAction } from "@/app/actions/issues";
 import { calculateVoteChange } from "@/lib/voting";
 import { updateVoteCounts, type VoterInfo } from "@/lib/voters";
 import { VoterAvatars } from "@/components/voter-avatars";

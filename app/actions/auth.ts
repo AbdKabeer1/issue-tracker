@@ -41,7 +41,7 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
   signupSchema,
-} from "@/lib/validations/bug";
+} from "@/lib/validations/issue";
 
 const RESET_LINK_INVALID =
   "This reset link is invalid or has expired. Request a new one.";
@@ -228,7 +228,7 @@ export async function switchActiveRoleAction(
 export async function googleSignInAction(
   callbackUrlOrFormData?: string | FormData,
 ) {
-  let target = "/bugs";
+  let target = "/issues";
   if (typeof callbackUrlOrFormData === "string") {
     target = callbackUrlOrFormData;
   } else if (
@@ -294,9 +294,9 @@ export async function forgotPasswordAction(
       const resetUrl = buildPasswordResetUrl(rawToken);
       await sendMail({
         to: email,
-        subject: "Reset your Zedu Issues password",
+        subject: "Reset your Ziki Issues password",
         text: [
-          "You requested a password reset for your Zedu Issues account.",
+          "You requested a password reset for your Ziki Issues account.",
           "",
           `Open this link within 30 minutes to set a new password:`,
           resetUrl,

@@ -9,9 +9,9 @@ import {
   useTransition,
 } from "react";
 import { useRouter } from "next/navigation";
-import { bulkUpdateBugsAction } from "@/app/actions/bugs-bulk";
+import { bulkUpdateBugsAction } from "@/app/actions/issues-bulk";
 import { MAX_BULK_IDS } from "@/lib/bulk-actions";
-import { severities, statuses } from "@/lib/validations/bug";
+import { severities, statuses } from "@/lib/validations/issue";
 import { severityLabel, statusLabel } from "@/lib/labels";
 
 type Selection = {

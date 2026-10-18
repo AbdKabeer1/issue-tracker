@@ -3,6 +3,68 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { VoterInfo } from "@/lib/voters";
 import { VoterAvatars } from "./voter-avatars";
+import nextConfig from "../next.config";
+
+describe("VoterAvatars Next.js Image integration (#364)", () => {
+  it("defines remotePatterns for Google and GitHub avatars in next.config.ts", () => {
+    const remotePatterns = nextConfig.images?.remotePatterns ?? [];
+    const hostnames = remotePatterns.map((p) => (typeof p === "object" ? p.hostname : ""));
+    expect(hostnames).toContain("lh3.googleusercontent.com");
+    expect(hostnames).toContain("avatars.githubusercontent.com");
+  });
+
+  it("renders null when totalCount is 0 or voters array is empty", () => {
+    const html1 = renderToStaticMarkup(
+      createElement(VoterAvatars, { voters: [], totalCount: 0 }),
+    );
+    expect(html1).toBe("");
+
+    const html2 = renderToStaticMarkup(
+      createElement(VoterAvatars, {
+        voters: [],
+        totalCount: 5,
+      }),
+    );
+    expect(html2).toBe("");
+  });
+
+  it("renders avatar with proper src and voter title for voters with avatars", () => {
+    const html = renderToStaticMarkup(
+      createElement(VoterAvatars, {
+        voters: [
+          {
+            id: "user-1",
+            name: "Ada Lovelace",
+            image: "https://avatars.githubusercontent.com/u/123",
+          },
+        ],
+        totalCount: 1,
+        size: "sm",
+      }),
+    );
+
+    expect(html).toContain('title="Ada Lovelace"');
+    expect(html).toContain('src="https://avatars.githubusercontent.com/u/123"');
+  });
+
+  it("renders initials fallback when image is missing", () => {
+    const html = renderToStaticMarkup(
+      createElement(VoterAvatars, {
+        voters: [
+          {
+            id: "user-3",
+            name: "Grace Hopper",
+            image: null,
+          },
+        ],
+        totalCount: 1,
+      }),
+    );
+
+    expect(html).toContain('title="Grace Hopper"');
+    expect(html).toContain("GH");
+  });
+});
 
 /**
  * The "+N" badge after the voter faces names the voters it stands for

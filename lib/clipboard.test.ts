@@ -35,18 +35,18 @@ function fakeDocument(execResult: boolean | "throws") {
 describe("copyText", () => {
   it("uses the async clipboard when it exists", async () => {
     const writeText = vi.fn(async () => {});
-    const ok = await copyText("https://x/bugs/1", {
+    const ok = await copyText("https://x/issues/1", {
       navigator: { clipboard: { writeText } } as unknown as Navigator,
     });
     expect(ok).toBe(true);
-    expect(writeText).toHaveBeenCalledWith("https://x/bugs/1");
+    expect(writeText).toHaveBeenCalledWith("https://x/issues/1");
   });
 
   it("falls back to a selected textarea when the clipboard API is missing", async () => {
     const { doc, appended, focus } = fakeDocument(true);
-    const ok = await copyText("https://x/bugs/1", { navigator: {} as Navigator, document: doc });
+    const ok = await copyText("https://x/issues/1", { navigator: {} as Navigator, document: doc });
     expect(ok).toBe(true);
-    expect(appended[0].value).toBe("https://x/bugs/1");
+    expect(appended[0].value).toBe("https://x/issues/1");
     expect(appended[0].removed).toBe(true);
     // Focus goes back where it was, rather than to <body>.
     expect(focus).toHaveBeenCalled();

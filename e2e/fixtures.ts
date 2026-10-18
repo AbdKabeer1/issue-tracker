@@ -28,7 +28,7 @@ export { expect };
 
 /** Reports an issue through the form and returns its page URL. */
 export async function reportIssue(page: Page, title: string, description = "Steps: open the page, click Save. Expected it to save; it shows a blank page.") {
-  await page.goto("/bugs/new");
+  await page.goto("/issues/new");
   await page.getByLabel("Title").fill(title);
   // The description is the Markdown editor's textarea.
   await page.locator("#description").fill(description);

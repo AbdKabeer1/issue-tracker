@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 
 export function LoginForm({
-  callbackUrl = "/bugs",
+  callbackUrl = "/issues",
   googleEnabled = false,
 }: {
   callbackUrl?: string;

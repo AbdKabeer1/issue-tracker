@@ -42,7 +42,7 @@ function SubmitButton() {
 }
 
 export function GoogleSignInButton({
-  callbackUrl = "/bugs",
+  callbackUrl = "/issues",
 }: {
   callbackUrl?: string;
 }) {

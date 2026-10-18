@@ -7,7 +7,7 @@ import {
   mineFilterWhere,
   parseMineFilter,
 } from "./mine-filter";
-import { getBugOrderBy, parseBugSort } from "./bugs-sort";
+import { getBugOrderBy, parseBugSort } from "./issues-sort";
 import { resolveWatchers } from "./watch";
 
 /**

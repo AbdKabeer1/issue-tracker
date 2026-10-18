@@ -2,7 +2,7 @@ import { requireAdmin } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { AdminIssueTypesManager } from "@/components/admin-issue-types-manager";
 
-/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Issue types" };
 
 export default async function AdminTypesPage() {

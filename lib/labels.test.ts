@@ -8,7 +8,7 @@ import {
   statusLabel,
   statusLabels,
 } from "./labels";
-import { severities, statuses } from "./validations/bug";
+import { severities, statuses } from "./validations/issue";
 
 /**
  * These maps are indexed directly by enum value all over the app, so a

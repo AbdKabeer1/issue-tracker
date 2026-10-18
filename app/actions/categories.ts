@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { expireTag, TAGS } from "@/lib/lookups";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-helpers";
-import { categorySchema } from "@/lib/validations/bug";
+import { categorySchema } from "@/lib/validations/issue";
+import { categoryChangedSummary } from "@/lib/activity-log";
 
 export type CategoryActionResult = {
   error?: string;
@@ -37,7 +38,7 @@ export async function createCategoryAction(
   });
 
   if (existing) {
-    return { error: `A category named "${existing.name}" already exists.` };
+    return { error: `A platform named "${existing.name}" already exists.` };
   }
 
   try {
@@ -54,13 +55,15 @@ export async function createCategoryAction(
       "code" in err &&
       err.code === "P2002"
     ) {
-      return { error: `A category named "${normalizedName}" already exists.` };
+      return { error: `A platform named "${normalizedName}" already exists.` };
     }
     throw err;
   }
 
   expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
+  revalidatePath("/issues/new");
+  revalidatePath("/issues");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
   return { ok: true };
@@ -70,7 +73,7 @@ export async function updateCategoryAction(
   categoryId: string,
   formData: FormData,
 ): Promise<CategoryActionResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
 
   const parsed = categorySchema.safeParse({
     name: formData.get("name"),
@@ -101,13 +104,48 @@ export async function updateCategoryAction(
   });
 
   if (duplicate) {
-    return { error: `A category named "${duplicate.name}" already exists.` };
+    return { error: `A platform named "${duplicate.name}" already exists.` };
   }
 
+  let linkedBugIds: string[] = [];
+
   try {
-    await prisma.category.update({
-      where: { id: categoryId },
-      data: { name: normalizedName },
+    await prisma.$transaction(async (tx) => {
+      const current = await tx.category.findUnique({
+        where: { id: categoryId },
+      });
+      if (!current) {
+        return;
+      }
+
+      await tx.category.update({
+        where: { id: categoryId },
+        data: { name: normalizedName },
+      });
+
+      if (current.name !== normalizedName) {
+        const linkedBugs = await tx.bug.findMany({
+          where: { categoryId },
+          select: { id: true },
+        });
+
+        if (linkedBugs.length > 0) {
+          linkedBugIds = linkedBugs.map((b) => b.id);
+          await tx.bugActivity.createMany({
+            data: linkedBugs.map((b) => ({
+              bugId: b.id,
+              actorId: admin.id,
+              type: "category_changed",
+              summary: categoryChangedSummary(current.name, normalizedName),
+              metadata: {
+                field: "category",
+                from: current.name,
+                to: normalizedName,
+              },
+            })),
+          });
+        }
+      }
     });
   } catch (err: unknown) {
     if (
@@ -116,15 +154,21 @@ export async function updateCategoryAction(
       "code" in err &&
       err.code === "P2002"
     ) {
-      return { error: `A category named "${normalizedName}" already exists.` };
+      return { error: `A platform named "${normalizedName}" already exists.` };
     }
     throw err;
   }
 
   expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
+  revalidatePath("/issues/new");
+  revalidatePath("/issues");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
+  for (const bugId of linkedBugIds) {
+    revalidatePath(`/issues/${bugId}`);
+    revalidatePath(`/bugs/${bugId}`);
+  }
   return { ok: true };
 }
 
@@ -148,6 +192,8 @@ export async function toggleCategoryStatusAction(
 
   expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
+  revalidatePath("/issues/new");
+  revalidatePath("/issues");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
   return { ok: true };
@@ -186,6 +232,8 @@ export async function deleteCategoryAction(
 
   expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
+  revalidatePath("/issues/new");
+  revalidatePath("/issues");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
   return { ok: true };

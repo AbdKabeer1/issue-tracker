@@ -1,12 +1,13 @@
+// @vitest-environment jsdom
 "use client";
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
-import { createBugAction } from "@/app/actions/bugs";
-import { CreateBugForm } from "./create-bug-form";
+import { createBugAction } from "@/app/actions/issues";
+import { CreateBugForm } from "./create-issue-form";
 
-vi.mock("@/app/actions/bugs", () => ({
+vi.mock("@/app/actions/issues", () => ({
   createBugAction: vi.fn(),
 }));
 

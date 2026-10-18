@@ -3,13 +3,11 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    // jsdom provides a DOM so React components (.tsx) can be rendered
-    // and tested with @testing-library. Pure unit tests (.ts) also run here
-    // happily — a DOM is available but not required.
-    environment: "jsdom",
+    // Node by default: most specs are pure logic or route handlers that need
+    // Node's Request/FormData globals. Component specs opt into a DOM per file
+    // with a `@vitest-environment jsdom` (or happy-dom) docblock.
+    environment: "node",
     include: ["**/*.{test,spec}.{ts,tsx}"],
-    // `e2e` holds Playwright specs. They are a different runner, and the
-    // glob above would otherwise collect them (#299).
     exclude: ["node_modules", ".next", "prisma", "e2e"],
     coverage: {
       provider: "v8",

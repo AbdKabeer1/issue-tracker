@@ -73,7 +73,7 @@ export default async function ProfilePage({ params }: ProfileProps) {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
+        <Link href="/issues" className="text-sm text-teal-700 hover:underline">
           ← Back to issues
         </Link>
         <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold text-slate-900">
@@ -156,7 +156,7 @@ function IssueList({
           {issues.map((issue) => (
             <li key={issue.id}>
               <Link
-                href={`/bugs/${issue.id}`}
+                href={`/issues/${issue.id}`}
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm transition hover:bg-slate-50"
               >
                 <span className="min-w-0 flex-1 break-words font-medium text-slate-900">

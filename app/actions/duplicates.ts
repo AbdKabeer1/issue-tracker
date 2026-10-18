@@ -15,8 +15,14 @@ export type DuplicateCandidate = { id: string; number: number; title: string; st
 class LinkRefused extends Error {}
 
 function revalidate(...bugIds: (string | null | undefined)[]) {
+  revalidatePath("/issues");
   revalidatePath("/bugs");
-  for (const id of new Set(bugIds)) if (id) revalidatePath(`/bugs/${id}`);
+  for (const id of new Set(bugIds)) {
+    if (id) {
+      revalidatePath(`/issues/${id}`);
+      revalidatePath(`/bugs/${id}`);
+    }
+  }
 }
 
 /**

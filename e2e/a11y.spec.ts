@@ -24,12 +24,12 @@ test.describe("accessibility", () => {
     test.use({ as: "user" });
 
     test("the issue list", async ({ page }) => {
-      await page.goto("/bugs");
+      await page.goto("/issues");
       await expectNoA11yViolations(page);
     });
 
     test("the report form", async ({ page }) => {
-      await page.goto("/bugs/new");
+      await page.goto("/issues/new");
       await expectNoA11yViolations(page);
     });
 

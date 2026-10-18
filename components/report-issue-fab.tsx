@@ -44,7 +44,7 @@ export function ReportIssueFab({ href }: { href?: string }) {
   const typing = useTypingSomewhere();
 
   if (!href) return null;
-  if (pathname?.endsWith("/bugs/new")) return null;
+  if (pathname?.endsWith("/issues/new") || pathname?.endsWith("/bugs/new")) return null;
   if (typing) return null;
 
   return (

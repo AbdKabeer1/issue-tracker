@@ -51,5 +51,5 @@ export function inUseHrefs(
 ): { live: string; deleted: string } {
   const param = kind === "platform" ? "platform" : "tags";
   const q = `${param}=${encodeURIComponent(value)}`;
-  return { live: `/bugs?${q}`, deleted: `/bugs?deleted=true&${q}` };
+  return { live: `/issues?${q}`, deleted: `/issues?deleted=true&${q}` };
 }

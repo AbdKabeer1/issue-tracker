@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { DEFAULT_BUG_SORT, type BugSortOption } from "@/lib/bugs-sort";
+import { DEFAULT_BUG_SORT, type BugSortOption } from "@/lib/issues-sort";
 import { watchingWhere } from "@/lib/watching";
 
 /** "Show" filter on the issues list (#152), kept in the URL as `?mine=`. */
