@@ -1,9 +1,16 @@
 import type { Prisma } from "@prisma/client";
 import { severities, statuses } from "@/lib/validations/bug";
 import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
-import { mineFilterWhere, parseMineFilter } from "@/lib/mine-filter";
+import { MILESTONE_PARAM, milestoneWhere, parseMilestoneFilter } from "@/lib/milestones";
+import {
+  defaultSortFor,
+  mineFilterWhere,
+  parseMineFilter,
+  type MineFilter,
+} from "@/lib/mine-filter";
 import { parseTagFilter, tagTypeIds } from "@/lib/tag-filter";
 import { parseBugSort, type BugSortOption } from "@/lib/bugs-sort";
+import { DUPLICATES_PARAM, duplicatesWhere, parseShowDuplicates } from "@/lib/duplicates";
 
 export type RawParams = Record<string, string | string[] | undefined>;
 
@@ -23,6 +30,8 @@ export const PLATFORM_NONE = "none";
 export type ParsedBugFilters = {
   where: Prisma.BugWhereInput;
   sort: BugSortOption;
+  /** The "Show" filter, which also decides the default order (#312). */
+  mine: MineFilter | null;
   /** True when the caller asked for deleted issues and is allowed to see them. */
   isDeletedView: boolean;
 };
@@ -33,6 +42,7 @@ export function parseBugListFilters({
   canSeeDeleted,
   tagTypes = [],
   platforms = [],
+  milestones = [],
 }: {
   params: RawParams;
   userId: string | undefined;
@@ -41,6 +51,8 @@ export function parseBugListFilters({
   tagTypes?: readonly TagType[];
   /** Known platforms, so an id that no longer exists falls back to no filter. */
   platforms?: readonly PlatformLike[];
+  /** Known milestones (#289); an unknown id means no filter, like platforms. */
+  milestones?: readonly { id: string }[];
 }): ParsedBugFilters {
   const q = toSingleQueryParam(params.q);
   const status = toSingleQueryParam(params.status);
@@ -53,6 +65,8 @@ export function parseBugListFilters({
   const where: Prisma.BugWhereInput = {
     isDeleted: isDeletedView,
     ...mineFilterWhere(mine, userId),
+    // #285: same rule as the list, so the export matches what's on screen.
+    ...duplicatesWhere(parseShowDuplicates(params[DUPLICATES_PARAM])),
   };
 
   const selectedTags = parseTagFilter(params.tags, tagTypes);
@@ -77,6 +91,8 @@ export function parseBugListFilters({
     where.categoryId = platform;
   }
 
+  Object.assign(where, milestoneWhere(parseMilestoneFilter(params[MILESTONE_PARAM], milestones)));
+
   if (q?.trim()) {
     const escaped = escapeSearchQuery(q.trim());
     where.OR = [
@@ -85,5 +101,5 @@ export function parseBugListFilters({
     ];
   }
 
-  return { where, sort: parseBugSort(toSingleQueryParam(params.sort)), isDeletedView };
+  return { where, sort: parseBugSort(toSingleQueryParam(params.sort), defaultSortFor(mine)), mine, isDeletedView };
 }

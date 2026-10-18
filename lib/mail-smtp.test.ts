@@ -1,12 +1,26 @@
-import { EventEmitter } from "events";
+import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
-import { SmtpSession, buildSmtpData, getEhloName } from "./mail";
+import { SmtpSession, buildSmtpData, getEhloName, upgradeToTls } from "./mail";
 
 /** The hand-rolled SMTP pieces in lib/mail.ts (#218). */
 
 class FakeSocket extends EventEmitter {
   written: string[] = [];
   ended = false;
+  destroyed = false;
+  pause() {
+    return this;
+  }
+  resume() {
+    return this;
+  }
+  destroy(err?: Error) {
+    this.destroyed = true;
+    if (err) this.emit("error", err);
+    return this;
+  }
+  cork() {}
+  uncork() {}
   write(data: string) {
     this.written.push(data);
     return true;
@@ -158,5 +172,14 @@ describe("buildSmtpData", () => {
 
   it("encodes a non-ASCII subject", () => {
     expect(buildSmtpData({ ...base, subject: "Ça marche" })).toMatch(/Subject: =\?UTF-8\?B\?/);
+  });
+});
+
+describe("upgradeToTls timeout handling (#353)", () => {
+  it("rejects with timeout when TLS handshake does not complete within timeoutMs", async () => {
+    const socket = new FakeSocket();
+    await expect(upgradeToTls(socket as never, "smtp.example.com", 25)).rejects.toThrow(
+      /SMTP TLS handshake timeout after 25ms/,
+    );
   });
 });

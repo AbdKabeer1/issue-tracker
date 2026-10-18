@@ -80,7 +80,7 @@ async function sendSmtpMail({ to, subject, text }: SendMailInput) {
   // which many mail servers treat as a spam signal (#353).
   const ehloName = getEhloName();
   const connectTimeoutMs = Number(process.env.SMTP_CONNECT_TIMEOUT_MS ?? "10000");
-  const commandTimeoutMs = Number(process.env.SMTP_COMMAND_TIMEOUT_MS ?? "15000");
+  const commandTimeoutMs = Number(process.env.SMTP_COMMAND_TIMEOUT_MS ?? "10000");
 
   const socket: Socket | TLSSocket = secure
     ? await connectTls(host, port, connectTimeoutMs)
@@ -177,12 +177,17 @@ export function buildSmtpData({ from, to, subject, text }: SendMailInput & { fro
   ].join("\r\n");
 }
 
+/** Extracts the email address from a recipient string. */
 function extractEmail(value: string) {
   const match = value.match(/<([^>]+)>/);
   return match?.[1] ?? value.trim();
 }
 
-function connectPlain(host: string, port: number, timeoutMs: number) {
+/**
+ * Establishes a plain TCP socket connection with a timeout.
+ * Rejects if the connection does not complete within timeoutMs.
+ */
+export function connectPlain(host: string, port: number, timeoutMs: number) {
   return new Promise<Socket>((resolve, reject) => {
     let timer: NodeJS.Timeout | undefined;
     const socket = createConnection({ host, port }, () => {
@@ -202,7 +207,11 @@ function connectPlain(host: string, port: number, timeoutMs: number) {
   });
 }
 
-function connectTls(host: string, port: number, timeoutMs: number) {
+/**
+ * Establishes a direct TLS socket connection with a timeout.
+ * Rejects if the connection or TLS handshake does not complete within timeoutMs.
+ */
+export function connectTls(host: string, port: number, timeoutMs: number) {
   return new Promise<TLSSocket>((resolve, reject) => {
     let timer: NodeJS.Timeout | undefined;
     const socket = tlsConnect({ host, port, servername: host }, () => {
@@ -222,6 +231,10 @@ function connectTls(host: string, port: number, timeoutMs: number) {
   });
 }
 
+/**
+ * Upgrades an established plain TCP socket to a TLS socket.
+ * Rejects if the TLS handshake does not complete within timeoutMs.
+ */
 export function upgradeToTls(socket: Socket, host: string, timeoutMs: number) {
   return new Promise<TLSSocket>((resolve, reject) => {
     let timer: NodeJS.Timeout | undefined;
@@ -273,6 +286,9 @@ export class SmtpSession {
     });
   }
 
+  /**
+   * Replaces the underlying socket after a TLS upgrade, migrating all active listeners.
+   */
   replaceSocket(socket: Socket | TLSSocket) {
     this.socket.removeAllListeners("data");
     this.socket.removeAllListeners("error");
@@ -290,11 +306,17 @@ export class SmtpSession {
     });
   }
 
+  /**
+   * Writes a line to the SMTP socket and awaits the expected status code.
+   */
   command(line: string, expectCode: number) {
     this.socket.write(`${line}\r\n`);
     return this.expect(expectCode);
   }
 
+  /**
+   * Registers a waiter for an expected SMTP status code, bound to commandTimeoutMs.
+   */
   expect(code: number) {
     return new Promise<void>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -313,6 +335,9 @@ export class SmtpSession {
     });
   }
 
+  /**
+   * Closes the SMTP session and rejects all pending waiters with the provided error.
+   */
   close(error?: Error) {
     const err = error ?? new Error("SMTP session closed");
     // Cancel any outstanding timers and reject pending waiters

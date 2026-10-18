@@ -9,12 +9,13 @@ import { RoleSwitcher } from "@/components/role-switcher";
 import { clearUserDrafts } from "@/lib/form-drafts";
 import {
   headerNavItems,
-  initialsOf,
   isNavItemActive,
   realRoleOf,
   roleViewLabels,
 } from "@/lib/header-nav";
 import { isAdmin, type AppRole } from "@/lib/roles";
+import { FOCUSABLE, wrapFocusIndex } from "@/lib/focus-trap";
+import { Avatar } from "@/components/avatar";
 
 /** Closes a popover on outside click or Escape, returning focus to its trigger. */
 function useDismiss(
@@ -41,6 +42,62 @@ function useDismiss(
       document.removeEventListener("keydown", onKey);
     };
   }, [open, close, containerRef, triggerRef]);
+}
+
+/**
+ * While the mobile menu is open it behaves like a modal (#308): Tab cycles
+ * between the toggle and the panel's controls, everything outside the header
+ * is inert — unreachable by keyboard and hidden from screen readers — and
+ * the page behind stops scrolling. Escape and outside clicks are handled by
+ * useDismiss, which returns focus to the toggle.
+ */
+function useMenuFocusTrap(
+  open: boolean,
+  headerRef: React.RefObject<HTMLElement | null>,
+  panelRef: React.RefObject<HTMLElement | null>,
+  triggerRef: React.RefObject<HTMLElement | null>,
+) {
+  useEffect(() => {
+    const header = headerRef.current;
+    const panel = panelRef.current;
+    if (!open || !header || !panel) return;
+
+    // Everything beside the header — main content, the skip link, the
+    // floating report button — goes inert for as long as the menu is open.
+    const siblings = Array.from(header.parentElement?.children ?? []).filter(
+      (el): el is HTMLElement => el !== header && el instanceof HTMLElement,
+    );
+    const wasInert = siblings.map((el) => el.inert);
+    siblings.forEach((el) => (el.inert = true));
+
+    const scroll = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+
+    const stops = () => [
+      ...(triggerRef.current ? [triggerRef.current] : []),
+      ...Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)),
+    ];
+
+    // Start on the first link, so the first Tab is already inside the menu.
+    panel.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const list = stops();
+      const index = list.indexOf(document.activeElement as HTMLElement);
+      const next = wrapFocusIndex(index, list.length, event.shiftKey);
+      if (next === null) return;
+      event.preventDefault();
+      list[next].focus();
+    };
+    document.addEventListener("keydown", onKey);
+
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      siblings.forEach((el, i) => (el.inert = wasInert[i]));
+      document.documentElement.style.overflow = scroll;
+    };
+  }, [open, headerRef, panelRef, triggerRef]);
 }
 
 function PlusIcon({ className = "h-4 w-4" }: { className?: string }) {
@@ -84,24 +141,12 @@ function NotificationsBell({ unreadCount, active }: { unreadCount: number; activ
   );
 }
 
-function Avatar({ name, size = "md" }: { name?: string | null; size?: "md" | "lg" }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-teal-700 font-semibold text-white ${
-        size === "lg" ? "h-10 w-10 text-sm" : "h-8 w-8 text-xs"
-      }`}
-    >
-      {initialsOf(name)}
-    </span>
-  );
-}
-
 const linkFocus =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2";
 
 export function AppHeader({
   userName,
+  userImage,
   role,
   isRealSuperAdmin,
   isRealAdmin,
@@ -109,6 +154,8 @@ export function AppHeader({
   userId,
 }: {
   userName?: string | null;
+  /** Their picture, if their sign-in provider gave one (#290). */
+  userImage?: string | null;
   role?: AppRole | null;
   isRealSuperAdmin?: boolean;
   isRealAdmin?: boolean;
@@ -124,11 +171,13 @@ export function AppHeader({
   const accountButtonRef = useRef<HTMLButtonElement>(null);
   const headerRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuPanelRef = useRef<HTMLDivElement>(null);
 
   const closeAccount = () => setAccountOpen(false);
   const closeMenu = () => setMenuOpen(false);
   useDismiss(accountOpen, closeAccount, accountRef, accountButtonRef);
   useDismiss(menuOpen, closeMenu, headerRef, menuButtonRef);
+  useMenuFocusTrap(menuOpen, headerRef, menuPanelRef, menuButtonRef);
 
   // Close menus when the page changes (state adjusted during render, not in an effect).
   const [lastPath, setLastPath] = useState(pathname);
@@ -215,7 +264,7 @@ export function AppHeader({
               className={`relative flex items-center gap-1 rounded-full p-0.5 pr-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 ${linkFocus}`}
             >
               <span className="sr-only">Account menu for {userName}</span>
-              <Avatar name={userName} />
+              <Avatar name={userName} image={userImage} size="md" />
               {viewingAsOther ? (
                 <span
                   className="absolute left-6 top-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-amber-500 lg:hidden"
@@ -236,7 +285,7 @@ export function AppHeader({
                 id="account-menu"
                 className="absolute right-0 top-full mt-2 w-64 origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg ring-1 ring-black/5 motion-safe:animate-[header-pop_120ms_ease-out]"
               >
-                <AccountSummary userName={userName} role={effectiveRole} realRole={realRole} />
+                <AccountSummary userName={userName} userImage={userImage} role={effectiveRole} realRole={realRole} />
                 {canSwitchRole ? (
                   <div className="border-t border-slate-100 px-2 py-2.5">
                     <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
@@ -298,6 +347,7 @@ export function AppHeader({
       {menuOpen ? (
         <div
           id="mobile-menu"
+          ref={menuPanelRef}
           className="max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-4 pt-2 md:hidden"
         >
           <nav aria-label="Main" className="flex flex-col py-1">
@@ -326,7 +376,7 @@ export function AppHeader({
           </nav>
 
           <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50/60">
-            <AccountSummary userName={userName} role={effectiveRole} realRole={realRole} />
+            <AccountSummary userName={userName} userImage={userImage} role={effectiveRole} realRole={realRole} />
             {canSwitchRole ? (
               <div className="border-t border-slate-200 px-3 py-3">
                 <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
@@ -353,16 +403,18 @@ export function AppHeader({
 
 function AccountSummary({
   userName,
+  userImage,
   role,
   realRole,
 }: {
   userName?: string | null;
+  userImage?: string | null;
   role: AppRole;
   realRole: AppRole;
 }) {
   return (
     <div className="flex items-center gap-3 px-2 py-2.5">
-      <Avatar name={userName} size="lg" />
+      <Avatar name={userName} image={userImage} size="lg" />
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-slate-900">{userName}</p>
         <p className="truncate text-xs text-slate-500">
