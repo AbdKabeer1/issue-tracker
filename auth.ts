@@ -137,7 +137,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
 
           token.email = email;
-          token.name = name;
+          token.name = dbUser.name || name;
           token.id = dbUser.id;
           token.sub = dbUser.id;
           token.role = dbUser.role;
