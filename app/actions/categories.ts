@@ -37,7 +37,7 @@ export async function createCategoryAction(
   });
 
   if (existing) {
-    return { error: `A category named "${existing.name}" already exists.` };
+    return { error: `A platform named "${existing.name}" already exists.` };
   }
 
   try {
@@ -54,7 +54,7 @@ export async function createCategoryAction(
       "code" in err &&
       err.code === "P2002"
     ) {
-      return { error: `A category named "${normalizedName}" already exists.` };
+      return { error: `A platform named "${normalizedName}" already exists.` };
     }
     throw err;
   }
@@ -101,7 +101,7 @@ export async function updateCategoryAction(
   });
 
   if (duplicate) {
-    return { error: `A category named "${duplicate.name}" already exists.` };
+    return { error: `A platform named "${duplicate.name}" already exists.` };
   }
 
   try {
@@ -116,7 +116,7 @@ export async function updateCategoryAction(
       "code" in err &&
       err.code === "P2002"
     ) {
-      return { error: `A category named "${normalizedName}" already exists.` };
+      return { error: `A platform named "${normalizedName}" already exists.` };
     }
     throw err;
   }

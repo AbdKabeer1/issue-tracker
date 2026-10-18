@@ -47,7 +47,7 @@ describe("categories actions duplicate checks (#139)", () => {
 
       const result = await createCategoryAction(formData);
 
-      expect(result.error).toBe('A category named "Web" already exists.');
+      expect(result.error).toBe('A platform named "Web" already exists.');
       expect(findFirstMock).toHaveBeenCalledWith({
         where: {
           name: {
@@ -90,7 +90,7 @@ describe("categories actions duplicate checks (#139)", () => {
 
       const result = await updateCategoryAction("cat-1", formData);
 
-      expect(result.error).toBe('A category named "Web" already exists.');
+      expect(result.error).toBe('A platform named "Web" already exists.');
       expect(updateMock).not.toHaveBeenCalled();
     });
   });
