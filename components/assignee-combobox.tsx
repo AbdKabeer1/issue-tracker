@@ -2,11 +2,12 @@
 
 import { useId, useMemo, useRef, useState } from "react";
 import { filterPeopleByName } from "@/lib/assignee-search";
+import { Avatar } from "@/components/avatar";
 import { formatUserLabel, type AppRole } from "@/lib/roles";
 
-type Person = { id: string; name: string; role?: AppRole | null };
+type Person = { id: string; name: string; role?: AppRole | null; image?: string | null };
 
-type Option = { id: string; label: string };
+type Option = { id: string; label: string; person?: Person };
 
 const UNASSIGNED: Option = { id: "", label: "Unassigned" };
 
@@ -53,6 +54,7 @@ export function AssigneeCombobox({
     const matches = filterPeopleByName(people, query).map((p) => ({
       id: p.id,
       label: formatUserLabel(p.name, p.role),
+      person: p,
     }));
     // "Unassigned" stays available unless the person is clearly searching for someone.
     return query.trim() ? matches : [UNASSIGNED, ...matches];
@@ -195,7 +197,12 @@ export function AssigneeCombobox({
                     active ? "bg-teal-50 text-teal-900" : "text-slate-800"
                   } ${option.id ? "" : "text-slate-500"}`}
                 >
-                  <span className="truncate">{option.label}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    {option.person ? (
+                      <Avatar name={option.person.name} image={option.person.image} size="xs" />
+                    ) : null}
+                    <span className="truncate">{option.label}</span>
+                  </span>
                   {selected ? (
                     <svg className="h-4 w-4 shrink-0 text-teal-700" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                       <path

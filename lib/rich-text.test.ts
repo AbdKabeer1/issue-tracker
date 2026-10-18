@@ -116,3 +116,24 @@ describe("inlineImageSrc (#119)", () => {
     expect(inlineImageSrc("mailto:dev@example.com")).toBeNull();
   });
 });
+
+describe("own attachments (#305)", () => {
+  it("loads this tracker's uploaded images inline and links its files", async () => {
+    const { inlineImageSrc, safeHref } = await import("./rich-text");
+    expect(inlineImageSrc("/api/attachments/clabc12345")).toBe("/api/attachments/clabc12345");
+    expect(safeHref("/api/attachments/clabc12345")).toBe("/api/attachments/clabc12345");
+  });
+  it("still refuses other relative or odd paths", async () => {
+    const { inlineImageSrc, safeHref } = await import("./rich-text");
+    expect(safeHref("/admin/users")).toBeNull();
+    expect(safeHref("/api/attachments/../../etc")).toBeNull();
+    expect(inlineImageSrc("//evil.example/x.png")).toBeNull();
+  });
+});
+
+describe("looksLikeMarkdown with only an uploaded image (#305)", () => {
+  it("renders a description whose only Markdown is a pasted image", async () => {
+    const { looksLikeMarkdown } = await import("./rich-text");
+    expect(looksLikeMarkdown("It crashes.\n![shot.png](/api/attachments/clabc12345)")).toBe(true);
+  });
+});

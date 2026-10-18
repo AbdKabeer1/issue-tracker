@@ -1,0 +1,167 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import type { Status } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { requireAdmin } from "@/lib/auth-helpers";
+import { formatIssueNumber } from "@/lib/issue-number";
+import { duplicateLinkProblem, parseIssueRef, type LinkSide } from "@/lib/duplicates";
+import { escapeSearchQuery } from "@/lib/search";
+
+export type DuplicateActionResult = { ok?: true; error?: string };
+
+export type DuplicateCandidate = { id: string; number: number; title: string; status: Status };
+
+class LinkRefused extends Error {}
+
+function revalidate(...bugIds: (string | null | undefined)[]) {
+  revalidatePath("/bugs");
+  for (const id of new Set(bugIds)) if (id) revalidatePath(`/bugs/${id}`);
+}
+
+/**
+ * Admin only (#285): mark `bugId` as a duplicate of the issue `targetRef`
+ * names (#12, 12, an issue link or an id). One level only, and both rows
+ * are locked while checking so two admins can't build a chain between
+ * them at the same moment.
+ */
+export async function markDuplicateAction(
+  bugId: string,
+  targetRef: string,
+): Promise<DuplicateActionResult> {
+  const admin = await requireAdmin();
+  const ref = parseIssueRef(targetRef ?? "");
+  if (!ref) return { error: "Enter an issue number, like #12." };
+
+  const target = await prisma.bug.findUnique({
+    where: "number" in ref ? { number: ref.number } : { id: ref.id },
+    select: { id: true },
+  });
+  if (!target) return { error: "That issue doesn't exist." };
+
+  let previous: string | null = null;
+  try {
+    await prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<LinkSide[]>`
+        SELECT "id", "number", "isDeleted", "duplicateOfId" FROM "Bug"
+        WHERE "id" IN (${bugId}, ${target.id})
+        ORDER BY "id"
+        FOR UPDATE`;
+      const bug = rows.find((r) => r.id === bugId);
+      if (!bug) throw new LinkRefused("This issue no longer exists.");
+      const to = rows.find((r) => r.id === target.id) ?? null;
+
+      const incoming = await tx.bug.count({ where: { duplicateOfId: bugId } });
+      const canonical = to?.duplicateOfId
+        ? await tx.bug.findUnique({ where: { id: to.duplicateOfId }, select: { number: true } })
+        : null;
+      const problem = duplicateLinkProblem(bug, to, incoming, canonical);
+      if (problem) throw new LinkRefused(problem);
+      if (!to || bug.duplicateOfId === to.id) return;
+
+      previous = bug.duplicateOfId;
+      await tx.bug.update({ where: { id: bugId }, data: { duplicateOfId: to.id } });
+      await tx.bugActivity.createMany({
+        data: [
+          {
+            bugId,
+            actorId: admin.id,
+            type: "duplicate_changed",
+            summary: `marked this as a duplicate of ${formatIssueNumber(to.number)}`,
+            metadata: { field: "duplicateOf", from: previous, to: to.id },
+          },
+          {
+            bugId: to.id,
+            actorId: admin.id,
+            type: "duplicate_changed",
+            summary: `marked ${formatIssueNumber(bug.number)} as a duplicate of this issue`,
+            metadata: { field: "duplicates", to: bugId },
+          },
+        ],
+      });
+    });
+  } catch (error) {
+    if (error instanceof LinkRefused) return { error: error.message };
+    throw error;
+  }
+
+  revalidate(bugId, target.id, previous);
+  return { ok: true };
+}
+
+/** Admin only (#285): the issue is no longer a duplicate; it reappears in the list. */
+export async function clearDuplicateAction(bugId: string): Promise<DuplicateActionResult> {
+  const admin = await requireAdmin();
+  const bug = await prisma.bug.findUnique({
+    where: { id: bugId },
+    select: { number: true, duplicateOfId: true, duplicateOf: { select: { id: true, number: true } } },
+  });
+  if (!bug) return { error: "This issue no longer exists." };
+  if (!bug.duplicateOfId) return { ok: true };
+
+  const was = bug.duplicateOf;
+  await prisma.$transaction(async (tx) => {
+    const { count } = await tx.bug.updateMany({
+      where: { id: bugId, duplicateOfId: bug.duplicateOfId },
+      data: { duplicateOfId: null },
+    });
+    if (count === 0) return;
+    await tx.bugActivity.createMany({
+      data: [
+        {
+          bugId,
+          actorId: admin.id,
+          type: "duplicate_changed",
+          summary: was
+            ? `cleared the duplicate link to ${formatIssueNumber(was.number)}`
+            : "cleared the duplicate link",
+          metadata: { field: "duplicateOf", from: bug.duplicateOfId, to: null },
+        },
+        ...(was
+          ? [
+              {
+                bugId: was.id,
+                actorId: admin.id,
+                type: "duplicate_changed" as const,
+                summary: `cleared ${formatIssueNumber(bug.number)} as a duplicate of this issue`,
+                metadata: { field: "duplicates", from: bugId },
+              },
+            ]
+          : []),
+      ],
+    });
+  });
+
+  revalidate(bugId, was?.id);
+  return { ok: true };
+}
+
+/**
+ * Admin only: issues `bugId` could be marked a duplicate of, for the
+ * picker. Live, not itself a duplicate, not this issue.
+ */
+export async function findDuplicateCandidatesAction(
+  bugId: string,
+  query: string,
+): Promise<DuplicateCandidate[]> {
+  await requireAdmin();
+  const text = (query ?? "").trim().slice(0, 200);
+  if (!text) return [];
+  const ref = parseIssueRef(text);
+  const base = { isDeleted: false, duplicateOfId: null, NOT: { id: bugId } };
+  const where =
+    ref && "number" in ref
+      ? { ...base, OR: [{ number: ref.number }, { title: { contains: text, mode: "insensitive" as const } }] }
+      : ref && "id" in ref
+        ? { ...base, id: ref.id }
+        : text.length >= 2
+          ? { ...base, title: { contains: escapeSearchQuery(text), mode: "insensitive" as const } }
+          : null;
+  if (!where) return [];
+  return prisma.bug.findMany({
+    where,
+    select: { id: true, number: true, title: true, status: true },
+    orderBy: [{ voteCount: "desc" }, { number: "desc" }],
+    take: 6,
+  });
+}

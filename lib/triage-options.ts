@@ -24,6 +24,7 @@ export type SavedTriageValues = {
   typeId?: string | null;
   categoryId?: string | null;
   assigneeId?: string | null;
+  milestoneId?: string | null;
 };
 
 /**
@@ -43,5 +44,6 @@ export function triageFieldsKey(values: SavedTriageValues): string {
     values.typeId ?? "",
     values.categoryId ?? "",
     values.assigneeId ?? "",
+    values.milestoneId ?? "",
   ].join("|");
 }

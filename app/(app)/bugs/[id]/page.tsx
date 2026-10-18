@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -6,8 +7,20 @@ import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { LocalTime } from "@/components/local-time";
+import { ClearDuplicateButton, MarkDuplicateButton } from "@/components/duplicate-controls";
+import { currentResolution, isFinishedStatus, type StatusChangeActivity } from "@/lib/resolution-note";
+import { statusLabel as resolutionStatusLabel } from "@/lib/labels";
 import { formatIssueNumber } from "@/lib/issue-number";
-import { buildCommentTree, countVisibleComments } from "@/lib/comments";
+import { buildCommentTree } from "@/lib/comments";
+import {
+  COMMENT_THREADS_PER_PAGE,
+  earlierThreadsHref,
+  loadCommentWindow,
+  parseCommentTarget,
+  parseThreadWindow,
+  type CommentWindow,
+} from "@/lib/comment-window";
+import { CommentPermalinkResolver } from "@/components/comment-permalink-resolver";
 import {
   bugLinkPreviewDescription,
 } from "@/lib/link-preview";
@@ -19,7 +32,7 @@ import {
   statusClass,
   statusLabels,
 } from "@/lib/labels";
-import { ActivityTimeline } from "@/components/activity-timeline";
+import { ActivityTimeline, type ActivityEntry } from "@/components/activity-timeline";
 import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { WatchButton } from "@/components/watch-button";
@@ -28,25 +41,60 @@ import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentThread } from "@/components/comment-thread";
 import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
-import { getActiveIssueTypes } from "@/lib/issue-types";
+import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { fetchVoterSummary } from "@/lib/voter-summaries";
+import { createEmptyVoterSummary } from "@/lib/voters";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
+import { MilestoneDue } from "@/components/milestone-due";
+import { dueDateValue } from "@/lib/milestones";
 import { canEditTicket } from "@/lib/ticket-editing";
 import { DeleteBugButton } from "@/components/delete-bug-button";
 import { RestoreBugButton } from "@/components/restore-bug-button";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { canAssignTicket } from "@/lib/ticket-assignment";
 import { SelfAssignButton } from "@/components/self-assign-button";
+import { CopyLinkButton } from "@/components/copy-link-button";
 import { EditableIssueDescription } from "@/components/editable-issue-description";
 import { withCurrentOption } from "@/lib/triage-options";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+const NO_COMMENTS: CommentWindow = {
+  comments: [],
+  shownThreads: 0,
+  hiddenThreads: 0,
+  visibleCount: 0,
 };
 
 /** How much of the activity log a single page render is allowed to load. */
 const ACTIVITY_PAGE_SIZE = 50;
+
+async function loadOptional<T>(label: string, fallback: T, load: () => Promise<T>): Promise<T> {
+  try {
+    return await load();
+  } catch (error) {
+    console.error(`[issue] ${label} failed`, error);
+    return fallback;
+  }
+}
+
+function issueLoadError(detail: string) {
+  return (
+    <div className="rounded-xl border border-red-200 bg-white px-6 py-10">
+      <h1 className="text-xl font-semibold text-slate-900">This issue could not be loaded</h1>
+      <p className="mt-2 text-sm text-slate-600">
+        The issue query failed. The message below is the database error.
+      </p>
+      <pre className="mt-4 overflow-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-800">
+        {detail}
+      </pre>
+    </div>
+  );
+}
 
 export async function generateMetadata({
   params,
@@ -106,8 +154,19 @@ export async function generateMetadata({
   };
 }
 
-export default async function BugDetailPage({ params }: BugPageProps) {
+/**
+ * Renders the issue detail page including discussion threads, activity
+ * timeline, attachment viewer, and triage controls.
+ *
+ * Performance optimization (#349): Gating the full user directory query behind
+ * `canTriage` ensures non-triage viewers do not run unnecessary database queries.
+ *
+ * @param props.params - Route parameters containing the issue `id`.
+ * @param props.searchParams - Optional query params for thread windowing or permalinks.
+ */
+export default async function BugDetailPage({ params, searchParams }: BugPageProps) {
   const { id } = await params;
+  const query = (await searchParams) ?? {};
   const resolved = await resolveSessionUserId();
   const userId = "userId" in resolved ? resolved.userId : undefined;
 
@@ -147,60 +206,52 @@ export default async function BugDetailPage({ params }: BugPageProps) {
   const user = await requireUser();
   const canTriage = isAdmin(user.role);
   const canDelete = canDeleteTicket(user.role);
+  // #289: open milestones for the triage panel (admins only). Started here,
+  // alongside the issue query, and awaited where the form needs them.
+  const milestoneOptionsPromise: Promise<{ id: string; title: string; isClosed: boolean }[]> = canTriage
+    ? loadOptional("milestones", [], () =>
+        prisma.milestone.findMany({
+          where: { isClosed: false },
+          select: { id: true, title: true, isClosed: true },
+          orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { title: "asc" }],
+        }),
+      )
+    : Promise.resolve([]);
 
-  const [bug, users, categories, types, voterSummary, activityCount, watchRow] =
-    await Promise.all([
-    prisma.bug.findUnique({
+  // The list page already proved the issue row itself can be read. Comments,
+  // the activity log, watches and attachments are newer tables. One of them
+  // missing used to reject this whole Promise and blank the page.
+  const loadedBug = await prisma.bug
+    .findUnique({
       where: { id },
       include: {
-        type: true,
-        reporter: { select: { name: true, email: true, role: true } },
-        assignee: { select: { id: true, name: true, role: true } },
+        type: { select: { id: true, name: true, isActive: true } },
+        reporter: { select: { name: true, email: true, role: true, image: true } },
+        milestone: { select: { id: true, title: true, dueDate: true, isClosed: true } },
+        assignee: { select: { id: true, name: true, role: true, image: true } },
         category: { select: { id: true, name: true, isActive: true } },
-        comments: {
-          include: {
-            author: { select: { name: true, role: true } },
-            parent: {
-              select: {
-                id: true,
-                body: true,
-                deletedAt: true,
-                author: { select: { name: true, role: true } },
-              },
-            },
-          },
-          orderBy: { createdAt: "asc" },
-        },
-        // The activity log is append-only and never pruned, so a long-lived
-        // issue would load every row it has ever had. Take the newest page
-        // in the database and reverse it below for display (#ACTIVITY-CAP).
-        activities: {
-          include: { actor: { select: { name: true } } },
-          orderBy: { createdAt: "desc" },
-          take: ACTIVITY_PAGE_SIZE,
-        },
         votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
+        // #285: both sides of a duplicate link.
+        duplicateOf: { select: { id: true, number: true, title: true, status: true, isDeleted: true } },
+        duplicates: {
+          where: { isDeleted: false },
+          select: { id: true, number: true, title: true, status: true },
+          orderBy: { number: "asc" },
+          take: 20,
+        },
+        _count: { select: { duplicates: { where: { isDeleted: false } } } },
       },
-    }),
-    canTriage
-      ? prisma.user.findMany({
-          orderBy: { name: "asc" },
-          select: { id: true, name: true, role: true },
-        })
-      : Promise.resolve([]),
-    prisma.category.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    canTriage ? getActiveIssueTypes() : Promise.resolve([]),
-    fetchVoterSummary(id),
-    prisma.bugActivity.count({ where: { bugId: id } }),
-    prisma.issueWatch.findUnique({
-      where: { userId_bugId: { userId: user.id, bugId: id } },
-      select: { userId: true, watching: true },
-    }),
-  ]);
+    })
+    .then((bug) => ({ bug }))
+    .catch((error: unknown) => {
+      console.error("[issue] detail query failed", error);
+      const detail = error instanceof Error ? error.message : "Could not load issue";
+      return { detail };
+    });
+  if ("detail" in loadedBug) {
+    return issueLoadError(loadedBug.detail);
+  }
+  const bug = loadedBug.bug;
 
   if (!bug) {
     notFound();
@@ -210,18 +261,77 @@ export default async function BugDetailPage({ params }: BugPageProps) {
     notFound();
   }
 
-  // Files on the issue and on its comments (#215); never the file contents here.
-  const attachments = await prisma.attachment.findMany({
-    where: { bugId: id },
-    select: { id: true, filename: true, contentType: true, size: true, commentId: true },
-    orderBy: { createdAt: "asc" },
-  });
+  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision] =
+    await Promise.all([
+      canTriage
+        ? loadOptional("users", [], () =>
+            prisma.user.findMany({
+              orderBy: { name: "asc" },
+              select: { id: true, name: true, role: true, image: true },
+            }),
+          )
+        : Promise.resolve([]),
+      loadOptional("platforms", [], () => getActivePlatforms()),
+      canTriage ? loadOptional("types", [], () => getActiveIssueTypesCached()) : Promise.resolve([]),
+      loadOptional("votes", createEmptyVoterSummary(), () => fetchVoterSummary(id)),
+      loadOptional("activity", [] as ActivityEntry[], () =>
+        prisma.bugActivity.findMany({
+          where: { bugId: id },
+          include: { actor: { select: { name: true } } },
+          orderBy: { createdAt: "desc" },
+          take: ACTIVITY_PAGE_SIZE,
+        }),
+      ),
+      loadOptional("activity count", 0, () => prisma.bugActivity.count({ where: { bugId: id } })),
+      loadOptional<{ userId: string; watching: boolean } | null>("watch", null, () =>
+        prisma.issueWatch.findUnique({
+          where: { userId_bugId: { userId: user.id, bugId: id } },
+          select: { userId: true, watching: true },
+        }),
+      ),
+      // The newest threads only (#280); a permalink widens the window to
+      // reach its comment.
+      loadOptional("comments", NO_COMMENTS, () =>
+        loadCommentWindow(prisma, id, {
+          threads: parseThreadWindow(query.threads),
+          target: parseCommentTarget(query.comment),
+        }),
+      ),
+      // #316: the status change that put the issue in its current state,
+      // read on its own so it is found even when the timeline is trimmed.
+      isFinishedStatus(bug.status)
+        ? loadOptional<StatusChangeActivity | null>("resolution note", null, () =>
+            prisma.bugActivity.findFirst({
+              where: { bugId: id, type: "status_changed" },
+              orderBy: { createdAt: "desc" },
+              select: { createdAt: true, metadata: true, actor: { select: { name: true } } },
+            }),
+          )
+        : Promise.resolve(null),
+      // Files on the issue and on its comments (#215); never the file contents here.
+      loadOptional("attachments", [], () =>
+        prisma.attachment.findMany({
+          where: { bugId: id },
+          select: { id: true, filename: true, contentType: true, size: true, commentId: true },
+          orderBy: { createdAt: "asc" },
+        }),
+      ),
+      // #303: only whether there is history, and when it last changed.
+      loadOptional<{ editedAt: Date } | null>("revisions", null, () =>
+        prisma.bugRevision.findFirst({
+          where: { bugId: id },
+          orderBy: { editedAt: "desc" },
+          select: { editedAt: true },
+        }),
+      ),
+    ]);
   const issueAttachments: AttachmentView[] = attachments.filter((a) => !a.commentId);
   const attachmentsByComment: Record<string, AttachmentView[]> = {};
   for (const a of attachments) {
     if (a.commentId) (attachmentsByComment[a.commentId] ??= []).push(a);
   }
 
+  const milestoneOptions = await milestoneOptionsPromise;
   const isAssignee = !!userId && bug.assigneeId === userId;
   const canUpdateStatus = canTriage || isAssignee;
   const canEdit =
@@ -242,7 +352,14 @@ export default async function BugDetailPage({ params }: BugPageProps) {
     Array.isArray(bug.votes) && bug.votes.length > 0
       ? (bug.votes[0].value ?? 1)
       : 0;
-  const commentTree = buildCommentTree(bug.comments);
+  const commentTree = buildCommentTree(comments.comments);
+  const pageQuery = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (typeof value === "string") pageQuery.set(key, value);
+  }
+  const proofLinks = bug.proofLinks ?? [];
+
+  const resolution = currentResolution(bug.status, latestStatusChange);
 
   return (
     <div className="space-y-6">
@@ -265,9 +382,75 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         </div>
       ) : null}
 
+      {bug.duplicateOf ? (
+        <section
+          aria-label="Duplicate"
+          className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"
+        >
+          <p className="text-sm text-amber-950">
+            <span className="font-semibold">This issue is a duplicate of </span>
+            {bug.duplicateOf.isDeleted && !canDelete ? (
+              <span>{formatIssueNumber(bug.duplicateOf.number)} (since deleted)</span>
+            ) : (
+              <Link href={`/bugs/${bug.duplicateOf.id}`} className="font-semibold text-teal-800 underline-offset-2 hover:underline">
+                {formatIssueNumber(bug.duplicateOf.number)} {bug.duplicateOf.title}
+              </Link>
+            )}{" "}
+            <span className="text-amber-900">({statusLabels[bug.duplicateOf.status]})</span>.{" "}
+            Follow and vote there instead. It&apos;s hidden from the issues list.
+          </p>
+          {canTriage ? (
+            <div className="flex shrink-0 items-center gap-1 print:hidden">
+              <MarkDuplicateButton bugId={bug.id} label="Change" />
+              <ClearDuplicateButton bugId={bug.id} />
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {bug._count.duplicates > 0 ? (
+        <section aria-label="Duplicates of this issue" className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+          <h2 className="text-sm font-semibold text-slate-900">
+            {bug._count.duplicates} duplicate{bug._count.duplicates === 1 ? "" : "s"} of this issue
+          </h2>
+          <ul className="mt-2 space-y-1 text-sm">
+            {bug.duplicates.map((d) => (
+              <li key={d.id}>
+                <Link href={`/bugs/${d.id}`} className="text-teal-800 hover:underline">
+                  <span className="text-slate-500 tabular-nums">{formatIssueNumber(d.number)}</span> {d.title}
+                </Link>{" "}
+                <span className="text-xs text-slate-500">· {statusLabels[d.status]}</span>
+              </li>
+            ))}
+          </ul>
+          {bug._count.duplicates > bug.duplicates.length ? (
+            <p className="mt-1 text-xs text-slate-500">
+              And {bug._count.duplicates - bug.duplicates.length} more.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {resolution ? (
+        <section
+          aria-label="Resolution note"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5"
+        >
+          <h2 className="text-sm font-semibold text-emerald-900">
+            {resolutionStatusLabel[resolution.status]} by {resolution.by}
+            <span className="ml-2 text-xs font-normal text-emerald-800">
+              <LocalTime date={resolution.at} />
+            </span>
+          </h2>
+          <p className="mt-1 whitespace-pre-wrap break-words text-sm text-emerald-950">
+            {resolution.note}
+          </p>
+        </section>
+      ) : null}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
-          <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
+          <Link href="/bugs" className="text-sm text-teal-700 hover:underline print:hidden">
             ← Back to issues
           </Link>
           <div className="mt-3 space-y-3">
@@ -333,12 +516,18 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6 print:hidden">
+          {/* The canonical URL from the configured site, not the browser's
+              current one, which may carry a query string or a #comment. */}
+          <CopyLinkButton url={absoluteUrl(`/bugs/${bug.id}`)} label="issue" />
           {!bug.isDeleted ? (
             <WatchButton
               bugId={bug.id}
               watching={isWatchingIssue(user.id, [bug.reporterId, bug.assigneeId], watchRow)}
             />
+          ) : null}
+          {canTriage && !bug.isDeleted && !bug.duplicateOf ? (
+            <MarkDuplicateButton bugId={bug.id} />
           ) : null}
           {canTriage && !bug.isDeleted ? (
             <BoostTicketButton
@@ -372,6 +561,8 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         initialDescription={bug.description}
         canEdit={canEdit}
         users={users}
+        lastEditedAt={lastRevision?.editedAt ?? null}
+        historyHref={`/bugs/${bug.id}/history`}
       >
         <dl className="mt-6 grid grid-cols-1 gap-3 text-sm text-slate-600 sm:grid-cols-2">
           {bug.type ? (
@@ -394,6 +585,8 @@ export default async function BugDetailPage({ params }: BugPageProps) {
               <UserNameWithBadges
                 name={bug.reporter.name}
                 role={bug.reporter.role}
+                image={bug.reporter.image}
+                avatar="sm"
                 userId={bug.reporterId}
                 showAuthor
               />
@@ -406,6 +599,8 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                 <UserNameWithBadges
                   name={bug.assignee.name}
                   role={bug.assignee.role}
+                  image={bug.assignee.image}
+                  avatar="sm"
                   userId={bug.assigneeId}
                 />
               ) : (
@@ -425,6 +620,17 @@ export default async function BugDetailPage({ params }: BugPageProps) {
             <div>
               <dt className="font-medium text-slate-500">Platform</dt>
               <dd>{bug.category.name}</dd>
+            </div>
+          ) : null}
+          {bug.milestone ? (
+            <div>
+              <dt className="font-medium text-slate-500">Milestone</dt>
+              <dd className="flex flex-wrap items-center gap-2">
+                <Link href={`/bugs?milestone=${bug.milestone.id}`} className="text-teal-700 hover:underline">
+                  {bug.milestone.title}
+                </Link>
+                <MilestoneDue due={dueDateValue(bug.milestone.dueDate) || null} isClosed={bug.milestone.isClosed} />
+              </dd>
             </div>
           ) : null}
           <div>
@@ -451,13 +657,13 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Proof links
         </h2>
-        {bug.proofLinks.length === 0 ? (
+        {proofLinks.length === 0 ? (
           <p className="mt-3 text-sm text-slate-500">
             No proof links attached to this report.
           </p>
         ) : (
           <ul className="mt-3 space-y-2">
-            {bug.proofLinks.map((url, index) => (
+            {proofLinks.map((url, index) => (
               <li key={`${index}-${url}`}>
                 <a
                   href={url}
@@ -496,21 +702,58 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           users={users}
           categories={withCurrentOption(categories, bug.category)}
           types={withCurrentOption(types, bug.type)}
+          milestoneId={bug.milestoneId}
+          milestones={
+            bug.milestone && !milestoneOptions.some((m) => m.id === bug.milestone?.id)
+              ? [...milestoneOptions, { id: bug.milestone.id, title: bug.milestone.title, isClosed: bug.milestone.isClosed }]
+              : milestoneOptions
+          }
           canEditTriage={canTriage}
         />
       ) : null}
 
       <ActivityTimeline
-        activities={[...bug.activities].reverse()}
+        activities={[...activities].reverse()}
         totalCount={activityCount}
       />
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section
+        id="comments"
+        className="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-4 sm:p-6"
+      >
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Comments ({countVisibleComments(bug.comments)})
+          Comments ({comments.visibleCount})
         </h2>
+        {comments.hiddenThreads > 0 ? (
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600 print:hidden">
+            <span>
+              {comments.hiddenThreads} earlier{" "}
+              {comments.hiddenThreads === 1 ? "thread" : "threads"} not shown.
+            </span>
+            <Link
+              href={earlierThreadsHref(pageQuery, comments.shownThreads)}
+              scroll={false}
+              className="font-medium text-teal-700 hover:underline"
+            >
+              Show {Math.min(comments.hiddenThreads, COMMENT_THREADS_PER_PAGE)} earlier
+            </Link>
+            {comments.hiddenThreads > COMMENT_THREADS_PER_PAGE ? (
+              <Link
+                href={earlierThreadsHref(pageQuery, comments.shownThreads, true)}
+                scroll={false}
+                className="font-medium text-teal-700 hover:underline"
+              >
+                Show all
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
+        <Suspense fallback={null}>
+          <CommentPermalinkResolver />
+        </Suspense>
         <CommentThread
           bugId={bug.id}
+          issueUrl={absoluteUrl(`/bugs/${bug.id}`)}
           reporterId={bug.reporterId}
           comments={commentTree}
           attachmentsByComment={attachmentsByComment}
@@ -522,7 +765,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
       </section>
 
       {canDelete && !bug.isDeleted ? (
-        <section className="rounded-xl border border-red-200 bg-red-50/50 p-4 sm:p-6">
+        <section className="rounded-xl border border-red-200 bg-red-50/50 p-4 sm:p-6 print:hidden">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-red-700">

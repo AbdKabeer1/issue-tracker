@@ -41,10 +41,34 @@ vi.mock("@/lib/voter-summaries", () => ({
     likes: { count: 0, preview: [] },
     dislikes: { count: 0, preview: [] },
   }),
+  createEmptyVoterSummary: vi.fn().mockReturnValue({
+    likes: { count: 0, preview: [] },
+    dislikes: { count: 0, preview: [] },
+  }),
 }));
 
-vi.mock("@/lib/issue-types", () => ({
-  getActiveIssueTypes: vi.fn().mockResolvedValue([]),
+vi.mock("@/lib/lookups", () => ({
+  getActiveIssueTypesCached: vi.fn().mockResolvedValue([]),
+  getActivePlatforms: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("@/lib/comment-window", () => ({
+  COMMENT_THREADS_PER_PAGE: 10,
+  earlierThreadsHref: vi.fn().mockReturnValue("#"),
+  loadCommentWindow: vi.fn().mockResolvedValue({
+    comments: [],
+    threads: [],
+    totalThreads: 0,
+    shownThreads: 0,
+    hiddenThreads: 0,
+    visibleCount: 0,
+  }),
+  parseCommentTarget: vi.fn(),
+  parseThreadWindow: vi.fn().mockReturnValue(10),
+}));
+
+vi.mock("@/lib/platforms", () => ({
+  getActivePlatforms: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -52,9 +76,15 @@ vi.mock("@/lib/prisma", () => ({
     bug: { findUnique: vi.fn() },
     user: { findMany: vi.fn() },
     category: { findMany: vi.fn().mockResolvedValue([]) },
-    bugActivity: { count: vi.fn().mockResolvedValue(0) },
+    bugActivity: {
+      count: vi.fn().mockResolvedValue(0),
+      findMany: vi.fn().mockResolvedValue([]),
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
     issueWatch: { findUnique: vi.fn().mockResolvedValue(null) },
     attachment: { findMany: vi.fn().mockResolvedValue([]) },
+    bugRevision: { findFirst: vi.fn().mockResolvedValue(null) },
+    milestone: { findMany: vi.fn().mockResolvedValue([]) },
   },
 }));
 
@@ -71,7 +101,7 @@ const mockBugFindUnique = vi.mocked(prisma.bug.findUnique);
 describe("BugDetailPage conditional user query (#349)", () => {
   it("guards prisma.user.findMany behind canTriage in source code", () => {
     // Assert structural invariant: user query must be conditionally executed
-    expect(pageSource).toMatch(/canTriage\s*\?\s*prisma\.user\.findMany/);
+    expect(pageSource).toMatch(/canTriage[\s\S]*?prisma\.user\.findMany/);
   });
 
   describe("runtime execution", () => {
@@ -93,6 +123,10 @@ describe("BugDetailPage conditional user query (#349)", () => {
         reporter: { name: "Reporter", email: "rep@zedu.dev", role: "user" },
         assignee: null,
         category: null,
+        milestone: null,
+        duplicateOf: null,
+        duplicates: [],
+        _count: { duplicates: 0 },
         comments: [],
         activities: [],
         votes: [],
@@ -119,7 +153,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
         role: "admin",
       } as unknown as Awaited<ReturnType<typeof requireUser>>);
       mockUserFindMany.mockResolvedValue([
-        { id: "u-1", name: "Alice", role: "admin" },
+        { id: "u-1", name: "Alice", role: "admin", image: null },
       ] as unknown as Awaited<ReturnType<typeof prisma.user.findMany>>);
 
       await BugDetailPage({
@@ -129,7 +163,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
       expect(mockUserFindMany).toHaveBeenCalledTimes(1);
       expect(mockUserFindMany).toHaveBeenCalledWith({
         orderBy: { name: "asc" },
-        select: { id: true, name: true, role: true },
+        select: { id: true, name: true, role: true, image: true },
       });
     });
 
@@ -139,7 +173,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
         role: "super_admin",
       } as unknown as Awaited<ReturnType<typeof requireUser>>);
       mockUserFindMany.mockResolvedValue([
-        { id: "u-1", name: "Alice", role: "admin" },
+        { id: "u-1", name: "Alice", role: "admin", image: null },
       ] as unknown as Awaited<ReturnType<typeof prisma.user.findMany>>);
 
       await BugDetailPage({
@@ -149,8 +183,30 @@ describe("BugDetailPage conditional user query (#349)", () => {
       expect(mockUserFindMany).toHaveBeenCalledTimes(1);
       expect(mockUserFindMany).toHaveBeenCalledWith({
         orderBy: { name: "asc" },
-        select: { id: true, name: true, role: true },
+        select: { id: true, name: true, role: true, image: true },
       });
+    });
+
+    it("observes database query counts and asserts non-triage viewer does not execute full user directory query (#349)", async () => {
+      mockRequireUser.mockResolvedValue({
+        id: "user-123",
+        role: "user",
+      } as unknown as Awaited<ReturnType<typeof requireUser>>);
+
+      const countQueries = () =>
+        mockBugFindUnique.mock.calls.length +
+        mockUserFindMany.mock.calls.length +
+        vi.mocked(prisma.attachment.findMany).mock.calls.length;
+
+      const before = countQueries();
+      await BugDetailPage({
+        params: Promise.resolve({ id: "bug-1" }),
+      });
+      const executed = countQueries() - before;
+
+      // Non-triage viewer must execute queries for bug and attachments, but 0 user directory queries
+      expect(executed).toBeGreaterThan(0);
+      expect(mockUserFindMany).toHaveBeenCalledTimes(0);
     });
   });
 });

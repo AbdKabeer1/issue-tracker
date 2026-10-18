@@ -7,6 +7,20 @@ type Db = Pick<PrismaClient, "attachment"> | Pick<Prisma.TransactionClient, "att
  * Only the uploader's own, not-yet-linked files can be claimed, so nobody can
  * attach - or steal - someone else's upload by guessing its id.
  */
+/** Most files one description or comment links by reference. */
+export const MAX_REFERENCED_ATTACHMENTS = 20;
+
+/**
+ * Attachment ids referenced from Markdown as `/api/attachments/<id>`, for
+ * images pasted or dropped into the editor (#305). Linking them on save is
+ * what lets other readers see them; until then only the uploader can.
+ */
+export function attachmentIdsInMarkdown(text: string | null | undefined): string[] {
+  if (!text) return [];
+  const ids = [...text.matchAll(/\/api\/attachments\/([a-z0-9]{8,40})\b/gi)].map((m) => m[1]);
+  return [...new Set(ids)].slice(0, MAX_REFERENCED_ATTACHMENTS);
+}
+
 export async function linkAttachments(
   db: Db,
   {
