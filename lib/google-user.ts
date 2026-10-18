@@ -33,8 +33,10 @@ export async function upsertGoogleUser(input: {
         emailVerified: new Date(),
         ...(role === "super_admin" ? { role } : {}),
       },
+      // `name` is only used when the account is created. Updating it here
+      // would undo a display name the person chose in Settings (#293) at
+      // their next sign-in.
       update: {
-        name,
         ...(image ? { image } : {}),
         emailVerified: new Date(),
         ...(role === "super_admin" ? { role } : {}),
@@ -50,7 +52,7 @@ export async function upsertGoogleUser(input: {
     const user = await prisma.user.upsert({
       where: { email },
       create: { email, name },
-      update: { name },
+      update: {},
       select: { id: true },
     });
     return { id: user.id, role };
@@ -63,14 +65,14 @@ export async function upsertGoogleUser(input: {
     await prisma.$executeRaw`
       INSERT INTO "User" ("id", "name", "email", "createdAt")
       VALUES (${id}, ${name}, ${email}, CURRENT_TIMESTAMP)
-      ON CONFLICT ("email") DO UPDATE SET "name" = EXCLUDED."name"
+      ON CONFLICT ("email") DO NOTHING
     `;
   } catch (error) {
     console.error("[auth] Google user insert without password failed:", error);
     await prisma.$executeRaw`
       INSERT INTO "User" ("id", "name", "email", "passwordHash", "createdAt")
       VALUES (${id}, ${name}, ${email}, '', CURRENT_TIMESTAMP)
-      ON CONFLICT ("email") DO UPDATE SET "name" = EXCLUDED."name"
+      ON CONFLICT ("email") DO NOTHING
     `;
   }
 

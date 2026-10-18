@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["**/*.{test,spec}.ts"],
-    exclude: ["node_modules", ".next", "prisma"],
+    exclude: ["node_modules", ".next", "prisma", "e2e"],
   },
   resolve: {
     alias: {

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolveSessionUserId } from "@/lib/session-user";
-import { checkRateLimit, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { consumeRateLimit, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { UPLOAD_RATE_LIMIT, checkAttachment } from "@/lib/attachments";
 
 /**
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   }
   const userId = resolved.userId;
 
-  if (!checkRateLimit(`upload:${userId}`, UPLOAD_RATE_LIMIT).allowed) {
+  if (!(await consumeRateLimit(`upload:${userId}`, UPLOAD_RATE_LIMIT)).allowed) {
     return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 });
   }
 

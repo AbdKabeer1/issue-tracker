@@ -97,17 +97,20 @@ export function BoostTicketButton({
               clipRule="evenodd"
             />
           </svg>
-          {showLabel ? (
-            <span>
-              {pending
-                ? boosted
-                  ? "Unboosting…"
-                  : "Boosting…"
-                : boosted
-                  ? "Boosted"
-                  : "Boost to top"}
-            </span>
-          ) : null}
+          {/*
+            The icon-only variant used to rely on `title` for its name, which
+            touch devices and several screen readers never expose (#315). The
+            text is always rendered; it is only hidden visually.
+          */}
+          <span className={showLabel ? undefined : "sr-only"}>
+            {pending
+              ? boosted
+                ? "Unboosting…"
+                : "Boosting…"
+              : boosted
+                ? "Boosted"
+                : "Boost to top"}
+          </span>
         </span>
       </Button>
       {error ? (

@@ -4,7 +4,7 @@
  */
 
 const MARKDOWN_HINT =
-  /(\*\*|__|`|~~|https?:\/\/|^\s*[-*+] |^\s*[-*+] \[[ xX]\] |^\s*\d+\. |\[.+\]\((?:https?:\/\/|mailto:)|^\s*> |^#{1,6}\s|^\s*(?:-\s*){3,}$|\*[^*\s][^*]*\*|(?<![\w])_[^_\s][^_]*_(?![\w]))/m;
+  /(\*\*|__|`|~~|https?:\/\/|^\s*[-*+] |^\s*[-*+] \[[ xX]\] |^\s*\d+\. |\[.+\]\((?:https?:\/\/|mailto:|\/api\/attachments\/)|^\s*> |^#{1,6}\s|^\s*(?:-\s*){3,}$|\*[^*\s][^*]*\*|(?<![\w])_[^_\s][^_]*_(?![\w]))/m;
 
 /** True when text likely contains Markdown we should render (vs plain wrap). */
 export function looksLikeMarkdown(text: string): boolean {
@@ -199,9 +199,13 @@ export function wrapSelection(
   };
 }
 
-/** Only allow http(s) and mailto URLs in rendered links. */
+/** A file uploaded to this tracker (#215), served from our own origin. */
+const ATTACHMENT_PATH = /^\/api\/attachments\/[a-z0-9]{8,40}$/i;
+
+/** Only allow http(s), mailto and our own attachment URLs in rendered links. */
 export function safeHref(url: string): string | null {
   const trimmed = url.trim().replace(/[\u0000-\u001f\u007f]/g, "");
+  if (ATTACHMENT_PATH.test(trimmed)) return trimmed;
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   if (/^mailto:[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(trimmed)) return trimmed;
   return null;
@@ -222,6 +226,8 @@ const INLINE_IMAGE_HOSTS = new Set([
 export function inlineImageSrc(url: string): string | null {
   const href = safeHref(url);
   if (!href) return null;
+  // Our own uploads (#305): same origin, so nothing is leaked by loading them.
+  if (ATTACHMENT_PATH.test(href)) return href;
   let parsed: URL;
   try {
     parsed = new URL(href);
@@ -278,14 +284,17 @@ export function cleanTrailingUrl(rawUrl: string): { href: string; trailing: stri
 }
 
 /**
- * Links require an http(s) href so soft-mentions `@[Name](userId)` stay text,
- * and bare URLs are linked automatically.
+ * Links require an http(s) href (or tracker attachments, #305) so soft-mentions
+ * `@[Name](userId)` stay text, and bare URLs are linked automatically.
  */
 export const INLINE_RE =
-  /(!?\[[^\]]*\]\((?:https?:\/\/|mailto:)[^)\s]*\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\s][^*]*\*|(?<![\w])_[^_\s][^_]*_(?![\w])|(?<![\w/.-])(https?:\/\/[^\s<>"]+))/g;
+  /(!?\[[^\]]*\]\((?:https?:\/\/|mailto:|\/api\/attachments\/)[^)\s]*\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\s][^*]*\*|(?<![\w])_[^_\s][^_]*_(?![\w])|(?<![\w/.-])(https?:\/\/[^\s<>"]+))/g;
 
 export const MARKDOWN_TARGET_RE = /^(!?)\[([^\]]*)\]\(([^)\s]+)\)$/;
 
+/**
+ * Appends a plain-text chunk or merges it into the trailing text token.
+ */
 function pushText(tokens: InlineToken[], value: string) {
   if (!value) return;
   const lastToken = tokens[tokens.length - 1];
@@ -296,6 +305,10 @@ function pushText(tokens: InlineToken[], value: string) {
   }
 }
 
+/**
+ * Tokenizes an inline Markdown string into structured tokens (code, bold,
+ * italic, strikethrough, links, autolinks, images, text).
+ */
 export function tokenizeInline(text: string): InlineToken[] {
   const tokens: InlineToken[] = [];
   let last = 0;

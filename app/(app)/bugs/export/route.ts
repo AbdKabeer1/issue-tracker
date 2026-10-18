@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getIssueTypes, getPlatforms } from "@/lib/lookups";
 import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
@@ -44,17 +45,15 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.entries(),
   );
 
-  const [tagTypes, platforms] = await Promise.all([
-    prisma.issueType.findMany({
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
+  const [tagTypes, platforms, milestones] = await Promise.all([
+    getIssueTypes(),
     // Every platform, active or not: a filter on a platform that was since
     // deactivated still has to resolve, exactly as it does on the list.
-    prisma.category.findMany({ select: { id: true } }),
+    getPlatforms(),
+    prisma.milestone.findMany({ select: { id: true } }),
   ]);
 
-  const { where, sort } = parseBugListFilters({
+  const { where, sort, mine } = parseBugListFilters({
     params,
     userId: user.id,
     // Deleted issues are admin-only on the list, and must stay admin-only
@@ -62,9 +61,10 @@ export async function GET(request: NextRequest) {
     canSeeDeleted: canDeleteTicket(user.role),
     tagTypes,
     platforms,
+    milestones,
   });
 
-  const orderBy = getBugOrderBy(sort);
+  const orderBy = getBugOrderBy(sort, { boostFirst: mine !== "watching" });
 
   const encoder = new TextEncoder();
   let sent = 0;
