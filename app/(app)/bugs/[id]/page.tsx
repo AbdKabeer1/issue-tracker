@@ -154,6 +154,16 @@ export async function generateMetadata({
   };
 }
 
+/**
+ * Renders the issue detail page including discussion threads, activity
+ * timeline, attachment viewer, and triage controls.
+ *
+ * Performance optimization (#349): Gating the full user directory query behind
+ * `canTriage` ensures non-triage viewers do not run unnecessary database queries.
+ *
+ * @param props.params - Route parameters containing the issue `id`.
+ * @param props.searchParams - Optional query params for thread windowing or permalinks.
+ */
 export default async function BugDetailPage({ params, searchParams }: BugPageProps) {
   const { id } = await params;
   const query = (await searchParams) ?? {};
@@ -253,12 +263,14 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
 
   const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision] =
     await Promise.all([
-      loadOptional("users", [], () =>
-        prisma.user.findMany({
-          orderBy: { name: "asc" },
-          select: { id: true, name: true, role: true, image: true },
-        }),
-      ),
+      canTriage
+        ? loadOptional("users", [], () =>
+            prisma.user.findMany({
+              orderBy: { name: "asc" },
+              select: { id: true, name: true, role: true, image: true },
+            }),
+          )
+        : Promise.resolve([]),
       loadOptional("platforms", [], () => getActivePlatforms()),
       canTriage ? loadOptional("types", [], () => getActiveIssueTypesCached()) : Promise.resolve([]),
       loadOptional("votes", createEmptyVoterSummary(), () => fetchVoterSummary(id)),
@@ -476,7 +488,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                   {severityLabels[bug.severity]}
                 </Badge>
                 {bug.category ? (
-                  <Badge className="border border-teal-200 bg-teal-50 text-teal-800">
+                  <Badge className="border border-teal-200 bg-teal-50 text-teal-950">
                     {bug.category.name}
                   </Badge>
                 ) : null}

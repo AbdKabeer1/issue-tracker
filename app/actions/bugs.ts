@@ -38,7 +38,11 @@ import {
   editBugContentSchema,
   updateBugSchema,
 } from "@/lib/validations/bug";
-import { calculateVoteChange, isValidVoteDirection } from "@/lib/voting";
+import {
+  calculateVoteChange,
+  isValidVoteDirection,
+  reconcileVoteCount,
+} from "@/lib/voting";
 import {
   canDeleteTicket,
   canRestoreTicket,
@@ -653,6 +657,14 @@ export async function editBugContentAction(
   const user = await requireUser();
   const userId = user.id;
 
+  const limit = checkRateLimit(
+    `edit-bug:${userId}`,
+    ACTION_RATE_LIMITS.editBug,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
+
   const existing = await prisma.bug.findUnique({
     where: { id: bugId },
     select: {
@@ -949,12 +961,16 @@ export async function toggleVoteAction(
   }
 
   const result = await prisma.$transaction(async (tx) => {
+    // Acquire a row lock on the Bug to serialize concurrent vote updates
+    // and prevent race-condition drift in voteCount (#362).
+    await tx.$queryRaw`SELECT id FROM "Bug" WHERE id = ${bugId} FOR UPDATE`;
+
     const existing = await tx.vote.findUnique({
       where: { userId_bugId: { userId, bugId } },
     });
 
     const currentVote = existing?.value ?? 0;
-    const { nextVote, countDelta } = calculateVoteChange(currentVote, direction);
+    const { nextVote } = calculateVoteChange(currentVote, direction);
 
     if (nextVote === 0 && existing) {
       await tx.vote.delete({ where: { id: existing.id } });
@@ -969,15 +985,6 @@ export async function toggleVoteAction(
       });
     }
 
-    const rows = await tx.$queryRaw<Array<{ voteCount: number }>>`
-      UPDATE "Bug"
-      SET "voteCount" = "voteCount" + ${countDelta}
-      WHERE "id" = ${bugId}
-      RETURNING "voteCount"
-    `;
-
-    const voteCount = rows[0]?.voteCount ?? 0;
-
     const voteCounts = await tx.vote.groupBy({
       by: ["value"],
       where: { bugId },
@@ -990,6 +997,13 @@ export async function toggleVoteAction(
       if (c.value === 1) likeCount = c._count._all;
       if (c.value === -1) dislikeCount = c._count._all;
     }
+
+    const voteCount = reconcileVoteCount(likeCount, dislikeCount);
+
+    await tx.bug.update({
+      where: { id: bugId },
+      data: { voteCount },
+    });
 
     return {
       voted: nextVote === 1,
@@ -1188,6 +1202,14 @@ export async function selfAssignBugAction(
 ): Promise<ActionResult> {
   const user = await requireUser();
   const userId = user.id;
+
+  const limit = checkRateLimit(
+    `self-assign:${userId}`,
+    ACTION_RATE_LIMITS.selfAssign,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
 
   if (!bugId || typeof bugId !== "string" || bugId.trim().length === 0) {
     return { error: TICKET_ASSIGN_ERRORS.invalidId };
