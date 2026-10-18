@@ -33,6 +33,19 @@ describe("resolveBasePath", () => {
       }),
     ).toBe("/bug-tracker");
   });
+
+  it("defaults to empty string for vercel domains even if URL contains bug-tracker in hostname or path", () => {
+    expect(
+      resolveBasePath({
+        AUTH_URL: "https://bug-tracker-eight-theta.vercel.app",
+      }),
+    ).toBe("");
+    expect(
+      resolveBasePath({
+        AUTH_URL: "https://bug-tracker-eight-theta.vercel.app/api/auth",
+      }),
+    ).toBe("");
+  });
 });
 
 describe("toAppPath", () => {
