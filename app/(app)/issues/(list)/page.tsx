@@ -219,7 +219,7 @@ export default async function BugsPage({
     }
     if (!showDuplicates) next.set(DUPLICATES_PARAM, SHOW_DUPLICATES);
     const qs = next.toString();
-    return qs ? `/bugs?${qs}` : "/bugs";
+    return qs ? `/issues?${qs}` : "/issues";
   })();
 
   const pagination = calculatePagination({
@@ -317,7 +317,7 @@ export default async function BugsPage({
     if (value) exportParams.set(key, value);
   }
   const exportQuery = exportParams.toString();
-  const exportHref = exportQuery ? `/bugs/export?${exportQuery}` : "/bugs/export";
+  const exportHref = exportQuery ? `/issues/export?${exportQuery}` : "/issues/export";
 
   const bugIds = bugs.map((bug) => bug.id);
 
@@ -423,7 +423,7 @@ export default async function BugsPage({
         <div className="flex flex-wrap items-center gap-2 print:hidden">
           {canDelete ? (
             <Link
-              href={isDeletedView ? "/bugs" : "/bugs?deleted=true"}
+              href={isDeletedView ? "/issues" : "/issues?deleted=true"}
               className={`inline-flex items-center justify-center rounded-lg px-3.5 py-2 text-sm font-medium border transition ${
                 isDeletedView
                   ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
@@ -449,7 +449,7 @@ export default async function BugsPage({
           ) : null}
           {!isDeletedView ? (
             <Link
-              href="/bugs/new"
+              href="/issues/new"
               className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-teal-800"
             >
               New Issue
@@ -509,13 +509,13 @@ export default async function BugsPage({
           </p>
           <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
             <Link
-              href="/bugs"
+              href="/issues"
               className="text-sm font-medium text-teal-700 hover:underline"
             >
               Clear filters
             </Link>
             <Link
-              href="/bugs/new"
+              href="/issues/new"
               className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-teal-800"
             >
               New Issue
@@ -552,7 +552,7 @@ export default async function BugsPage({
                   readOnly={isDeletedView}
                 />
                 <Link
-                  href={`/bugs/${bug.id}`}
+                  href={`/issues/${bug.id}`}
                   // j / k move focus between these (#287).
                   data-issue-link=""
                   className="min-w-0 flex-1 basis-0 rounded-md scroll-my-24 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-teal-600"
@@ -790,7 +790,7 @@ function FirstRunWelcome({ isAdmin }: { isAdmin: boolean }) {
       </p>
       <div className="mt-5">
         <Link
-          href="/bugs/new"
+          href="/issues/new"
           className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
         >
           Report the first issue

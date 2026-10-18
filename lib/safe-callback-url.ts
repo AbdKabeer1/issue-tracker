@@ -3,7 +3,7 @@ import { toAppPath } from "@/lib/base-path";
 /** Same-origin relative paths only — blocks open redirects and normalizes basePath. */
 export function safeCallbackUrl(
   value: FormDataEntryValue | string | null | undefined,
-  fallback = "/bugs",
+  fallback = "/issues",
 ): string {
   if (typeof value !== "string") return fallback;
   const trimmed = value.trim();

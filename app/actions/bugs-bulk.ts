@@ -153,8 +153,12 @@ export async function bulkUpdateBugsAction(
     return { error: "Could not apply the change. Nothing was modified." };
   }
 
+  revalidatePath("/issues");
   revalidatePath("/bugs");
-  for (const id of changedIds) revalidatePath(`/bugs/${id}`);
+  for (const id of changedIds) {
+    revalidatePath(`/issues/${id}`);
+    revalidatePath(`/bugs/${id}`);
+  }
 
   return { ok: true, updated: changedIds.length, skipped };
 }

@@ -57,7 +57,7 @@ The app is served from the root domain at **`http://localhost:3001`** (matching 
 
 ## Link previews (Open Graph / Twitter)
 
-Bug detail URLs (`/bugs/[id]`) emit OG + Twitter Card metadata so Slack, Discord, X, WhatsApp, and similar clients can unfurl a card with **title**, **status**, **author**, a **description snippet**, the **zedu-mark.svg** thumbnail, and a **canonical URL**.
+Issue detail URLs (`/issues/[id]`, with legacy `/bugs/[id]` backwards-compatible redirects) emit OG + Twitter Card metadata so Slack, Discord, X, WhatsApp, and similar clients can unfurl a card with **title**, **status**, **author**, a **description snippet**, the **zedu-mark.svg** thumbnail, and a **canonical URL**.
 
 ### Privacy (auth-gated pages)
 

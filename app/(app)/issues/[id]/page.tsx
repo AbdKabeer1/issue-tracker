@@ -122,7 +122,7 @@ export async function generateMetadata({
   // Title and status only: these tags are served to anyone with a preview-bot
   // User-Agent, signed in or not (#117).
   const description = bugLinkPreviewDescription({ status: bug.status });
-  const canonical = absoluteUrl(`/bugs/${id}`);
+  const canonical = absoluteUrl(`/issues/${id}`);
   const image = absoluteUrl(SHARE_IMAGE.url);
   // The reference goes in the tab title too: with several issues open, the
   // number is what tells two similar titles apart.
@@ -184,7 +184,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           </Badge>
         </div>
         <Link
-          href={`/login?callbackUrl=${encodeURIComponent(`/bugs/${id}`)}`}
+          href={`/login?callbackUrl=${encodeURIComponent(`/issues/${id}`)}`}
           className="inline-flex text-sm font-medium text-teal-700 hover:underline"
         >
           Sign in to view full details
@@ -380,7 +380,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             {bug.duplicateOf.isDeleted && !canDelete ? (
               <span>{formatIssueNumber(bug.duplicateOf.number)} (since deleted)</span>
             ) : (
-              <Link href={`/bugs/${bug.duplicateOf.id}`} className="font-semibold text-teal-800 underline-offset-2 hover:underline">
+              <Link href={`/issues/${bug.duplicateOf.id}`} className="font-semibold text-teal-800 underline-offset-2 hover:underline">
                 {formatIssueNumber(bug.duplicateOf.number)} {bug.duplicateOf.title}
               </Link>
             )}{" "}
@@ -404,7 +404,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           <ul className="mt-2 space-y-1 text-sm">
             {bug.duplicates.map((d) => (
               <li key={d.id}>
-                <Link href={`/bugs/${d.id}`} className="text-teal-800 hover:underline">
+                <Link href={`/issues/${d.id}`} className="text-teal-800 hover:underline">
                   <span className="text-slate-500 tabular-nums">{formatIssueNumber(d.number)}</span> {d.title}
                 </Link>{" "}
                 <span className="text-xs text-slate-500">· {statusLabels[d.status]}</span>
@@ -438,7 +438,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
-          <Link href="/bugs" className="text-sm text-teal-700 hover:underline print:hidden">
+          <Link href="/issues" className="text-sm text-teal-700 hover:underline print:hidden">
             ← Back to issues
           </Link>
           <div className="mt-3 space-y-3">
@@ -507,7 +507,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6 print:hidden">
           {/* The canonical URL from the configured site, not the browser's
               current one, which may carry a query string or a #comment. */}
-          <CopyLinkButton url={absoluteUrl(`/bugs/${bug.id}`)} label="issue" />
+          <CopyLinkButton url={absoluteUrl(`/issues/${bug.id}`)} label="issue" />
           {!bug.isDeleted ? (
             <WatchButton
               bugId={bug.id}
@@ -550,7 +550,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         canEdit={canEdit}
         users={users}
         lastEditedAt={lastRevision?.editedAt ?? null}
-        historyHref={`/bugs/${bug.id}/history`}
+        historyHref={`/issues/${bug.id}/history`}
       >
         <dl className="mt-6 grid grid-cols-1 gap-3 text-sm text-slate-600 sm:grid-cols-2">
           {bug.type ? (
@@ -614,7 +614,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             <div>
               <dt className="font-medium text-slate-500">Milestone</dt>
               <dd className="flex flex-wrap items-center gap-2">
-                <Link href={`/bugs?milestone=${bug.milestone.id}`} className="text-teal-700 hover:underline">
+                <Link href={`/issues?milestone=${bug.milestone.id}`} className="text-teal-700 hover:underline">
                   {bug.milestone.title}
                 </Link>
                 <MilestoneDue due={dueDateValue(bug.milestone.dueDate) || null} isClosed={bug.milestone.isClosed} />
@@ -741,7 +741,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         </Suspense>
         <CommentThread
           bugId={bug.id}
-          issueUrl={absoluteUrl(`/bugs/${bug.id}`)}
+          issueUrl={absoluteUrl(`/issues/${bug.id}`)}
           reporterId={bug.reporterId}
           comments={commentTree}
           attachmentsByComment={attachmentsByComment}

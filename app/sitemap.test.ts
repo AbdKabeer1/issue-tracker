@@ -13,7 +13,10 @@ describe("sitemap", () => {
 
   it("never lists an issue page", () => {
     vi.stubEnv("AUTH_URL", "https://issues.zedu.chat");
-    expect(sitemap().some((entry) => entry.url.includes("/bugs"))).toBe(false);
+    expect(sitemap().some((entry) => {
+      const path = new URL(entry.url).pathname;
+      return path.startsWith("/bugs") || path.startsWith("/issues");
+    })).toBe(false);
   });
 
   it("lists nothing robots.txt disallows", () => {

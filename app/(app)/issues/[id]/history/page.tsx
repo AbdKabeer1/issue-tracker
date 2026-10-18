@@ -60,7 +60,7 @@ export default async function IssueHistoryPage({ params }: Props) {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
-        <Link href={`/bugs/${bug.id}`} className="text-sm text-teal-700 hover:underline">
+        <Link href={`/issues/${bug.id}`} className="text-sm text-teal-700 hover:underline">
           ← Back to issue
         </Link>
         <h1 className="mt-3 text-xl font-semibold text-slate-900 break-words">

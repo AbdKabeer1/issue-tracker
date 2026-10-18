@@ -169,7 +169,7 @@ export function MilestoneManager({ milestones }: { milestones: ManagedMilestone[
             <li key={m.id} className="grid gap-3 p-4 sm:grid-cols-[1fr_14rem_auto] sm:items-center">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Link href={`/bugs?milestone=${m.id}`} className="font-medium text-slate-900 hover:underline">
+                  <Link href={`/issues?milestone=${m.id}`} className="font-medium text-slate-900 hover:underline">
                     {m.title}
                   </Link>
                   <MilestoneDue due={m.dueDate} isClosed={m.isClosed} />

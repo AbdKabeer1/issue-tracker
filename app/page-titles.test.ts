@@ -6,8 +6,8 @@ import { readFileSync } from "fs";
  * so tabs, history and bookmarks were indistinguishable.
  */
 const pages: Array<[string, string]> = [
-  ["app/(app)/bugs/(list)/page.tsx", "Issues"],
-  ["app/(app)/bugs/new/page.tsx", "Report an issue"],
+  ["app/(app)/issues/(list)/page.tsx", "Issues"],
+  ["app/(app)/issues/new/page.tsx", "Report an issue"],
   ["app/(app)/settings/page.tsx", "Settings"],
   ["app/(app)/admin/types/page.tsx", "Issue types"],
   ["app/(app)/admin/categories/page.tsx", "Platforms"],

@@ -61,6 +61,8 @@ export async function createCategoryAction(
 
   expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
+  revalidatePath("/issues/new");
+  revalidatePath("/issues");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
   return { ok: true };
@@ -123,6 +125,8 @@ export async function updateCategoryAction(
 
   expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
+  revalidatePath("/issues/new");
+  revalidatePath("/issues");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
   return { ok: true };
@@ -148,6 +152,8 @@ export async function toggleCategoryStatusAction(
 
   expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
+  revalidatePath("/issues/new");
+  revalidatePath("/issues");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
   return { ok: true };
@@ -186,6 +192,8 @@ export async function deleteCategoryAction(
 
   expireTag(TAGS.platforms);
   revalidatePath("/admin/categories");
+  revalidatePath("/issues/new");
+  revalidatePath("/issues");
   revalidatePath("/bugs/new");
   revalidatePath("/bugs");
   return { ok: true };

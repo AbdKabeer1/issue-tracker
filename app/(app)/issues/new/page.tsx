@@ -28,7 +28,7 @@ export default async function NewBugPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="space-y-1">
-        <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
+        <Link href="/issues" className="text-sm text-teal-700 hover:underline">
           ← Back to issues
         </Link>
         <h1 className="text-2xl font-semibold text-slate-900">Report an issue</h1>

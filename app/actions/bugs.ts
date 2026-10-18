@@ -279,8 +279,9 @@ export async function createBugAction(
   }
   if (events.length > 0) notifyLater(...events);
 
+  revalidatePath("/issues");
   revalidatePath("/bugs");
-  redirect(`/bugs/${bug.id}`);
+  redirect(`/issues/${bug.id}`);
 }
 
 /** Updates status (assignee/admin) and severity/assignee (admin) and logs activity. */
@@ -640,6 +641,8 @@ export async function updateBugAction(
   }
   if (events.length > 0) notifyLater(...events);
 
+  revalidatePath("/issues");
+  revalidatePath(`/issues/${bugId}`);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
@@ -760,6 +763,8 @@ export async function editBugContentAction(
     });
   }
 
+  revalidatePath("/issues");
+  revalidatePath(`/issues/${bugId}`);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
@@ -902,6 +907,8 @@ export async function addCommentAction(
   });
   notifyLater(...events);
 
+  revalidatePath("/issues");
+  revalidatePath(`/issues/${bugId}`);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
@@ -1000,6 +1007,8 @@ export async function toggleVoteAction(
     };
   });
 
+  revalidatePath("/issues");
+  revalidatePath(`/issues/${bugId}`);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true, ...result };
@@ -1056,9 +1065,11 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
     return { error: TICKET_DELETION_ERRORS.failed };
   }
 
+  revalidatePath("/issues");
+  revalidatePath(`/issues/${bugId}`);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
-  redirect("/bugs");
+  redirect("/issues");
 }
 
 /**
@@ -1112,6 +1123,8 @@ export async function restoreBugAction(bugId: string): Promise<ActionResult> {
     return { error: TICKET_DELETION_ERRORS.failedRestore };
   }
 
+  revalidatePath("/issues");
+  revalidatePath(`/issues/${bugId}`);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
@@ -1173,6 +1186,8 @@ export async function toggleBoostBugAction(
     return { error: TICKET_BOOST_ERRORS.failed };
   }
 
+  revalidatePath("/issues");
+  revalidatePath(`/issues/${bugId}`);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true, isBoosted: nextBoosted };
@@ -1268,6 +1283,8 @@ export async function selfAssignBugAction(
     toUserId: targetAssigneeId,
   });
 
+  revalidatePath(`/issues/${bugId}`);
+  revalidatePath("/issues");
   revalidatePath(`/bugs/${bugId}`);
   revalidatePath("/bugs");
   return { ok: true };

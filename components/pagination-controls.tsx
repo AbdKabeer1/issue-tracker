@@ -21,7 +21,7 @@ export function PaginationControls({
   from,
   to,
   queryParams,
-  basePath = "/bugs",
+  basePath = "/issues",
   itemLabel = "issue",
 }: PaginationControlsProps) {
   if (totalCount === 0) return null;

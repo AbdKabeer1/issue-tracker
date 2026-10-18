@@ -52,8 +52,21 @@ const nextConfig: NextConfig = {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
   async redirects() {
+    const list = [
+      {
+        source: "/bugs",
+        destination: "/issues",
+        permanent: true,
+      },
+      {
+        source: "/bugs/:path*",
+        destination: "/issues/:path*",
+        permanent: true,
+      },
+    ];
     if (!BASE_PATH) {
       return [
+        ...list,
         {
           source: "/bug-tracker",
           destination: "/",
@@ -66,7 +79,7 @@ const nextConfig: NextConfig = {
         },
       ];
     }
-    return [];
+    return list;
   },
   turbopack: {
     rules: {

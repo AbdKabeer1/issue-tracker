@@ -75,7 +75,7 @@ export function parseIssueRef(raw: string): IssueRef | null {
     const n = Number(num[1]);
     return n >= 1 ? { number: n } : null;
   }
-  const url = /\/bugs\/([A-Za-z0-9_-]{6,40})(?:[/?#]|$)/.exec(text);
+  const url = /\/(?:issues|bugs)\/([A-Za-z0-9_-]{6,40})(?:[/?#]|$)/.exec(text);
   if (url) return { id: url[1] };
   if (/^[a-z0-9]{20,40}$/.test(text)) return { id: text };
   return null;

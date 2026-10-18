@@ -33,10 +33,12 @@ describe("headerNavItems", () => {
 
 describe("isNavItemActive", () => {
   it("marks Issues active on the list and on an issue, not on the new-issue form", () => {
-    expect(isNavItemActive("/bugs", "/bugs")).toBe(true);
-    expect(isNavItemActive("/bugs/", "/bugs")).toBe(true);
-    expect(isNavItemActive("/bugs/abc123", "/bugs")).toBe(true);
-    expect(isNavItemActive("/bugs/new", "/bugs")).toBe(false);
+    expect(isNavItemActive("/issues", "/issues")).toBe(true);
+    expect(isNavItemActive("/issues/", "/issues")).toBe(true);
+    expect(isNavItemActive("/issues/abc123", "/issues")).toBe(true);
+    expect(isNavItemActive("/issues/new", "/issues")).toBe(false);
+    expect(isNavItemActive("/bugs", "/issues")).toBe(true);
+    expect(isNavItemActive("/bugs/abc123", "/issues")).toBe(true);
   });
 
   it("matches admin pages by prefix only on a path boundary", () => {
@@ -44,7 +46,7 @@ describe("isNavItemActive", () => {
     expect(isNavItemActive("/admin/types/x", "/admin/types")).toBe(true);
     expect(isNavItemActive("/admin/typesx", "/admin/types")).toBe(false);
     expect(isNavItemActive("/settings", "/admin/types")).toBe(false);
-    expect(isNavItemActive(null, "/bugs")).toBe(false);
+    expect(isNavItemActive(null, "/issues")).toBe(false);
   });
 });
 

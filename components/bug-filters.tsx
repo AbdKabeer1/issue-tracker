@@ -58,7 +58,7 @@ export function BugFilters({
     }
     next.delete("page");
     const qs = next.toString();
-    router.push(qs ? `/bugs?${qs}` : "/bugs");
+    router.push(qs ? `/issues?${qs}` : "/issues");
   }
 
   function update(key: string, value: string) {
@@ -104,7 +104,7 @@ export function BugFilters({
     else next.delete(TAGS_PARAM);
     next.delete("page");
     const qs = next.toString();
-    return qs ? `/bugs?${qs}` : "/bugs";
+    return qs ? `/issues?${qs}` : "/issues";
   }
 
   const currentSort = parseBugSort(

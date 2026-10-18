@@ -114,6 +114,7 @@ export async function updateCommentAction(
     });
   }
 
+  revalidatePath(`/issues/${comment.bugId}`);
   revalidatePath(`/bugs/${comment.bugId}`);
   return { ok: true };
 }
@@ -177,6 +178,7 @@ export async function deleteCommentAction(
     return { error: COMMENT_ERRORS.failed };
   }
 
+  revalidatePath(`/issues/${comment.bugId}`);
   revalidatePath(`/bugs/${comment.bugId}`);
   return { ok: true };
 }

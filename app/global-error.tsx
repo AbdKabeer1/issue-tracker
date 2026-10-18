@@ -57,7 +57,7 @@ export default function GlobalError({
             {/* A plain link: the app's router may be what failed. */}
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a
-              href="/bugs"
+              href="/issues"
               style={{
                 border: "1px solid #cbd5e1",
                 borderRadius: 8,

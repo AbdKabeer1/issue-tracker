@@ -228,7 +228,7 @@ export async function switchActiveRoleAction(
 export async function googleSignInAction(
   callbackUrlOrFormData?: string | FormData,
 ) {
-  let target = "/bugs";
+  let target = "/issues";
   if (typeof callbackUrlOrFormData === "string") {
     target = callbackUrlOrFormData;
   } else if (
