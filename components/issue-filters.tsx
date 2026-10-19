@@ -227,7 +227,7 @@ export function IssueFilters({
           />
           {!text ? (
             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
-              <kbd className="hidden sm:inline-flex items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 select-none">
+              <kbd className="hidden sm:inline-flex items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 select-none">
                 /
               </kbd>
             </div>
@@ -462,7 +462,7 @@ export function IssueFilters({
       </div>
       {hasActiveFilters ? (
         <div className="col-span-2 flex w-full flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
-          <span className="text-xs font-medium text-slate-400">Active filters:</span>
+          <span className="text-xs font-medium text-slate-600">Active filters:</span>
           {currentQuery ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-teal-900">
               Search: &ldquo;{currentQuery}&rdquo;

@@ -208,7 +208,7 @@ export function IssuesSidebar({
             >
               <span
                 className={`shrink-0 ${
-                  isActive ? "text-blue-600" : "text-slate-400"
+                  isActive ? "text-blue-600" : "text-slate-500"
                 }`}
               >
                 {v.icon}
@@ -218,7 +218,7 @@ export function IssuesSidebar({
                 className={`ml-auto rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${
                   isActive
                     ? "bg-blue-100 text-blue-800"
-                    : "text-slate-400"
+                    : "text-slate-600"
                 }`}
               >
                 {v.count}
@@ -232,7 +232,7 @@ export function IssuesSidebar({
 
       {/* 2. Categories Section */}
       <div className="space-y-1">
-        <div className="px-3 pb-1 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
+        <div className="px-3 pb-1 text-[11px] font-bold tracking-wider text-slate-600 uppercase">
           Categories
         </div>
 
@@ -247,7 +247,7 @@ export function IssuesSidebar({
         >
           <span className="h-2.5 w-2.5 rounded-full bg-blue-600 shrink-0" />
           <span className="truncate">All categories</span>
-          <span className="ml-auto text-xs text-slate-400 tabular-nums">
+          <span className="ml-auto text-xs text-slate-600 tabular-nums">
             {counts.all}
           </span>
         </Link>
@@ -270,7 +270,7 @@ export function IssuesSidebar({
             >
               <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${dotColor}`} />
               <span className="truncate">{name}</span>
-              <span className="ml-auto text-xs text-slate-400 tabular-nums">
+              <span className="ml-auto text-xs text-slate-600 tabular-nums">
                 {catCount}
               </span>
             </Link>
@@ -282,7 +282,7 @@ export function IssuesSidebar({
 
       {/* 3. Platforms Section */}
       <div className="space-y-1">
-        <div className="px-3 pb-1 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
+        <div className="px-3 pb-1 text-[11px] font-bold tracking-wider text-slate-600 uppercase">
           Platforms
         </div>
 
@@ -296,7 +296,7 @@ export function IssuesSidebar({
           }`}
         >
           <svg
-            className="h-4 w-4 text-slate-400 shrink-0"
+            className="h-4 w-4 text-slate-500 shrink-0"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -310,7 +310,7 @@ export function IssuesSidebar({
             />
           </svg>
           <span className="truncate">All platforms</span>
-          <span className="ml-auto text-xs text-slate-400 tabular-nums">
+          <span className="ml-auto text-xs text-slate-600 tabular-nums">
             {counts.all}
           </span>
         </Link>
@@ -347,7 +347,7 @@ export function IssuesSidebar({
             >
               {platformName === "Web" ? (
                 <svg
-                  className="h-4 w-4 text-slate-400 shrink-0"
+                  className="h-4 w-4 text-slate-500 shrink-0"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -362,7 +362,7 @@ export function IssuesSidebar({
                 </svg>
               ) : platformName === "Mobile" ? (
                 <svg
-                  className="h-4 w-4 text-slate-400 shrink-0"
+                  className="h-4 w-4 text-slate-500 shrink-0"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -377,7 +377,7 @@ export function IssuesSidebar({
                 </svg>
               ) : platformName === "Desktop" ? (
                 <svg
-                  className="h-4 w-4 text-slate-400 shrink-0"
+                  className="h-4 w-4 text-slate-500 shrink-0"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -392,7 +392,7 @@ export function IssuesSidebar({
                 </svg>
               ) : (
                 <svg
-                  className="h-4 w-4 text-slate-400 shrink-0"
+                  className="h-4 w-4 text-slate-500 shrink-0"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -407,7 +407,7 @@ export function IssuesSidebar({
                 </svg>
               )}
               <span className="truncate">{platformName}</span>
-              <span className="ml-auto text-xs text-slate-400 tabular-nums">
+              <span className="ml-auto text-xs text-slate-600 tabular-nums">
                 {platCount}
               </span>
             </Link>

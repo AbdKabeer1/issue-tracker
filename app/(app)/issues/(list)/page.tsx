@@ -718,7 +718,7 @@ export default async function BugsPage({
                                 isDone(bug.status) ? "text-slate-500" : "text-slate-900"
                               }`}
                             >
-                              <span className="font-mono text-xs font-semibold text-slate-400 mr-2 tabular-nums">
+                              <span className="font-mono text-xs font-semibold text-slate-600 mr-2 tabular-nums">
                                 {formatIssueNumber(bug.number)}
                               </span>
                               {searchText ? (
@@ -804,7 +804,7 @@ export default async function BugsPage({
                                   />
                                 </>
                               ) : (
-                                <span className="text-slate-400">Unassigned</span>
+                                <span className="text-slate-600">Unassigned</span>
                               )}
                               <span>·</span>
                               {currentSort === "newest" ? (
@@ -854,14 +854,14 @@ export default async function BugsPage({
                       </Link>
 
                       <div className="flex w-full basis-full shrink-0 items-center justify-between gap-3 self-center border-t border-slate-100 pt-2 md:basis-auto md:w-auto md:border-0 md:pt-0 md:pl-2">
-                        <div className="flex items-center gap-3 text-xs text-slate-400">
+                        <div className="flex items-center gap-3 text-xs text-slate-600">
                           {(bug._count?.comments ?? 0) > 0 ? (
                             <span
-                              className="inline-flex items-center gap-1 text-slate-500 font-medium"
+                              className="inline-flex items-center gap-1 text-slate-600 font-medium"
                               title={`${bug._count?.comments} comments`}
                             >
                               <svg
-                                className="h-4 w-4 text-slate-400"
+                                className="h-4 w-4 text-slate-500"
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
@@ -880,11 +880,11 @@ export default async function BugsPage({
 
                           {(bug._count?.attachments ?? 0) > 0 ? (
                             <span
-                              className="inline-flex items-center gap-1 text-slate-500 font-medium"
+                              className="inline-flex items-center gap-1 text-slate-600 font-medium"
                               title={`${bug._count?.attachments} attachments`}
                             >
                               <svg
-                                className="h-4 w-4 text-slate-400"
+                                className="h-4 w-4 text-slate-500"
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
