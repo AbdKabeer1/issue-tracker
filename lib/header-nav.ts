@@ -6,6 +6,8 @@ export type HeaderNavItem = { href: string; label: string };
 export function headerNavItems(role?: AppRole | null): HeaderNavItem[] {
   const items: HeaderNavItem[] = [
     { href: "/issues", label: "Issues" },
+    // #426: projects decide which issues the board shows.
+    { href: "/projects", label: "Projects" },
     // #289: everyone can see what's left for a release.
     { href: "/milestones", label: "Milestones" },
   ];

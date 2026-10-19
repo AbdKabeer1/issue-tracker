@@ -10,6 +10,8 @@ import { MAIN_CONTENT_ID, SkipLink } from "@/components/skip-link";
 import { FocusMainOnNavigate } from "@/components/focus-main-on-navigate";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { prisma } from "@/lib/prisma";
+import { projectContextFor } from "@/lib/project-context";
+import { currentTenantIdFor } from "@/lib/tenant-context";
 
 export default async function AppLayout({
   children,
@@ -34,6 +36,11 @@ export default async function AppLayout({
   }
 
   const user = await requireUser();
+  // #426: the header switcher and the issue list read the same active project.
+  const { projects, activeProjectId } = await projectContextFor(
+    prisma,
+    await currentTenantIdFor(user.id),
+  );
   // A missing Notification table must not take down every signed-in page.
   let unreadCount = 0;
   try {
@@ -67,6 +74,8 @@ export default async function AppLayout({
         isRealAdmin={user.isRealAdmin}
         unreadCount={unreadCount}
         userId={user.id}
+        projects={projects}
+        activeProjectId={activeProjectId}
       />
       <main
         id={MAIN_CONTENT_ID}

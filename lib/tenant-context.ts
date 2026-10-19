@@ -1,6 +1,7 @@
 import { cache } from "react";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { activeProjectIdFor } from "@/lib/project-context";
 import { ZEDU_SLUG } from "@/lib/tenant";
 
 /**
@@ -42,14 +43,12 @@ export const currentTenantIdFor = cache((userId: string | null | undefined) =>
   tenantIdForUser(prisma, userId),
 );
 
-/** The project new issues go into: the tenant's Zedu project, else its oldest. */
+/**
+ * The project new issues go into: the active project (#426), else the tenant's
+ * Zedu project, else its oldest.
+ */
 export async function defaultProjectIdFor(db: Db, tenantId: string): Promise<string | null> {
-  const projects = await db.project.findMany({
-    where: { tenantId },
-    select: { id: true, slug: true },
-    orderBy: { createdAt: "asc" },
-  });
-  return (projects.find((p) => p.slug === ZEDU_SLUG) ?? projects[0])?.id ?? null;
+  return activeProjectIdFor(db, tenantId);
 }
 
 /**
