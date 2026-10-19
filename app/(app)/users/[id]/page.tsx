@@ -2,6 +2,9 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { currentTenantIdFor } from "@/lib/tenant-context";
+import { pointTotals } from "@/lib/points/leaderboard";
+import { PointsSummary } from "@/components/points-summary";
 import { requireUser } from "@/lib/auth-helpers";
 import { roleLabels } from "@/lib/roles";
 import { Badge } from "@/components/ui/badge";
@@ -34,8 +37,10 @@ export async function generateMetadata({
 }
 
 export default async function ProfilePage({ params }: ProfileProps) {
-  await requireUser();
+  const viewer = await requireUser();
   const { id } = await params;
+  // #428: points in the viewer's tenant.
+  const tenantId = await currentTenantIdFor(viewer.id);
 
   const [person, reported, assigned, counts, assignedTotal] = await Promise.all([
     prisma.user.findUnique({
@@ -66,6 +71,10 @@ export default async function ProfilePage({ params }: ProfileProps) {
 
   if (!person) notFound();
 
+  const points = tenantId
+    ? await pointTotals(prisma, tenantId, person.id)
+    : { points: 0, solvedTasks: 0 };
+
   const reportedTotal = counts.reduce((sum, row) => sum + row._count._all, 0);
   const resolved =
     counts.find((row) => row.status === "resolved")?._count._all ?? 0;
@@ -92,6 +101,8 @@ export default async function ProfilePage({ params }: ProfileProps) {
         <Stat label="Of those, resolved" value={resolved} />
         <Stat label="Currently assigned" value={assignedTotal} />
       </dl>
+
+      <PointsSummary points={points.points} solvedTasks={points.solvedTasks} />
 
       <IssueList
         heading="Reported"

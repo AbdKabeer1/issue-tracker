@@ -76,6 +76,7 @@ import {
   defaultProjectIdFor,
   NO_TENANT_MESSAGE,
 } from "@/lib/tenant-context";
+import { awardSolver } from "@/lib/points/award";
 import {
   checkRateLimit,
   consumeRateLimit,
@@ -625,6 +626,15 @@ export async function updateBugAction(
       if (data.assigneeId) {
         // The new assignee starts watching (#216).
         await ensureWatching(tx, bugId, [data.assigneeId]);
+      }
+      // #428: resolving an issue earns its assignee solver points, once.
+      if (data.status === "resolved" && existing.status !== "resolved") {
+        await awardSolver(tx, {
+          id: bugId,
+          tenantId: existing.tenantId,
+          severity: data.severity ?? existing.severity,
+          assigneeId: data.assigneeId !== undefined ? data.assigneeId : existing.assigneeId,
+        });
       }
       if (pending.length > 0) {
         await tx.bugActivity.createMany({
