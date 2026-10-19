@@ -71,6 +71,13 @@ import { getForeignKeyErrorMessage } from "@/lib/foreign-key-errors";
 import { parseAttachmentIds } from "@/lib/attachments";
 import { attachmentIdsInMarkdown, linkAttachments } from "@/lib/attachment-link";
 import {
+  bugInTenant,
+  currentTenantIdFor,
+  defaultProjectIdFor,
+  NO_TENANT_MESSAGE,
+} from "@/lib/tenant-context";
+import { awardSolver } from "@/lib/points/award";
+import {
   checkRateLimit,
   consumeRateLimit,
   ACTION_RATE_LIMITS,
@@ -213,11 +220,21 @@ export async function createBugAction(
     }
   }
 
+  // #425: the issue goes into the reporter's tenant. No membership, no issue.
+  const tenantId = await currentTenantIdFor(userId);
+  const projectId = tenantId ? await defaultProjectIdFor(prisma, tenantId) : null;
+  if (!tenantId || !projectId) {
+    return { error: NO_TENANT_MESSAGE };
+  }
+
   // Always open at creation — createBugSchema rejects client status.
   let bug;
   try {
     bug = await prisma.bug.create({
       data: {
+        tenantId,
+        projectId,
+        beneficiaryUserId: userId,
         title: parsed.data.title,
         description,
         severity: admin ? parsed.data.severity : "medium",
@@ -299,7 +316,7 @@ export async function updateBugAction(
   const admin = isAdmin(user.role);
 
   const existing = await prisma.bug.findUnique({
-    where: { id: bugId },
+    where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
     include: {
       assignee: { select: { id: true, name: true } },
       category: { select: { id: true, name: true } },
@@ -610,6 +627,15 @@ export async function updateBugAction(
         // The new assignee starts watching (#216).
         await ensureWatching(tx, bugId, [data.assigneeId]);
       }
+      // #428: resolving an issue earns its assignee solver points, once.
+      if (data.status === "resolved" && existing.status !== "resolved") {
+        await awardSolver(tx, {
+          id: bugId,
+          tenantId: existing.tenantId,
+          severity: data.severity ?? existing.severity,
+          assigneeId: data.assigneeId !== undefined ? data.assigneeId : existing.assigneeId,
+        });
+      }
       if (pending.length > 0) {
         await tx.bugActivity.createMany({
           data: activityCreateData(
@@ -670,7 +696,7 @@ export async function editBugContentAction(
   }
 
   const existing = await prisma.bug.findUnique({
-    where: { id: bugId },
+    where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
     select: {
       id: true,
       title: true,
@@ -808,7 +834,7 @@ export async function addCommentAction(
   }
 
   const bug = await prisma.bug.findUnique({
-    where: { id: bugId },
+    where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
     select: { id: true, isDeleted: true, title: true, reporterId: true, assigneeId: true },
   });
   if (!bug || bug.isDeleted) {
@@ -961,7 +987,7 @@ export async function toggleVoteAction(
   }
 
   const bug = await prisma.bug.findUnique({
-    where: { id: bugId },
+    where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
     select: { id: true, isDeleted: true },
   });
   if (!bug || bug.isDeleted) {
@@ -1044,7 +1070,7 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
   }
 
   const existing = await prisma.bug.findUnique({
-    where: { id: bugId },
+    where: { id: bugId, ...bugInTenant(await currentTenantIdFor(user.id)) },
     select: { id: true, isDeleted: true },
   });
 
@@ -1102,7 +1128,7 @@ export async function restoreBugAction(bugId: string): Promise<ActionResult> {
   }
 
   const existing = await prisma.bug.findUnique({
-    where: { id: bugId },
+    where: { id: bugId, ...bugInTenant(await currentTenantIdFor(user.id)) },
     select: { id: true, isDeleted: true },
   });
 
@@ -1162,7 +1188,7 @@ export async function toggleBoostBugAction(
   }
 
   const existing = await prisma.bug.findUnique({
-    where: { id: bugId },
+    where: { id: bugId, ...bugInTenant(await currentTenantIdFor(user.id)) },
     select: { id: true, isBoosted: true, isDeleted: true },
   });
 
@@ -1232,7 +1258,7 @@ export async function selfAssignBugAction(
   }
 
   const existing = await prisma.bug.findUnique({
-    where: { id: bugId },
+    where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
     select: {
       id: true,
       title: true,

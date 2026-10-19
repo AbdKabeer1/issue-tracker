@@ -7,7 +7,8 @@ Playwright drives a production build in a real browser (#299). It covers:
 - triage (status, severity, assignee), surviving a reload;
 - deleting and restoring an issue;
 - the admin screens;
-- the same paths at 375px, with a check that no page scrolls sideways.
+- the same paths at 375px, with a check that no page scrolls sideways;
+- the main pages against WCAG 2.x A/AA with axe (`a11y.spec.ts`).
 
 ## Run it locally
 
@@ -42,3 +43,7 @@ Open the trace with `pnpm exec playwright show-trace <path>/trace.zip`.
 - Make titles with `uniq("...")` so parallel tests never see each other's
   issues.
 - Prefer roles and labels (`getByRole`, `getByLabel`) to CSS selectors.
+- For accessibility, call `expectNoA11yViolations(page)` from `./axe`
+  after loading a page. It runs axe in the browser, so colour contrast is
+  checked for real — something the jsdom tests in
+  `components/a11y.test.tsx` cannot do.

@@ -1,0 +1,136 @@
+import { describe, expect, it } from "vitest";
+import { backfillEntries, backfillPoints, type HistoricalBug } from "./backfill";
+
+const bug = (overrides: Partial<HistoricalBug>): HistoricalBug => ({
+  id: "bug-1",
+  tenantId: "tenant-zedu",
+  status: "resolved",
+  severity: "medium",
+  assigneeId: "solver-1",
+  reporterId: "reporter-1",
+  duplicateOfId: null,
+  isDeleted: false,
+  ...overrides,
+});
+
+/** Bugs and a ledger with a unique sourceKey, paged the way Prisma pages. */
+function fixture(bugs: HistoricalBug[]) {
+  const ledger: Array<{ sourceKey: string; role: string; points: number; userId: string }> = [];
+  const sorted = [...bugs].sort((a, b) => a.id.localeCompare(b.id));
+  const db = {
+    bug: {
+      findMany: async ({ take, cursor }: { take: number; cursor?: { id: string } }) => {
+        const start = cursor ? sorted.findIndex((b) => b.id === cursor.id) + 1 : 0;
+        return sorted.slice(start, start + take);
+      },
+    },
+    pointEntry: {
+      findMany: async ({ where }: { where: { sourceKey: { in: string[] } } }) =>
+        ledger.filter((row) => where.sourceKey.in.includes(row.sourceKey)),
+      createMany: async ({ data }: { data: typeof ledger }) => {
+        let count = 0;
+        for (const row of data) {
+          if (ledger.some((r) => r.sourceKey === row.sourceKey)) continue;
+          ledger.push(row);
+          count++;
+        }
+        return { count };
+      },
+    },
+  };
+  return { db: db as never, ledger };
+}
+
+describe("backfill points (#435)", () => {
+  describe("rules for one old ticket", () => {
+    it("gives a resolved, assigned, non-duplicate bug one solver and one reporter entry", () => {
+      expect(backfillEntries(bug({}))).toEqual([
+        {
+          tenantId: "tenant-zedu",
+          userId: "solver-1",
+          bugId: "bug-1",
+          role: "solver",
+          points: 25,
+          sourceKey: "solver:bug-1:solver-1",
+        },
+        {
+          tenantId: "tenant-zedu",
+          userId: "reporter-1",
+          bugId: "bug-1",
+          role: "reporter",
+          points: 5,
+          sourceKey: "reporter:bug-1:reporter-1",
+        },
+      ]);
+    });
+
+    it("counts closed like resolved, by the issue's severity", () => {
+      expect(backfillEntries(bug({ status: "closed", severity: "critical" }))[0]).toMatchObject({
+        role: "solver",
+        points: 60,
+      });
+    });
+
+    it("gives a bug with no assignee reporter points only", () => {
+      expect(backfillEntries(bug({ assigneeId: null })).map((e) => e.role)).toEqual(["reporter"]);
+    });
+
+    it("gives an unfinished bug reporter points only", () => {
+      expect(backfillEntries(bug({ status: "in_progress" })).map((e) => e.role)).toEqual(["reporter"]);
+    });
+
+    it("never gives a duplicate reporter points", () => {
+      expect(backfillEntries(bug({ duplicateOfId: "bug-0", assigneeId: null }))).toEqual([]);
+      // Still assigned and resolved: the solver did the work, the report wasn't new.
+      expect(backfillEntries(bug({ duplicateOfId: "bug-0" })).map((e) => e.role)).toEqual(["solver"]);
+    });
+
+    it("gives a deleted bug nothing", () => {
+      expect(backfillEntries(bug({ isDeleted: true }))).toEqual([]);
+    });
+
+    it("invents no reviewer points", () => {
+      expect(backfillEntries(bug({})).some((e) => e.role === "reviewer")).toBe(false);
+    });
+  });
+
+  it("lists one solver and one reporter line in a dry run, and writes nothing", async () => {
+    const { db, ledger } = fixture([bug({})]);
+    const lines: string[] = [];
+
+    const result = await backfillPoints(db, { dryRun: true, onLine: (l) => lines.push(`${l.role}:${l.points}`) });
+
+    expect(lines).toEqual(["solver:25", "reporter:5"]);
+    expect(result).toEqual({ bugs: 1, planned: 2, written: 0, existing: 0 });
+    expect(ledger).toEqual([]);
+  });
+
+  it("writes the entries, and a second run inserts nothing", async () => {
+    const { db, ledger } = fixture([bug({}), bug({ id: "bug-2", assigneeId: null })]);
+
+    expect(await backfillPoints(db)).toEqual({ bugs: 2, planned: 3, written: 3, existing: 0 });
+    expect(ledger).toHaveLength(3);
+
+    expect(await backfillPoints(db)).toEqual({ bugs: 2, planned: 3, written: 0, existing: 3 });
+    expect(ledger).toHaveLength(3);
+  });
+
+  it("doesn't pay again for a ticket that already earned a real award", async () => {
+    const { db, ledger } = fixture([bug({})]);
+    ledger.push({ sourceKey: "solver:bug-1:solver-1", role: "solver", points: 25, userId: "solver-1" });
+
+    const lines: boolean[] = [];
+    const result = await backfillPoints(db, { onLine: (l) => lines.push(l.alreadyAwarded) });
+
+    expect(lines).toEqual([true, false]);
+    expect(result).toMatchObject({ written: 1, existing: 1 });
+    expect(ledger.filter((r) => r.role === "solver")).toHaveLength(1);
+  });
+
+  it("walks every ticket across batches", async () => {
+    const bugs = Array.from({ length: 7 }, (_, i) => bug({ id: `bug-${i}`, assigneeId: null }));
+    const { db, ledger } = fixture(bugs);
+    expect(await backfillPoints(db, { batchSize: 3 })).toMatchObject({ bugs: 7, written: 7 });
+    expect(ledger).toHaveLength(7);
+  });
+});

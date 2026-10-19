@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { getIssueTypes, getPlatforms } from "@/lib/lookups";
 import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
     prisma.milestone.findMany({ select: { id: true } }),
   ]);
 
-  const { where, sort, mine } = parseBugListFilters({
+  const { where: filters, sort, mine } = parseBugListFilters({
     params,
     userId: user.id,
     // Deleted issues are admin-only on the list, and must stay admin-only
@@ -64,6 +65,8 @@ export async function GET(request: NextRequest) {
     milestones,
   });
 
+  // #425: only the viewer's tenant, exactly as on the list.
+  const where = { ...filters, ...bugInTenant(await currentTenantIdFor(user.id)) };
   const orderBy = getBugOrderBy(sort, { boostFirst: mine !== "watching" });
 
   const encoder = new TextEncoder();

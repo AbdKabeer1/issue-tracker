@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
+import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
 import { formatIssueNumber } from "@/lib/issue-number";
 import { buildVersions } from "@/lib/issue-revisions";
@@ -23,7 +24,7 @@ export default async function IssueHistoryPage({ params }: Props) {
   const user = await requireUser();
 
   const bug = await prisma.bug.findUnique({
-    where: { id },
+    where: { id, ...bugInTenant(await currentTenantIdFor(user.id)) },
     select: {
       id: true,
       number: true,

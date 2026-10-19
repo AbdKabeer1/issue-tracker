@@ -190,6 +190,10 @@ export function AssigneeCombobox({
               const selected = option.id === selectedId;
               const active = index === activeIndex;
               return (
+                // Options follow the aria-activedescendant combobox pattern:
+                // the input owns Arrow/Enter handling, so the list items carry
+                // no key handlers of their own (adding them would double-fire).
+                // eslint-disable-next-line jsx-a11y/click-events-have-key-events
                 <li
                   key={option.id || "none"}
                   id={`${listId}-${option.id || "none"}`}

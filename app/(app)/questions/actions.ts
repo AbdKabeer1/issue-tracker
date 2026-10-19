@@ -1,0 +1,39 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { requireUser } from "@/lib/auth-helpers";
+import { currentTenantIdFor } from "@/lib/tenant-context";
+import { answerSchema, answerAgentQuestion } from "@/lib/agent-questions";
+import { IssueApiError } from "@/lib/agent-api/issues";
+
+/**
+ * The owner answers a question (#446). The lib checks that this person really
+ * is the owner; the form just carries their words.
+ */
+export type AnswerActionResult = { ok: true } | { ok: false; error: string };
+
+export async function answerQuestionAction(
+  _previous: AnswerActionResult | undefined,
+  formData: FormData,
+): Promise<AnswerActionResult> {
+  const user = await requireUser();
+  const tenantId = await currentTenantIdFor(user.id);
+  if (!tenantId) return { ok: false, error: "Workspace membership required." };
+
+  const questionId = formData.get("questionId");
+  if (typeof questionId !== "string" || !questionId) return { ok: false, error: "Invalid question." };
+
+  const parsed = answerSchema.safeParse({ answer: formData.get("answer") ?? "" });
+  if (!parsed.success) return { ok: false, error: "Write an answer before sending it." };
+
+  try {
+    await answerAgentQuestion(user.id, tenantId, questionId, parsed.data.answer);
+  } catch (error) {
+    if (error instanceof IssueApiError) return { ok: false, error: error.message };
+    throw error;
+  }
+
+  revalidatePath("/questions");
+  revalidatePath(`/questions/${questionId}`);
+  return { ok: true };
+}

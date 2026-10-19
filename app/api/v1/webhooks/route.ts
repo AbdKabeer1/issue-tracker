@@ -1,0 +1,84 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { z } from "zod";
+import { agentIssueRequest, issueJson } from "@/lib/agent-api/issues";
+import { checkSsrf } from "@/lib/webhooks/ssrf";
+import { generateSigningSecret, encryptSigningSecret } from "@/lib/webhooks/sign";
+import { prisma } from "@/lib/prisma";
+
+const createWebhookSchema = z.object({
+  url: z.string().url().max(2048),
+}).strict();
+
+/**
+ * GET  /api/v1/webhooks     — list the caller's webhook subscriptions.
+ * POST /api/v1/webhooks     — create a new subscription.
+ *
+ * Creating a subscription:
+ * - HTTPS-only URL.
+ * - Runs an SSRF check; loopback / private / link-local addresses are rejected.
+ * - Generates a signing secret shown once in the response body.
+ * - The secret is stored AES-256-GCM encrypted (not hashed) so the server
+ *   can sign deliveries.
+ *
+ * Rate: write (creation), read (list).
+ */
+export async function GET(request: NextRequest) {
+  return agentIssueRequest(request, "webhooks.list", "observer", null, async (agent) => {
+    const subscriptions = await prisma.webhookSubscription.findMany({
+      where: { agentId: agent.agentId },
+      select: {
+        id: true,
+        url: true,
+        enabled: true,
+        failureCount: true,
+        disabledAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    }).catch(() => null);
+    if (!subscriptions) return NextResponse.json({ error: "Webhook storage unavailable." }, { status: 503 });
+    return NextResponse.json({ subscriptions });
+  });
+}
+
+export async function POST(request: NextRequest) {
+  return agentIssueRequest(request, "webhooks.create", "contributor", null, async (agent) => {
+    const body = await issueJson(request);
+    const parsed = createWebhookSchema.safeParse(body);
+    if (!parsed.success) return NextResponse.json({ error: "Send a valid webhook URL." }, { status: 400 });
+    const input = parsed.data;
+
+    const ssrf = await checkSsrf(input.url);
+    if (!ssrf.ok) {
+      return NextResponse.json({ error: ssrf.reason }, { status: 422 });
+    }
+
+    try {
+      const rawSecret = generateSigningSecret();
+      const signingSecretEncrypted = encryptSigningSecret(rawSecret);
+
+      const subscription = await prisma.webhookSubscription.create({
+        data: {
+          agentId: agent.agentId,
+          url: input.url,
+          signingSecretEncrypted,
+        },
+        select: {
+          id: true,
+          url: true,
+          enabled: true,
+          createdAt: true,
+        },
+      });
+
+      // The raw secret is returned exactly once.
+      return NextResponse.json(
+        { subscription: { ...subscription, signingSecret: rawSecret } },
+        { status: 201 },
+      );
+    } catch {
+      return NextResponse.json({ error: "Webhook configuration or storage unavailable." }, { status: 503 });
+    }
+  });
+}

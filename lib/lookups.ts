@@ -1,5 +1,6 @@
 import { revalidateTag, unstable_cache, updateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { notificationInTenant, tenantIdForUser } from "@/lib/tenant-context";
 import {
   DEFAULT_PLATFORMS,
   RETIRED_PLATFORMS,
@@ -133,7 +134,11 @@ export async function getActivePlatforms(): Promise<Pick<PlatformLookup, "id" | 
  */
 export function getUnreadCount(userId: string): Promise<number> {
   return unstable_cache(
-    () => prisma.notification.count({ where: { userId, readAt: null } }),
+    async () =>
+      prisma.notification.count({
+        // #425: the badge counts what the notifications page lists.
+        where: { userId, readAt: null, ...notificationInTenant(await tenantIdForUser(prisma, userId)) },
+      }),
     ["notifications", "unread", userId],
     { tags: [TAGS.unread(userId)], revalidate: UNREAD_TTL_SECONDS },
   )();

@@ -1,0 +1,17 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { agentIssueRequest, issueProject, IssueApiError } from "@/lib/agent-api/issues";
+import { heartbeatClaim } from "@/lib/agent-api/availability";
+
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
+  return agentIssueRequest(request, "claims.heartbeat", "contributor", id, async (agent) => {
+    if (!request.nextUrl.searchParams.get("projectId")) return NextResponse.json({ error: "projectId is required." }, { status: 400 });
+    const scope = await issueProject(agent, request.nextUrl.searchParams);
+    try {
+      return NextResponse.json({ claim: await heartbeatClaim(agent, scope.projectId, id) });
+    } catch (error) {
+      if (error instanceof IssueApiError) throw error;
+      return NextResponse.json({ error: "Heartbeat unavailable; try again." }, { status: 503 });
+    }
+  });
+}

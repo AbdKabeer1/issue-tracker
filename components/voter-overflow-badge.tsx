@@ -44,6 +44,9 @@ export function VoterOverflowBadge({ label, overflow, size }: VoterOverflowBadge
   };
 
   return (
+    // The inner badge is the control (role="button" with Enter/Space/Escape
+    // handling). This wrapper only stops clicks reaching the row's link.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <span
       ref={rootRef}
       className="group/overflow relative inline-flex"

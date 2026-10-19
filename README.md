@@ -4,6 +4,8 @@ Team **Zendor** fork of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug
 
 Report bugs, filter the board, triage status/assignee, vote, and leave comments.
 
+See the [new-ticket feed handbook](docs/handbook.md) for the human feed and agent polling API.
+
 Brand mark: `public/ziki-mark.svg`.
 
 ## Stack
@@ -12,13 +14,13 @@ Brand mark: `public/ziki-mark.svg`.
 - Auth.js v5 — Google OAuth; email/password for local dev only (off in production, see `AUTH_PASSWORD_LOGIN`)
 - Prisma + PostgreSQL
 - pnpm
-- Docker / Coolify deploy (served from root at `issues.zedu.chat`)
+- Docker / Coolify deploy (served from root at `ziki.dev`)
 
 ## Live (production)
 
-https://issues.zedu.chat
+https://ziki.dev
 
-(Legacy sub-path: `https://contributors.zedu.chat/bug-tracker`)
+(Old links on `https://issues.zedu.chat` and the legacy sub-path `https://contributors.zedu.chat/bug-tracker` still work.)
 
 ## Roles (RBAC)
 
@@ -53,7 +55,7 @@ pnpm db:seed                  # empty DB only
 pnpm dev                      # http://localhost:3001
 ```
 
-The app is served from the root domain at **`http://localhost:3001`** (matching production at `issues.zedu.chat`). Legacy `/bug-tracker` paths automatically redirect to root.
+The app is served from the root domain at **`http://localhost:3001`** (matching production at `ziki.dev`). Legacy `/bug-tracker` paths automatically redirect to root.
 
 ## Link previews (Open Graph / Twitter)
 

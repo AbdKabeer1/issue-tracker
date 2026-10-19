@@ -101,6 +101,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
               variant="secondary"
               // On a destructive action the safe choice takes focus, so
               // Enter on a dialog you did not expect cancels it.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus={danger}
               onClick={() => settle(false)}
             >
@@ -109,6 +110,8 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
             <Button
               type="button"
               variant={danger ? "danger" : "primary"}
+              // Dialog focus management, mirroring the cancel button above.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus={!danger}
               onClick={() => settle(true)}
             >

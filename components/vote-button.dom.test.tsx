@@ -39,7 +39,7 @@ describe("VoteButton interactive optimistic updates (#219)", () => {
       />
     );
 
-    const upvoteButton = screen.getByRole("button", { name: /^like this issue$/i });
+    const upvoteButton = screen.getByRole("button", { name: /^like this issue/i });
     expect(upvoteButton).toHaveTextContent("5");
 
     await user.click(upvoteButton);
@@ -69,7 +69,7 @@ describe("VoteButton interactive optimistic updates (#219)", () => {
       />
     );
 
-    const upvoteButton = screen.getByRole("button", { name: /^like this issue$/i });
+    const upvoteButton = screen.getByRole("button", { name: /^like this issue/i });
     expect(upvoteButton).toHaveTextContent("5");
 
     await user.click(upvoteButton);

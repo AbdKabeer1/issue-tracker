@@ -37,7 +37,7 @@ async function recordInApp(event: NotificationEvent, planned: PlannedNotificatio
   await prisma.notification.createMany({
     data: planned.map((n) => ({
       userId: n.userId,
-      bugId: event.bugId,
+      bugId: event.bugId ?? null,
       kind: n.kind,
       title: n.title,
       url: n.url,
@@ -155,12 +155,15 @@ async function sendEmails(planned: PlannedNotification[]) {
 
 /** Deliver one event: in-app feed for everyone it concerns, plus email. */
 export async function deliverNotifications(event: NotificationEvent): Promise<void> {
-  // The issue may have been deleted between the action and delivery.
-  const bug = await prisma.bug.findUnique({
-    where: { id: event.bugId },
-    select: { isDeleted: true },
-  });
-  if (!bug || bug.isDeleted) return;
+  // The issue may have been deleted between the action and delivery. Agent
+  // and platform events (#443) need not be about an issue at all.
+  if (event.bugId) {
+    const bug = await prisma.bug.findUnique({
+      where: { id: event.bugId },
+      select: { isDeleted: true },
+    });
+    if (!bug || bug.isDeleted) return;
+  }
 
   const planned = planNotifications(await withWatchers(event), getSiteUrl());
   if (planned.length === 0) return;

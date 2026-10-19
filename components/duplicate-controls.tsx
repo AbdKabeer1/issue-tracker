@@ -91,6 +91,9 @@ export function MarkDuplicateButton({
         {label}
       </Button>
       {open ? (
+        // Escape is handled on the panel, not the input, so it also closes
+        // while a suggestion in the list is highlighted.
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
         <div
           id={panelId}
           role="group"
@@ -104,6 +107,9 @@ export function MarkDuplicateButton({
             Duplicate of which issue?
           </label>
           <Input
+            // Focus the search field the user just opened, like the confirm
+            // dialog does.
+            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
             id={`${panelId}-q`}
             className="mt-1"

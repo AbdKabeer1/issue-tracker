@@ -121,6 +121,9 @@ export function KeyboardShortcuts({ enabled }: { enabled: boolean }) {
   }, [enabled, router]);
 
   return (
+    // <dialog> dismisses on Escape natively, so this has keyboard support
+    // already; the click handler is just backdrop-to-close.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
     <dialog
       ref={dialogRef}
       aria-labelledby="shortcuts-title"

@@ -121,6 +121,14 @@ describe("user offboarding (#356)", () => {
       where: { reporterId: "user-retiring" },
       data: { reporterId: "admin-bot" },
     });
+    // #423: the bugs filed for them move too, or the delete would fail.
+    expect(mockClient.bug.updateMany).toHaveBeenNthCalledWith(3, {
+      where: { beneficiaryUserId: "user-retiring" },
+      data: { beneficiaryUserId: "admin-bot" },
+    });
+    expect(mockClient.bug.count).toHaveBeenCalledWith({
+      where: { OR: [{ reporterId: "user-retiring" }, { beneficiaryUserId: "user-retiring" }] },
+    });
     expect(mockClient.user.delete).toHaveBeenCalledWith({
       where: { id: "user-retiring" },
     });
