@@ -23,7 +23,7 @@ function createMockReq({
   isLoggedIn?: boolean;
   userAgent?: string;
 }): MockRequest {
-  const url = new URL(`https://issues.zedu.chat${pathname}`);
+  const url = new URL(`https://ziki.dev${pathname}`);
   return {
     nextUrl: url,
     auth: isLoggedIn ? { user: { id: "u1", email: "user@test.com" } } : null,
@@ -80,7 +80,7 @@ describe("middleware routing (#348)", () => {
     const res = runMiddleware(req);
 
     expect(res.status).toBe(308);
-    expect(res.headers.get("location")).toBe("https://issues.zedu.chat/issues");
+    expect(res.headers.get("location")).toBe("https://ziki.dev/issues");
   });
 
   it("redirects unauthenticated requests to protected pages to /login with callbackUrl", () => {
@@ -98,7 +98,7 @@ describe("middleware routing (#348)", () => {
     const res = runMiddleware(req);
 
     expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toBe("https://issues.zedu.chat/issues");
+    expect(res.headers.get("location")).toBe("https://ziki.dev/issues");
   });
 
   it("allows logged-in users to proceed to protected pages", () => {

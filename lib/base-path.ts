@@ -1,10 +1,13 @@
 /**
  * Resolves the deploy basePath.
- * When hosted on a dedicated domain (e.g. issues.zedu.chat) or when explicitly configured,
+ * When hosted on a dedicated domain (ziki.dev, or the old issues.zedu.chat) or when explicitly configured,
  * BASE_PATH is empty ("") so the app is served from the root domain.
  * If legacy contributors.zedu.chat subpath hosting is explicitly needed,
  * it can be configured via BASE_PATH / NEXT_PUBLIC_BASE_PATH.
  */
+/** Hosts that serve the app from the root, canonical first. */
+export const ROOT_DOMAIN_HOSTS = ["ziki.dev", "issues.zedu.chat"] as const;
+
 export function resolveBasePath(
   input?: string | Partial<NodeJS.ProcessEnv>,
 ): string {
@@ -28,8 +31,9 @@ export function resolveBasePath(
     env.NEXT_PUBLIC_SITE_URL ||
     "";
 
-  // Dedicated subdomain: always empty basePath (root domain)
-  if (siteOrAuthUrl.includes("issues.zedu.chat")) {
+  // Dedicated domains: always empty basePath (root domain). ziki.dev is
+  // canonical (#424); issues.zedu.chat still serves existing links.
+  if (ROOT_DOMAIN_HOSTS.some((host) => siteOrAuthUrl.includes(host))) {
     return "";
   }
 

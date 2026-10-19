@@ -20,7 +20,7 @@ const nextConfig: NextConfig = {
       process.env.NEXTAUTH_URL ||
       (BASE_PATH
         ? `https://contributors.zedu.chat${BASE_PATH}/api/auth`
-        : "https://issues.zedu.chat/api/auth"),
+        : "https://ziki.dev/api/auth"),
   },
   async headers() {
     // #222: the app previously sent no security headers at all, which left

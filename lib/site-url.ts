@@ -1,6 +1,6 @@
 import { BASE_PATH } from "./base-path";
 
-/** App origin including basePath (e.g. https://issues.zedu.chat). */
+/** App origin including basePath (e.g. https://ziki.dev). */
 export function getSiteUrl(): string {
   const raw =
     process.env.AUTH_URL?.trim() ||
