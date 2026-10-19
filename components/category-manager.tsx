@@ -242,6 +242,9 @@ export function CategoryManager({
                           onChange={(e) => setEditingName(e.target.value)}
                           className="h-8 w-48 text-sm"
                           disabled={pending}
+                          // Focus the field the user just opened for renaming;
+                          // this is not a page-load autofocus.
+                          // eslint-disable-next-line jsx-a11y/no-autofocus
                           autoFocus
                           minLength={2}
                           maxLength={50}

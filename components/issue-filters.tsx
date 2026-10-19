@@ -240,6 +240,9 @@ export function IssueFilters({
               className="absolute left-0 right-0 z-20 mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-sm shadow-lg"
             >
               {suggestions.map((type, index) => (
+                // Same combobox pattern as the assignee picker: the input owns
+                // the keyboard handling via aria-activedescendant.
+                // eslint-disable-next-line jsx-a11y/click-events-have-key-events
                 <li
                   key={type.id}
                   id={`${listId}-${index}`}

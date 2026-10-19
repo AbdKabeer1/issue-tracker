@@ -220,7 +220,9 @@ function renderBlocks(
       if (i < lines.length) i += 1;
       nodes.push(
         /* Focusable so a keyboard user can scroll a long line: a code block
-           overflows on purpose, and axe flags an unreachable scroll region. */
+           overflows on purpose, and axe flags an unreachable scroll region.
+           A focusable scroll container is the fix, not the bug. */
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
         <pre key={`pre-${key++}`} tabIndex={0} role="group" aria-label="Code block">
           <code>{fence.join("\n")}</code>
         </pre>,
