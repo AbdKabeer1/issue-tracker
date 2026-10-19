@@ -11,6 +11,8 @@ import {
 } from "./issue";
 
 const validCuid = "clxxxxxxxxxxxxxxxxxxxxxxxxx";
+// Google sign-in can create users with randomUUID() ids (#420).
+const uuidUserId = "07f2d620-22f8-4fba-9a4d-f04a23e2b36f";
 
 describe("createBugSchema", () => {
   it("accepts a valid bug payload", () => {
@@ -26,6 +28,29 @@ describe("createBugSchema", () => {
       expect(result.data.severity).toBe("high");
       expect(result.data.title).toBe("Login button broken");
     }
+  });
+
+  it("accepts an assignee whose user id is a UUID (#420)", () => {
+    const result = createBugSchema.safeParse({
+      title: "Login button broken",
+      description: "Clicking sign in does nothing on mobile.",
+      assigneeId: uuidUserId,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.assigneeId).toBe(uuidUserId);
+    }
+  });
+
+  it("rejects a blank assignee id", () => {
+    const result = createBugSchema.safeParse({
+      title: "Login button broken",
+      description: "Clicking sign in does nothing on mobile.",
+      assigneeId: "   ",
+    });
+
+    expect(result.success).toBe(false);
   });
 
   it("defaults severity to medium", () => {
@@ -164,6 +189,19 @@ describe("updateBugSchema", () => {
 
   it("allows clearing assignee with empty string", () => {
     const result = updateBugSchema.safeParse({ assigneeId: "" });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a UUID assignee id from the triage form (#420)", () => {
+    const result = updateBugSchema.safeParse({ assigneeId: uuidUserId });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.assigneeId).toBe(uuidUserId);
+    }
+  });
+
+  it("still accepts a cuid assignee id", () => {
+    const result = updateBugSchema.safeParse({ assigneeId: validCuid });
     expect(result.success).toBe(true);
   });
 });
