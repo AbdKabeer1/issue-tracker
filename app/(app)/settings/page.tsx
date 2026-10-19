@@ -13,19 +13,49 @@ export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const settings = await prisma.user.findUnique({
-    where: { id: user.id },
-    select: {
-      name: true,
-      email: true,
-      theme: true,
-      emailNotifications: true,
-      notifyMentions: true,
-      notifyAssignments: true,
-      notifyStatusChanges: true,
-      keyboardShortcuts: true,
-    },
-  });
+  let settings: {
+    name?: string | null;
+    email?: string | null;
+    theme?: string | null;
+    emailNotifications?: boolean;
+    notifyMentions?: boolean;
+    notifyAssignments?: boolean;
+    notifyStatusChanges?: boolean;
+    keyboardShortcuts?: boolean;
+  } | null = null;
+
+  try {
+    settings = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        name: true,
+        email: true,
+        theme: true,
+        emailNotifications: true,
+        notifyMentions: true,
+        notifyAssignments: true,
+        notifyStatusChanges: true,
+        keyboardShortcuts: true,
+      },
+    });
+  } catch (error) {
+    console.error("[settings] full settings query failed, falling back to minimal fields:", error);
+    try {
+      settings = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: {
+          name: true,
+          email: true,
+        },
+      });
+    } catch (fallbackError) {
+      console.error("[settings] fallback user query failed:", fallbackError);
+      settings = {
+        name: user.name ?? null,
+        email: user.email ?? null,
+      };
+    }
+  }
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">

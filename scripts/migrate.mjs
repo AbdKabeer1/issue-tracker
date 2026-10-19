@@ -51,6 +51,12 @@ const detailMigrations = [
   "20261017140000_issue_watch_and_notifications",
   "20261017150000_attachments",
 ];
+const userSettingsMigrations = [
+  "20261017100000_user_email_notifications",
+  "20261017150000_notification_preferences",
+  "20261020000000_keyboard_shortcuts",
+  "20261020010000_theme_preference",
+];
 
 function runPrisma(args, inherit = false) {
   return execSync(`${prismaBin} ${args}`, {
@@ -259,5 +265,56 @@ try {
   console.error(
     "[db:migrate] Could not add Milestone or Bug.milestoneId:",
     milestoneError instanceof Error ? milestoneError.message : String(milestoneError),
+  );
+}
+
+// Settings page queries User.theme, User.keyboardShortcuts, and email notification preferences.
+// If an earlier migration was stuck, deploy never reaches those migrations and settings crashes.
+try {
+  console.log("[db:migrate] Ensuring User settings columns and ThemePreference exist...");
+  runPrisma(
+    "db execute --schema prisma/schema.prisma --file scripts/sql/ensure-user-settings.sql",
+    true,
+  );
+  console.log("[db:migrate] User settings columns are present.");
+  for (const name of userSettingsMigrations) {
+    try {
+      runPrisma(`migrate resolve --applied ${name}`, true);
+      console.log(`[db:migrate] Recorded ${name} as applied.`);
+    } catch (resolveError) {
+      const message =
+        resolveError instanceof Error ? resolveError.message : String(resolveError);
+      console.log(
+        `[db:migrate] ${name} was already recorded:`,
+        message.split("\n")[0],
+      );
+      if (/failed|P3018|P3009/i.test(message)) {
+        try {
+          runPrisma(`migrate resolve --rolled-back ${name}`, true);
+          runPrisma(`migrate resolve --applied ${name}`, true);
+          console.log(`[db:migrate] Recorded ${name} as applied.`);
+        } catch (retryResolveError) {
+          console.error(
+            `[db:migrate] Could not record ${name}:`,
+            retryResolveError instanceof Error
+              ? retryResolveError.message.split("\n")[0]
+              : retryResolveError,
+          );
+        }
+      }
+    }
+  }
+  try {
+    deploy();
+  } catch (retryError) {
+    console.error(
+      "[db:migrate] migrate deploy still failing after user settings repair:",
+      retryError instanceof Error ? retryError.message : String(retryError),
+    );
+  }
+} catch (settingsError) {
+  console.error(
+    "[db:migrate] Could not add User settings columns:",
+    settingsError instanceof Error ? settingsError.message : String(settingsError),
   );
 }
