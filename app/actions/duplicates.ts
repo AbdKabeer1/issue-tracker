@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { Status } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { requireAdmin } from "@/lib/auth-helpers";
 import { formatIssueNumber } from "@/lib/issue-number";
 import { duplicateLinkProblem, parseIssueRef, type LinkSide } from "@/lib/duplicates";
@@ -39,8 +40,11 @@ export async function markDuplicateAction(
   const ref = parseIssueRef(targetRef ?? "");
   if (!ref) return { error: "Enter an issue number, like #12." };
 
+  // #425: both issues must be in the admin's tenant.
+  const tenantId = await currentTenantIdFor(admin.id);
+  const scope = bugInTenant(tenantId);
   const target = await prisma.bug.findUnique({
-    where: "number" in ref ? { number: ref.number } : { id: ref.id },
+    where: "number" in ref ? { number: ref.number, ...scope } : { id: ref.id, ...scope },
     select: { id: true },
   });
   if (!target) return { error: "That issue doesn't exist." };
@@ -50,7 +54,7 @@ export async function markDuplicateAction(
     await prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<LinkSide[]>`
         SELECT "id", "number", "isDeleted", "duplicateOfId" FROM "Bug"
-        WHERE "id" IN (${bugId}, ${target.id})
+        WHERE "id" IN (${bugId}, ${target.id}) AND "tenantId" = ${tenantId}
         ORDER BY "id"
         FOR UPDATE`;
       const bug = rows.find((r) => r.id === bugId);
@@ -99,7 +103,7 @@ export async function markDuplicateAction(
 export async function clearDuplicateAction(bugId: string): Promise<DuplicateActionResult> {
   const admin = await requireAdmin();
   const bug = await prisma.bug.findUnique({
-    where: { id: bugId },
+    where: { id: bugId, ...bugInTenant(await currentTenantIdFor(admin.id)) },
     select: { number: true, duplicateOfId: true, duplicateOf: { select: { id: true, number: true } } },
   });
   if (!bug) return { error: "This issue no longer exists." };
@@ -150,11 +154,16 @@ export async function findDuplicateCandidatesAction(
   bugId: string,
   query: string,
 ): Promise<DuplicateCandidate[]> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const text = (query ?? "").trim().slice(0, 200);
   if (!text) return [];
   const ref = parseIssueRef(text);
-  const base = { isDeleted: false, duplicateOfId: null, NOT: { id: bugId } };
+  const base = {
+    ...bugInTenant(await currentTenantIdFor(admin.id)),
+    isDeleted: false,
+    duplicateOfId: null,
+    NOT: { id: bugId },
+  };
   const where =
     ref && "number" in ref
       ? { ...base, OR: [{ number: ref.number }, { title: { contains: text, mode: "insensitive" as const } }] }

@@ -2,6 +2,17 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+// #425: run as a member of the Zedu tenant.
+vi.mock("@/lib/tenant-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/tenant-context")>()),
+  currentTenantIdFor: vi.fn(async () => "tenant-zedu"),
+  defaultProjectIdFor: vi.fn(async () => "project-zedu"),
+  tenantIdForUser: vi.fn(async () => "tenant-zedu"),
+}));
+vi.mock("@/lib/tenant-viewer", () => ({
+  viewerBugScope: vi.fn(async () => ({ tenantId: "tenant-zedu" })),
+}));
+
 const pageSource = readFileSync(
   path.resolve(__dirname, "page.tsx"),
   "utf8",
@@ -85,6 +96,10 @@ vi.mock("@/lib/prisma", () => ({
     attachment: { findMany: vi.fn().mockResolvedValue([]) },
     bugRevision: { findFirst: vi.fn().mockResolvedValue(null) },
     milestone: { findMany: vi.fn().mockResolvedValue([]) },
+    issueValidation: { findMany: vi.fn().mockResolvedValue([]) },
+    issueClaim: { findMany: vi.fn().mockResolvedValue([]) },
+    testVerdict: { findMany: vi.fn().mockResolvedValue([]) },
+    agentAuditEvent: { findMany: vi.fn().mockResolvedValue([]) },
   },
 }));
 

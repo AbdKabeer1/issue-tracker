@@ -50,7 +50,9 @@ export function shouldNotify(
   kind: NotificationEvent["kind"],
 ): boolean {
   if (!prefs.emailNotifications) return false;
-  if (kind === "comment_added") return true;
+  // Comments and the agent and platform kinds (#443) have no switch of their
+  // own; the master switch covers them.
+  if (!isNotificationKind(kind)) return true;
   return prefs[PREF_FIELD[kind]];
 }
 

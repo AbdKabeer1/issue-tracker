@@ -33,8 +33,9 @@ export class UserHasReportedBugsError extends Error {
  *
  * 1. Checks if the user exists.
  * 2. Unassigns any issues assigned to this user (`assigneeId = null`).
- * 3. If the user reported bugs:
- *    - If `fallbackReporterId` is provided, reassigns `reporterId` to the fallback user.
+ * 3. If the user reported bugs, or bugs are filed for them (#423):
+ *    - If `fallbackReporterId` is provided, reassigns `reporterId` and
+ *      `beneficiaryUserId` to the fallback user.
  *    - If no fallback is provided, throws `UserHasReportedBugsError`.
  * 4. Deletes the user record (cascading votes, watches, attachments, notifications, and reset tokens).
  */
@@ -65,9 +66,10 @@ async function runOffboard(
     throw new Error(`User with ID "${userId}" not found.`);
   }
 
-  // Check reported bugs before any writes
+  // Check reported bugs before any writes. Bugs filed for this person (#423)
+  // also block the delete, so they count too.
   const reportedCount = await client.bug.count({
-    where: { reporterId: userId },
+    where: { OR: [{ reporterId: userId }, { beneficiaryUserId: userId }] },
   });
 
   if (reportedCount > 0) {
@@ -101,6 +103,10 @@ async function runOffboard(
       data: { reporterId: options.fallbackReporterId },
     });
     reassignedCount = reassigned.count;
+    await client.bug.updateMany({
+      where: { beneficiaryUserId: userId },
+      data: { beneficiaryUserId: options.fallbackReporterId },
+    });
   }
 
   // Delete the user account

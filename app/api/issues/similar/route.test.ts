@@ -1,4 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// #425: run as a member of the Zedu tenant.
+vi.mock("@/lib/tenant-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/tenant-context")>()),
+  currentTenantIdFor: vi.fn(async () => "tenant-zedu"),
+  defaultProjectIdFor: vi.fn(async () => "project-zedu"),
+  tenantIdForUser: vi.fn(async () => "tenant-zedu"),
+}));
 import { NextRequest } from "next/server";
 
 vi.mock("@/lib/session-user", () => ({ resolveSessionUserId: vi.fn() }));
@@ -66,6 +74,8 @@ describe("GET /api/issues/similar (#284)", () => {
     const body = await (await get("Login button broken")).json();
     expect(body.issues).toHaveLength(1);
     expect(findMany.mock.calls[0][0].where.isDeleted).toBe(false);
+    // #425: only the searcher's tenant.
+    expect(findMany.mock.calls[0][0].where.tenantId).toBe("tenant-zedu");
   });
 
   it("supports single-term fallback queries meeting the length threshold", async () => {

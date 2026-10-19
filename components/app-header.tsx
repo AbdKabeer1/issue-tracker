@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { logoutAction } from "@/app/actions/auth";
+import { SignOutButton } from "@/components/sign-out-button";
 import { BrandLockup } from "@/components/brand-lockup";
+import { ProjectSwitcher } from "@/components/project-switcher";
 import { RoleSwitcher } from "@/components/role-switcher";
-import { clearUserDrafts } from "@/lib/form-drafts";
+import type { ProjectChoice } from "@/lib/project-context";
 import {
   headerNavItems,
   isNavItemActive,
@@ -152,6 +153,8 @@ export function AppHeader({
   isRealAdmin,
   unreadCount = 0,
   userId,
+  projects = [],
+  activeProjectId = null,
 }: {
   userName?: string | null;
   /** Their picture, if their sign-in provider gave one (#290). */
@@ -162,6 +165,9 @@ export function AppHeader({
   /** Unread in-app notifications (#216). */
   unreadCount?: number;
   userId?: string | null;
+  /** The tenant's projects and the one currently active (#426). */
+  projects?: ProjectChoice[];
+  activeProjectId?: string | null;
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -201,10 +207,17 @@ export function AppHeader({
       ref={headerRef}
       className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80"
     >
-      <div className="mx-auto flex h-14 max-w-5xl items-center gap-4 px-4 sm:gap-6">
+      <div className="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4 sm:gap-6">
         <div className="shrink-0">
           <BrandLockup href="/issues" size="sm" />
         </div>
+
+        {/* #426: the active project, visible wherever projects change what a page shows. */}
+        <ProjectSwitcher
+          projects={projects}
+          activeProjectId={activeProjectId}
+          className="hidden shrink-0 md:block"
+        />
 
         {/* Desktop navigation: the active page is underlined on the header's edge. */}
         <nav aria-label="Main" className="hidden h-full items-stretch gap-1 md:flex">
@@ -305,14 +318,7 @@ export function AppHeader({
                   <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")}>
                     Settings
                   </MenuLink>
-                  <form action={logoutAction} onSubmit={() => clearUserDrafts(userId)}>
-                    <button
-                      type="submit"
-                      className={`w-full rounded-md px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50 ${linkFocus}`}
-                    >
-                      Sign out
-                    </button>
-                  </form>
+                  <SignOutButton userId={userId} className={linkFocus} />
                 </div>
               </div>
             ) : null}
@@ -352,6 +358,15 @@ export function AppHeader({
           ref={menuPanelRef}
           className="max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-4 pt-2 md:hidden"
         >
+          {projects.length > 0 ? (
+            <div className="border-b border-slate-200 pb-2">
+              <ProjectSwitcher
+                projects={projects}
+                activeProjectId={activeProjectId}
+                fullWidth
+              />
+            </div>
+          ) : null}
           <nav aria-label="Main" className="flex flex-col py-1">
             {items.map((item) => (
               <MenuLink
@@ -384,18 +399,9 @@ export function AppHeader({
                 <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
               </div>
             ) : null}
-            <form
-              action={logoutAction}
-              className="border-t border-slate-200 p-2"
-              onSubmit={() => clearUserDrafts(userId)}
-            >
-              <button
-                type="submit"
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-white ${linkFocus}`}
-              >
-                Sign out
-              </button>
-            </form>
+            <div className="border-t border-slate-200 p-2">
+              <SignOutButton userId={userId} className={linkFocus} />
+            </div>
           </div>
         </div>
       ) : null}

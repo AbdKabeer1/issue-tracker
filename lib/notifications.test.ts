@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { planNotifications, type NotificationEvent } from "./notifications";
 
-const SITE = "https://issues.zedu.chat";
+const SITE = "https://ziki.dev";
 const base = { actorId: "alice", actorName: "Alice", bugId: "b1", bugTitle: "Login button does nothing" };
 
 describe("planNotifications (#151)", () => {
@@ -18,8 +18,8 @@ describe("planNotifications (#151)", () => {
     expect(planned[0]?.subject).toBe("[Ziki Issues] Alice mentioned you on “Login button does nothing”");
     expect(planned[0]?.text).toContain("mentioned you in a comment on");
     expect(planned[0]?.text).toContain("> @Bob can you check?");
-    expect(planned[0]?.text).toContain("https://issues.zedu.chat/issues/b1");
-    expect(planned[0]?.text).toContain("https://issues.zedu.chat/settings");
+    expect(planned[0]?.text).toContain("https://ziki.dev/issues/b1");
+    expect(planned[0]?.text).toContain("https://ziki.dev/settings");
   });
 
   it("tells the new and the previous assignee", () => {
@@ -97,7 +97,7 @@ describe("comment and watcher notifications (#216)", () => {
       SITE,
     );
     expect(n?.url).toBe("/issues/b1?comment=c9#comment-c9");
-    expect(n?.text).toContain("https://issues.zedu.chat/issues/b1?comment=c9#comment-c9");
+    expect(n?.text).toContain("https://ziki.dev/issues/b1?comment=c9#comment-c9");
   });
 
   it("uses the reply wording for the parent comment's author", () => {

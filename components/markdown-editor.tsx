@@ -78,20 +78,21 @@ const WRITE_TOOLS: ToolbarButtonSpec[] = [
   { action: "italic", label: "Italic", icon: <ItalicIcon /> },
   // Strikethrough: S crossed by a horizontal line.
   { action: "strikethrough", label: "Strikethrough", icon: <StrikethroughIcon /> },
-  // Heading levels use their explicit H1, H2, and H3 labels.
+  // Heading levels use their explicit H1, H2, and H3 labels, so the visible
+  // text stays inside the accessible name (WCAG 2.5.3).
   {
     action: "heading1",
-    label: "Heading 1",
+    label: "H1",
     icon: <span className="text-xs font-bold leading-none">H1</span>,
   },
   {
     action: "heading2",
-    label: "Heading 2",
+    label: "H2",
     icon: <span className="text-xs font-bold leading-none">H2</span>,
   },
   {
     action: "heading3",
-    label: "Heading 3",
+    label: "H3",
     icon: <span className="text-xs font-bold leading-none">H3</span>,
   },
   // Quote: paired quotation marks.

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { currentTenantIdFor, notificationInTenant } from "@/lib/tenant-context";
 import { requireUser } from "@/lib/auth-helpers";
 import { LocalTime } from "@/components/local-time";
 import { MarkAllReadButton } from "@/components/mark-all-read-button";
@@ -12,14 +13,16 @@ const PAGE_SIZE = 50;
 /** In-app notification feed (#216). */
 export default async function NotificationsPage() {
   const user = await requireUser();
+  // #425: notifications about another tenant's issues stay out of this one.
+  const scope = notificationInTenant(await currentTenantIdFor(user.id));
   const [notifications, unread] = await Promise.all([
     prisma.notification.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, ...scope },
       orderBy: { createdAt: "desc" },
       take: PAGE_SIZE,
       select: { id: true, title: true, readAt: true, createdAt: true },
     }),
-    prisma.notification.count({ where: { userId: user.id, readAt: null } }),
+    prisma.notification.count({ where: { userId: user.id, readAt: null, ...scope } }),
   ]);
 
   return (

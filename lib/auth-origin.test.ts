@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { isValidHostHeader, resolveAuthOrigin } from "./auth-origin";
 
 describe("resolveAuthOrigin with a configured URL (production)", () => {
-  const configuredUrl = "https://issues.zedu.chat/api/auth";
+  const configuredUrl = "https://ziki.dev/api/auth";
 
   it("ignores spoofed forwarded headers", () => {
     expect(
@@ -11,6 +11,16 @@ describe("resolveAuthOrigin with a configured URL (production)", () => {
         requestUrl: "http://0.0.0.0:3000/api/auth/signin/google",
         forwardedHost: "attacker.example",
         forwardedProto: "http",
+        host: "attacker.example",
+      }),
+    ).toBe("https://ziki.dev");
+  });
+
+  it("still resolves the old issues.zedu.chat host when it is configured (#424)", () => {
+    expect(
+      resolveAuthOrigin({
+        configuredUrl: "https://issues.zedu.chat/api/auth",
+        requestUrl: "http://0.0.0.0:3000/api/auth/signin/google",
         host: "attacker.example",
       }),
     ).toBe("https://issues.zedu.chat");
@@ -80,6 +90,8 @@ describe("resolveAuthOrigin without a configured URL (local dev)", () => {
 
 describe("isValidHostHeader", () => {
   it("accepts host and host:port only", () => {
+    expect(isValidHostHeader("ziki.dev")).toBe(true);
+    // The old host keeps passing so existing links don't break (#424).
     expect(isValidHostHeader("issues.zedu.chat")).toBe(true);
     expect(isValidHostHeader("localhost:3001")).toBe(true);
     expect(isValidHostHeader("evil.com/x")).toBe(false);
