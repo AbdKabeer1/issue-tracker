@@ -38,7 +38,7 @@ function scheduleOfferExpiry(claimId: string): void {
 }
 
 /** Picks by active workload, then by who has waited longest since their last offer. */
-async function offerNext(db: Db, caller: { agentId?: string; tenantId: string }, bug: { id: string; projectId: string; title: string }) {
+async function offerNext(db: Db, caller: { agentId?: string; tenantId: string }, bug: { id: string; projectId: string; title: string; assigneeId?: string | null }) {
   const memberships = await db.membership.findMany({
     where: {
       tenantId: caller.tenantId,
@@ -49,8 +49,15 @@ async function offerNext(db: Db, caller: { agentId?: string; tenantId: string },
       orderBy: { createdAt: "asc" }, take: 1, select: { id: true },
     } } } },
   });
-  const people = memberships.flatMap((m) => m.user.agents[0] ? [{ beneficiaryUserId: m.userId, agentId: m.user.agents[0].id }] : []);
+  const people = memberships.flatMap((m) => m.user.agents[0] && (!bug.assigneeId || bug.assigneeId === m.userId)
+    ? [{ beneficiaryUserId: m.userId, agentId: m.user.agents[0].id }]
+    : []);
   if (!people.length) return null;
+  // Serialize offer selection across issues so a person cannot accumulate
+  // simultaneous pending offers while their active-claim count is stale.
+  for (const userId of people.map((person) => person.beneficiaryUserId).sort()) {
+    await db.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR NO KEY UPDATE`;
+  }
 
   const active = await db.issueClaim.groupBy({
     by: ["beneficiaryUserId"],
@@ -111,10 +118,10 @@ export async function offerIssue(agent: AgentContext, projectId: string, bugId: 
 /** Durable expiry state is checked here and again on acceptance after restarts. */
 async function expireOffer(claimId: string): Promise<void> {
   const result = await prisma.$transaction(async (tx) => {
-    const claim = await tx.issueClaim.findUnique({ where: { id: claimId }, select: { id: true, bugId: true, status: true, offeredAt: true, releasedAt: true, agentId: true, beneficiaryUserId: true, bug: { select: { tenantId: true, id: true, title: true, projectId: true } } } });
+    const claim = await tx.issueClaim.findUnique({ where: { id: claimId }, select: { id: true, bugId: true, status: true, offeredAt: true, releasedAt: true, agentId: true, beneficiaryUserId: true, bug: { select: { tenantId: true, id: true, title: true, projectId: true, assigneeId: true } } } });
     if (!claim || claim.status !== "offered" || claim.releasedAt || !isOfferExpired(claim.offeredAt)) return null;
     await tx.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${claim.bugId} FOR NO KEY UPDATE`;
-    const fresh = await tx.issueClaim.findUnique({ where: { id: claimId }, select: { id: true, bugId: true, status: true, offeredAt: true, releasedAt: true, agentId: true, beneficiaryUserId: true, bug: { select: { tenantId: true, id: true, title: true, projectId: true } } } });
+    const fresh = await tx.issueClaim.findUnique({ where: { id: claimId }, select: { id: true, bugId: true, status: true, offeredAt: true, releasedAt: true, agentId: true, beneficiaryUserId: true, bug: { select: { tenantId: true, id: true, title: true, projectId: true, assigneeId: true } } } });
     if (!fresh || fresh.status !== "offered" || fresh.releasedAt || !isOfferExpired(fresh.offeredAt)) return null;
     const now = new Date();
     await tx.issueClaim.update({ where: { id: claimId }, data: { status: "released", releasedAt: now, releaseReason: "expired" } });
@@ -146,6 +153,18 @@ export async function acceptOffer(agent: AgentContext, claimId: string) {
       const next = await offerNext(tx, agent, fresh.bug);
       return { expired: true as const, next, bugId: fresh.bugId };
     }
+    await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${fresh.beneficiaryUserId} FOR NO KEY UPDATE`;
+    const activeClaims = await tx.issueClaim.count({ where: {
+      beneficiaryUserId: fresh.beneficiaryUserId, status: "active", releasedAt: null,
+      bug: { tenantId: agent.tenantId, projectId: fresh.bug.projectId },
+    } });
+    if (activeClaims >= MAX_ACTIVE_CLAIMS) {
+      await tx.issueClaim.update({ where: { id: fresh.id }, data: { status: "released", releasedAt: now, releaseReason: "capacity" } });
+      await publish(tx, { tenantId: agent.tenantId, type: "claim.released", actorAgentId: agent.agentId, bugId: fresh.bugId,
+        payload: { claimId: fresh.id, issueId: fresh.bugId, beneficiaryUserId: fresh.beneficiaryUserId, reason: "capacity" } });
+      const next = await offerNext(tx, agent, fresh.bug);
+      return { unavailable: true as const, next, bugId: fresh.bugId };
+    }
     if (fresh.bug.status !== "open" || !canAssignTicket({ actorId: fresh.beneficiaryUserId, actorRole: "user", currentAssigneeId: fresh.bug.assigneeId, targetAssigneeId: fresh.beneficiaryUserId })) {
       await tx.issueClaim.update({ where: { id: fresh.id }, data: { status: "released", releasedAt: now, releaseReason: "unavailable" } });
       await publish(tx, { tenantId: agent.tenantId, type: "claim.released", actorAgentId: agent.agentId, bugId: fresh.bugId,
@@ -170,6 +189,12 @@ export async function acceptOffer(agent: AgentContext, claimId: string) {
     }
     throw new IssueApiError(410, "This offer expired and has been released.");
   }
-  if ("unavailable" in result) throw new IssueApiError(409, "The issue can no longer be assigned to this person.");
+  if ("unavailable" in result) {
+    if ("next" in result && result.next) {
+      notifyClaimOffered({ id: result.next.claim.id, bugId: result.bugId, bugTitle: result.next.bugTitle, beneficiaryUserId: result.next.beneficiaryUserId });
+      scheduleOfferExpiry(result.next.claim.id);
+    }
+    throw new IssueApiError(409, "The issue can no longer be assigned to this person.");
+  }
   return result;
 }
