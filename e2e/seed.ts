@@ -36,6 +36,15 @@ async function main() {
     await prisma.$executeRawUnsafe(`TRUNCATE ${list} RESTART IDENTITY CASCADE`);
   }
 
+  // The wipe above also removes the Zedu tenant the migration creates (#423).
+  // Put it back with the migration's ids; issues are created inside it.
+  const tenant = await prisma.tenant.create({
+    data: { id: "tenant_zedu", slug: "zedu", name: "Zedu" },
+  });
+  await prisma.project.create({
+    data: { id: "project_zedu", tenantId: tenant.id, slug: "zedu", name: "Zedu" },
+  });
+
   for (const name of ["Desktop", "Web", "Mobile"]) {
     await prisma.category.create({ data: { name, isActive: true } });
   }
@@ -75,6 +84,12 @@ async function main() {
       },
     });
   }
+  // Every test account is a Zedu member, as every existing user is after the
+  // migration.
+  const users = await prisma.user.findMany({ select: { id: true } });
+  await prisma.membership.createMany({
+    data: users.map((user) => ({ tenantId: tenant.id, userId: user.id })),
+  });
   console.log("e2e seed: database reset and seeded");
 }
 
