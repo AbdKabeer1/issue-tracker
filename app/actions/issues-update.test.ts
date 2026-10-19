@@ -53,10 +53,12 @@ const SOMEONE = "csomeone0000001";
 
 let written: Record<string, unknown> | null;
 let activities: string[] = [];
+let awarded: Array<Record<string, unknown>> = [];
 
 function issue(assigneeId: string | null, extra: Record<string, unknown> = {}) {
   return {
     id: "bug1",
+    tenantId: "tenant-zedu",
     title: "A bug",
     status: "open",
     severity: "medium",
@@ -88,6 +90,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   written = null;
   activities = [];
+  awarded = [];
   db.user.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({ name: where.id }));
   db.issueType.findUnique.mockResolvedValue({ id: "t1", name: "Fix", isActive: true });
   db.category.findUnique.mockResolvedValue({ id: "c1", name: "Web" });
@@ -101,6 +104,13 @@ beforeEach(() => {
       },
       // Used once assignees auto-watch issues (#216).
       issueWatch: { createMany: vi.fn() },
+      // #428: the points ledger.
+      pointEntry: {
+        createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
+          awarded.push(...data);
+          return { count: data.length };
+        }),
+      },
     }),
   );
 });
@@ -224,5 +234,49 @@ describe("milestones in triage (#289)", () => {
     db.bug.findUnique.mockResolvedValue(withMilestone("m1", "v2.4"));
     expect(await updateBugAction("bug1", form({ milestoneId: "m1" }))).toEqual({ ok: true });
     expect(written).toBeNull();
+  });
+});
+
+describe("solver points on resolve (#428)", () => {
+  it("awards the assignee solver points by severity when they resolve it", async () => {
+    expect(await run("user", ME, { status: "resolved" })).toEqual({ ok: true });
+    expect(awarded).toEqual([
+      {
+        tenantId: "tenant-zedu",
+        userId: ME,
+        bugId: "bug1",
+        role: "solver",
+        points: 25,
+        sourceKey: `solver:bug1:${ME}`,
+      },
+    ]);
+  });
+
+  it("uses the severity an admin sets in the same update", async () => {
+    await run("admin", OTHER, { status: "resolved", severity: "critical" });
+    expect(awarded).toMatchObject([{ userId: OTHER, points: 60 }]);
+  });
+
+  it("awards the new assignee when an admin assigns and resolves at once", async () => {
+    await run("admin", null, { status: "resolved", assigneeId: SOMEONE });
+    expect(awarded).toMatchObject([{ userId: SOMEONE }]);
+  });
+
+  it("awards nothing for an unassigned issue", async () => {
+    await run("admin", null, { status: "resolved" });
+    expect(awarded).toEqual([]);
+  });
+
+  it("awards nothing for other status changes", async () => {
+    await run("user", ME, { status: "in_progress" });
+    await run("admin", OTHER, { status: "closed" });
+    expect(awarded).toEqual([]);
+  });
+
+  it("awards nothing when the issue was already resolved", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "user" });
+    db.bug.findUnique.mockResolvedValue(issue(ME, { status: "resolved" }));
+    await updateBugAction("bug1", form({ status: "resolved", severity: "high" }));
+    expect(awarded).toEqual([]);
   });
 });
