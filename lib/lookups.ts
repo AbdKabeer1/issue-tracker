@@ -1,6 +1,6 @@
 import { revalidateTag, unstable_cache, updateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { notificationInTenant, tenantIdForUser } from "@/lib/tenant-context";
+import { currentTenantIdFor, notificationInTenant } from "@/lib/tenant-context";
 import {
   DEFAULT_PLATFORMS,
   RETIRED_PLATFORMS,
@@ -132,14 +132,17 @@ export async function getActivePlatforms(): Promise<Pick<PlatformLookup, "id" | 
  * The header badge's unread count (#317). It was a query on every page
  * render; now it's one per user per change.
  */
-export function getUnreadCount(userId: string): Promise<number> {
+export async function getUnreadCount(userId: string): Promise<number> {
+  // #444: the tenant picked on this device comes from a cookie, which a cached
+  // function can't read. Resolve it here and key the entry by it.
+  const tenantId = await currentTenantIdFor(userId);
   return unstable_cache(
     async () =>
       prisma.notification.count({
         // #425: the badge counts what the notifications page lists.
-        where: { userId, readAt: null, ...notificationInTenant(await tenantIdForUser(prisma, userId)) },
+        where: { userId, readAt: null, ...notificationInTenant(tenantId) },
       }),
-    ["notifications", "unread", userId],
+    ["notifications", "unread", userId, tenantId ?? "none"],
     { tags: [TAGS.unread(userId)], revalidate: UNREAD_TTL_SECONDS },
   )();
 }
