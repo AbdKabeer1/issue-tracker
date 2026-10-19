@@ -1,0 +1,45 @@
+import { z } from "zod";
+
+/** Project names are shown in the header, so keep them short and readable. */
+export const PROJECT_NAME_MIN = 2;
+export const PROJECT_NAME_MAX = 60;
+export const PROJECT_SLUG_MAX = 48;
+
+export const projectNameSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(PROJECT_NAME_MIN, `Project name must be at least ${PROJECT_NAME_MIN} characters.`)
+    .max(PROJECT_NAME_MAX, `Project name must be ${PROJECT_NAME_MAX} characters or fewer.`),
+});
+
+/**
+ * A URL-safe slug from a display name. Kept deterministic so the same name
+ * gets the same base; collisions are resolved by `nextProjectSlug`.
+ */
+export function projectSlugBase(name: string): string {
+  const slug = name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, PROJECT_SLUG_MAX);
+  return slug || "project";
+}
+
+/** `base`, or `base-2`, `base-3`, ... when another project already uses it. */
+export function nextProjectSlug(
+  base: string,
+  taken: ReadonlySet<string>,
+): string {
+  if (!taken.has(base)) return base;
+
+  for (let suffix = 2; suffix < 1000; suffix += 1) {
+    const tail = `-${suffix}`;
+    const candidate = `${base.slice(0, PROJECT_SLUG_MAX - tail.length).replace(/-+$/g, "")}${tail}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+
+  throw new Error(`Could not find a free slug for "${base}".`);
+}

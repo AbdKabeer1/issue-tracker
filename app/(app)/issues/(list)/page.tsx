@@ -59,6 +59,7 @@ import {
 } from "@/components/bulk-selection";
 import { TAGS_PARAM, parseTagFilter, serializeTags, tagTypeIds } from "@/lib/tag-filter";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
+import { activeProjectIdFor } from "@/lib/project-context";
 import {
   PLATFORM_PARAM,
   parsePlatformFilter,
@@ -119,6 +120,8 @@ export default async function BugsPage({
   }
   // #425: only issues in the viewer's tenant; none without a membership.
   const tenantId = await currentTenantIdFor(userId);
+  // #426: the board follows the project chosen in the header.
+  const projectId = await activeProjectIdFor(prisma, tenantId);
 
   const canDelete = canDeleteTicket(effectiveRole);
   const canBoost = canBoostTicket(effectiveRole);
@@ -138,6 +141,7 @@ export default async function BugsPage({
   const showDuplicates = parseShowDuplicates(params[DUPLICATES_PARAM]);
   const where: Prisma.BugWhereInput = {
     ...bugInTenant(tenantId),
+    ...(projectId ? { projectId } : {}),
     isDeleted: isDeletedView,
     ...mineFilterWhere(mineFilter, userId),
     ...duplicatesWhere(showDuplicates),
