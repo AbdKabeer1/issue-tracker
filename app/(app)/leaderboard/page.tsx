@@ -16,12 +16,17 @@ export default async function LeaderboardPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Leaderboard</h1>
-        <p className="text-sm text-slate-600">
-          Points for solving, reporting and reviewing issues. The goal is {TARGET_POINTS} points and{" "}
-          {TARGET_SOLVED_TASKS} solved tasks.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Leaderboard</h1>
+          <p className="text-sm text-slate-600">
+            Points for solving, reporting and reviewing issues. The goal is {TARGET_POINTS} points
+            and {TARGET_SOLVED_TASKS} solved tasks.
+          </p>
+        </div>
+        <Link href="/points/disputes" className="text-sm font-medium text-teal-700 hover:underline">
+          Disputes
+        </Link>
       </div>
 
       {rows.length === 0 ? (
