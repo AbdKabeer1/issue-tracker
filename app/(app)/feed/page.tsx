@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { feedProject, feedWhere, FEED_PAGE_SIZE } from "@/lib/feed";
 import { prisma } from "@/lib/prisma";
+import { LocalTime } from "@/components/local-time";
 
 export const metadata = { title: "New-ticket feed" };
 
@@ -32,17 +33,19 @@ export default async function FeedPage({ searchParams }: {
         <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
           {issues.map((issue) => (
             <li key={issue.id} className="p-4">
-              <Link href={`/issues/${issue.id}`} className="font-medium text-indigo-700 hover:underline">#{issue.number} {issue.title}</Link>
-              <p className="mt-1 text-sm text-slate-500">{issue.status.replaceAll("_", " ")} · <time dateTime={issue.createdAt.toISOString()}>{issue.createdAt.toISOString()}</time></p>
+              <Link href={`/issues/${issue.id}`} className="font-medium text-teal-700 hover:underline">#{issue.number} {issue.title}</Link>
+              <p className="mt-1 text-sm text-slate-500">
+                {issue.status.replaceAll("_", " ")} · <LocalTime date={issue.createdAt} />
+              </p>
             </li>
           ))}
         </ul>
       ) : (
         <p className="rounded-lg border border-slate-200 bg-white p-6 text-slate-600">
-          {tenantId ? "No new tickets in this project yet." : "Join a workspace to see its new tickets."} <Link href="/feed" className="text-indigo-700 underline">Refresh the feed</Link> or <Link href="/issues" className="text-indigo-700 underline">browse issues</Link>.
+          {tenantId ? "No new tickets in this project yet." : "Join a workspace to see its new tickets."} <Link href="/feed" className="text-teal-700 hover:underline">Refresh the feed</Link> or <Link href="/issues" className="text-teal-700 hover:underline">browse issues</Link>.
         </p>
       )}
-      <Link href={project ? `/feed?projectId=${encodeURIComponent(project.id)}` : "/feed"} className="text-sm text-indigo-700 underline">Refresh newest tickets</Link>
+      <Link href={project ? `/feed?projectId=${encodeURIComponent(project.id)}` : "/feed"} className="text-sm font-medium text-teal-700 hover:underline">Refresh newest tickets</Link>
     </section>
   );
 }
