@@ -3,11 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { logoutAction } from "@/app/actions/auth";
+import { SignOutButton } from "@/components/sign-out-button";
 import { BrandLockup } from "@/components/brand-lockup";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { RoleSwitcher } from "@/components/role-switcher";
-import { clearUserDrafts } from "@/lib/form-drafts";
 import type { ProjectChoice } from "@/lib/project-context";
 import {
   headerNavItems,
@@ -319,14 +318,7 @@ export function AppHeader({
                   <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")}>
                     Settings
                   </MenuLink>
-                  <form action={logoutAction} onSubmit={() => clearUserDrafts(userId)}>
-                    <button
-                      type="submit"
-                      className={`w-full rounded-md px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50 ${linkFocus}`}
-                    >
-                      Sign out
-                    </button>
-                  </form>
+                  <SignOutButton userId={userId} className={linkFocus} />
                 </div>
               </div>
             ) : null}
@@ -407,18 +399,9 @@ export function AppHeader({
                 <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
               </div>
             ) : null}
-            <form
-              action={logoutAction}
-              className="border-t border-slate-200 p-2"
-              onSubmit={() => clearUserDrafts(userId)}
-            >
-              <button
-                type="submit"
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-white ${linkFocus}`}
-              >
-                Sign out
-              </button>
-            </form>
+            <div className="border-t border-slate-200 p-2">
+              <SignOutButton userId={userId} className={linkFocus} />
+            </div>
           </div>
         </div>
       ) : null}
