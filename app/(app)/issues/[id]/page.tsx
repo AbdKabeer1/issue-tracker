@@ -538,6 +538,15 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
               size="sm"
             />
           ) : null}
+          {!bug.isDeleted && userId && (bug.reporterId === userId || bug.assigneeId === userId) ? (
+            <Link
+              href={`/points/disputes/new?bug=${bug.number}`}
+              className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline"
+              title="Say your points award for this issue is missing or wrong"
+            >
+              Dispute award
+            </Link>
+          ) : null}
           {canDelete ? (
             bug.isDeleted ? (
               <RestoreIssueButton
