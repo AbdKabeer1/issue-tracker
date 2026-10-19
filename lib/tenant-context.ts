@@ -3,6 +3,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { activeProjectIdFor } from "@/lib/project-context";
 import { ZEDU_SLUG } from "@/lib/tenant";
+import { readActiveTenantCookie } from "@/lib/tenants";
 
 /**
  * The tenant every read and write of issues, comments and notifications is
@@ -19,28 +20,37 @@ type Db = PrismaClient | Prisma.TransactionClient;
 type MembershipChoice = { tenantId: string; tenant: { slug: string } };
 
 /**
- * Picks the tenant to show from someone's memberships: Zedu if they belong to
- * it, otherwise their oldest membership. The switcher (#426, #444) will
- * replace this choice; the "no membership, no tenant" rule stays.
+ * Picks the tenant to show from someone's memberships: the one they picked
+ * on this device (#444) if they still belong to it, else Zedu if they belong
+ * to it, else their oldest membership. A pick they aren't a member of is
+ * ignored, so the "no membership, no tenant" rule stays.
  */
-export function pickTenantId(memberships: ReadonlyArray<MembershipChoice>): string | null {
+export function pickTenantId(
+  memberships: ReadonlyArray<MembershipChoice>,
+  pickedTenantId?: string | null,
+): string | null {
+  const picked = pickedTenantId ? memberships.find((m) => m.tenantId === pickedTenantId) : undefined;
   const zedu = memberships.find((m) => m.tenant.slug === ZEDU_SLUG);
-  return (zedu ?? memberships[0])?.tenantId ?? null;
+  return (picked ?? zedu ?? memberships[0])?.tenantId ?? null;
 }
 
-export async function tenantIdForUser(db: Db, userId: string | null | undefined): Promise<string | null> {
+export async function tenantIdForUser(
+  db: Db,
+  userId: string | null | undefined,
+  pickedTenantId?: string | null,
+): Promise<string | null> {
   if (!userId) return null;
   const memberships = await db.membership.findMany({
     where: { userId },
     select: { tenantId: true, tenant: { select: { slug: true } } },
     orderBy: { createdAt: "asc" },
   });
-  return pickTenantId(memberships);
+  return pickTenantId(memberships, pickedTenantId);
 }
 
-/** `tenantIdForUser`, looked up once per request. */
-export const currentTenantIdFor = cache((userId: string | null | undefined) =>
-  tenantIdForUser(prisma, userId),
+/** `tenantIdForUser` with this device's pick (#444), looked up once per request. */
+export const currentTenantIdFor = cache(async (userId: string | null | undefined) =>
+  tenantIdForUser(prisma, userId, userId ? await readActiveTenantCookie() : null),
 );
 
 /**

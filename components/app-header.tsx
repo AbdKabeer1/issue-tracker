@@ -9,6 +9,7 @@ import { ProjectSwitcher } from "@/components/project-switcher";
 import { RoleSwitcher } from "@/components/role-switcher";
 import type { ProjectChoice } from "@/lib/project-context";
 import {
+  SWITCH_TENANT_LINK,
   headerNavItems,
   isNavItemActive,
   realRoleOf,
@@ -315,6 +316,12 @@ export function AppHeader({
                       Dashboard
                     </MenuLink>
                   ) : null}
+                  <MenuLink
+                    href={SWITCH_TENANT_LINK.href}
+                    active={isNavItemActive(pathname, SWITCH_TENANT_LINK.href)}
+                  >
+                    {SWITCH_TENANT_LINK.label}
+                  </MenuLink>
                   <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")}>
                     Settings
                   </MenuLink>
@@ -387,6 +394,13 @@ export function AppHeader({
                 Dashboard
               </MenuLink>
             ) : null}
+            <MenuLink
+              href={SWITCH_TENANT_LINK.href}
+              active={isNavItemActive(pathname, SWITCH_TENANT_LINK.href)}
+              large
+            >
+              {SWITCH_TENANT_LINK.label}
+            </MenuLink>
             <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")} large>
               Settings
             </MenuLink>

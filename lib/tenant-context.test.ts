@@ -43,6 +43,16 @@ describe("tenant context (#425)", () => {
     it("gives a new account with no membership no tenant at all", () => {
       expect(pickTenantId([])).toBeNull();
     });
+
+    it("opens the tenant picked on this device, when they belong to it (#444)", () => {
+      expect(pickTenantId([zedu, other], "tenant-other")).toBe("tenant-other");
+    });
+
+    it("ignores a pick they don't belong to, so a forged cookie opens nothing new (#444)", () => {
+      expect(pickTenantId([zedu], "tenant-other")).toBe("tenant-zedu");
+      // A brand-new account can't open Zedu by naming it.
+      expect(pickTenantId([], "tenant-zedu")).toBeNull();
+    });
   });
 
   describe("tenantIdForUser", () => {
@@ -63,6 +73,13 @@ describe("tenant context (#425)", () => {
     it("has no tenant for a signed-in person with no membership", async () => {
       const db = { membership: { findMany: vi.fn().mockResolvedValue([]) } } as never;
       expect(await tenantIdForUser(db, "new-user")).toBeNull();
+      expect(await tenantIdForUser(db, "new-user", "tenant-zedu")).toBeNull();
+    });
+
+    it("checks the pick against the person's memberships (#444)", async () => {
+      const db = { membership: { findMany: vi.fn().mockResolvedValue([zedu, other]) } } as never;
+      expect(await tenantIdForUser(db, "user-1", "tenant-other")).toBe("tenant-other");
+      expect(await tenantIdForUser(db, "user-1", "tenant-someone-elses")).toBe("tenant-zedu");
     });
   });
 

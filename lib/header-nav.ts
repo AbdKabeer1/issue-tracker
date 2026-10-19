@@ -2,6 +2,9 @@ import { isAdmin, isSuperAdmin, type AppRole } from "@/lib/roles";
 
 export type HeaderNavItem = { href: string; label: string };
 
+/** #444: pick another tenant, create one, or accept an invite. */
+export const SWITCH_TENANT_LINK: HeaderNavItem = { href: "/tenants", label: "Switch tenant" };
+
 /** Links shown in the header for the role the user is currently viewing as. */
 export function headerNavItems(role?: AppRole | null): HeaderNavItem[] {
   const items: HeaderNavItem[] = [

@@ -1,10 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
+  SWITCH_TENANT_LINK,
   headerNavItems,
   initialsOf,
   isNavItemActive,
   realRoleOf,
 } from "./header-nav";
+
+describe("SWITCH_TENANT_LINK (#444)", () => {
+  it("goes to the tenant picker, and is marked current on it and its pages", () => {
+    expect(SWITCH_TENANT_LINK).toEqual({ href: "/tenants", label: "Switch tenant" });
+    expect(isNavItemActive("/tenants", SWITCH_TENANT_LINK.href)).toBe(true);
+    expect(isNavItemActive("/tenants/acme", SWITCH_TENANT_LINK.href)).toBe(true);
+    expect(isNavItemActive("/issues", SWITCH_TENANT_LINK.href)).toBe(false);
+  });
+
+  it("stays out of the main nav, which is unchanged", () => {
+    for (const role of ["user", "admin", "super_admin"] as const) {
+      expect(headerNavItems(role).map((i) => i.href)).not.toContain("/tenants");
+    }
+  });
+});
 
 describe("headerNavItems", () => {
   it("shows Issues, Projects and Milestones to normal users", () => {
