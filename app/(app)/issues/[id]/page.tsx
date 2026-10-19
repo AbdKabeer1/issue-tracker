@@ -35,6 +35,7 @@ import {
   statusLabels,
 } from "@/lib/labels";
 import { ActivityTimeline, type ActivityEntry } from "@/components/activity-timeline";
+import { IssueAgentActivity, type AgentDecision } from "@/components/issue-agent-activity";
 import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { WatchButton } from "@/components/watch-button";
@@ -263,7 +264,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
     notFound();
   }
 
-  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision] =
+  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions] =
     await Promise.all([
       canTriage
         ? loadOptional("users", [], () =>
@@ -326,6 +327,81 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           select: { editedAt: true },
         }),
       ),
+      // #448: what agents decided on this issue — confirmations, the claim,
+      // test verdicts, and whether an agent accepted the fix. Sentences only;
+      // the raw audit payloads live on the audit page (#447).
+      loadOptional<AgentDecision[]>("agent decisions", [], async () => {
+        const [validations, claims, verdicts, accepted] = await Promise.all([
+          prisma.issueValidation.findMany({
+            where: { bugId: id, kind: "real", verdict: "accept" },
+            orderBy: { createdAt: "asc" },
+            select: {
+              id: true,
+              createdAt: true,
+              severity: true,
+              agent: { select: { name: true } },
+              onBehalfOf: { select: { name: true } },
+            },
+          }),
+          prisma.issueClaim.findMany({
+            where: { bugId: id, status: "active", releasedAt: null },
+            orderBy: { createdAt: "asc" },
+            select: {
+              id: true,
+              createdAt: true,
+              agent: { select: { name: true } },
+              beneficiary: { select: { name: true } },
+            },
+          }),
+          prisma.testVerdict.findMany({
+            where: { bugId: id },
+            orderBy: { createdAt: "asc" },
+            select: {
+              id: true,
+              createdAt: true,
+              goodToMerge: true,
+              agent: { select: { name: true } },
+              onBehalfOf: { select: { name: true } },
+            },
+          }),
+          prisma.agentAuditEvent.findMany({
+            where: { bugId: id, action: "issue.accepted" },
+            orderBy: { createdAt: "asc" },
+            select: { id: true, createdAt: true, agent: { select: { name: true } } },
+          }),
+        ]);
+        return [
+          ...validations.map<AgentDecision>((v) => ({
+            id: `validation-${v.id}`,
+            at: v.createdAt,
+            kind: "confirmed",
+            agentName: v.agent.name,
+            personName: v.onBehalfOf.name,
+            severity: v.severity,
+          })),
+          ...claims.map<AgentDecision>((c) => ({
+            id: `claim-${c.id}`,
+            at: c.createdAt,
+            kind: "claimed",
+            agentName: c.agent.name,
+            personName: c.beneficiary.name,
+          })),
+          ...verdicts.map<AgentDecision>((v) => ({
+            id: `verdict-${v.id}`,
+            at: v.createdAt,
+            kind: "verdict",
+            agentName: v.agent.name,
+            personName: v.onBehalfOf.name,
+            goodToMerge: v.goodToMerge,
+          })),
+          ...accepted.map<AgentDecision>((e) => ({
+            id: `accepted-${e.id}`,
+            at: e.createdAt,
+            kind: "accepted",
+            agentName: e.agent.name,
+          })),
+        ];
+      }),
     ]);
   const issueAttachments: AttachmentView[] = attachments.filter((a) => !a.commentId);
   const attachmentsByComment: Record<string, AttachmentView[]> = {};
@@ -727,6 +803,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         activities={[...activities].reverse()}
         totalCount={activityCount}
       />
+
+      <IssueAgentActivity decisions={agentDecisions} />
 
       <section
         id="comments"

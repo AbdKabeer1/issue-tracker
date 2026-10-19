@@ -1,0 +1,123 @@
+// @vitest-environment happy-dom
+import { beforeEach, describe, expect, it } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import React from "react";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import { IssueAgentActivity, type AgentDecision } from "./issue-agent-activity";
+
+describe("IssueAgentActivity (#448)", () => {
+  beforeEach(() => cleanup());
+
+  it("renders nothing when there is no agent activity", () => {
+    const { container } = render(<IssueAgentActivity decisions={[]} />);
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText("Agent decisions")).not.toBeInTheDocument();
+  });
+
+  it("shows both reviewers and the severity they set on a confirmed issue", () => {
+    const decisions: AgentDecision[] = [
+      {
+        id: "v1",
+        at: "2026-01-01T10:00:00.000Z",
+        kind: "confirmed",
+        agentName: "reviewer-one",
+        personName: "Ada",
+        severity: "high",
+      },
+      {
+        id: "v2",
+        at: "2026-01-01T11:00:00.000Z",
+        kind: "confirmed",
+        agentName: "reviewer-two",
+        personName: "Tenant Owner",
+        severity: "medium",
+      },
+    ];
+
+    render(<IssueAgentActivity decisions={decisions} />);
+
+    expect(screen.getByText("Agent decisions")).toBeInTheDocument();
+    expect(screen.getByText("reviewer-one")).toBeInTheDocument();
+    expect(screen.getByText("reviewer-two")).toBeInTheDocument();
+    expect(screen.getByText("High")).toBeInTheDocument();
+    expect(screen.getByText("Medium")).toBeInTheDocument();
+  });
+
+  it("shows who a claim was for, the test verdicts, and the accepted fix", () => {
+    const decisions: AgentDecision[] = [
+      {
+        id: "c1",
+        at: "2026-01-01T12:00:00.000Z",
+        kind: "claimed",
+        agentName: "fixer-agent",
+        personName: "Bob",
+      },
+      {
+        id: "verdict-1",
+        at: "2026-01-01T13:00:00.000Z",
+        kind: "verdict",
+        agentName: "reviewer-one",
+        personName: "Ada",
+        goodToMerge: true,
+      },
+      {
+        id: "verdict-2",
+        at: "2026-01-01T14:00:00.000Z",
+        kind: "verdict",
+        agentName: "reviewer-two",
+        personName: "Ada",
+        goodToMerge: false,
+      },
+      {
+        id: "accepted-1",
+        at: "2026-01-01T15:00:00.000Z",
+        kind: "accepted",
+        agentName: "merger-agent",
+      },
+    ];
+
+    render(<IssueAgentActivity decisions={decisions} />);
+
+    expect(screen.getByText("fixer-agent")).toBeInTheDocument();
+    expect(screen.getByText(/claimed this issue for/)).toHaveTextContent("Bob");
+    expect(screen.getByText(/good to merge\.$/)).toHaveTextContent("good to merge");
+    expect(screen.getByText(/not ready to merge\.$/)).toHaveTextContent("not ready to merge");
+    expect(screen.getByText("merger-agent")).toBeInTheDocument();
+    expect(screen.getByText(/marked this issue resolved\.$/)).toBeInTheDocument();
+  });
+
+  it("lists the decisions in chronological order regardless of input order", () => {
+    const decisions: AgentDecision[] = [
+      {
+        id: "accepted-1",
+        at: "2026-01-01T15:00:00.000Z",
+        kind: "accepted",
+        agentName: "merger-agent",
+      },
+      {
+        id: "c1",
+        at: "2026-01-01T12:00:00.000Z",
+        kind: "claimed",
+        agentName: "fixer-agent",
+        personName: "Bob",
+      },
+      {
+        id: "v1",
+        at: "2026-01-01T10:00:00.000Z",
+        kind: "confirmed",
+        agentName: "reviewer-one",
+        personName: "Ada",
+        severity: "high",
+      },
+    ];
+
+    render(<IssueAgentActivity decisions={decisions} />);
+
+    const list = screen.getByRole("list");
+    const items = within(list).getAllByRole("listitem");
+    expect(items).toHaveLength(3);
+    expect(items[0]).toHaveTextContent("reviewer-one");
+    expect(items[1]).toHaveTextContent("fixer-agent");
+    expect(items[2]).toHaveTextContent("merger-agent");
+  });
+});
