@@ -102,6 +102,23 @@ async function seedDemoData() {
     },
   });
 
+  // The migration creates Zedu (#423); upsert so a seed never depends on it.
+  const tenant = await prisma.tenant.upsert({
+    where: { slug: "zedu" },
+    update: {},
+    create: { slug: "zedu", name: "Zedu" },
+  });
+  const project = await prisma.project.upsert({
+    where: { tenantId_slug: { tenantId: tenant.id, slug: "zedu" } },
+    update: {},
+    create: { tenantId: tenant.id, slug: "zedu", name: "Zedu" },
+  });
+  const zedu = { tenantId: tenant.id, projectId: project.id };
+  await prisma.membership.createMany({
+    data: [alice, bob, cara].map((user) => ({ tenantId: tenant.id, userId: user.id })),
+    skipDuplicates: true,
+  });
+
   const samples: Array<{
     title: string;
     description: string;
@@ -191,7 +208,9 @@ async function seedDemoData() {
 
   const bugs = [];
   for (const sample of samples) {
-    const bug = await prisma.bug.create({ data: sample });
+    const bug = await prisma.bug.create({
+      data: { ...sample, ...zedu, beneficiaryUserId: sample.reporterId },
+    });
     await prisma.comment.create({
       data: {
         bugId: bug.id,

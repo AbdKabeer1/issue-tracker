@@ -70,6 +70,7 @@ import type { NotificationEvent } from "@/lib/notifications";
 import { getForeignKeyErrorMessage } from "@/lib/foreign-key-errors";
 import { parseAttachmentIds } from "@/lib/attachments";
 import { attachmentIdsInMarkdown, linkAttachments } from "@/lib/attachment-link";
+import { defaultTenantProject } from "@/lib/tenant";
 import {
   checkRateLimit,
   consumeRateLimit,
@@ -216,8 +217,13 @@ export async function createBugAction(
   // Always open at creation — createBugSchema rejects client status.
   let bug;
   try {
+    // #423: issues land in the Zedu tenant until #425 scopes them.
+    const { tenantId, projectId } = await defaultTenantProject(prisma);
     bug = await prisma.bug.create({
       data: {
+        tenantId,
+        projectId,
+        beneficiaryUserId: userId,
         title: parsed.data.title,
         description,
         severity: admin ? parsed.data.severity : "medium",
