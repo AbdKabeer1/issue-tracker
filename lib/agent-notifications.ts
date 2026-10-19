@@ -48,6 +48,15 @@ export type ClaimOfferInput = {
   beneficiaryUserId: string;
 };
 
+export type MergeFailedInput = Issue & {
+  /** The person the claim was for; the only one told (#452). */
+  recipientId: string;
+  /** Why the merge did not happen, already human-readable. */
+  reason: string;
+  /** The merger agent that tried, when one did. */
+  agent?: Agent;
+};
+
 const EXCERPT_LENGTH = 200;
 
 function excerpt(text: string): string {
@@ -104,6 +113,18 @@ export function claimOfferedEvent(claim: ClaimOfferInput): NotificationEvent {
   };
 }
 
+export function mergeFailedEvent(failure: MergeFailedInput): NotificationEvent {
+  return {
+    kind: "merge_failed",
+    actorId: null,
+    actorName: failure.agent?.name ?? "Ziki",
+    recipientId: failure.recipientId,
+    bugId: failure.bugId ?? null,
+    bugTitle: failure.bugTitle ?? null,
+    reason: failure.reason,
+  };
+}
+
 export function notifyAgentQuestion(question: AgentQuestionInput): void {
   notifyLater(agentQuestionEvent(question));
 }
@@ -133,4 +154,8 @@ export async function notifyTenantInvite(invite: {
 
 export function notifyClaimOffered(claim: ClaimOfferInput): void {
   notifyLater(claimOfferedEvent(claim));
+}
+
+export function notifyMergeFailed(failure: MergeFailedInput): void {
+  notifyLater(mergeFailedEvent(failure));
 }
