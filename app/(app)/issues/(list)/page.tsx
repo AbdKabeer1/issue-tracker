@@ -131,9 +131,14 @@ export default async function BugsPage({
     effectiveRole = user.role;
   }
   // #425: only issues in the viewer's tenant; none without a membership.
-  const tenantId = await currentTenantIdFor(userId);
-  // #426: the board follows the project chosen in the header.
-  const projectId = await activeProjectIdFor(prisma, tenantId);
+  let tenantId: string | null = null;
+  let projectId: string | null = null;
+  try {
+    tenantId = await currentTenantIdFor(userId);
+    projectId = await activeProjectIdFor(prisma, tenantId);
+  } catch (error) {
+    console.error("[bugs] tenant/project resolution failed", error);
+  }
 
   const canDelete = canDeleteTicket(effectiveRole);
   const canBoost = canBoostTicket(effectiveRole);
@@ -212,17 +217,32 @@ export default async function BugsPage({
     if (asNumber !== null) where.OR.push({ number: asNumber });
   }
 
-  let totalCount: number;
+  let totalCount = 0;
   try {
     totalCount = await prisma.bug.count({ where });
   } catch (error) {
     console.error("[bugs] list count failed", error);
-    const detail = error instanceof Error ? error.message : "Could not load issues";
-    return issuesQueryError(detail);
+    const isColumnError =
+      error instanceof Error &&
+      /tenantId|projectId|column.*does not exist/i.test(error.message);
+    if (isColumnError) {
+      delete where.tenantId;
+      delete where.projectId;
+      try {
+        totalCount = await prisma.bug.count({ where });
+      } catch (retryError) {
+        console.error("[bugs] un-scoped list count failed", retryError);
+        const detail = retryError instanceof Error ? retryError.message : "Could not load issues";
+        return issuesQueryError(detail);
+      }
+    } else {
+      const detail = error instanceof Error ? error.message : "Could not load issues";
+      return issuesQueryError(detail);
+    }
   }
 
   const baseTenantWhere: Prisma.BugWhereInput = {
-    ...bugInTenant(tenantId),
+    ...(where.tenantId ? bugInTenant(tenantId) : {}),
     isDeleted: isDeletedView,
   };
 
@@ -458,10 +478,19 @@ export default async function BugsPage({
   // (#292): filter advice on an empty tracker sends people looking for a
   // filter that is not there. The extra count only runs when the page is
   // already empty, so a populated list pays nothing for it.
-  const isFirstRun =
-    totalCount === 0 &&
-    !isDeletedView &&
-    (await prisma.bug.count({ where: { ...bugInTenant(tenantId), isDeleted: false } })) === 0;
+  let isFirstRun = false;
+  if (totalCount === 0 && !isDeletedView) {
+    try {
+      const scope = where.tenantId ? bugInTenant(tenantId) : {};
+      isFirstRun = (await prisma.bug.count({ where: { ...scope, isDeleted: false } })) === 0;
+    } catch {
+      try {
+        isFirstRun = (await prisma.bug.count({ where: { isDeleted: false } })) === 0;
+      } catch {
+        isFirstRun = false;
+      }
+    }
+  }
 
   // Only the watching view offers "stop watching the finished ones", and
   // only when there are some; everyone else pays for nothing (#312).

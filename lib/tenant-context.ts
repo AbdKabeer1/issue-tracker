@@ -40,18 +40,29 @@ export async function tenantIdForUser(
   pickedTenantId?: string | null,
 ): Promise<string | null> {
   if (!userId) return null;
-  const memberships = await db.membership.findMany({
-    where: { userId },
-    select: { tenantId: true, tenant: { select: { slug: true } } },
-    orderBy: { createdAt: "asc" },
-  });
-  return pickTenantId(memberships, pickedTenantId);
+  try {
+    const memberships = await db.membership.findMany({
+      where: { userId },
+      select: { tenantId: true, tenant: { select: { slug: true } } },
+      orderBy: { createdAt: "asc" },
+    });
+    return pickTenantId(memberships, pickedTenantId);
+  } catch (error) {
+    console.error("[tenant-context] tenantIdForUser failed", error);
+    return null;
+  }
 }
 
 /** `tenantIdForUser` with this device's pick (#444), looked up once per request. */
-export const currentTenantIdFor = cache(async (userId: string | null | undefined) =>
-  tenantIdForUser(prisma, userId, userId ? await readActiveTenantCookie() : null),
-);
+export const currentTenantIdFor = cache(async (userId: string | null | undefined) => {
+  try {
+    const picked = userId ? await readActiveTenantCookie() : null;
+    return await tenantIdForUser(prisma, userId, picked);
+  } catch (error) {
+    console.error("[tenant-context] currentTenantIdFor failed", error);
+    return null;
+  }
+});
 
 /**
  * The project new issues go into: the active project (#426), else the tenant's

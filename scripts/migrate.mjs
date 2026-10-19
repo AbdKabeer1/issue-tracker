@@ -57,6 +57,7 @@ const userSettingsMigrations = [
   "20261020000000_keyboard_shortcuts",
   "20261020010000_theme_preference",
 ];
+const agentPlatformMigration = "20261021000000_agent_platform";
 
 function runPrisma(args, inherit = false) {
   return execSync(`${prismaBin} ${args}`, {
@@ -316,5 +317,55 @@ try {
   console.error(
     "[db:migrate] Could not add User settings columns:",
     settingsError instanceof Error ? settingsError.message : String(settingsError),
+  );
+}
+
+// Agent platform data model (tenants, projects, memberships, agent tables, Bug/Comment columns).
+// If an earlier migration was stuck or 20261021000000_agent_platform failed partially,
+// migrate deploy halts and /issues, /tenants, and layout crash.
+try {
+  console.log("[db:migrate] Ensuring Agent platform schema (tenants, projects, memberships) exists...");
+  runPrisma(
+    "db execute --schema prisma/schema.prisma --file scripts/sql/ensure-agent-platform.sql",
+    true,
+  );
+  console.log("[db:migrate] Agent platform schema is present.");
+  try {
+    runPrisma(`migrate resolve --applied ${agentPlatformMigration}`, true);
+    console.log(`[db:migrate] Recorded ${agentPlatformMigration} as applied.`);
+  } catch (resolveError) {
+    const message =
+      resolveError instanceof Error ? resolveError.message : String(resolveError);
+    console.log(
+      `[db:migrate] ${agentPlatformMigration} was already recorded:`,
+      message.split("\n")[0],
+    );
+    if (/failed|P3018|P3009/i.test(message)) {
+      try {
+        runPrisma(`migrate resolve --rolled-back ${agentPlatformMigration}`, true);
+        runPrisma(`migrate resolve --applied ${agentPlatformMigration}`, true);
+        console.log(`[db:migrate] Recorded ${agentPlatformMigration} as applied.`);
+      } catch (retryResolveError) {
+        console.error(
+          `[db:migrate] Could not record ${agentPlatformMigration}:`,
+          retryResolveError instanceof Error
+            ? retryResolveError.message.split("\n")[0]
+            : retryResolveError,
+        );
+      }
+    }
+  }
+  try {
+    deploy();
+  } catch (retryError) {
+    console.error(
+      "[db:migrate] migrate deploy still failing after agent platform repair:",
+      retryError instanceof Error ? retryError.message : String(retryError),
+    );
+  }
+} catch (agentPlatformError) {
+  console.error(
+    "[db:migrate] Could not add Agent platform schema:",
+    agentPlatformError instanceof Error ? agentPlatformError.message : String(agentPlatformError),
   );
 }

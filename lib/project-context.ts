@@ -42,11 +42,16 @@ export async function projectsForTenant(
   db: Db,
   tenantId: string,
 ): Promise<ProjectChoice[]> {
-  return db.project.findMany({
-    where: { tenantId },
-    select: { id: true, name: true, slug: true },
-    orderBy: { createdAt: "asc" },
-  });
+  try {
+    return await db.project.findMany({
+      where: { tenantId },
+      select: { id: true, name: true, slug: true },
+      orderBy: { createdAt: "asc" },
+    });
+  } catch (error) {
+    console.error("[project-context] projectsForTenant failed", error);
+    return [];
+  }
 }
 
 async function activeProjectIdFromCookie(): Promise<string | null> {
@@ -65,9 +70,14 @@ export async function projectContextFor(
 ): Promise<ProjectContext> {
   if (!tenantId) return { projects: [], activeProjectId: null };
 
-  const projects = await projectsForTenant(db, tenantId);
-  const requestedId = await activeProjectIdFromCookie();
-  return { projects, activeProjectId: pickProjectId(projects, requestedId) };
+  try {
+    const projects = await projectsForTenant(db, tenantId);
+    const requestedId = await activeProjectIdFromCookie();
+    return { projects, activeProjectId: pickProjectId(projects, requestedId) };
+  } catch (error) {
+    console.error("[project-context] projectContextFor failed", error);
+    return { projects: [], activeProjectId: null };
+  }
 }
 
 /** The project new issues go into, and the list is filtered by. */

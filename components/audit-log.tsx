@@ -1,7 +1,9 @@
 "use client";
 
+import { useTransition } from "react";
 import Link from "next/link";
 import { useId, useState } from "react";
+import type { UndoAuditActionResult } from "@/app/actions/audit";
 import { LocalTime } from "@/components/local-time";
 
 /** One agent audit event, already filtered for the viewer on the server (#447). */
@@ -20,6 +22,11 @@ export type AuditLogRow = {
   undoneAt: Date | string | null;
 };
 
+type UndoAction = (
+  prev: UndoAuditActionResult | undefined,
+  formData: FormData,
+) => Promise<UndoAuditActionResult>;
+
 function formatPayload(payload: unknown): string {
   if (payload === null || payload === undefined) return "(no payload)";
   try {
@@ -29,9 +36,26 @@ function formatPayload(payload: unknown): string {
   }
 }
 
-function AuditLogEntry({ row }: { row: AuditLogRow }) {
+function AuditLogEntry({
+  row,
+  isTenantAdmin,
+  onUndo,
+}: {
+  row: AuditLogRow;
+  isTenantAdmin?: boolean;
+  onUndo?: UndoAction;
+}) {
   const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
   const detailsId = useId();
+
+  const handleUndo = async () => {
+    const formData = new FormData();
+    formData.append("auditEventId", row.id);
+    startTransition(async () => {
+      await onUndo?.(undefined, formData);
+    });
+  };
 
   return (
     <li className="py-3">
@@ -50,6 +74,16 @@ function AuditLogEntry({ row }: { row: AuditLogRow }) {
         {row.undoneAt && (
           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">Undone</span>
         )}
+        {isTenantAdmin && !row.undoneAt ? (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={handleUndo}
+            className="ml-auto text-xs font-medium text-red-700 hover:underline disabled:opacity-50"
+          >
+            {pending ? "Undoing…" : "Undo"}
+          </button>
+        ) : null}
         <button
           type="button"
           className="ml-auto text-xs font-medium text-teal-700 hover:underline"
@@ -97,14 +131,22 @@ function AuditLogEntry({ row }: { row: AuditLogRow }) {
 }
 
 /** Compact audit rows, each collapsed until its "Show more" button is pressed. */
-export function AuditLog({ rows }: { rows: ReadonlyArray<AuditLogRow> }) {
+export function AuditLog({
+  rows,
+  isTenantAdmin,
+  onUndo,
+}: {
+  rows: ReadonlyArray<AuditLogRow>;
+  isTenantAdmin?: boolean;
+  onUndo?: UndoAction;
+}) {
   if (rows.length === 0) {
     return <p className="text-sm text-slate-500">No agent activity yet.</p>;
   }
   return (
     <ul className="divide-y divide-slate-200">
       {rows.map((row) => (
-        <AuditLogEntry key={row.id} row={row} />
+        <AuditLogEntry key={row.id} row={row} isTenantAdmin={isTenantAdmin} onUndo={onUndo} />
       ))}
     </ul>
   );
