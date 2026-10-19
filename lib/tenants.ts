@@ -88,12 +88,17 @@ export async function setActiveTenantCookie(tenantId: string): Promise<void> {
 
 /** Only the tenants the person belongs to, by name. Never anyone else's. */
 export async function tenantsForUser(db: Db, userId: string): Promise<TenantChoice[]> {
-  const memberships = await db.membership.findMany({
-    where: { userId },
-    select: tenantChoiceSelect,
-    orderBy: { tenant: { name: "asc" } },
-  });
-  return memberships.map(toChoice);
+  try {
+    const memberships = await db.membership.findMany({
+      where: { userId },
+      select: tenantChoiceSelect,
+      orderBy: { tenant: { name: "asc" } },
+    });
+    return memberships.map(toChoice);
+  } catch (error) {
+    console.error("[tenants] tenantsForUser failed", error);
+    return [];
+  }
 }
 
 /**
@@ -114,14 +119,19 @@ export function landingPath(
 }
 
 export async function homePathFor(db: Db, userId: string): Promise<"/issues" | "/tenants"> {
-  const memberships = await db.membership.findMany({
-    where: { userId },
-    select: { tenantId: true },
-  });
-  return landingPath(
-    memberships.map((m) => m.tenantId),
-    await readActiveTenantCookie(),
-  );
+  try {
+    const memberships = await db.membership.findMany({
+      where: { userId },
+      select: { tenantId: true },
+    });
+    return landingPath(
+      memberships.map((m) => m.tenantId),
+      await readActiveTenantCookie(),
+    );
+  } catch (error) {
+    console.error("[tenants] homePathFor failed", error);
+    return "/issues";
+  }
 }
 
 /** A tenant the person belongs to, by id. Null for any other id. */
@@ -131,11 +141,16 @@ export async function memberTenantById(
   tenantId: string,
 ): Promise<TenantChoice | null> {
   if (!tenantId) return null;
-  const membership = await db.membership.findUnique({
-    where: { tenantId_userId: { tenantId, userId } },
-    select: tenantChoiceSelect,
-  });
-  return membership ? toChoice(membership) : null;
+  try {
+    const membership = await db.membership.findUnique({
+      where: { tenantId_userId: { tenantId, userId } },
+      select: tenantChoiceSelect,
+    });
+    return membership ? toChoice(membership) : null;
+  } catch (error) {
+    console.error("[tenants] memberTenantById failed", error);
+    return null;
+  }
 }
 
 /**
