@@ -1,0 +1,100 @@
+"use client";
+
+import { useActionState, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { FieldError, useFieldErrors } from "@/components/ui/field-errors";
+import { Input } from "@/components/ui/input";
+import { createTenantAction, type TenantFormResult } from "./actions";
+
+const FORM_ID = "create-tenant";
+
+/** Keep a field's hint announced alongside its error, not replaced by it. */
+function withHint(hintId: string, errorAttrs: { "aria-invalid"?: true; "aria-describedby"?: string }) {
+  return {
+    ...errorAttrs,
+    "aria-describedby": [hintId, errorAttrs["aria-describedby"]].filter(Boolean).join(" "),
+  };
+}
+
+/**
+ * Create a tenant you own, with its first project (#444). `nameMax` comes
+ * from the server, so this client file doesn't import the server-only rules.
+ */
+export function CreateTenantForm({ nameMax }: { nameMax: number }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const { fieldErrors, show, clear, attrs } = useFieldErrors(FORM_ID, formRef);
+  // Controlled, so a failed submit keeps what was typed.
+  const [name, setName] = useState("");
+  const [projectName, setProjectName] = useState("");
+  const [result, action, pending] = useActionState<TenantFormResult | undefined, FormData>(
+    createTenantAction,
+    undefined,
+  );
+
+  useEffect(() => {
+    if (!result) return;
+    if (result.field) show(result);
+    else clear();
+  }, [result, show, clear]);
+
+  const formError = result?.error && !result.field ? result.error : null;
+
+  return (
+    <form ref={formRef} action={action} className="mt-4 space-y-4" noValidate>
+      <div className="space-y-1">
+        <label htmlFor="tenant-name" className="block text-sm font-medium text-slate-800">
+          Tenant name
+        </label>
+        <p id="tenant-name-hint" className="text-xs text-slate-500">
+          Usually your company or team, such as Acme.
+        </p>
+        <Input
+          id="tenant-name"
+          name="name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Acme"
+          autoComplete="organization"
+          required
+          maxLength={nameMax + 20}
+          disabled={pending}
+          className="sm:max-w-sm"
+          {...withHint("tenant-name-hint", attrs("name"))}
+        />
+        <FieldError formId={FORM_ID} field="name" errors={fieldErrors} />
+      </div>
+      <div className="space-y-1">
+        <label htmlFor="tenant-project" className="block text-sm font-medium text-slate-800">
+          First project <span className="font-normal text-slate-500">(optional)</span>
+        </label>
+        <p id="tenant-project-hint" className="text-xs text-slate-500">
+          A product inside the tenant, such as Acme Web. Left blank, it&apos;s named after
+          the tenant. You can add more later.
+        </p>
+        <Input
+          id="tenant-project"
+          name="projectName"
+          value={projectName}
+          onChange={(event) => setProjectName(event.target.value)}
+          placeholder={name.trim() || "Acme Web"}
+          maxLength={nameMax + 20}
+          disabled={pending}
+          className="sm:max-w-sm"
+          {...withHint("tenant-project-hint", attrs("projectName"))}
+        />
+        <FieldError formId={FORM_ID} field="projectName" errors={fieldErrors} />
+      </div>
+      {formError ? (
+        <p role="alert" className="text-sm text-red-700">
+          {formError}
+        </p>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" disabled={pending}>
+          {pending ? "Creating…" : "Create tenant"}
+        </Button>
+        <p className="text-xs text-slate-500">You&apos;ll be its owner.</p>
+      </div>
+    </form>
+  );
+}
