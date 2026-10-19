@@ -34,6 +34,9 @@ export function isPublicPath(
     pathWithoutBase.startsWith("/session-expired") ||
     pathWithoutBase.startsWith("/api/auth") ||
     pathWithoutBase.startsWith("/api/health") ||
+    // The agent API (#427) authenticates every call with an agent key, not a
+    // session; each route rejects a request without one.
+    pathWithoutBase.startsWith("/api/v1/") ||
     pathWithoutBase.startsWith("/_next") ||
     pathWithoutBase === "/favicon.ico"
   );

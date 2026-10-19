@@ -57,6 +57,15 @@ describe("isPublicPath (#348)", () => {
     expect(isPublicPath("/favicon.ico")).toBe(true);
   });
 
+  it("lets the agent API through; its routes check the agent key (#427)", () => {
+    expect(isPublicPath("/api/v1/agents/me")).toBe(true);
+    expect(isPublicPath("/api/v1/agents/pairing")).toBe(true);
+    // Only the versioned agent API, not the session-only routes beside it.
+    expect(isPublicPath("/api/v1")).toBe(false);
+    expect(isPublicPath("/api/issues/similar")).toBe(false);
+    expect(isPublicPath("/api/attachments/a1")).toBe(false);
+  });
+
   it("treats application routes as non-public", () => {
     expect(isPublicPath("/issues")).toBe(false);
     expect(isPublicPath("/issues/new")).toBe(false);
