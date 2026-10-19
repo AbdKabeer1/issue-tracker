@@ -2,7 +2,7 @@
 
 Instructions for AI coding agents working on **Zedu Bugs** (HNG15 Task 1).
 
-This repo is the Team Zendor **fork** of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug-tracker). Production runs at `issues.zedu.chat` (served from root), with legacy `/bug-tracker` compatibility preserved.
+This repo is the Team Zendor **fork** of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug-tracker). Production runs at `https://ziki.dev` (served from root; the old `issues.zedu.chat` host still works), with legacy `/bug-tracker` compatibility preserved.
 
 **Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) first.** It is the source of truth for branches, commits, PRs, and local setup. This file adds agent-specific guidance.
 

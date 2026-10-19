@@ -6,13 +6,13 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe("sitemap", () => {
   it("lists absolute URLs on the configured site, not the request host", () => {
-    vi.stubEnv("AUTH_URL", "https://issues.zedu.chat");
+    vi.stubEnv("AUTH_URL", "https://ziki.dev");
     const urls = sitemap().map((entry) => entry.url);
-    expect(urls).toEqual(["https://issues.zedu.chat"]);
+    expect(urls).toEqual(["https://ziki.dev"]);
   });
 
   it("never lists an issue page", () => {
-    vi.stubEnv("AUTH_URL", "https://issues.zedu.chat");
+    vi.stubEnv("AUTH_URL", "https://ziki.dev");
     expect(sitemap().some((entry) => {
       const path = new URL(entry.url).pathname;
       return path.startsWith("/bugs") || path.startsWith("/issues");
@@ -21,7 +21,7 @@ describe("sitemap", () => {
 
   it("lists nothing robots.txt disallows", () => {
     // Listing a blocked URL earns "Submitted URL blocked by robots.txt".
-    vi.stubEnv("AUTH_URL", "https://issues.zedu.chat");
+    vi.stubEnv("AUTH_URL", "https://ziki.dev");
     const rules = robots().rules;
     const disallowed = (Array.isArray(rules) ? rules : [rules]).flatMap((rule) =>
       Array.isArray(rule.disallow) ? rule.disallow : rule.disallow ? [rule.disallow] : [],
@@ -37,7 +37,7 @@ describe("sitemap", () => {
 
 describe("robots", () => {
   it("points at the sitemap on the configured origin", () => {
-    vi.stubEnv("AUTH_URL", "https://issues.zedu.chat");
-    expect(robots().sitemap).toBe("https://issues.zedu.chat/sitemap.xml");
+    vi.stubEnv("AUTH_URL", "https://ziki.dev");
+    expect(robots().sitemap).toBe("https://ziki.dev/sitemap.xml");
   });
 });
