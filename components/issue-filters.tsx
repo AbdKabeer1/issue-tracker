@@ -357,6 +357,37 @@ export function IssueFilters({
           ))}
         </select>
       </div>
+      <div className="w-full sm:w-auto">
+        <label
+          htmlFor="category"
+          className="mb-1 block text-xs font-medium text-slate-600"
+        >
+          Category
+        </label>
+        <select
+          id="category"
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:w-auto"
+          value={selectedNames[0] ?? ""}
+          onChange={(event) => update(TAGS_PARAM, event.target.value)}
+        >
+          <option value="">All</option>
+          {Array.from(
+            new Set([
+              "Features",
+              "Fixes",
+              "Design",
+              "Marketing",
+              "Documentation",
+              "Other",
+              ...tagTypes.filter((t) => t.isActive !== false).map((t) => t.name),
+            ]),
+          ).map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </div>
       {platformOptions.length > 0 ? (
         <div className="w-full sm:w-auto">
           <label
@@ -430,11 +461,96 @@ export function IssueFilters({
         </select>
       </div>
       {hasActiveFilters ? (
-        <div className="col-span-2 w-full sm:w-auto">
+        <div className="col-span-2 flex w-full flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+          <span className="text-xs font-medium text-slate-400">Active filters:</span>
+          {currentQuery ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-teal-900">
+              Search: &ldquo;{currentQuery}&rdquo;
+              <button
+                type="button"
+                onClick={() => {
+                  setText("");
+                  update("q", "");
+                }}
+                aria-label="Remove search filter"
+                className="ml-0.5 rounded-full p-0.5 text-teal-700 hover:bg-teal-200/60"
+              >
+                ✕
+              </button>
+            </span>
+          ) : null}
+          {params.get("status") ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-emerald-900">
+              Status: {statusLabel[params.get("status") as keyof typeof statusLabel] ?? params.get("status")}
+              <button
+                type="button"
+                onClick={() => update("status", "")}
+                aria-label="Remove status filter"
+                className="ml-0.5 rounded-full p-0.5 text-emerald-700 hover:bg-emerald-200/60"
+              >
+                ✕
+              </button>
+            </span>
+          ) : null}
+          {params.get("severity") ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-amber-900">
+              Severity: {severityLabel[params.get("severity") as keyof typeof severityLabel] ?? params.get("severity")}
+              <button
+                type="button"
+                onClick={() => update("severity", "")}
+                aria-label="Remove severity filter"
+                className="ml-0.5 rounded-full p-0.5 text-amber-700 hover:bg-amber-200/60"
+              >
+                ✕
+              </button>
+            </span>
+          ) : null}
+          {selectedTags.map((type) => (
+            <span
+              key={type.id}
+              className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-purple-900"
+            >
+              Category: {type.name}
+              <button
+                type="button"
+                onClick={() => removeTag(type.name)}
+                aria-label={`Remove tag ${type.name}`}
+                className="ml-0.5 rounded-full p-0.5 text-purple-700 hover:bg-purple-200/60"
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+          {currentPlatform ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-sky-900">
+              Platform: {platforms.find((p) => p.id === currentPlatform)?.name ?? currentPlatform}
+              <button
+                type="button"
+                onClick={() => update(PLATFORM_PARAM, "")}
+                aria-label="Remove platform filter"
+                className="ml-0.5 rounded-full p-0.5 text-sky-700 hover:bg-sky-200/60"
+              >
+                ✕
+              </button>
+            </span>
+          ) : null}
+          {currentMine ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-slate-800">
+              View: {mineFilterLabels[currentMine as keyof typeof mineFilterLabels] ?? currentMine}
+              <button
+                type="button"
+                onClick={() => update("mine", "")}
+                aria-label="Remove view filter"
+                className="ml-0.5 rounded-full p-0.5 text-slate-600 hover:bg-slate-200"
+              >
+                ✕
+              </button>
+            </span>
+          ) : null}
           <button
             type="button"
             onClick={clearAllFilters}
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-xs hover:bg-slate-50 hover:text-slate-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:w-auto"
+            className="ml-auto rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-xs hover:bg-slate-50 hover:text-slate-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
           >
             Clear all filters
           </button>

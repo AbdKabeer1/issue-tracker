@@ -25,7 +25,7 @@ export default async function AppLayout({
     if (isLinkPreviewBot(ua)) {
       return (
         <div className="flex min-h-screen flex-col bg-slate-50">
-          <main id={MAIN_CONTENT_ID} className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+          <main id={MAIN_CONTENT_ID} className="mx-auto w-full max-w-7xl flex-1 px-4 py-8">
             {children}
           </main>
         </div>
@@ -73,7 +73,7 @@ export default async function AppLayout({
         /* Focusable so the skip link and the route announcer can move focus
            here; -1 keeps it out of the normal tab order. */
         tabIndex={-1}
-        className={`outline-none mx-auto w-full max-w-5xl flex-1 px-3.5 pt-5 sm:px-4 sm:pt-8 ${
+        className={`outline-none mx-auto w-full max-w-7xl flex-1 px-3.5 pt-5 sm:px-4 sm:pt-8 ${
           // #221: the fixed FAB sits over the bottom-right of the viewport and
           // was covering pagination "Next" and the Danger-zone Delete button.
           // Reserve clearance only when the FAB actually renders, so we don't
