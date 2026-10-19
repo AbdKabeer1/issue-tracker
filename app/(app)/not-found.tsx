@@ -21,7 +21,7 @@ export default async function AppNotFound() {
       title="We couldn't find that issue"
       actions={
         <>
-          <Link href="/bugs" className={primaryActionClass}>
+          <Link href="/issues" className={primaryActionClass}>
             Go to issues
           </Link>
           {signedIn ? null : (

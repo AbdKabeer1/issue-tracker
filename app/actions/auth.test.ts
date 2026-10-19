@@ -46,6 +46,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetRateLimits();
   vi.stubEnv("AUTH_PASSWORD_LOGIN", "true");
+  // Some tests stub NODE_ENV=production, which would otherwise pick the
+  // shared Postgres store (#296); these tests are about the actions.
+  vi.stubEnv("RATE_LIMIT_STORE", "memory");
 });
 afterEach(() => vi.unstubAllEnvs());
 

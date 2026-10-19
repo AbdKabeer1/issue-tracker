@@ -1,8 +1,11 @@
 @import "tailwindcss";
+/* Dark mode (#277): the palette, mirrored. Generated; see the file header. */
+@import "./theme-dark.css";
 
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
+  color-scheme: light;
 }
 
 @theme inline {
@@ -27,5 +30,82 @@ body {
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+/*
+ * Print (#300). Paper has no use for controls, so rather than tagging every
+ * component, interactive chrome is hidden structurally: the app header, the
+ * skip link, buttons, inputs, forms and pagination. What is left is the
+ * content — the title, badges, description, comments and the list rows.
+ */
+@media print {
+  @page {
+    margin: 1.5cm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  header,
+  a[href="#main-content"],
+  button,
+  input,
+  select,
+  textarea,
+  form,
+  nav[aria-label="Pagination"],
+  [role="region"][aria-label^="Bulk actions"],
+  [aria-live] {
+    display: none !important;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  /* Code wraps instead of running off the page. */
+  .rich-text pre,
+  .rich-text pre code {
+    white-space: pre-wrap !important;
+    word-break: break-word;
+    overflow: visible !important;
+    max-height: none !important;
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+  }
+
+  /* External links print their address; internal ones are app navigation
+     and would only add noise. */
+  .rich-text a[href^="http"]:not([data-bare-url])::after,
+  a[href^="https://github.com"]:not([data-bare-url])::after {
+    content: " (" attr(href) ")";
+    font-size: 0.85em;
+    font-weight: normal;
+    color: #475569;
+    word-break: break-all;
+  }
+
+  /* Nothing is split across a page boundary that should not be. */
+  li,
+  article,
+  section,
+  pre {
+    break-inside: avoid;
+  }
+
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+  }
+
+  /* Shadows and tinted panels waste ink and print as grey smears. */
+  * {
+    box-shadow: none !important;
   }
 }

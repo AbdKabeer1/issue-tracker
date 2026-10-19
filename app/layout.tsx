@@ -4,6 +4,10 @@ import { getSiteUrl } from "@/lib/site-url";
 import { SHARE_IMAGE } from "@/lib/share-image";
 import { ConfirmProvider } from "@/components/ui/confirm-dialog";
 import { ToastProvider } from "@/components/ui/toast";
+import { cookies } from "next/headers";
+import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
+import { THEME_COOKIE, parseTheme, themeAttribute, type Theme } from "@/lib/theme";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -19,12 +23,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),
   title: {
-    default: "Zedu Issues",
-    template: "%s · Zedu Issues",
+    default: "Ziki Issues",
+    template: "%s · Ziki Issues",
   },
-  description: "Zedu issue tracking interface — HNG15 mini-project",
+  description: "Ziki issue tracking interface — HNG15 mini-project",
   openGraph: {
-    siteName: "Zedu Issues",
+    siteName: "Ziki Issues",
     type: "website",
     images: [{ ...SHARE_IMAGE }],
   },
@@ -34,13 +38,32 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+/**
+ * #277: the signed-in user's choice (so it follows them across devices),
+ * else this device's last choice, else the device's own setting. Rendered
+ * on <html> by the server, so the first paint is already right.
+ */
+async function currentTheme(): Promise<Theme> {
+  const fromCookie = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
+  try {
+    const session = await auth();
+    const id = session?.user?.id;
+    if (!id) return fromCookie;
+    const user = await prisma.user.findUnique({ where: { id }, select: { theme: true } });
+    return parseTheme(user?.theme ?? fromCookie);
+  } catch {
+    return fromCookie;
+  }
+}
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const theme = await currentTheme();
   return (
-    <html lang="en">
+    <html lang="en" data-theme={themeAttribute(theme)}>
       <body
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen antialiased`}
       >

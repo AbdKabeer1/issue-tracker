@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { selfAssignBugAction } from "@/app/actions/bugs";
+import { selfAssignBugAction } from "@/app/actions/issues";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 

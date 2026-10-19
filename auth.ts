@@ -3,13 +3,12 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { loginSchema } from "@/lib/validations/bug";
-import type { Role } from "@prisma/client";
+import { loginSchema } from "@/lib/validations/issue";
 import authConfig from "@/auth.config";
 import { cleanEnv } from "@/lib/env-clean";
 import { isPasswordAuthEnabled } from "@/lib/auth-mode";
-import { upsertGoogleUser } from "@/lib/google-user";
-import { checkAuthRateLimit, clientIpFrom } from "@/lib/rate-limit";
+import { upsertGoogleUser, type GoogleAccount } from "@/lib/google-user";
+import { clientIpFrom, consumeAuthRateLimit } from "@/lib/rate-limit";
 
 const googleClientId = cleanEnv(
   process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID,
@@ -62,7 +61,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         // Per-email and per-IP limit on password attempts (#207). Every
         // password sign-in comes through here, whichever entry point it used.
-        const limit = checkAuthRateLimit("login", {
+        // Shared across instances (#296).
+        const limit = await consumeAuthRateLimit("login", {
           email: parsed.data.email,
           ip: request?.headers ? clientIpFrom(request.headers) : null,
         });
@@ -115,7 +115,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             (typeof profile?.picture === "string" && profile.picture) ||
             (typeof user?.image === "string" ? user.image : undefined);
 
-          let dbUser: { id: string; role: Role } | null = null;
+          let dbUser: GoogleAccount | null = null;
           let lastError: unknown;
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
@@ -137,11 +137,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
 
           token.email = email;
-          token.name = name;
+          token.name = dbUser.name || name;
           token.id = dbUser.id;
           token.sub = dbUser.id;
           token.role = dbUser.role;
-          token.sv = 0;
+          token.sv = dbUser.sessionVersion;
           return token;
         }
       }

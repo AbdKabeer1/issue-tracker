@@ -1,5 +1,5 @@
 {
-  "name": "bug-tracker",
+  "name": "issue-tracker",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -7,12 +7,16 @@
     "build": "prisma generate && next build --webpack",
     "start": "next start -p ${PORT:-3000}",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "e2e": "playwright test",
+    "e2e:seed": "tsx e2e/seed.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -28,14 +32,19 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/turbopack": "^4",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
     "@types/bcryptjs": "^3.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.1",
+    "happy-dom": "^21.0.3",
     "postcss": "^8.5.30",
     "prisma": "6.19.3",
     "tailwindcss": "^4",

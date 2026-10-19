@@ -11,29 +11,61 @@ import { BASE_PATH, toAppPath } from "@/lib/base-path";
  */
 const { auth } = NextAuth(authConfig);
 
-/** Bug detail paths only — enough for unfurl bots to hit generateMetadata. */
-const BUG_DETAIL_PATH = /^\/bugs\/[^/]+\/?$/;
+/** Issue detail paths only — enough for unfurl bots to hit generateMetadata. */
+const ISSUE_DETAIL_PATH = /^\/(?:issues|bugs)\/[^/]+\/?$/;
 
-export default auth((req) => {
-  const pathWithoutBase = toAppPath(req.nextUrl.pathname);
-  const isLoggedIn = !!req.auth?.user;
-
+export function isPublicPath(
+  pathWithoutBase: string,
+  userAgent?: string | null,
+): boolean {
   const isAuthPage =
     pathWithoutBase.startsWith("/login") || pathWithoutBase.startsWith("/signup");
   const isPasswordResetPage =
     pathWithoutBase.startsWith("/forgot-password") ||
     pathWithoutBase.startsWith("/reset-password");
-  const isBugPreview =
-    BUG_DETAIL_PATH.test(pathWithoutBase) &&
-    isLinkPreviewBot(req.headers.get("user-agent"));
-  const isPublic =
+  const isIssuePreview =
+    ISSUE_DETAIL_PATH.test(pathWithoutBase) &&
+    isLinkPreviewBot(userAgent);
+
+  return (
     isAuthPage ||
     isPasswordResetPage ||
-    isBugPreview ||
+    isIssuePreview ||
+    pathWithoutBase.startsWith("/session-expired") ||
     pathWithoutBase.startsWith("/api/auth") ||
     pathWithoutBase.startsWith("/api/health") ||
     pathWithoutBase.startsWith("/_next") ||
-    pathWithoutBase === "/favicon.ico";
+    pathWithoutBase === "/favicon.ico"
+  );
+}
+
+export default auth((req) => {
+  const pathWithoutBase = toAppPath(req.nextUrl.pathname);
+  const isLoggedIn = !!req.auth?.user;
+
+  // Seamless backwards compatibility: redirect /bugs and /bugs/* to /issues and /issues/*
+  if (pathWithoutBase === "/bugs" || pathWithoutBase.startsWith("/bugs/")) {
+    const newPath = pathWithoutBase.replace(/^\/bugs/, "/issues");
+    const targetUrl = new URL(
+      BASE_PATH ? `${BASE_PATH}${newPath}` : newPath,
+      req.nextUrl.origin,
+    );
+    targetUrl.search = req.nextUrl.search;
+    return NextResponse.redirect(targetUrl, 308);
+  }
+  if (pathWithoutBase.startsWith("/api/bugs/")) {
+    const newPath = pathWithoutBase.replace(/^\/api\/bugs\//, "/api/issues/");
+    const targetUrl = new URL(
+      BASE_PATH ? `${BASE_PATH}${newPath}` : newPath,
+      req.nextUrl.origin,
+    );
+    targetUrl.search = req.nextUrl.search;
+    return NextResponse.redirect(targetUrl, 308);
+  }
+
+  const isAuthPage =
+    pathWithoutBase.startsWith("/login") || pathWithoutBase.startsWith("/signup");
+  const isPublic = isPublicPath(pathWithoutBase, req.headers.get("user-agent"));
 
   if (!isLoggedIn && !isPublic) {
     const url = new URL(
@@ -47,7 +79,7 @@ export default auth((req) => {
   // Allow reset links even when a session exists; only bounce login/signup.
   if (isLoggedIn && isAuthPage) {
     return NextResponse.redirect(
-      new URL(BASE_PATH ? `${BASE_PATH}/bugs` : "/bugs", req.nextUrl.origin),
+      new URL(BASE_PATH ? `${BASE_PATH}/issues` : "/issues", req.nextUrl.origin),
     );
   }
 

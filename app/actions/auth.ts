@@ -1,5 +1,13 @@
 "use server";
 
+import { fromZodError } from "@/lib/form-errors";
+
+/** An error, and the field it is about when there is one (#309). */
+type FieldAwareResult = {
+  error?: string;
+  field?: string;
+  fieldErrors?: Record<string, string>;
+};
 import { AuthError } from "next-auth";
 import { hash } from "bcryptjs";
 import { Prisma } from "@prisma/client";
@@ -25,7 +33,7 @@ import {
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
 import {
   RATE_LIMIT_MESSAGE,
-  checkAuthRateLimit,
+  consumeAuthRateLimit,
   clientIpFrom,
   type AuthRateLimitAction,
 } from "@/lib/rate-limit";
@@ -33,7 +41,7 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
   signupSchema,
-} from "@/lib/validations/bug";
+} from "@/lib/validations/issue";
 
 const RESET_LINK_INVALID =
   "This reset link is invalid or has expired. Request a new one.";
@@ -54,7 +62,7 @@ async function authRateLimited(
   email: string | null,
 ): Promise<{ error: string } | null> {
   const ip = clientIpFrom(await headers());
-  const result = checkAuthRateLimit(action, { email, ip });
+  const result = await consumeAuthRateLimit(action, { email, ip });
   return result.allowed ? null : { error: RATE_LIMIT_MESSAGE };
 }
 
@@ -65,7 +73,7 @@ const FORGOT_PASSWORD_SUCCESS =
 export async function loginAction(
   _prev: { error?: string } | undefined,
   formData: FormData,
-): Promise<{ error?: string } | undefined> {
+): Promise<FieldAwareResult | undefined> {
   // Server actions stay callable even when no UI renders them.
   if (!isPasswordAuthEnabled()) {
     return { error: PASSWORD_AUTH_DISABLED_MESSAGE };
@@ -83,11 +91,14 @@ export async function loginAction(
       redirect: false,
     });
   } catch (error) {
+    // Points at the email field so focus lands there, but deliberately not
+    // at a single culprit: saying which one was wrong would reveal whether
+    // the account exists.
     if (error instanceof AuthError) {
-      return { error: "Invalid email or password" };
+      return { error: "Invalid email or password", field: "email" };
     }
     console.error("[loginAction] signIn error:", error);
-    return { error: "Invalid email or password" };
+    return { error: "Invalid email or password", field: "email" };
   }
 
   redirect(callbackUrl);
@@ -96,7 +107,7 @@ export async function loginAction(
 export async function signupAction(
   _prev: { error?: string } | undefined,
   formData: FormData,
-): Promise<{ error?: string } | undefined> {
+): Promise<FieldAwareResult | undefined> {
   // Server actions stay callable even when no UI renders them.
   if (!isPasswordAuthEnabled()) {
     return { error: PASSWORD_AUTH_DISABLED_MESSAGE };
@@ -110,7 +121,7 @@ export async function signupAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return fromZodError(parsed.error);
   }
 
   const { name, email, password } = parsed.data;
@@ -217,7 +228,7 @@ export async function switchActiveRoleAction(
 export async function googleSignInAction(
   callbackUrlOrFormData?: string | FormData,
 ) {
-  let target = "/bugs";
+  let target = "/issues";
   if (typeof callbackUrlOrFormData === "string") {
     target = callbackUrlOrFormData;
   } else if (
@@ -237,7 +248,7 @@ export async function googleSignInAction(
 export async function forgotPasswordAction(
   _prev: { error?: string; success?: string } | undefined,
   formData: FormData,
-): Promise<{ error?: string; success?: string }> {
+): Promise<FieldAwareResult & { success?: string }> {
   // Server actions stay callable even when no UI renders them.
   if (!isPasswordAuthEnabled()) {
     return { error: PASSWORD_AUTH_DISABLED_MESSAGE };
@@ -248,7 +259,7 @@ export async function forgotPasswordAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid email" };
+    return fromZodError(parsed.error, "Invalid email");
   }
 
   const email = parsed.data.email;
@@ -283,9 +294,9 @@ export async function forgotPasswordAction(
       const resetUrl = buildPasswordResetUrl(rawToken);
       await sendMail({
         to: email,
-        subject: "Reset your Zedu Issues password",
+        subject: "Reset your Ziki Issues password",
         text: [
-          "You requested a password reset for your Zedu Issues account.",
+          "You requested a password reset for your Ziki Issues account.",
           "",
           `Open this link within 30 minutes to set a new password:`,
           resetUrl,
@@ -305,7 +316,7 @@ export async function forgotPasswordAction(
 export async function resetPasswordAction(
   _prev: { error?: string } | undefined,
   formData: FormData,
-): Promise<{ error?: string } | undefined> {
+): Promise<FieldAwareResult | undefined> {
   // Server actions stay callable even when no UI renders them.
   if (!isPasswordAuthEnabled()) {
     return { error: PASSWORD_AUTH_DISABLED_MESSAGE };
@@ -318,7 +329,7 @@ export async function resetPasswordAction(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return fromZodError(parsed.error);
   }
 
   const { token, password } = parsed.data;

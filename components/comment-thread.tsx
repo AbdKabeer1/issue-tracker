@@ -15,6 +15,7 @@ import { CommentBody, MentionText } from "@/components/comment-body";
 import { CommentForm } from "@/components/comment-form";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
+import { CopyLinkButton } from "@/components/copy-link-button";
 import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
@@ -88,6 +89,7 @@ function CommentEditForm({
 function CommentItem({
   comment,
   bugId,
+  issueUrl,
   reporterId,
   users,
   currentUserId,
@@ -97,6 +99,8 @@ function CommentItem({
 }: {
   comment: CommentNode;
   bugId: string;
+  /** Canonical issue URL, for each comment's permalink (#279). */
+  issueUrl: string;
   reporterId: string;
   users: UserOption[];
   attachmentsByComment?: AttachmentsByComment;
@@ -138,9 +142,15 @@ function CommentItem({
   };
 
   return (
-    <li id={`comment-${comment.id}`} className="scroll-mt-24 space-y-3">
+    <li
+      id={`comment-${comment.id}`}
+      // :target is the comment a permalink points at (#279); the highlight
+      // needs no script, so it works on first load and on hash changes.
+      // break-inside keeps a comment whole across printed pages (#300).
+      className="group/comment scroll-mt-24 space-y-3 break-inside-avoid"
+    >
       <article
-        className={`rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 ${
+        className={`rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 group-target/comment:border-teal-400 group-target/comment:bg-teal-50 group-target/comment:ring-2 group-target/comment:ring-teal-500/40 motion-safe:transition-colors ${
           comment.depth > 0 ? "border-l-2 border-l-teal-600" : ""
         }`}
       >
@@ -152,6 +162,8 @@ function CommentItem({
               <UserNameWithBadges
                 name={comment.author.name}
                 role={comment.author.role}
+                image={comment.author.image}
+                avatar="sm"
                 userId={comment.authorId}
                 showAuthor={comment.authorId === reporterId}
                 className="font-medium text-slate-700"
@@ -163,6 +175,11 @@ function CommentItem({
                 >
                   <LocalTime date={comment.createdAt} />
                 </a>
+                <CopyLinkButton
+                  url={`${issueUrl}#comment-${comment.id}`}
+                  label="comment"
+                  compact
+                />
                 {comment.editedAt ? (
                   <span title="This comment was edited">· edited</span>
                 ) : null}
@@ -261,6 +278,7 @@ function CommentItem({
               key={child.id}
               comment={child}
               bugId={bugId}
+              issueUrl={issueUrl}
               reporterId={reporterId}
               users={users}
               currentUserId={currentUserId}
@@ -277,6 +295,7 @@ function CommentItem({
 
 export function CommentThread({
   bugId,
+  issueUrl,
   reporterId,
   comments,
   users,
@@ -286,6 +305,7 @@ export function CommentThread({
   readOnly = false,
 }: {
   bugId: string;
+  issueUrl: string;
   reporterId: string;
   comments: CommentNode[];
   users: UserOption[];
@@ -307,6 +327,7 @@ export function CommentThread({
               key={comment.id}
               comment={comment}
               bugId={bugId}
+              issueUrl={issueUrl}
               reporterId={reporterId}
               users={users}
               currentUserId={currentUserId}

@@ -7,13 +7,14 @@ import {
 } from "./header-nav";
 
 describe("headerNavItems", () => {
-  it("shows only Issues to normal users", () => {
-    expect(headerNavItems("user").map((i) => i.label)).toEqual(["Issues"]);
+  it("shows Issues and Milestones to normal users", () => {
+    expect(headerNavItems("user").map((i) => i.label)).toEqual(["Issues", "Milestones"]);
   });
 
   it("adds Platforms and Types for admins", () => {
     expect(headerNavItems("admin").map((i) => i.label)).toEqual([
       "Issues",
+      "Milestones",
       "Platforms",
       "Types",
     ]);
@@ -22,6 +23,7 @@ describe("headerNavItems", () => {
   it("adds Admins for super admins", () => {
     expect(headerNavItems("super_admin").map((i) => i.label)).toEqual([
       "Issues",
+      "Milestones",
       "Platforms",
       "Types",
       "Admins",
@@ -31,10 +33,12 @@ describe("headerNavItems", () => {
 
 describe("isNavItemActive", () => {
   it("marks Issues active on the list and on an issue, not on the new-issue form", () => {
-    expect(isNavItemActive("/bugs", "/bugs")).toBe(true);
-    expect(isNavItemActive("/bugs/", "/bugs")).toBe(true);
-    expect(isNavItemActive("/bugs/abc123", "/bugs")).toBe(true);
-    expect(isNavItemActive("/bugs/new", "/bugs")).toBe(false);
+    expect(isNavItemActive("/issues", "/issues")).toBe(true);
+    expect(isNavItemActive("/issues/", "/issues")).toBe(true);
+    expect(isNavItemActive("/issues/abc123", "/issues")).toBe(true);
+    expect(isNavItemActive("/issues/new", "/issues")).toBe(false);
+    expect(isNavItemActive("/bugs", "/issues")).toBe(true);
+    expect(isNavItemActive("/bugs/abc123", "/issues")).toBe(true);
   });
 
   it("matches admin pages by prefix only on a path boundary", () => {
@@ -42,7 +46,7 @@ describe("isNavItemActive", () => {
     expect(isNavItemActive("/admin/types/x", "/admin/types")).toBe(true);
     expect(isNavItemActive("/admin/typesx", "/admin/types")).toBe(false);
     expect(isNavItemActive("/settings", "/admin/types")).toBe(false);
-    expect(isNavItemActive(null, "/bugs")).toBe(false);
+    expect(isNavItemActive(null, "/issues")).toBe(false);
   });
 });
 
