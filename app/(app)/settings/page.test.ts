@@ -1,0 +1,51 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const requireUser = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/auth-helpers", () => ({ requireUser }));
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    user: {
+      findUnique: vi.fn(),
+    },
+  },
+}));
+
+import { prisma } from "@/lib/prisma";
+import SettingsPage from "./page";
+
+describe("SettingsPage resilience", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireUser.mockResolvedValue({ id: "user-1", name: "Ada Lovelace", email: "ada@example.com", role: "user" });
+  });
+
+  it("renders cleanly with full user settings", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      theme: "dark",
+      emailNotifications: true,
+      notifyMentions: true,
+      notifyAssignments: true,
+      notifyStatusChanges: true,
+      keyboardShortcuts: true,
+    } as unknown as Awaited<ReturnType<typeof prisma.user.findUnique>>);
+
+    const element = await SettingsPage();
+    expect(element).toBeDefined();
+    expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back gracefully when full settings query throws due to missing columns", async () => {
+    vi.mocked(prisma.user.findUnique)
+      .mockRejectedValueOnce(new Error("The column User.theme does not exist in the current database."))
+      .mockResolvedValueOnce({
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+      } as unknown as Awaited<ReturnType<typeof prisma.user.findUnique>>);
+
+    const element = await SettingsPage();
+    expect(element).toBeDefined();
+    expect(prisma.user.findUnique).toHaveBeenCalledTimes(2);
+  });
+});

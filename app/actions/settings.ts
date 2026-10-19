@@ -18,10 +18,15 @@ export type DisplayNameResult = Partial<FieldErrorResult> & { ok?: boolean; name
 export async function setEmailNotificationsAction(enabled: unknown): Promise<SettingsResult> {
   if (typeof enabled !== "boolean") return { error: "Invalid setting" };
   const user = await requireUser();
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { emailNotifications: enabled },
-  });
+  try {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailNotifications: enabled },
+    });
+  } catch (err) {
+    console.error("[settings] setEmailNotificationsAction failed:", err);
+    return { error: "Could not update email notifications setting" };
+  }
   revalidatePath("/settings");
   return { ok: true, emailNotifications: enabled };
 }
@@ -30,10 +35,15 @@ export async function setEmailNotificationsAction(enabled: unknown): Promise<Set
 export async function setKeyboardShortcutsAction(enabled: unknown): Promise<SettingsResult> {
   if (typeof enabled !== "boolean") return { error: "Invalid setting" };
   const user = await requireUser();
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { keyboardShortcuts: enabled },
-  });
+  try {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { keyboardShortcuts: enabled },
+    });
+  } catch (err) {
+    console.error("[settings] setKeyboardShortcutsAction failed:", err);
+    return { error: "Could not update keyboard shortcuts setting" };
+  }
   // The layout reads the setting, so every page needs the new value.
   revalidatePath("/", "layout");
   return { ok: true };
@@ -46,7 +56,11 @@ export async function setKeyboardShortcutsAction(enabled: unknown): Promise<Sett
 export async function setThemeAction(theme: unknown): Promise<SettingsResult> {
   if (!isTheme(theme)) return { error: "Invalid setting" };
   const user = await requireUser();
-  await prisma.user.update({ where: { id: user.id }, data: { theme } });
+  try {
+    await prisma.user.update({ where: { id: user.id }, data: { theme } });
+  } catch (err) {
+    console.error("[settings] setThemeAction user update failed:", err);
+  }
   (await cookies()).set(THEME_COOKIE, theme, {
     path: "/",
     maxAge: THEME_COOKIE_MAX_AGE,
@@ -68,12 +82,17 @@ export async function setNotificationKindAction(
   if (!isNotificationKind(kind)) return { error: "Invalid setting" };
   if (typeof enabled !== "boolean") return { error: "Invalid setting" };
   const user = await requireUser();
-  await prisma.user.update({
-    where: { id: user.id },
-    // PREF_FIELD is a fixed lookup over a validated kind, so the column name
-    // can never come from the request.
-    data: { [PREF_FIELD[kind]]: enabled },
-  });
+  try {
+    await prisma.user.update({
+      where: { id: user.id },
+      // PREF_FIELD is a fixed lookup over a validated kind, so the column name
+      // can never come from the request.
+      data: { [PREF_FIELD[kind]]: enabled },
+    });
+  } catch (err) {
+    console.error("[settings] setNotificationKindAction failed:", err);
+    return { error: "Could not update notification preference" };
+  }
   revalidatePath("/settings");
   return { ok: true };
 }
