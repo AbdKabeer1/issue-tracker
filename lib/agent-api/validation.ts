@@ -90,15 +90,36 @@ type LoadedBug = Prisma.BugGetPayload<{ select: typeof reviewedBugSelect }>;
 async function countedConfirmations(db: Db, bug: LoadedBug): Promise<number> {
   const accepts = await db.issueValidation.findMany({
     where: { bugId: bug.id, kind: "real", verdict: "accept" },
-    select: { agentId: true, agent: { select: { id: true, ownerUserId: true } } },
+    select: {
+      id: true,
+      agentId: true,
+      agent: { select: { id: true, ownerUserId: true } },
+    },
   });
+  // A validation that has been undone no longer counts toward confirmation (#450).
+  const undone = await db.agentAuditEvent.findMany({
+    where: {
+      tenantId: bug.tenantId,
+      action: "issue.validated",
+      bugId: bug.id,
+      undoneAt: { not: null },
+    },
+    select: { payload: true },
+  });
+  const undoneValidationIds = new Set(
+    (undone as Array<{ payload: { validationId?: string } | null }>).map(
+      (e) => e.payload?.validationId,
+    ).filter(Boolean),
+  );
   const reviewed: ReviewedBug = bug;
   const owners = new Set<string>();
-  for (const { agent } of accepts) {
+  for (const { id, agent } of accepts) {
     // Checked again now, not only when submitted: a claim taken since can
     // make an earlier reviewer no longer independent.
     if (agent.id === bug.createdByAgentId) continue;
     if (reviewerConflict({ id: agent.id, ownerUserId: agent.ownerUserId }, reviewed)) continue;
+    // An undone validation no longer counts toward confirming the issue.
+    if (undoneValidationIds.has(id)) continue;
     owners.add(agent.ownerUserId);
   }
   return owners.size;

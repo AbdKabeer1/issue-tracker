@@ -19,7 +19,7 @@ const db = vi.hoisted(() => ({
   testVerdict: { findMany: vi.fn() },
   issueValidation: { findMany: vi.fn() },
   pointEntry: { createMany: vi.fn() },
-  agentAuditEvent: { create: vi.fn() },
+  agentAuditEvent: { create: vi.fn(), findMany: vi.fn() },
   agentEvent: { create: vi.fn() },
   webhookSubscription: { findMany: vi.fn() },
   webhookDelivery: { createMany: vi.fn() },
@@ -82,6 +82,7 @@ beforeEach(() => {
   db.pointEntry.createMany.mockResolvedValue({ count: 1 });
   db.agentEvent.create.mockResolvedValue({ id: "e1" });
   db.webhookSubscription.findMany.mockResolvedValue([]);
+  db.agentAuditEvent.findMany.mockResolvedValue([]);
   redesign.assertRedesignOpen.mockResolvedValue(undefined);
   db.testVerdict.findMany.mockImplementation(async () =>
     state.verdicts.filter((v) => v.bugId === "bug1" && v.goodToMerge),
