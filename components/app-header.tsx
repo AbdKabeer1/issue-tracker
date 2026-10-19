@@ -5,7 +5,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SignOutButton } from "@/components/sign-out-button";
 import { BrandLockup } from "@/components/brand-lockup";
+import { ProjectSwitcher } from "@/components/project-switcher";
 import { RoleSwitcher } from "@/components/role-switcher";
+import type { ProjectChoice } from "@/lib/project-context";
 import {
   headerNavItems,
   isNavItemActive,
@@ -151,6 +153,8 @@ export function AppHeader({
   isRealAdmin,
   unreadCount = 0,
   userId,
+  projects = [],
+  activeProjectId = null,
 }: {
   userName?: string | null;
   /** Their picture, if their sign-in provider gave one (#290). */
@@ -161,6 +165,9 @@ export function AppHeader({
   /** Unread in-app notifications (#216). */
   unreadCount?: number;
   userId?: string | null;
+  /** The tenant's projects and the one currently active (#426). */
+  projects?: ProjectChoice[];
+  activeProjectId?: string | null;
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -204,6 +211,13 @@ export function AppHeader({
         <div className="shrink-0">
           <BrandLockup href="/issues" size="sm" />
         </div>
+
+        {/* #426: the active project, visible wherever projects change what a page shows. */}
+        <ProjectSwitcher
+          projects={projects}
+          activeProjectId={activeProjectId}
+          className="hidden shrink-0 md:block"
+        />
 
         {/* Desktop navigation: the active page is underlined on the header's edge. */}
         <nav aria-label="Main" className="hidden h-full items-stretch gap-1 md:flex">
@@ -344,6 +358,15 @@ export function AppHeader({
           ref={menuPanelRef}
           className="max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-4 pt-2 md:hidden"
         >
+          {projects.length > 0 ? (
+            <div className="border-b border-slate-200 pb-2">
+              <ProjectSwitcher
+                projects={projects}
+                activeProjectId={activeProjectId}
+                fullWidth
+              />
+            </div>
+          ) : null}
           <nav aria-label="Main" className="flex flex-col py-1">
             {items.map((item) => (
               <MenuLink

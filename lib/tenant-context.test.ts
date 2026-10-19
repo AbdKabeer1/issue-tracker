@@ -1,5 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const cookieGet = vi.hoisted(() => vi.fn());
+
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: cookieGet, set: vi.fn() }),
+}));
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
 import {
@@ -20,6 +25,10 @@ function matches(row: { tenantId: string }, scope: ReturnType<typeof bugInTenant
     ? row.tenantId === scope.tenantId
     : scope.tenantId.in.includes(row.tenantId);
 }
+
+beforeEach(() => {
+  cookieGet.mockReturnValue(undefined);
+});
 
 describe("tenant context (#425)", () => {
   describe("pickTenantId", () => {
@@ -96,6 +105,19 @@ describe("tenant context (#425)", () => {
         },
       } as never;
       expect(await defaultProjectIdFor(db, "tenant-zedu")).toBe("project-zedu");
+    });
+
+    it("files new issues into the project chosen in the header", async () => {
+      cookieGet.mockReturnValue({ value: "project-web" });
+      const db = {
+        project: {
+          findMany: vi.fn().mockResolvedValue([
+            { id: "project-web", slug: "web" },
+            { id: "project-zedu", slug: "zedu" },
+          ]),
+        },
+      } as never;
+      expect(await defaultProjectIdFor(db, "tenant-zedu")).toBe("project-web");
     });
 
     it("falls back to the oldest project, or none", async () => {
