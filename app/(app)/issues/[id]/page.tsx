@@ -224,7 +224,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   // The list page already proved the issue row itself can be read. Comments,
   // the activity log, watches and attachments are newer tables. One of them
   // missing used to reject this whole Promise and blank the page.
-  const loadedBug = await prisma.bug
+  let loadedBug = await prisma.bug
     .findUnique({
       where: { id, ...bugInTenant(await currentTenantIdFor(userId)) },
       include: {
@@ -251,6 +251,46 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       const detail = error instanceof Error ? error.message : "Could not load issue";
       return { detail };
     });
+
+  // If the query failed because Bug.milestoneId or Milestone does not exist in
+  // the current database, retry without the milestone relation so the page
+  // continues to load cleanly (#289).
+  if ("detail" in loadedBug && /milestoneId|Milestone/i.test(loadedBug.detail)) {
+    loadedBug = await prisma.bug
+      .findUnique({
+        where: { id, ...bugInTenant(await currentTenantIdFor(userId)) },
+        include: {
+          type: { select: { id: true, name: true, isActive: true } },
+          reporter: { select: { name: true, email: true, role: true, image: true } },
+          assignee: { select: { id: true, name: true, role: true, image: true } },
+          category: { select: { id: true, name: true, isActive: true } },
+          votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
+          duplicateOf: { select: { id: true, number: true, title: true, status: true, isDeleted: true } },
+          duplicates: {
+            where: { isDeleted: false },
+            select: { id: true, number: true, title: true, status: true },
+            orderBy: { number: "asc" },
+            take: 20,
+          },
+          _count: { select: { duplicates: { where: { isDeleted: false } } } },
+        },
+      })
+      .then((bug) => ({
+        bug: bug
+          ? {
+              ...bug,
+              milestoneId: null,
+              milestone: null,
+            }
+          : null,
+      }))
+      .catch((error: unknown) => {
+        console.error("[issue] fallback detail query without milestone failed", error);
+        const detail = error instanceof Error ? error.message : "Could not load issue";
+        return { detail };
+      });
+  }
+
   if ("detail" in loadedBug) {
     return issueLoadError(loadedBug.detail);
   }

@@ -223,5 +223,53 @@ describe("BugDetailPage conditional user query (#349)", () => {
       expect(executed).toBeGreaterThan(0);
       expect(mockUserFindMany).toHaveBeenCalledTimes(0);
     });
+
+    it("falls back to querying without milestone when Bug.milestoneId column does not exist (#289)", async () => {
+      mockRequireUser.mockResolvedValue({
+        id: "user-123",
+        role: "user",
+      } as unknown as Awaited<ReturnType<typeof requireUser>>);
+
+      mockBugFindUnique
+        .mockRejectedValueOnce(new Error("The column Bug.milestoneId does not exist in the current database."))
+        .mockResolvedValueOnce({
+          id: "bug-1",
+          number: 1,
+          title: "Test bug",
+          status: "open",
+          severity: "low",
+          description: "description",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          reporterId: "user-123",
+          assigneeId: null,
+          categoryId: null,
+          typeId: null,
+          isDeleted: false,
+          type: null,
+          reporter: { name: "Test User", email: "test@example.com", role: "user", image: null },
+          assignee: null,
+          category: null,
+          votes: [],
+          duplicateOf: null,
+          duplicates: [],
+          _count: { duplicates: 0 },
+        } as unknown as Awaited<ReturnType<typeof prisma.bug.findUnique>>);
+
+      const element = await BugDetailPage({
+        params: Promise.resolve({ id: "bug-1" }),
+      });
+
+      expect(element).toBeDefined();
+      expect(mockBugFindUnique).toHaveBeenCalledTimes(2);
+      expect(mockBugFindUnique).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          include: expect.not.objectContaining({
+            milestone: expect.anything(),
+          }),
+        }),
+      );
+    });
   });
 });
+
