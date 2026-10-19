@@ -98,6 +98,10 @@ const nextConfig: NextConfig = {
     }
     return list;
   },
+  experimental: {
+    // #447: lets a page answer 403 with `forbidden()` and app/forbidden.tsx.
+    authInterrupts: true,
+  },
   turbopack: {
     rules: {
       "*.css": {
