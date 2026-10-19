@@ -61,7 +61,7 @@ import {
   BulkSelectionProvider,
 } from "@/components/bulk-selection";
 import { TAGS_PARAM, parseTagFilter, serializeTags, tagTypeIds } from "@/lib/tag-filter";
-import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
+import { bugInTenant, currentTenantIdFor, isMissingTenantColumnError } from "@/lib/tenant-context";
 import { activeProjectIdFor } from "@/lib/project-context";
 import {
   PLATFORM_PARAM,
@@ -218,14 +218,16 @@ export default async function BugsPage({
   }
 
   let totalCount = 0;
+  // Only a member, and only when the tenant column itself is missing, may see
+  // the pre-migration board. Anyone else keeps an empty scope (#439).
+  let unscopedBoard = false;
   try {
     totalCount = await prisma.bug.count({ where });
   } catch (error) {
     console.error("[bugs] list count failed", error);
-    const isColumnError =
-      error instanceof Error &&
-      /tenantId|projectId|column.*does not exist/i.test(error.message);
-    if (isColumnError) {
+    const missingColumn = isMissingTenantColumnError(error);
+    if (missingColumn && tenantId) {
+      unscopedBoard = true;
       delete where.tenantId;
       delete where.projectId;
       try {
@@ -235,16 +237,22 @@ export default async function BugsPage({
         const detail = retryError instanceof Error ? retryError.message : "Could not load issues";
         return issuesQueryError(detail);
       }
+    } else if (!tenantId) {
+      totalCount = 0;
+      if (missingColumn) {
+        delete where.tenantId;
+        delete where.projectId;
+        where.id = { in: [] };
+      }
     } else {
       const detail = error instanceof Error ? error.message : "Could not load issues";
       return issuesQueryError(detail);
     }
   }
 
-  const baseTenantWhere: Prisma.BugWhereInput = {
-    ...(where.tenantId ? bugInTenant(tenantId) : {}),
-    isDeleted: isDeletedView,
-  };
+  const baseTenantWhere: Prisma.BugWhereInput = unscopedBoard
+    ? { isDeleted: isDeletedView }
+    : { ...bugInTenant(tenantId), isDeleted: isDeletedView };
 
   let statsTotal = 0;
   let statsOpen = 0;
@@ -481,14 +489,10 @@ export default async function BugsPage({
   let isFirstRun = false;
   if (totalCount === 0 && !isDeletedView) {
     try {
-      const scope = where.tenantId ? bugInTenant(tenantId) : {};
+      const scope = unscopedBoard ? {} : bugInTenant(tenantId);
       isFirstRun = (await prisma.bug.count({ where: { ...scope, isDeleted: false } })) === 0;
     } catch {
-      try {
-        isFirstRun = (await prisma.bug.count({ where: { isDeleted: false } })) === 0;
-      } catch {
-        isFirstRun = false;
-      }
+      isFirstRun = false;
     }
   }
 

@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { currentTenantIdFor } from "@/lib/tenant-context";
+import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { pointTotals } from "@/lib/points/leaderboard";
 import { PointsSummary } from "@/components/points-summary";
 import { requireUser } from "@/lib/auth-helpers";
@@ -41,6 +41,8 @@ export default async function ProfilePage({ params }: ProfileProps) {
   const { id } = await params;
   // #428: points in the viewer's tenant.
   const tenantId = await currentTenantIdFor(viewer.id);
+  // #425, #439: a profile is another way to read issues. No membership, no issues.
+  const scope = bugInTenant(tenantId);
 
   const [person, reported, assigned, counts, assignedTotal] = await Promise.all([
     prisma.user.findUnique({
@@ -48,25 +50,25 @@ export default async function ProfilePage({ params }: ProfileProps) {
       select: { id: true, name: true, role: true, createdAt: true },
     }),
     prisma.bug.findMany({
-      where: { reporterId: id, isDeleted: false },
+      where: { reporterId: id, isDeleted: false, ...scope },
       select: { id: true, title: true, status: true, createdAt: true },
       orderBy: { createdAt: "desc" },
       take: RECENT,
     }),
     prisma.bug.findMany({
-      where: { assigneeId: id, isDeleted: false },
+      where: { assigneeId: id, isDeleted: false, ...scope },
       select: { id: true, title: true, status: true, updatedAt: true },
       orderBy: { updatedAt: "desc" },
       take: RECENT,
     }),
     prisma.bug.groupBy({
       by: ["status"],
-      where: { reporterId: id, isDeleted: false },
+      where: { reporterId: id, isDeleted: false, ...scope },
       _count: { _all: true },
     }),
     // Counted rather than taken from `assigned.length`, which stops at RECENT
     // and would quietly under-report anyone with more than that.
-    prisma.bug.count({ where: { assigneeId: id, isDeleted: false } }),
+    prisma.bug.count({ where: { assigneeId: id, isDeleted: false, ...scope } }),
   ]);
 
   if (!person) notFound();

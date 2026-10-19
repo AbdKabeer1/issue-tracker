@@ -11,6 +11,7 @@ import {
   bugInTenant,
   commentInTenant,
   defaultProjectIdFor,
+  isMissingTenantColumnError,
   notificationInTenant,
   pickTenantId,
   tenantIdForUser,
@@ -142,6 +143,32 @@ describe("tenant context (#425)", () => {
       const none = { project: { findMany: vi.fn().mockResolvedValue([]) } } as never;
       expect(await defaultProjectIdFor(one, "t")).toBe("p1");
       expect(await defaultProjectIdFor(none, "t")).toBeNull();
+    });
+  });
+
+  describe("isMissingTenantColumnError (#439)", () => {
+    it("recognises a missing tenant or project column", () => {
+      expect(isMissingTenantColumnError(new Error("The column `tenantId` does not exist in the current database."))).toBe(true);
+      expect(isMissingTenantColumnError(new Error("The column `Bug.projectId` does not exist in the current database."))).toBe(true);
+      expect(isMissingTenantColumnError(new Error('column "tenantId" of relation "Bug" does not exist'))).toBe(true);
+      expect(isMissingTenantColumnError({ code: "P2022", meta: { column: "Bug.tenantId" } })).toBe(true);
+    });
+
+    it("ignores a query that merely mentions tenantId, and other missing columns", () => {
+      const printedQuery = new Error(`Invalid \`prisma.bug.count()\` invocation:
+
+{
+  where: {
+    tenantId: { in: [] },
+    projectId: "project-zedu",
+    isDeleted: false
+  }
+}
+
+Timed out fetching a new connection from the connection pool.`);
+      expect(isMissingTenantColumnError(printedQuery)).toBe(false);
+      expect(isMissingTenantColumnError(new Error("The column `voteCount` does not exist in the current database."))).toBe(false);
+      expect(isMissingTenantColumnError({ code: "P2022", meta: { column: "Bug.milestoneId" } })).toBe(false);
     });
   });
 });
