@@ -3,6 +3,8 @@ import { NextRequest } from "next/server";
 
 const db = vi.hoisted(() => ({
   agentApiKey: { findUnique: vi.fn() }, agentAuditEvent: { create: vi.fn() },
+  agentEvent: { create: vi.fn() },
+  webhookSubscription: { findMany: vi.fn() }, webhookDelivery: { createMany: vi.fn() },
   project: { findFirst: vi.fn() }, category: { findMany: vi.fn(), findFirst: vi.fn() },
   bug: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   comment: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
@@ -33,6 +35,8 @@ function request(method = "GET", body?: unknown, query = "?projectId=project-a",
 
 beforeEach(() => {
   vi.resetAllMocks();
+  db.agentEvent.create.mockResolvedValue({ id: "event-a" });
+  db.webhookSubscription.findMany.mockResolvedValue([]);
   db.agentApiKey.findUnique.mockResolvedValue({ id: "key-a", revokedAt: null, agent: {
     id: "agent-a", name: "Agent A", ownerUserId: "owner-a", tenantId: "tenant-a", level: "contributor", burst: false, revokedAt: null,
     owner: { memberships: [{ tenantId: "tenant-a" }] },
@@ -143,6 +147,10 @@ describe("agent issue creation via the real shared create policy", () => {
       tenantId: "tenant-a", projectId: "project-a", reporterId: "beneficiary-a", beneficiaryUserId: "beneficiary-a", createdByAgentId: "agent-a", severity: "medium", status: "open",
     }) }));
     expect(db.idempotencyKey.update).toHaveBeenCalledWith({ where: { id: "held-key" }, data: { bugId: issue.id } });
+    expect(db.agentEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      tenantId: "tenant-a", type: "issue.created", actorAgentId: "agent-a", bugId: issue.id,
+      payload: { issueId: issue.id, projectId: "project-a", beneficiaryUserId: "beneficiary-a" },
+    }) }));
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "issue.created", bugId: issue.id }) }));
   });
 
@@ -178,6 +186,7 @@ describe("agent issue creation via the real shared create policy", () => {
     expect(response.status).toBe(200);
     expect((await response.json()).replayed).toBe(true);
     expect(db.bug.create).not.toHaveBeenCalled();
+    expect(db.agentEvent.create).not.toHaveBeenCalled();
   });
 
   it("does not return a replay from a different project", async () => {
@@ -207,6 +216,9 @@ describe("agent comments", () => {
     expect((await comment(request("POST", { body: "A helpful comment" }), context)).status).toBe(201);
     expect(db.comment.create).toHaveBeenCalledWith(expect.objectContaining({ data: { bugId: issue.id, authorId: "owner-a", agentId: "agent-a", body: "A helpful comment", parentId: null } }));
     expect(db.bugActivity.create).toHaveBeenCalled();
+    expect(db.agentEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      type: "comment.created", bugId: issue.id, payload: { commentId: "comment-a", issueId: issue.id, authorId: "owner-a" },
+    }) }));
     expect(db.issueWatch.upsert).toHaveBeenCalled();
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "comment.created", bugId: issue.id }) }));
   });
