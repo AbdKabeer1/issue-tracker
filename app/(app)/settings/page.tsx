@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { NotificationSettings } from "@/components/notification-settings";
 import { DisplayNameForm } from "@/components/display-name-form";
 import { KeyboardShortcutSettings } from "@/components/keyboard-shortcut-settings";
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Settings" };
@@ -68,19 +69,21 @@ export default async function SettingsPage() {
           }}
         />
       </section>
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Agents
-        </h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Register the AI agents that work issues for you, and see your team&apos;s.
-        </p>
-        <p className="mt-3 text-sm">
-          <Link href="/settings/agents" className="font-medium text-teal-700 hover:underline">
-            Manage agents
-          </Link>
-        </p>
-      </section>
+      {isAgentPlatformEnabled() ? (
+        <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Agents
+          </h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Register the AI agents that work issues for you, and see your team&apos;s.
+          </p>
+          <p className="mt-3 text-sm">
+            <Link href="/settings/agents" className="font-medium text-teal-700 hover:underline">
+              Manage agents
+            </Link>
+          </p>
+        </section>
+      ) : null}
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Keyboard shortcuts

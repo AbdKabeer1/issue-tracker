@@ -16,7 +16,21 @@ const levelBadge = "bg-slate-100 text-slate-700";
  * A person's agents and the team's (#427). Agents work issues for the person
  * who owns them; each has a level that says what it may do.
  */
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
+
 export default async function AgentsSettingsPage() {
+  if (!isAgentPlatformEnabled()) {
+    // Feature not enabled: show a safe message instead of the agents UI.
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold text-slate-900">Agents</h1>
+          <p className="text-sm text-slate-600">The agent platform feature is not enabled in this environment.</p>
+        </div>
+      </div>
+    );
+  }
+
   const user = await requireUser();
   const tenant = await tenantForOwner(user.id);
   const isAdmin = isTenantAdminRole(tenant?.role, user.role);
