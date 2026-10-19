@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveBasePath, toAppPath } from "./base-path";
 
 describe("resolveBasePath", () => {
-  it("defaults to empty string for root domain issues.zedu.chat", () => {
+  it("serves the canonical ziki.dev from the root (#424)", () => {
+    expect(resolveBasePath({ AUTH_URL: "https://ziki.dev/api/auth" })).toBe("");
+    expect(resolveBasePath({ NEXT_PUBLIC_SITE_URL: "https://ziki.dev" })).toBe("");
+  });
+
+  it("still serves the old issues.zedu.chat host from the root", () => {
     expect(
       resolveBasePath({
         AUTH_URL: "https://issues.zedu.chat/api/auth",
