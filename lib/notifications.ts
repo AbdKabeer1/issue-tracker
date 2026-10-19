@@ -92,6 +92,12 @@ export type NotificationEvent =
       claimId: string;
       bugId: string;
       bugTitle: string;
+    })
+  | (AgentBase & {
+      /** A linked pull request could not be merged after acceptance (#452). */
+      kind: "merge_failed";
+      /** Why the merge did not happen, already human-readable. */
+      reason: string;
     });
 
 /** The kinds raised by agents and the platform rather than by issue edits. */
@@ -100,6 +106,7 @@ export const AGENT_NOTIFICATION_KINDS = [
   "approval_needed",
   "tenant_invite",
   "claim_offered",
+  "merge_failed",
 ] as const;
 
 export type PlannedNotification = {
@@ -142,6 +149,8 @@ function agentTarget(event: Extract<NotificationEvent, AgentBase>): { path: stri
       return { path: `/tenants?invite=${encodeURIComponent(event.inviteId)}`, label: "See the invite" };
     case "claim_offered":
       return { path: `/issues/${event.bugId}`, label: "Open the issue" };
+    case "merge_failed":
+      return { path: `/issues/${event.bugId}`, label: "Open the issue" };
   }
 }
 
@@ -179,6 +188,16 @@ function planAgentNotification(
         `${event.actorName} offered you ${quote(event.bugTitle)}. Your agent has a minute to accept it, or it goes to the next person.`,
       ];
       break;
+    case "merge_failed": {
+      const title = event.bugTitle ?? "this issue";
+      subject = `The fix for ${quote(title)} could not be merged`;
+      lines = [
+        `The fix for ${quote(title)} was accepted on Ziki, but the pull request could not be merged.`,
+        event.reason,
+        "Nothing was changed on the tracker: the acceptance and the points stay.",
+      ];
+      break;
+    }
   }
   return [
     {
