@@ -58,6 +58,7 @@ import {
   BulkSelectionProvider,
 } from "@/components/bulk-selection";
 import { TAGS_PARAM, parseTagFilter, serializeTags, tagTypeIds } from "@/lib/tag-filter";
+import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import {
   PLATFORM_PARAM,
   parsePlatformFilter,
@@ -116,6 +117,8 @@ export default async function BugsPage({
     userId = user.id;
     effectiveRole = user.role;
   }
+  // #425: only issues in the viewer's tenant; none without a membership.
+  const tenantId = await currentTenantIdFor(userId);
 
   const canDelete = canDeleteTicket(effectiveRole);
   const canBoost = canBoostTicket(effectiveRole);
@@ -134,6 +137,7 @@ export default async function BugsPage({
   // #285: duplicates are hidden unless asked for, and the count says so.
   const showDuplicates = parseShowDuplicates(params[DUPLICATES_PARAM]);
   const where: Prisma.BugWhereInput = {
+    ...bugInTenant(tenantId),
     isDeleted: isDeletedView,
     ...mineFilterWhere(mineFilter, userId),
     ...duplicatesWhere(showDuplicates),
@@ -338,14 +342,16 @@ export default async function BugsPage({
   const isFirstRun =
     totalCount === 0 &&
     !isDeletedView &&
-    (await prisma.bug.count({ where: { isDeleted: false } })) === 0;
+    (await prisma.bug.count({ where: { ...bugInTenant(tenantId), isDeleted: false } })) === 0;
 
   // Only the watching view offers "stop watching the finished ones", and
   // only when there are some; everyone else pays for nothing (#312).
   let finishedWatched = 0;
   if (isWatchingView && userId) {
     try {
-      finishedWatched = await prisma.bug.count({ where: finishedWatchedWhere(userId) });
+      finishedWatched = await prisma.bug.count({
+        where: { ...finishedWatchedWhere(userId), ...bugInTenant(tenantId) },
+      });
     } catch (error) {
       console.error("[bugs] finished watched count failed", error);
     }

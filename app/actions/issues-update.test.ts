@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// #425: run as a member of the Zedu tenant.
+vi.mock("@/lib/tenant-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/tenant-context")>()),
+  currentTenantIdFor: vi.fn(async () => "tenant-zedu"),
+  defaultProjectIdFor: vi.fn(async () => "project-zedu"),
+  tenantIdForUser: vi.fn(async () => "tenant-zedu"),
+}));
+
 /**
  * Authorization table for updateBugAction (#218): who may change which field
  * of an issue, across role × assignee × self-assigning × field.

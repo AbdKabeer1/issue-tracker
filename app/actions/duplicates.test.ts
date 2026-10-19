@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// #425: run as a member of the Zedu tenant.
+vi.mock("@/lib/tenant-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/tenant-context")>()),
+  currentTenantIdFor: vi.fn(async () => "tenant-zedu"),
+  defaultProjectIdFor: vi.fn(async () => "project-zedu"),
+  tenantIdForUser: vi.fn(async () => "tenant-zedu"),
+}));
+
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth-helpers", () => ({
   requireAdmin: vi.fn().mockResolvedValue({ id: "admin-1", role: "admin" }),
@@ -42,7 +50,10 @@ describe("markDuplicateAction (#285)", () => {
   it("links the issue and records it on both sides", async () => {
     tx.$queryRaw.mockResolvedValue([row("a", 1), row("b", 2)]);
     expect(await markDuplicateAction("a", "#2")).toEqual({ ok: true });
-    expect(findUnique).toHaveBeenCalledWith({ where: { number: 2 }, select: { id: true } });
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { number: 2, tenantId: "tenant-zedu" },
+      select: { id: true },
+    });
     expect(tx.bug.update).toHaveBeenCalledWith({ where: { id: "a" }, data: { duplicateOfId: "b" } });
     const activities = tx.bugActivity.createMany.mock.calls[0][0].data;
     expect(activities.map((x: { bugId: string; summary: string }) => [x.bugId, x.summary])).toEqual([
