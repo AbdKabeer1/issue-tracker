@@ -1,4 +1,5 @@
 import { isAdmin, isSuperAdmin, type AppRole } from "@/lib/roles";
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 
 export type HeaderNavItem = { href: string; label: string };
 
@@ -6,7 +7,10 @@ export type HeaderNavItem = { href: string; label: string };
 export const SWITCH_TENANT_LINK: HeaderNavItem = { href: "/tenants", label: "Switch tenant" };
 
 /** Links shown in the header for the role the user is currently viewing as. */
-export function headerNavItems(role?: AppRole | null): HeaderNavItem[] {
+export function headerNavItems(
+  role?: AppRole | null,
+  options?: { agentPlatform?: boolean },
+): HeaderNavItem[] {
   const items: HeaderNavItem[] = [
     { href: "/issues", label: "Issues" },
     // #426: projects decide which issues the board shows.
@@ -14,6 +18,12 @@ export function headerNavItems(role?: AppRole | null): HeaderNavItem[] {
     // #289: everyone can see what's left for a release.
     { href: "/milestones", label: "Milestones" },
   ];
+  if (options?.agentPlatform ?? isAgentPlatformEnabled()) {
+    items.push(
+      { href: "/questions", label: "Questions" },
+      { href: "/redesigns", label: "Redesigns" },
+    );
+  }
   if (isAdmin(role)) {
     items.push(
       { href: "/admin/categories", label: "Platforms" },
