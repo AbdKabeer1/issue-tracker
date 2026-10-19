@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { isTenantAdminRole, tenantForOwner } from "@/lib/agents/membership";
 import { auditAccess, auditWhere } from "@/lib/agent-audit/visibility";
 import { AuditLog, type AuditLogRow } from "@/components/audit-log";
+import { undoAuditEventAction } from "@/app/actions/audit";
 
 export const metadata = { title: "Agent audit log" };
 
@@ -140,7 +141,11 @@ export default async function AuditLogPage({ searchParams }: Props) {
       </form>
 
       <section className="rounded-xl border border-slate-200 bg-white px-4">
-        <AuditLog rows={rows} />
+        <AuditLog
+          rows={rows}
+          isTenantAdmin={access.kind === "all"}
+          onUndo={undoAuditEventAction}
+        />
       </section>
       {rows.length === LIMIT ? (
         <p className="text-xs text-slate-500">Showing the newest {LIMIT}. Filter by agent or issue to see older events.</p>

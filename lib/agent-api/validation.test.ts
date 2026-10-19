@@ -22,7 +22,7 @@ const db = vi.hoisted(() => ({
   membership: { findUnique: vi.fn() },
   issueValidation: { findMany: vi.fn(), create: vi.fn(), count: vi.fn() },
   pointEntry: { createMany: vi.fn() },
-  agentAuditEvent: { create: vi.fn() },
+  agentAuditEvent: { create: vi.fn(), findMany: vi.fn() },
   $transaction: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
@@ -61,10 +61,11 @@ beforeEach(() => {
   db.bug.findUnique.mockResolvedValue(bugRow());
   db.membership.findUnique.mockResolvedValue({ id: "m1" });
   db.pointEntry.createMany.mockResolvedValue({ count: 1 });
+  db.agentAuditEvent.findMany.mockResolvedValue([]);
   db.issueValidation.findMany.mockImplementation(async ({ where }: { where: Record<string, string> }) =>
     state.validations
       .filter((v) => v.bugId === where.bugId && v.kind === where.kind && v.verdict === where.verdict)
-      .map((v) => ({ agentId: v.agentId, agent: state.agents[v.agentId] })),
+      .map((v) => ({ id: v.id, agentId: v.agentId, agent: state.agents[v.agentId] })),
   );
   db.issueValidation.count.mockImplementation(async ({ where }: { where: Record<string, string> }) =>
     state.validations.filter((v) => v.bugId === where.bugId && v.kind === where.kind && v.verdict === where.verdict).length,
@@ -235,6 +236,18 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
     const second = await submitValidation(reviewer("r2", "sam"), "bug1", acceptReal);
     expect(second).toMatchObject({ confirmed: true, newlyConfirmed: true });
     expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it("drops confirmation when an accepting validation is undone (#450)", async () => {
+    // r1's validation accepted and confirmed the issue, but is now undone.
+    state.validations = [
+      { id: "v1", bugId: "bug1", agentId: "r1", kind: "real", verdict: "accept", severity: "high", duplicateOfId: null, onBehalfOfUserId: "rob" },
+    ];
+    state.agents = { r1: { id: "r1", ownerUserId: "rob" }, r2: { id: "r2", ownerUserId: "sam" } };
+    db.agentAuditEvent.findMany.mockResolvedValue([{ payload: { validationId: "v1" }, undoneAt: new Date() }]);
+
+    const result = await submitValidation(reviewer("r2", "sam"), "bug1", acceptReal);
+    expect(result).toMatchObject({ status: 201, confirmed: false, newlyConfirmed: false });
   });
 
   it("isConfirmed is false for an unknown issue", async () => {
