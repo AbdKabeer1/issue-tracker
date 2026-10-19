@@ -12,6 +12,7 @@ import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, pageSi
 import { createdSummary, commentedSummary, commentPreview } from "@/lib/activity-log";
 import { extractMentionedUserIds, normalizeMentions } from "@/lib/mentions";
 import { commentDepth, MAX_COMMENT_DEPTH } from "@/lib/comments";
+import { publish } from "@/lib/agent-api/events";
 
 export class IssueApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -139,6 +140,13 @@ export async function createAgentIssue(agent: AgentContext, request: NextRequest
         }, select: { id: true },
       });
       await audit(agent, "issue.created", issue.id, { beneficiaryUserId }, { db: tx, bugId: issue.id });
+      await publish(tx, {
+        tenantId: scope.tenantId,
+        type: "issue.created",
+        payload: { issueId: issue.id, projectId: scope.projectId, beneficiaryUserId },
+        actorAgentId: agent.agentId,
+        bugId: issue.id,
+      });
       return issue;
     },
   });
@@ -175,6 +183,13 @@ export async function commentOnAgentIssue(agent: AgentContext, request: NextRequ
     await tx.issueWatch.upsert({ where: { userId_bugId: { bugId, userId: agent.ownerId } },
       create: { bugId, userId: agent.ownerId }, update: {} });
     await audit(agent, "comment.created", created.id, { authorId: agent.ownerId }, { db: tx, bugId });
+    await publish(tx, {
+      tenantId: scope.tenantId,
+      type: "comment.created",
+      payload: { commentId: created.id, issueId: bugId, authorId: agent.ownerId },
+      actorAgentId: agent.agentId,
+      bugId,
+    });
     return created;
   });
   return NextResponse.json({ comment }, { status: 201 });
