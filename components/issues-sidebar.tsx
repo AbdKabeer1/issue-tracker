@@ -193,7 +193,8 @@ export function IssuesSidebar({
           const isActive =
             v.mineKey === ""
               ? currentMine === "" && currentTags === "" && currentPlatform === ""
-              : currentMine === v.mineKey;
+              : currentMine === v.mineKey ||
+                (v.mineKey === "created" && currentMine === "reported");
 
           return (
             <Link

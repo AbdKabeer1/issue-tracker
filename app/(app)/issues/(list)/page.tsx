@@ -286,7 +286,10 @@ export default async function BugsPage({
       }),
       userId
         ? prisma.bug.count({
-            where: { ...baseTenantWhere, reporterId: userId },
+            where: {
+              ...baseTenantWhere,
+              OR: [{ reporterId: userId }, { assigneeId: userId }],
+            },
           })
         : 0,
       userId
