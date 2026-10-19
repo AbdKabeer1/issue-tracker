@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { commentInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { attachmentIdsInMarkdown, linkAttachments } from "@/lib/attachment-link";
 import { requireUser } from "@/lib/auth-helpers";
 import { commentSchema } from "@/lib/validations/issue";
@@ -30,10 +31,10 @@ import {
 
 export type CommentActionResult = { error?: string; ok?: boolean };
 
-async function loadComment(commentId: unknown) {
+async function loadComment(commentId: unknown, tenantId: string | null) {
   if (typeof commentId !== "string" || commentId.trim().length === 0) return null;
   return prisma.comment.findUnique({
-    where: { id: commentId },
+    where: { id: commentId, ...commentInTenant(tenantId) },
     select: {
       id: true,
       bugId: true,
@@ -61,7 +62,7 @@ export async function updateCommentAction(
     return { error: RATE_LIMIT_MESSAGE };
   }
 
-  const comment = await loadComment(commentId);
+  const comment = await loadComment(commentId, await currentTenantIdFor(user.id));
   if (!comment) return { error: COMMENT_ERRORS.notFound };
   if (comment.bug.isDeleted) return { error: COMMENT_ERRORS.issueDeleted };
   if (comment.deletedAt) return { error: COMMENT_ERRORS.deleted };
@@ -143,7 +144,7 @@ export async function deleteCommentAction(
   commentId: string,
 ): Promise<CommentActionResult> {
   const user = await requireUser();
-  const comment = await loadComment(commentId);
+  const comment = await loadComment(commentId, await currentTenantIdFor(user.id));
   if (!comment) return { error: COMMENT_ERRORS.notFound };
   if (comment.bug.isDeleted) return { error: COMMENT_ERRORS.issueDeleted };
   if (comment.deletedAt) return { error: COMMENT_ERRORS.deleted };

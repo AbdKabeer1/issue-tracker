@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { requireAdmin } from "@/lib/auth-helpers";
 import {
   activityCreateData,
@@ -69,7 +70,7 @@ export async function bulkUpdateBugsAction(
   // what actually changed on it — the same entries a single edit produces,
   // rather than an opaque "bulk update" line nobody can read later.
   const found = await prisma.bug.findMany({
-    where: { id: { in: ids } },
+    where: { id: { in: ids }, ...bugInTenant(await currentTenantIdFor(user.id)) },
     select: {
       id: true,
       isDeleted: true,

@@ -5,6 +5,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
+import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
+import { viewerBugScope } from "@/lib/tenant-viewer";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { LocalTime } from "@/components/local-time";
 import { ClearDuplicateButton, MarkDuplicateButton } from "@/components/duplicate-controls";
@@ -101,7 +103,7 @@ export async function generateMetadata({
 }: BugPageProps): Promise<Metadata> {
   const { id } = await params;
   const bug = await prisma.bug.findUnique({
-    where: { id },
+    where: { id, ...(await viewerBugScope()) },
     select: {
       number: true,
       title: true,
@@ -223,7 +225,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   // missing used to reject this whole Promise and blank the page.
   const loadedBug = await prisma.bug
     .findUnique({
-      where: { id },
+      where: { id, ...bugInTenant(await currentTenantIdFor(userId)) },
       include: {
         type: { select: { id: true, name: true, isActive: true } },
         reporter: { select: { name: true, email: true, role: true, image: true } },

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
+import { viewerBugScope } from "@/lib/tenant-viewer";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
 
 /**
@@ -23,7 +24,7 @@ export default async function IssueLayout({
 }) {
   const { id } = await params;
   const bug = await prisma.bug.findUnique({
-    where: { id },
+    where: { id, ...(await viewerBugScope()) },
     select: { isDeleted: true },
   });
   if (!bug) notFound();

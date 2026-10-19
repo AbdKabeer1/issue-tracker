@@ -1,4 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// #425: run as a member of the Zedu tenant.
+vi.mock("@/lib/tenant-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/tenant-context")>()),
+  currentTenantIdFor: vi.fn(async () => "tenant-zedu"),
+  defaultProjectIdFor: vi.fn(async () => "project-zedu"),
+  tenantIdForUser: vi.fn(async () => "tenant-zedu"),
+}));
 import { NextRequest } from "next/server";
 
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
@@ -79,5 +87,11 @@ describe("GET /issues/export", () => {
     const text = await res.text();
 
     expect(text).toContain("bug-1,Button broken,Open,High,Bug,Web,Alice,Bob,5,false");
+  });
+
+  it("exports only the viewer's tenant (#425)", async () => {
+    const res = await GET(new NextRequest("http://localhost:3000/issues/export"));
+    await res.text();
+    expect(findManyBugs.mock.calls[0][0].where).toMatchObject({ tenantId: "tenant-zedu" });
   });
 });
