@@ -62,11 +62,48 @@ export function expireTag(tag: string): void {
   }
 }
 
-const readIssueTypes = (): Promise<IssueTypeLookup[]> =>
-  prisma.issueType.findMany({
-    select: { id: true, name: true, description: true, template: true, isActive: true },
-    orderBy: { name: "asc" },
-  });
+/**
+ * True when Postgres is behind the migration that added this column.
+ * A printed query that merely mentions the name does not count: Prisma
+ * includes the SQL in unrelated errors.
+ */
+function missingColumn(error: unknown, column: string): boolean {
+  const message = error instanceof Error ? error.message : "";
+  const metaColumn =
+    error !== null &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2022" &&
+    "meta" in error &&
+    typeof (error as { meta?: { column?: unknown } }).meta?.column === "string"
+      ? (error as { meta: { column: string } }).meta.column
+      : "";
+  const name = column.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (new RegExp(`(?:^|[\\w."]*\\.)?${name}$`, "i").test(metaColumn)) return true;
+  return new RegExp(
+    `column [\`'\"]?(?:[\\w."]+\\.)*${name}[\`'\"]?(?: of relation [\`'\"]?[\\w.]+[\`'\"]?)? does not exist`,
+    "i",
+  ).test(message);
+}
+
+async function readIssueTypes(): Promise<IssueTypeLookup[]> {
+  try {
+    return await prisma.issueType.findMany({
+      select: { id: true, name: true, description: true, template: true, isActive: true },
+      orderBy: { name: "asc" },
+    });
+  } catch (error) {
+    // #307 added IssueType.template. A database that has not migrated yet
+    // must still list types, or the report form is the only page that dies.
+    if (!missingColumn(error, "template")) throw error;
+    console.error("[lookups] IssueType.template is missing; reading types without it", error);
+    const rows = await prisma.issueType.findMany({
+      select: { id: true, name: true, description: true, isActive: true },
+      orderBy: { name: "asc" },
+    });
+    return rows.map((row) => ({ ...row, template: null }));
+  }
+}
 
 const readPlatforms = (): Promise<PlatformLookup[]> =>
   prisma.category.findMany({
