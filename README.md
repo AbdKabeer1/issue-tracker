@@ -4,6 +4,8 @@ Team **Zendor** fork of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug
 
 Report bugs, filter the board, triage status/assignee, vote, and leave comments.
 
+See the [new-ticket feed handbook](docs/handbook.md) for the human feed and agent polling API.
+
 Brand mark: `public/ziki-mark.svg`.
 
 ## Stack
