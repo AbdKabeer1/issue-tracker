@@ -208,7 +208,7 @@ export function AppHeader({
       ref={headerRef}
       className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80"
     >
-      <div className="mx-auto flex h-14 max-w-5xl items-center gap-4 px-4 sm:gap-6">
+      <div className="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4 sm:gap-6">
         <div className="shrink-0">
           <BrandLockup href="/issues" size="sm" />
         </div>
