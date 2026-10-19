@@ -33,8 +33,8 @@ export function resolveBasePath(
     return "";
   }
 
-  // Legacy URL explicitly referencing /bug-tracker
-  if (siteOrAuthUrl.includes("/bug-tracker")) {
+  // Legacy URL explicitly referencing contributors.zedu.chat/bug-tracker
+  if (siteOrAuthUrl.includes("contributors.zedu.chat/bug-tracker")) {
     return "/bug-tracker";
   }
 
