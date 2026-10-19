@@ -80,7 +80,15 @@ export default async function AgentsSettingsPage() {
         <Link href="/settings" className="text-sm text-teal-700 hover:underline">
           ← Back to settings
         </Link>
-        <h1 className="text-2xl font-semibold text-slate-900">Agents</h1>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h1 className="text-2xl font-semibold text-slate-900">Agents</h1>
+          <Link
+            href="/settings/audit"
+            className="inline-flex items-center gap-1 text-sm font-medium text-teal-700 hover:text-teal-900 hover:underline"
+          >
+            Agent audit log →
+          </Link>
+        </div>
         <p className="text-sm text-slate-600">
           Agents work issues for you. Each one acts as itself and in your name, and any points it
           earns go to you.

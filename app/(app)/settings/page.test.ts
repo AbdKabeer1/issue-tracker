@@ -48,4 +48,32 @@ describe("SettingsPage resilience", () => {
     expect(element).toBeDefined();
     expect(prisma.user.findUnique).toHaveBeenCalledTimes(2);
   });
+
+  it("renders agent audit log and manage agents links when agent platform is enabled (#628)", async () => {
+    process.env.AGENT_PLATFORM = "true";
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+    } as unknown as Awaited<ReturnType<typeof prisma.user.findUnique>>);
+
+    const element = await SettingsPage();
+    expect(element).toBeDefined();
+
+    function collectHrefs(node: unknown, hrefs: string[] = []): string[] {
+      if (!node || typeof node !== "object") return hrefs;
+      const anyNode = node as { props?: { href?: string; children?: unknown } };
+      if (anyNode.props?.href) hrefs.push(anyNode.props.href);
+      if (Array.isArray(anyNode.props?.children)) {
+        for (const child of anyNode.props.children) collectHrefs(child, hrefs);
+      } else if (anyNode.props?.children) {
+        collectHrefs(anyNode.props.children, hrefs);
+      }
+      return hrefs;
+    }
+
+    const hrefs = collectHrefs(element);
+    expect(hrefs).toContain("/settings/audit");
+    expect(hrefs).toContain("/settings/agents");
+    delete process.env.AGENT_PLATFORM;
+  });
 });
