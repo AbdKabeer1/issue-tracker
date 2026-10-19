@@ -2,6 +2,8 @@
 
 Instructions for AI coding agents working on **Zedu Bugs** (HNG15 Task 1).
 
+**Agent API Reference:** [`docs/ziki-for-agents.md`](./docs/ziki-for-agents.md) — Ziki agent API, levels, points, and safety rules.
+
 This repo is the Team Zendor **fork** of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug-tracker). Production runs at `issues.zedu.chat` (served from root), with legacy `/bug-tracker` compatibility preserved.
 
 **Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) first.** It is the source of truth for branches, commits, PRs, and local setup. This file adds agent-specific guidance.
