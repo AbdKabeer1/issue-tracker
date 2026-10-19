@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 import type { Prisma, Severity, Status } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getActiveIssueTypesCached, getActivePlatforms, getIssueTypes, getPlatforms } from "@/lib/lookups";
+import { getIssueTypes, getPlatforms } from "@/lib/lookups";
+import { activeBulkOptions, loadBulkAssignees } from "@/lib/admin-list-lookups";
 import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import type { AppRole } from "@/lib/roles";
@@ -88,6 +89,15 @@ function isSeverity(value: string | undefined): value is Severity {
   return !!value && (severities as readonly string[]).includes(value);
 }
 
+async function loadOrEmpty<T>(label: string, load: () => Promise<T>, empty: T): Promise<T> {
+  try {
+    return await load();
+  } catch (error) {
+    console.error(`[bugs] ${label} lookup failed`, error);
+    return empty;
+  }
+}
+
 function issuesQueryError(detail: string) {
   return (
     <div className="rounded-xl border border-red-200 bg-white px-6 py-10">
@@ -140,27 +150,27 @@ export default async function BugsPage({
   };
 
   // Tag filter (#102): issue types picked from the search box.
-  // These lookups are filters only. A missing table must not blank the list.
-  let tagTypes: { id: string; name: string; isActive: boolean }[] = [];
-  let platforms: { id: string; name: string; isActive: boolean }[] = [];
-  let milestones: { id: string; title: string; isClosed: boolean }[] = [];
-  try {
+  // These lookups are filters only. Each one fails on its own: Promise.all
+  // used to throw away the ones that succeeded when Milestone was missing,
+  // and the admin path below then queried them again outside this catch.
+  const [tagTypes, platforms, milestones] = await Promise.all([
     // Cached, expired by the admin actions that change them (#297).
-    [tagTypes, platforms, milestones] = await Promise.all([
-      getIssueTypes(),
-      // Every platform, not just active ones: a link filtered on a platform
-      // that was since deactivated still has to resolve. BugFilters narrows
-      // the dropdown itself.
-      getPlatforms(),
-      // #289: few rows; closed ones too, so an old link still resolves.
-      prisma.milestone.findMany({
-        select: { id: true, title: true, isClosed: true },
-        orderBy: [{ isClosed: "asc" }, { dueDate: { sort: "asc", nulls: "last" } }, { title: "asc" }],
-      }),
-    ]);
-  } catch (error) {
-    console.error("[bugs] filter options failed", error);
-  }
+    loadOrEmpty("issue types", () => getIssueTypes(), []),
+    // Every platform, not just active ones: a link filtered on a platform
+    // that was since deactivated still has to resolve. BugFilters narrows
+    // the dropdown itself.
+    loadOrEmpty("platforms", () => getPlatforms(), []),
+    // #289: few rows; closed ones too, so an old link still resolves.
+    loadOrEmpty(
+      "milestones",
+      () =>
+        prisma.milestone.findMany({
+          select: { id: true, title: true, isClosed: true },
+          orderBy: [{ isClosed: "asc" }, { dueDate: { sort: "asc", nulls: "last" } }, { title: "asc" }],
+        }),
+      [],
+    ),
+  ]);
   const selectedMilestone = parseMilestoneFilter(params[MILESTONE_PARAM], milestones);
   const milestoneParam = milestoneParamValue(selectedMilestone);
   const selectedTags = parseTagFilter(params.tags, tagTypes);
@@ -351,19 +361,12 @@ export default async function BugsPage({
     }
   }
 
-  // Only admins get bulk actions, so only they pay for these queries.
-  const [bulkTypes, bulkPlatforms, bulkUsers] = canDelete
-    ? await Promise.all([
-        // Cached behind tags (#ENDOR-cache), like the filters above.
-        getActiveIssueTypesCached().then((types) => types.map(({ id, name }) => ({ id, name }))),
-        getActivePlatforms(),
-        prisma.user.findMany({
-          where: { role: { in: ["admin", "super_admin"] } },
-          select: { id: true, name: true },
-          orderBy: { name: "asc" },
-        }),
-      ])
-    : [[], [], []];
+  // Only admins get bulk actions. The type and platform menus reuse the
+  // lookups above, which already survived a missing table. The assignee
+  // query is the one extra read, and it must not take the list down either.
+  const bulkTypes = canDelete ? activeBulkOptions(tagTypes) : [];
+  const bulkPlatforms = canDelete ? activeBulkOptions(platforms) : [];
+  const bulkUsers = canDelete ? await loadBulkAssignees() : [];
 
   let voterSummaries = new Map<string, ReturnType<typeof createEmptyVoterSummary>>();
   try {
