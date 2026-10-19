@@ -8,6 +8,7 @@ import authConfig from "@/auth.config";
 import { cleanEnv } from "@/lib/env-clean";
 import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 import { upsertGoogleUser, type GoogleAccount } from "@/lib/google-user";
+import { isGoogleEmailAllowed, getGoogleAllowlist } from "@/lib/google-allowlist";
 import { clientIpFrom, consumeAuthRateLimit } from "@/lib/rate-limit";
 
 const googleClientId = cleanEnv(
@@ -28,6 +29,13 @@ if (process.env.NODE_ENV !== "test") {
     clientSecretPresent: Boolean(googleClientSecret),
     clientIdPrefix: googleClientId ? `${googleClientId.slice(0, 12)}…` : "none",
   });
+  if (googleConfigured && !getGoogleAllowlist().configured) {
+    console.warn(
+      "[auth:config] GOOGLE_ALLOWED_EMAILS / GOOGLE_ALLOWED_DOMAINS are not set — " +
+        "any Google account can sign in and be auto-provisioned (#223). " +
+        "Set an allowlist before exposing this deployment publicly.",
+    );
+  }
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -98,6 +106,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     ...authConfig.callbacks,
+    async signIn({ user, account }) {
+      if (account?.provider !== "google") return true;
+      const email =
+        (typeof user?.email === "string" && user.email) || null;
+      if (!isGoogleEmailAllowed(email)) {
+        const allowlist = getGoogleAllowlist();
+        console.warn(
+          `[auth] Google sign-in denied for ${email}: ` +
+            (allowlist.configured
+              ? "address is not on GOOGLE_ALLOWED_EMAILS / GOOGLE_ALLOWED_DOMAINS"
+              : "no allowlist configured but email is missing"),
+        );
+        return false;
+      }
+      return true;
+    },
     async jwt({ token, user, account, profile }) {
       if (account?.provider === "google") {
         const email =
@@ -107,6 +131,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               ? user.email.toLowerCase()
               : null;
         if (email) {
+          // Defence in depth (#223): the signIn callback should already have
+          // denied disallowed addresses, but never reach the upsert without
+          // an explicit allowlist pass.
+          if (!isGoogleEmailAllowed(email)) {
+            throw new Error(
+              `Google sign-in denied for ${email}: not on the allowlist`,
+            );
+          }
           const name =
             (typeof profile?.name === "string" && profile.name) ||
             user?.name ||
