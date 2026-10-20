@@ -10,6 +10,7 @@ import { projectContextFor } from "@/lib/project-context";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { AgentKeyCopyButton } from "@/components/agent-key-copy";
 import { ensureDefaultProjectKey } from "@/lib/agents/default-key";
+import { materializeApprovedPairings } from "@/lib/agents/pairing";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 import { CreateAgentForm } from "./create-agent-form";
 import { AgentControls } from "./agent-controls";
@@ -60,6 +61,13 @@ export default async function AgentsSettingsPage() {
       personalProjectName = projects.find((project) => project.id === context.activeProjectId)?.name ?? null;
     } catch (error) {
       console.error("[agents] default agent key failed", error);
+    }
+  }
+  if (tenantId) {
+    try {
+      await materializeApprovedPairings(user.id, tenantId);
+    } catch (error) {
+      console.error("[agents] approved agents were not listed", error);
     }
   }
   const [mine, members] = tenantId
