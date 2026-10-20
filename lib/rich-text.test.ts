@@ -239,3 +239,29 @@ describe("looksLikeMarkdown with only an uploaded image (#305)", () => {
     expect(looksLikeMarkdown("It crashes.\n![shot.png](/api/attachments/clabc12345)")).toBe(true);
   });
 });
+
+describe("uploaded filenames with brackets (#724)", () => {
+  it("renders the image markdownFor generates for screen[1].png", async () => {
+    const { markdownFor } = await import("./editor-upload");
+    const md = markdownFor({ filename: "screen[1].png", contentType: "image/png" }, "clabc12345");
+    expect(tokenizeInline(`See ${md} here`)).toEqual([
+      { type: "text", value: "See " },
+      { type: "image", alt: "screen[1].png", src: "/api/attachments/clabc12345" },
+      { type: "text", value: " here" },
+    ]);
+  });
+
+  it("links a non-image whose name has brackets and a backslash", async () => {
+    const { markdownFor } = await import("./editor-upload");
+    const md = markdownFor({ filename: "log[a]\\b.txt", contentType: "text/plain" }, "clabc12345");
+    expect(tokenizeInline(md)).toEqual([
+      { type: "link", label: "log[a]\\b.txt", href: "/api/attachments/clabc12345" },
+    ]);
+  });
+
+  it("keeps plain labels unchanged", () => {
+    expect(tokenizeInline("[docs](https://example.com)")).toEqual([
+      { type: "link", label: "docs", href: "https://example.com" },
+    ]);
+  });
+});

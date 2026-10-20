@@ -116,6 +116,28 @@ describe("canAssignTicket", () => {
   });
 
   describe("work readiness gate (#764)", () => {
+    it("allows organization admins to assign tickets regardless of vote count", () => {
+      expect(
+        canAssignTicket({
+          actorId: "admin-1",
+          membershipRole: "admin",
+          currentAssigneeId: null,
+          targetAssigneeId: "user-1",
+          voteCount: 0,
+        }),
+      ).toBe(true);
+
+      expect(
+        canAssignTicket({
+          actorId: "super-1",
+          actorRole: "super_admin",
+          currentAssigneeId: null,
+          targetAssigneeId: "user-1",
+          voteCount: 0,
+        }),
+      ).toBe(true);
+    });
+
     it("blocks assignment when voteCount is below the threshold of 3", () => {
       expect(
         canAssignTicket({

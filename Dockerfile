@@ -1,4 +1,4 @@
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.14.0 --activate
@@ -6,7 +6,7 @@ COPY package.json pnpm-lock.yaml ./
 COPY prisma ./prisma
 RUN pnpm install --frozen-lockfile
 
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.14.0 --activate
@@ -16,7 +16,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # `output: "standalone"` (next.config.ts) emits the server plus only traced deps.
 RUN pnpm run build
 
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 # openssl + libc6-compat for Prisma, tzdata for TZ, wget for the healthcheck.
 RUN apk add --no-cache openssl libc6-compat tzdata wget
 WORKDIR /app
@@ -54,5 +54,7 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
 # The app never runs as root: the node user owns /app (copied with --chown).
 USER node
 
-# Apply pending Prisma migrations, then start the standalone server.
-CMD ["sh", "-c", "node scripts/migrate.mjs || true; node server.js"]
+# Apply pending Prisma migrations, then start the server - only if they applied
+# (#580). A failed migration exits non-zero, this container never becomes
+# healthy, and Coolify keeps the previous one serving.
+CMD ["sh", "-c", "node scripts/migrate.mjs && node server.js"]

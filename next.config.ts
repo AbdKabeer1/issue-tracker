@@ -81,6 +81,16 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
       {
+        source: "/questions",
+        destination: "/escalations",
+        permanent: true,
+      },
+      {
+        source: "/questions/:path*",
+        destination: "/escalations/:path*",
+        permanent: true,
+      },
+      {
         source: "/api/bugs/:path*",
         destination: "/api/issues/:path*",
         permanent: true,

@@ -13,6 +13,25 @@ export const projectNameSchema = z.object({
     .max(PROJECT_NAME_MAX, `Project name must be ${PROJECT_NAME_MAX} characters or fewer.`),
 });
 
+const optionalUrl = (check: (url: URL) => boolean, message: string) =>
+  z.string().trim().transform((value) => value || null).pipe(
+    z.string().nullable().refine((value) => {
+      if (value === null) return true;
+      try { return check(new URL(value)); } catch { return false; }
+    }, message),
+  );
+
+export const projectSettingsSchema = z.object({
+  name: z.string().trim().min(PROJECT_NAME_MIN, `Project name must be at least ${PROJECT_NAME_MIN} characters.`).max(PROJECT_NAME_MAX, `Project name must be ${PROJECT_NAME_MAX} characters or fewer.`),
+  goal: z.string().trim().max(4000, "The project goal must be 4,000 characters or fewer.").transform((value) => value || null),
+  repoUrl: optionalUrl((url) =>
+    url.protocol === "https:" && url.hostname === "github.com" && !url.port && !url.username && !url.password &&
+    /^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?\/?$/.test(url.pathname) && !url.search && !url.hash,
+  "Enter a GitHub repository URL, such as https://github.com/owner/repository."),
+  stagingUrl: optionalUrl((url) => url.protocol === "https:",
+    "Enter a valid HTTPS staging URL."),
+});
+
 /**
  * A URL-safe slug from a display name. Kept deterministic so the same name
  * gets the same base; collisions are resolved by `nextProjectSlug`.

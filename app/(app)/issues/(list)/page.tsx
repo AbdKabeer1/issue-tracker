@@ -10,6 +10,7 @@ import type { AppRole } from "@/lib/roles";
 import { IssueFilters } from "@/components/issue-filters";
 import { IssueStats } from "@/components/issue-stats";
 import { IssuesSidebar } from "@/components/issues-sidebar";
+import { IssuesSidebarDisclosure } from "@/components/issues-sidebar-disclosure";
 import { Avatar } from "@/components/avatar";
 import { VoteButton } from "@/components/vote-button";
 import { Badge } from "@/components/ui/badge";
@@ -65,6 +66,8 @@ import {
 import { TAGS_PARAM, parseTagFilter, serializeTags, tagTypeIds } from "@/lib/tag-filter";
 import { bugInTenant, currentTenantIdFor, isMissingTenantColumnError } from "@/lib/tenant-context";
 import { activeProjectIdFor } from "@/lib/project-context";
+import { RichText } from "@/components/rich-text";
+import { isOrganizationAdmin } from "@/lib/organization-role";
 import {
   PLATFORM_PARAM,
   parsePlatformFilter,
@@ -143,6 +146,9 @@ export default async function BugsPage({
   } catch (error) {
     console.error("[bugs] tenant/project resolution failed", error);
   }
+  const activeProject = tenantId && projectId
+    ? await prisma.project.findFirst({ where: { id: projectId, tenantId }, select: { slug: true, name: true, goal: true } }).catch(() => null)
+    : null;
 
   const canDelete = canDeleteTicket(effectiveRole, membershipRole);
   const canBoost = canBoostTicket(effectiveRole, membershipRole);
@@ -538,8 +544,33 @@ export default async function BugsPage({
     low: "bg-emerald-500",
   };
 
+  const sidebarProps = {
+    counts: {
+      all: statsTotal,
+      mine: sidebarMine,
+      assigned: sidebarAssigned,
+      created: sidebarCreated,
+      saved: sidebarSaved,
+      categories: typeCountsMap,
+      platforms: platformCountsMap,
+    },
+    tagTypes,
+    platforms,
+  };
+
   const page = (
     <div className="space-y-6">
+      {activeProject?.goal ? (
+        <section aria-labelledby="project-goal-heading" className="rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 id="project-goal-heading" className="text-sm font-semibold text-slate-900">{activeProject.name} goal</h2>
+            {membershipRole && isOrganizationAdmin(membershipRole, effectiveRole) ? (
+              <Link href={`/projects/${encodeURIComponent(activeProject.slug)}/settings`} className="text-xs font-medium text-teal-800 underline">Edit project settings</Link>
+            ) : null}
+          </div>
+          <RichText content={activeProject.goal} className="mt-1 text-sm" />
+        </section>
+      ) : null}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -607,21 +638,13 @@ export default async function BugsPage({
 
       <div className="flex flex-col lg:flex-row gap-6 items-start">
         {!isFirstRun ? (
-          <aside className="w-full lg:w-60 shrink-0">
-            <IssuesSidebar
-              counts={{
-                all: statsTotal,
-                mine: sidebarMine,
-                assigned: sidebarAssigned,
-                created: sidebarCreated,
-                saved: sidebarSaved,
-                categories: typeCountsMap,
-                platforms: platformCountsMap,
-              }}
-              tagTypes={tagTypes}
-              platforms={platforms}
-            />
-          </aside>
+          <>
+            {/* Phones: one collapsed disclosure so the list starts near the top (#574). */}
+            <IssuesSidebarDisclosure {...sidebarProps} />
+            <aside className="hidden lg:block w-60 shrink-0">
+              <IssuesSidebar {...sidebarProps} />
+            </aside>
+          </>
         ) : null}
 
         <div className="flex-1 min-w-0 space-y-4 w-full">
