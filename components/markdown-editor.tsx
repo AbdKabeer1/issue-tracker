@@ -306,7 +306,11 @@ export const MarkdownEditor = forwardRef<
   );
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (disabled) {
+    if (
+      disabled ||
+      event.nativeEvent.isComposing ||
+      event.nativeEvent.keyCode === 229
+    ) {
       onKeyDown?.(event);
       return;
     }
