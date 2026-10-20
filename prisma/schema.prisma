@@ -104,10 +104,20 @@ enum RedesignStatus {
   superseded
 }
 
+/// A submission row is pending until enough independent reviewers accept it;
+/// any reject vetoes it (#617).
+enum JobSubmissionStatus {
+  pending
+  accepted
+  rejected
+}
+
 enum PointRole {
   solver
   reporter
   reviewer
+  /// Paid to the submitter's owner when a research job row is accepted (#617).
+  submission
 }
 
 enum DisputeStatus {
@@ -198,6 +208,11 @@ model User {
   tenantJoinRequests    TenantJoinRequest[] @relation("TenantJoinRequester")
   joinRequestsReviewed  TenantJoinRequest[] @relation("TenantJoinReviewer")
   projectAuditEvents    ProjectAuditEvent[]
+  jobsCreated           Job[]                 @relation("JobCreator")
+  jobSubmissions        JobSubmission[]       @relation("JobSubmissionBeneficiary")
+  jobReviews            JobReview[]           @relation("JobReviewBeneficiary")
+  jobReviewOffers       JobReviewOffer[]      @relation("JobReviewOfferBeneficiary")
+  approvalsDecided      IssueApproval[]      @relation("ApprovalDecider")
 }
 
 /// Single-use password reset tokens (~30 min TTL). Store only the SHA-256 hash.
@@ -223,6 +238,7 @@ model IssueType {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   bugs        Bug[]
+  approvalRules ApprovalRule[]
 }
 
 model Bug {
@@ -281,6 +297,7 @@ model Bug {
   activities        BugActivity[]
   revisions         BugRevision[]
   claims            IssueClaim[]
+  approvals         IssueApproval[]
   bids              IssueBid[]
   interests         IssueInterest[]
   validations       IssueValidation[]
@@ -525,6 +542,7 @@ model Tenant {
   joinRequests  TenantJoinRequest[]
   notifications Notification[]
   projectAuditEvents ProjectAuditEvent[]
+  jobs          Job[]
 }
 
 /// A product inside a tenant, e.g. Zedu Web or Zedu Desktop. Not the same as
@@ -553,6 +571,9 @@ model Project {
   defaultAgents        Agent[]            @relation("DefaultProjectAgent")
   testMissions         TestMission[]
   auditEvents          ProjectAuditEvent[]
+  jobs                 Job[]
+  agentEvents          AgentEvent[]
+  approvalRules        ApprovalRule[]
 
   @@unique([tenantId, slug])
 }
@@ -687,6 +708,9 @@ model Agent {
   idempotencyKeys      IdempotencyKey[]
   events               AgentEvent[]
   webhookSubscriptions WebhookSubscription[]
+  jobSubmissions       JobSubmission[]
+  jobReviews           JobReview[]
+  jobReviewOffers      JobReviewOffer[]
   inboxItems           AgentInboxItem[]
 
   @@unique([ownerUserId, defaultProjectId])
@@ -926,6 +950,105 @@ model ReviewOffer {
   @@index([beneficiaryUserId, status])
 }
 
+/// Non-code work, e.g. research, where many agents submit rows and N
+/// independent reviewers accept them (#617). The bug flow is untouched.
+model Job {
+  id               String    @id @default(cuid())
+  tenantId         String
+  projectId        String
+  /// The person who posted the job.
+  createdById      String
+  brief            String
+  /// JSON-Schema-like description of each submission row, or null for free-form.
+  submissionSchema Json?
+  /// The submission-row field dedupe is keyed on, e.g. "url".
+  dedupeKey        String
+  maxSubmissions   Int
+  pointsPerAccepted Int
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now()) @updatedAt
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy        User      @relation("JobCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  submissions      JobSubmission[]
+
+  @@index([tenantId, createdAt])
+  @@index([projectId])
+}
+
+/// One row an agent posted for a job. Dedupe is per job on the resolved
+/// `dedupeKey` value (#617).
+model JobSubmission {
+  id                String             @id @default(cuid())
+  jobId             String
+  agentId           String
+  /// The person the points go to — the submitting agent's owner.
+  beneficiaryUserId String
+  data              Json
+  /// The resolved value of `job.dedupeKey` in `data`.
+  dedupeKey         String
+  status            JobSubmissionStatus @default(pending)
+  /// Independent accepts needed before the row is accepted (default 2, capped
+  /// by how many distinct reviewers actually exist).
+  reviewsNeeded     Int                @default(2)
+  reviewedAt        DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @default(now()) @updatedAt
+  job               Job                @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  agent             Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  beneficiary       User               @relation("JobSubmissionBeneficiary", fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+  reviews           JobReview[]
+  offers            JobReviewOffer[]
+
+  @@unique([jobId, dedupeKey])
+  @@index([jobId, status])
+  @@index([agentId])
+  @@index([status])
+}
+
+/// One reviewer's verdict on a submission. Any reject vetoes; accepts from
+/// `reviewsNeeded` distinct owners pay the submitter once (#617).
+model JobReview {
+  id                String           @id @default(cuid())
+  submissionId      String
+  agentId           String
+  beneficiaryUserId String
+  verdict           ValidationVerdict
+  notes             String?
+  createdAt         DateTime         @default(now())
+  submission        JobSubmission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  agent             Agent            @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  beneficiary       User             @relation("JobReviewBeneficiary", fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, agentId])
+  @@index([agentId])
+}
+
+/// Mirrors ReviewOffer for job submissions: accept an offer first, then leave
+/// a verdict, with the same TTL and deadline semantics (#597, #617).
+model JobReviewOffer {
+  id                String         @id @default(cuid())
+  submissionId      String
+  agentId           String
+  beneficiaryUserId String
+  /// "offered", "accepted", "completed", or "expired".
+  status            String         @default("offered")
+  offeredAt         DateTime       @default(now())
+  acceptedAt        DateTime?
+  completedAt       DateTime?
+  expiredAt         DateTime?
+  deadlineAt        DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @default(now()) @updatedAt
+  submission        JobSubmission  @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  agent             Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  beneficiary       User           @relation("JobReviewOfferBeneficiary", fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId, status])
+  @@index([agentId, status])
+  @@index([beneficiaryUserId, status])
+}
+
 model RedesignProposal {
   id               String         @id @default(cuid())
   tenantId         String
@@ -1099,6 +1222,8 @@ model AgentEvent {
   payload      Json
   actorAgentId String?
   bugId        String?
+  /// The issue's project, filled from `bugId` by a trigger so `?projectId=` can filter (#602).
+  projectId    String?
   createdAt    DateTime          @default(now())
   /// The writing transaction's id (#739). Polls only return rows whose
   /// transaction finished, so an event that commits late is never skipped.
@@ -1106,11 +1231,14 @@ model AgentEvent {
   tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   actorAgent   Agent?            @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
   bug          Bug?              @relation(fields: [bugId], references: [id], onDelete: SetNull)
+  project      Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
   deliveries   WebhookDelivery[]
   inboxItems   AgentInboxItem[]
 
   @@index([tenantId, createdAt, id])
   @@index([tenantId, txid, id])
+  @@index([tenantId, projectId, txid, id])
+  @@index([tenantId, bugId, txid, id])
   @@index([createdAt])
 }
 
@@ -1179,4 +1307,39 @@ model WebhookDelivery {
   @@unique([subscriptionId, eventId])
   @@index([status, nextAttemptAt])
   @@index([status, createdAt])
+}
+
+/// A rule requiring human approval before an issue is offered or merged (#598).
+model ApprovalRule {
+  id          String         @id @default(cuid())
+  projectId   String
+  stage       String
+  issueTypeId String?
+  severity    String?
+  fileGlob    String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issueType   IssueType?     @relation(fields: [issueTypeId], references: [id], onDelete: SetNull)
+  approvals   IssueApproval[]
+
+  @@index([projectId, stage])
+}
+
+/// A human approval required by an ApprovalRule (#598).
+model IssueApproval {
+  id              String        @id @default(cuid())
+  bugId           String
+  ruleId          String?
+  stage           String
+  status          String        @default("pending")
+  decidedByUserId String?
+  decidedAt       DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  bug             Bug           @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  rule            ApprovalRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  decidedBy       User?         @relation("ApprovalDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([bugId, stage, status])
 }
