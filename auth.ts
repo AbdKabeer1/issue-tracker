@@ -196,6 +196,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (typeof user?.sessionVersion === "number") {
         token.sv = user.sessionVersion;
       }
+
+      // Enforce sessionVersion on existing tokens and rotate claims (#655)
+      const userId = (token.id ?? token.sub) as string | undefined;
+      if (userId && !user) {
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, role: true, sessionVersion: true },
+          });
+          if (!dbUser) {
+            return null;
+          }
+          const tokenVersion = typeof token.sv === "number" ? token.sv : 0;
+          if (tokenVersion !== dbUser.sessionVersion) {
+            return null;
+          }
+          if (token.role && token.role !== dbUser.role) {
+            return null;
+          }
+          token.role = dbUser.role;
+          token.sv = dbUser.sessionVersion;
+        } catch {
+          // If database check errors, do not crash; token remains
+        }
+      }
+
       return token;
     },
   },
