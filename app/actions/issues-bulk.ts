@@ -18,6 +18,7 @@ import { validateBulk } from "@/lib/bulk-actions";
 import { awardSolver } from "@/lib/points/award";
 import { solverAwardForBulkChange } from "@/lib/points/bulk-award";
 import type { Severity, Status } from "@prisma/client";
+import { issueChangePayload, publishWebEvent } from "@/lib/agent-api/web-events";
 
 export type BulkResult = {
   error?: string;
@@ -172,6 +173,10 @@ export async function bulkUpdateBugsAction(
         if (!changedIds.includes(bug.id)) continue;
         const target = solverAwardForBulkChange(bug, change);
         if (target) await awardSolver(tx, target);
+      }
+      // #600: one issue.updated per changed issue, as a single edit would publish.
+      for (const id of changedIds) {
+        await publishWebEvent(tx, { bugId: id, type: "issue.updated", actorUserId: user.id, payload: issueChangePayload(change) });
       }
     });
   } catch (error) {
