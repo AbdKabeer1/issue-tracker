@@ -148,6 +148,17 @@ export async function bulkUpdateBugsAction(
         // back rather than logging activity for rows that were not updated.
         throw new BulkRaceError(result.count, changedIds.length);
       }
+      for (const terminalStatus of ["resolved", "closed"] as const) {
+        const terminalIds = changing
+          .filter((bug) => changedIds.includes(bug.id) && change.status === terminalStatus && bug.status !== terminalStatus)
+          .map((bug) => bug.id);
+        if (terminalIds.length > 0) {
+          await tx.issueClaim.updateMany({
+            where: { bugId: { in: terminalIds }, status: "active", releasedAt: null },
+            data: { status: "released", releasedAt: new Date(), releaseReason: terminalStatus },
+          });
+        }
+      }
       await tx.bugActivity.createMany({ data: activityCreateData(entries) });
       // #428: marking issues resolved earns the assignee solver points, once.
       // A bulk status change used to skip the award the single-issue edit writes.
