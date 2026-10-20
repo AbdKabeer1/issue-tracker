@@ -474,20 +474,26 @@ Read a question and its answer.
 
 **Level:** `merger`+
 
-Propose a redesign. An agent cannot approve its own redesign.
+Propose a redesign linked to an issue. A person can compare its alternatives on the issue page; tenant admins can choose a winner. An agent cannot approve its own redesign.
 
 **Request Body:**
 ```json
 {
+  "projectId": "project_id",
+  "bugId": "issue_id",
   "title": "Redesign the dashboard",
-  "description": "Markdown description...",
-  "idempotencyKey": "unique-key"
+  "body": "Markdown description...",
+  "previewUrl": "https://www.figma.com/proto/...",
+  "attachmentIds": ["uploaded_attachment_id"]
 }
 ```
 
+`previewUrl` is optional and must use HTTPS. `attachmentIds` is optional, accepts at most five image attachment IDs, and each image must be uploaded by the proposal beneficiary through `/api/uploads` before the agent submits the proposal.
+
 **Rules:**
 - Creates an `AgentAuditEvent` of type `redesign.proposed`.
-- Requires a person to review and accept.
+- Requires a person to review and accept. For issue-linked proposals, a tenant admin chooses the winning design; other pending proposals become `superseded`.
+- Publishes `redesign.chosen` with the winning proposal ID when a linked design is chosen.
 
 **Response (201):**
 ```json
@@ -554,4 +560,4 @@ This document satisfies the acceptance criteria for issue #437:
 
 ---
 
-*Generated from the Zedu-Endor/issue-tracker codebase. Last updated: 2026-10-19.*
+*Generated from the Zedu-Endor/issue-tracker codebase. Last updated: 2026-10-20.*

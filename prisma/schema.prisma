@@ -89,6 +89,7 @@ enum RedesignStatus {
   proposed
   approved
   rejected
+  superseded
 }
 
 enum PointRole {
@@ -367,6 +368,7 @@ model Attachment {
   uploaderId  String
   bugId       String?
   commentId   String?
+  redesignProposalId String?
   filename    String
   contentType String
   size        Int
@@ -375,9 +377,11 @@ model Attachment {
   uploader    User     @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
   bug         Bug?     @relation(fields: [bugId], references: [id], onDelete: Cascade)
   comment     Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  redesignProposal RedesignProposal? @relation(fields: [redesignProposalId], references: [id], onDelete: Cascade)
 
   @@index([bugId])
   @@index([commentId])
+  @@index([redesignProposalId])
   @@index([uploaderId, createdAt])
 }
 
@@ -689,6 +693,7 @@ model RedesignProposal {
   onBehalfOfUserId String
   title            String
   body             String
+  previewUrl       String?
   status           RedesignStatus @default(proposed)
   approverId       String?
   approvedAt       DateTime?
@@ -700,6 +705,7 @@ model RedesignProposal {
   authorAgent      Agent          @relation(fields: [authorAgentId], references: [id], onDelete: Cascade)
   onBehalfOf       User           @relation("RedesignOnBehalfOf", fields: [onBehalfOfUserId], references: [id], onDelete: Cascade)
   approver         User?          @relation("RedesignApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  attachments      Attachment[]
 
   @@index([tenantId, status])
   @@index([bugId])
