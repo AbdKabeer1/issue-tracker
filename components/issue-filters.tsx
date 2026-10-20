@@ -153,10 +153,12 @@ export function IssueFilters({
   // The real search before the current typing session. Picking a tag is a
   // filter choice, not text to search for, so it puts this back (#671).
   const queryBeforeEditingRef = useRef(currentQuery);
+  // The first live update in a typing session pushes, so Back returns to the
+  // search before it; later pauses replace that entry (#671).
+  const livePushedRef = useRef(false);
   const paramsString = params.toString();
 
-  // Filter the list a beat after typing stops. `replace` keeps a long query
-  // from leaving one history entry per pause.
+  // Filter the list a beat after typing stops.
   useEffect(() => {
     const trimmed = text.trim();
     if (trimmed === currentQuery.trim()) {
@@ -168,7 +170,12 @@ export function IssueFilters({
         skipLiveRef.current = null;
         return;
       }
-      router.replace(hrefWithChanges(new URLSearchParams(paramsString), { q: trimmed }));
+      const href = hrefWithChanges(new URLSearchParams(paramsString), { q: trimmed });
+      if (livePushedRef.current) router.replace(href);
+      else {
+        livePushedRef.current = true;
+        router.push(href);
+      }
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [text, currentQuery, paramsString, router]);
@@ -224,10 +231,15 @@ export function IssueFilters({
     skipLiveRef.current = restore;
     setOpen(false);
     setActive(-1);
-    updateMany({
-      [TAGS_PARAM]: serializeTags([...selectedNames, name]),
-      q: restore,
-    });
+    // Replace a live-search entry still in history so it does not linger.
+    updateMany(
+      {
+        [TAGS_PARAM]: serializeTags([...selectedNames, name]),
+        q: restore,
+      },
+      livePushedRef.current,
+    );
+    livePushedRef.current = false;
   }
 
   function applyQueryNow() {
@@ -235,6 +247,7 @@ export function IssueFilters({
     queryBeforeEditingRef.current = trimmed;
     if (trimmed !== currentQuery.trim()) skipLiveRef.current = trimmed;
     update("q", trimmed);
+    livePushedRef.current = false;
   }
 
   function pickSuggestion(suggestion: Suggestion) {
@@ -278,6 +291,7 @@ export function IssueFilters({
     // Empty the box straight away: until the navigation lands, the local draft
     // would otherwise keep showing the text that was just cleared.
     skipLiveRef.current = "";
+    livePushedRef.current = false;
     setText("");
     setOpen(false);
     setActive(-1);
@@ -312,6 +326,7 @@ export function IssueFilters({
             }}
             onFocus={() => {
               queryBeforeEditingRef.current = currentQuery;
+              livePushedRef.current = false;
               setOpen(true);
             }}
             onKeyDown={(event) => {

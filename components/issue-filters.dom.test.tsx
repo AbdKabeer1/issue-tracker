@@ -59,10 +59,24 @@ describe("IssueFilters live search (#671)", () => {
     render(<IssueFilters tagTypes={tagTypes} />);
 
     typeSearch("login");
-    expect(nav.replace).not.toHaveBeenCalled();
+    expect(nav.push).not.toHaveBeenCalled();
 
     await settle();
+    expect(nav.push).toHaveBeenCalledWith("/issues?q=login");
+    expect(nav.replace).not.toHaveBeenCalled();
+  });
+
+  it("keeps one history entry per typing session", async () => {
+    render(<IssueFilters tagTypes={tagTypes} />);
+
+    typeSearch("log");
+    await settle();
+    expect(nav.push).toHaveBeenCalledWith("/issues?q=log");
+
+    typeSearch("login");
+    await settle();
     expect(nav.replace).toHaveBeenCalledWith("/issues?q=login");
+    expect(nav.push).toHaveBeenCalledTimes(1);
   });
 
   it("suggests matching issue titles and opens the picked one", async () => {
@@ -90,9 +104,9 @@ describe("IssueFilters live search (#671)", () => {
 
     typeSearch("de");
     await settle();
-    expect(nav.replace).toHaveBeenCalledWith("/issues?q=de");
+    expect(nav.push).toHaveBeenCalledWith("/issues?q=de");
 
     fireEvent.click(within(screen.getByRole("listbox")).getByText("Design"));
-    expect(nav.push).toHaveBeenCalledWith("/issues?q=crash&tags=design");
+    expect(nav.replace).toHaveBeenCalledWith("/issues?q=crash&tags=design");
   });
 });

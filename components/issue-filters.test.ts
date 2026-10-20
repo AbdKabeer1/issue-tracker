@@ -55,7 +55,8 @@ describe("IssueFilters live search (#671)", () => {
     const source = readFileSync("components/issue-filters.tsx", "utf8");
 
     expect(source).toContain("SEARCH_DEBOUNCE_MS");
-    expect(source).toContain("router.replace(hrefWithChanges");
+    expect(source).toContain("if (livePushedRef.current) router.replace(href)");
+    expect(source).toContain("router.push(href)");
     expect(source).toContain("/api/issues/suggest");
     expect(source).toContain("pickSuggestion");
   });
