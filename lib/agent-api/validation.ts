@@ -350,6 +350,21 @@ export async function submitValidation(
         },
       });
 
+      // Confirmation is its own feed/webhook event, so polling agents that
+      // only watch for confirmations do not have to parse every validation (#534).
+      if (newlyConfirmed) {
+        await publish(tx, {
+          tenantId: bug.tenantId,
+          type: "issue.confirmed",
+          actorAgentId: agent.agentId,
+          bugId: bug.id,
+          payload: {
+            issueId: bug.id,
+            validationId: validation.id,
+          },
+        });
+      }
+
       return { status: 201 as const, validation, confirmed, newlyConfirmed };
     });
   } catch (error) {
