@@ -81,7 +81,7 @@ export async function requestTenantMembership(
     select: { id: true, status: true },
   });
   if (existing?.status === "pending") {
-    return { ok: true, requestId: existing.id, ...tenant, created: false };
+    return { ok: true, requestId: existing.id, tenantId: tenant.id, tenantName: tenant.name, slug: tenant.slug, created: false };
   }
 
   let request: { id: string };
@@ -104,11 +104,11 @@ export async function requestTenantMembership(
       select: { id: true, status: true },
     });
     if (duplicate?.status === "pending") {
-      return { ok: true, requestId: duplicate.id, ...tenant, created: false };
+      return { ok: true, requestId: duplicate.id, tenantId: tenant.id, tenantName: tenant.name, slug: tenant.slug, created: false };
     }
     throw error;
   }
-  return { ok: true, requestId: request.id, ...tenant, created: true };
+  return { ok: true, requestId: request.id, tenantId: tenant.id, tenantName: tenant.name, slug: tenant.slug, created: true };
 }
 
 export type ReviewTenantJoinRequestResult =

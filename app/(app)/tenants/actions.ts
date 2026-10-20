@@ -118,7 +118,7 @@ export async function requestTenantJoinAction(
       notifyLater({
         kind: "tenant_join_request",
         actorId: null,
-        actorName: user.name || user.email,
+        actorName: user.name || user.email || "Someone",
         recipientId: manager.userId,
         requestId: result.requestId,
         tenantId: result.tenantId,
@@ -153,12 +153,12 @@ export async function reviewTenantJoinRequestAction(formData: FormData): Promise
   notifyLater({
     kind: "tenant_join_request_result",
     actorId: user.id,
-    actorName: user.name || user.email,
+    actorName: user.name || user.email || "Someone",
     recipientId: result.userId,
     tenantId: result.tenantId,
     tenantName: result.tenantName,
     tenantSlug: result.slug,
-    status: result.status,
+    status: result.status as "approved" | "rejected",
   });
   revalidatePath(`/tenants/${result.slug}`);
   revalidatePath("/tenants");
