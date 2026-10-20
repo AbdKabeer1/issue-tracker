@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { IssueApiError } from "@/lib/agent-api/issues";
@@ -39,6 +39,22 @@ function scheduleOfferExpiry(claimId: string): void {
 
 /** Picks by active workload, then by who has waited longest since their last offer. */
 async function offerNext(db: Db, caller: { agentId?: string; tenantId: string }, bug: { id: string; projectId: string; title: string; assigneeId?: string | null }) {
+  // Lock the Bug row first to serialize offer creation on this issue across concurrent calls (#680).
+  await db.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${bug.id} FOR NO KEY UPDATE`;
+
+  const existingOffer = await db.issueClaim.findFirst({
+    where: {
+      bugId: bug.id,
+      releasedAt: null,
+      OR: [
+        { status: "active" },
+        { status: "offered", offeredAt: { gt: new Date(Date.now() - OFFER_TTL_MS) } },
+      ],
+    },
+    select: { id: true },
+  });
+  if (existingOffer) return null;
+
   const memberships = await db.membership.findMany({
     where: {
       tenantId: caller.tenantId,
@@ -53,10 +69,12 @@ async function offerNext(db: Db, caller: { agentId?: string; tenantId: string },
     ? [{ beneficiaryUserId: m.userId, agentId: m.user.agents[0].id }]
     : []);
   if (!people.length) return null;
-  // Serialize offer selection across issues so a person cannot accumulate
-  // simultaneous pending offers while their active-claim count is stale.
-  for (const userId of people.map((person) => person.beneficiaryUserId).sort()) {
-    await db.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR NO KEY UPDATE`;
+
+  // Serialize candidate user locking atomically in sorted order so a person
+  // cannot accumulate simultaneous pending offers across concurrent requests.
+  const userIds = people.map((person) => person.beneficiaryUserId).sort();
+  if (userIds.length > 0) {
+    await db.$queryRaw`SELECT "id" FROM "User" WHERE "id" IN (${Prisma.join(userIds)}) ORDER BY "id" FOR NO KEY UPDATE`;
   }
 
   const active = await db.issueClaim.groupBy({
@@ -81,12 +99,20 @@ async function offerNext(db: Db, caller: { agentId?: string; tenantId: string },
   }));
   const next = availableOfferCandidates(candidates)[0];
   if (!next) return null;
-  const claim = await db.issueClaim.create({ data: {
-    bugId: bug.id, beneficiaryUserId: next.beneficiaryUserId, agentId: next.agentId, status: "offered", offeredAt: new Date(),
-  } });
-  const event = await publish(db, { tenantId: caller.tenantId, type: "claim.offered", actorAgentId: caller.agentId, bugId: bug.id,
-    payload: { claimId: claim.id, issueId: bug.id, projectId: bug.projectId, beneficiaryUserId: next.beneficiaryUserId, expiresAt: new Date(claim.offeredAt!.getTime() + OFFER_TTL_MS).toISOString() } });
-  return { claim, beneficiaryUserId: next.beneficiaryUserId, bugTitle: bug.title, eventId: event.id };
+
+  try {
+    const claim = await db.issueClaim.create({ data: {
+      bugId: bug.id, beneficiaryUserId: next.beneficiaryUserId, agentId: next.agentId, status: "offered", offeredAt: new Date(),
+    } });
+    const event = await publish(db, { tenantId: caller.tenantId, type: "claim.offered", actorAgentId: caller.agentId, bugId: bug.id,
+      payload: { claimId: claim.id, issueId: bug.id, projectId: bug.projectId, beneficiaryUserId: next.beneficiaryUserId, expiresAt: new Date(claim.offeredAt!.getTime() + OFFER_TTL_MS).toISOString() } });
+    return { claim, beneficiaryUserId: next.beneficiaryUserId, bugTitle: bug.title, eventId: event.id };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function offerIssue(agent: AgentContext, projectId: string, bugId: string) {
