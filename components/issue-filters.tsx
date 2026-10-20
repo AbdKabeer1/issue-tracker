@@ -29,8 +29,19 @@ import {
   type PlatformOption,
 } from "@/lib/platform-filter";
 import { MILESTONE_NONE, MILESTONE_PARAM } from "@/lib/milestones";
+import {
+  MIN_SUGGEST_LENGTH,
+  type IssueSuggestion,
+} from "@/lib/issue-suggest";
 
 type TagType = { id: string; name: string; isActive?: boolean };
+
+type Suggestion =
+  | { kind: "tag"; id: string; name: string }
+  | { kind: "issue"; id: string; number: number; title: string };
+
+/** Long enough not to query on every keystroke, short enough to feel live. */
+const SEARCH_DEBOUNCE_MS = 300;
 
 /** URL params owned by the filter bar. `page` is paging, not a filter. */
 const FILTER_PARAMS = [
@@ -42,6 +53,21 @@ const FILTER_PARAMS = [
   PLATFORM_PARAM,
   "sort",
 ];
+
+/** The issues URL with `changes` applied and paging reset. */
+function hrefWithChanges(
+  params: URLSearchParams,
+  changes: Record<string, string>,
+): string {
+  const next = new URLSearchParams(params.toString());
+  for (const [key, value] of Object.entries(changes)) {
+    if (value) next.set(key, value);
+    else next.delete(key);
+  }
+  next.delete("page");
+  const qs = next.toString();
+  return qs ? `/issues?${qs}` : "/issues";
+}
 
 export function IssueFilters({
   tagTypes = [],
@@ -91,19 +117,14 @@ export function IssueFilters({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  function updateMany(changes: Record<string, string>) {
+  function updateMany(changes: Record<string, string>, replace = false) {
     // Nothing changed: don't navigate (and don't reset the page, #132).
     if (Object.entries(changes).every(([key, value]) => (params.get(key) ?? "") === value)) {
       return;
     }
-    const next = new URLSearchParams(params.toString());
-    for (const [key, value] of Object.entries(changes)) {
-      if (value) next.set(key, value);
-      else next.delete(key);
-    }
-    next.delete("page");
-    const qs = next.toString();
-    router.push(qs ? `/issues?${qs}` : "/issues");
+    const href = hrefWithChanges(params, changes);
+    if (replace) router.replace(href);
+    else router.push(href);
   }
 
   function update(key: string, value: string) {
@@ -124,17 +145,106 @@ export function IssueFilters({
   }
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
+  const [issueSuggestions, setIssueSuggestions] = useState<IssueSuggestion[]>([]);
+  const [suggestedFor, setSuggestedFor] = useState("");
+  // Enter or leaving the box applies the query at once; the debounced
+  // navigation must not also fire and duplicate it.
+  const skipLiveRef = useRef<string | null>(null);
+  // The real search before the current typing session. Picking a tag is a
+  // filter choice, not text to search for, so it puts this back (#671).
+  const queryBeforeEditingRef = useRef(currentQuery);
+  const paramsString = params.toString();
+
+  // Filter the list a beat after typing stops. `replace` keeps a long query
+  // from leaving one history entry per pause.
+  useEffect(() => {
+    const trimmed = text.trim();
+    if (trimmed === currentQuery.trim()) {
+      if (skipLiveRef.current === trimmed) skipLiveRef.current = null;
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (skipLiveRef.current === trimmed) {
+        skipLiveRef.current = null;
+        return;
+      }
+      router.replace(hrefWithChanges(new URLSearchParams(paramsString), { q: trimmed }));
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [text, currentQuery, paramsString, router]);
+
+  // Matching issue titles for the dropdown (#671), also debounced.
+  useEffect(() => {
+    const query = text.trim();
+    // Suggestions already on screen are hidden by `suggestedFor` when they no
+    // longer match, so there is nothing to clear here.
+    if (!open || query.length < MIN_SUGGEST_LENGTH) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/issues/suggest?q=${encodeURIComponent(query)}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const body = (await res.json()) as { issues?: IssueSuggestion[] };
+        setSuggestedFor(query);
+        setIssueSuggestions(body.issues ?? []);
+      } catch {
+        // Aborted by the next keystroke, or offline: suggest nothing.
+      }
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [text, open]);
+
   // Only active types are suggested; inactive ones still work in a shared link.
-  const suggestions = open
-    ? suggestTags(tagTypes.filter((t) => t.isActive !== false), text, selectedNames)
+  const tagSuggestions: Suggestion[] = open
+    ? suggestTags(tagTypes.filter((t) => t.isActive !== false), text, selectedNames).map(
+        (type) => ({ kind: "tag", id: type.id, name: type.name }),
+      )
     : [];
+  // Only results for the text in the box now; stale ones would mislead.
+  const titleSuggestions: Suggestion[] =
+    open && suggestedFor === text.trim()
+      ? issueSuggestions.map((issue) => ({
+          kind: "issue",
+          id: issue.id,
+          number: issue.number,
+          title: issue.title,
+        }))
+      : [];
+  const suggestions = [...tagSuggestions, ...titleSuggestions];
 
   function addTag(name: string) {
     // The typed text was only for finding the tag, so put the real search back.
-    setText(currentQuery);
+    const restore = queryBeforeEditingRef.current;
+    setText(restore);
+    skipLiveRef.current = restore;
     setOpen(false);
     setActive(-1);
-    updateMany({ [TAGS_PARAM]: serializeTags([...selectedNames, name]) });
+    updateMany({
+      [TAGS_PARAM]: serializeTags([...selectedNames, name]),
+      q: restore,
+    });
+  }
+
+  function applyQueryNow() {
+    const trimmed = text.trim();
+    queryBeforeEditingRef.current = trimmed;
+    if (trimmed !== currentQuery.trim()) skipLiveRef.current = trimmed;
+    update("q", trimmed);
+  }
+
+  function pickSuggestion(suggestion: Suggestion) {
+    if (suggestion.kind === "tag") {
+      addTag(suggestion.name);
+      return;
+    }
+    setOpen(false);
+    setActive(-1);
+    router.push(`/issues/${suggestion.id}`);
   }
 
   function removeTag(name: string) {
@@ -167,10 +277,11 @@ export function IssueFilters({
   function clearAllFilters() {
     // Empty the box straight away: until the navigation lands, the local draft
     // would otherwise keep showing the text that was just cleared.
+    skipLiveRef.current = "";
     setText("");
     setOpen(false);
     setActive(-1);
-    router.push("/bugs");
+    router.push("/issues");
   }
 
   return (
@@ -199,7 +310,10 @@ export function IssueFilters({
               setOpen(true);
               setActive(-1);
             }}
-            onFocus={() => setOpen(true)}
+            onFocus={() => {
+              queryBeforeEditingRef.current = currentQuery;
+              setOpen(true);
+            }}
             onKeyDown={(event) => {
               if (event.key === "ArrowDown" && suggestions.length > 0) {
                 event.preventDefault();
@@ -213,8 +327,8 @@ export function IssueFilters({
               } else if (event.key === "Enter") {
                 event.preventDefault();
                 const picked = active >= 0 ? suggestions[active] : undefined;
-                if (picked) addTag(picked.name);
-                else update("q", text.trim());
+                if (picked) pickSuggestion(picked);
+                else applyQueryNow();
               } else if (event.key === "Backspace" && text === "" && selectedNames.length > 0) {
                 removeTag(selectedNames[selectedNames.length - 1]);
               }
@@ -222,7 +336,7 @@ export function IssueFilters({
             onBlur={() => {
               setOpen(false);
               setActive(-1);
-              update("q", text.trim());
+              applyQueryNow();
             }}
           />
           {!text ? (
@@ -236,27 +350,39 @@ export function IssueFilters({
             <ul
               id={listId}
               role="listbox"
-              aria-label="Filter by tag"
+              aria-label="Search suggestions"
               className="absolute left-0 right-0 z-20 mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-sm shadow-lg"
             >
-              {suggestions.map((type, index) => (
+              {suggestions.map((suggestion, index) => (
                 // Same combobox pattern as the assignee picker: the input owns
                 // the keyboard handling via aria-activedescendant.
                 // eslint-disable-next-line jsx-a11y/click-events-have-key-events
                 <li
-                  key={type.id}
+                  key={`${suggestion.kind}-${suggestion.id}`}
                   id={`${listId}-${index}`}
                   role="option"
                   aria-selected={index === active}
                   onMouseDown={(event) => event.preventDefault()}
                   onMouseEnter={() => setActive(index)}
-                  onClick={() => addTag(type.name)}
+                  onClick={() => pickSuggestion(suggestion)}
                   className={`flex cursor-pointer items-center justify-between gap-3 px-3 py-2 ${
                     index === active ? "bg-teal-50 text-teal-900" : "text-slate-800"
                   }`}
                 >
-                  <span className="font-medium">{type.name}</span>
-                  <span className="text-xs text-slate-500">Filter by tag</span>
+                  {suggestion.kind === "tag" ? (
+                    <>
+                      <span className="font-medium">{suggestion.name}</span>
+                      <span className="shrink-0 text-xs text-slate-500">Filter by tag</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="min-w-0 truncate">
+                        <span className="tabular-nums text-slate-500">#{suggestion.number}</span>{" "}
+                        {suggestion.title}
+                      </span>
+                      <span className="shrink-0 text-xs text-slate-500">Open issue</span>
+                    </>
+                  )}
                 </li>
               ))}
             </ul>

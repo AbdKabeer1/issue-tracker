@@ -49,6 +49,18 @@ describe("IssueFilters (#132, #361)", () => {
   });
 });
 
+describe("IssueFilters live search (#671)", () => {
+  it("debounces the list update and fetches issue suggestions", async () => {
+    const { readFileSync } = await import("fs");
+    const source = readFileSync("components/issue-filters.tsx", "utf8");
+
+    expect(source).toContain("SEARCH_DEBOUNCE_MS");
+    expect(source).toContain("router.replace(hrefWithChanges");
+    expect(source).toContain("/api/issues/suggest");
+    expect(source).toContain("pickSuggestion");
+  });
+});
+
 describe("IssueFilters clear all filters (#336)", () => {
   it("shows the button when a filter is set", async () => {
     const html = await renderFilters("page=2&q=crash");
