@@ -12,6 +12,8 @@ import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, hashCr
 import { createdSummary, commentedSummary, commentPreview } from "@/lib/activity-log";
 import { extractMentionedUserIds, normalizeMentions } from "@/lib/mentions";
 import { commentDepth, MAX_COMMENT_DEPTH } from "@/lib/comments";
+import { attachmentIdsInMarkdown, linkAttachments } from "@/lib/attachment-link";
+import { MAX_ATTACHMENTS_PER_ITEM } from "@/lib/attachments";
 import { publish } from "@/lib/agent-api/events";
 import { notifyLater } from "@/lib/notify";
 import type { NotificationEvent } from "@/lib/notifications";
@@ -22,12 +24,15 @@ export class IssueApiError extends Error {
 }
 
 const idSchema = z.string().trim().min(1).max(191);
+/** Files uploaded with POST /api/v1/attachments, linked on save (#645). */
+const attachmentIdsSchema = z.array(idSchema).max(MAX_ATTACHMENTS_PER_ITEM).optional();
 const createSchema = createBugSchema.pick({ title: true, description: true, categoryId: true, proofLinks: true })
   .extend({
     projectId: idSchema.optional(), beneficiaryUserId: idSchema.optional(),
     typeId: z.unknown().optional(), severity: z.unknown().optional(), acknowledgeSimilar: z.unknown().optional(),
+    attachmentIds: attachmentIdsSchema,
   }).strict();
-const agentCommentSchema = commentSchema.extend({ projectId: idSchema.optional() }).strict();
+const agentCommentSchema = commentSchema.extend({ projectId: idSchema.optional(), attachmentIds: attachmentIdsSchema }).strict();
 
 /** Authenticate before parsing input, charge the shared budget, and audit outcomes including denials. */
 export async function agentIssueRequest(
@@ -132,6 +137,10 @@ export async function readAgentIssue(scope: Scope, id: string) {
     select: { ...issueSelect, comments: {
       where: { deletedAt: null }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 100,
       select: { id: true, body: true, authorId: true, agentId: true, parentId: true, createdAt: true, editedAt: true },
+    }, attachments: {
+      // #645: metadata only; bytes are served to signed-in people at /api/attachments/{id}.
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true, filename: true, contentType: true, size: true, commentId: true, createdAt: true },
     }, _count: { select: { comments: { where: { deletedAt: null } } } } },
   });
   if (!issue) throw new IssueApiError(404, "Issue not found.");
@@ -199,6 +208,8 @@ export async function createAgentIssue(agent: AgentContext, request: NextRequest
     typeId: input.typeId ?? null,
     severity: input.severity ?? null,
     acknowledgeSimilar: input.acknowledgeSimilar ?? null,
+    // Only when sent, so keys stored before #645 still replay.
+    ...(input.attachmentIds?.length ? { attachmentIds: [...new Set(input.attachmentIds)].sort() } : {}),
   });
   const result = await createIssueWithPolicy({
     agent, projectId: scope.projectId, idempotencyKey: request.headers.get("Idempotency-Key"),
@@ -227,6 +238,9 @@ export async function createAgentIssue(agent: AgentContext, request: NextRequest
           activities: { create: { actorId: beneficiaryUserId, type: "created", summary: createdSummary(input.title) } },
         }, select: { id: true },
       });
+      // #645: files this agent's owner uploaded through the API (or that the
+      // description links) become the issue's attachments.
+      await linkAgentAttachments(tx, agent, { requested: input.attachmentIds, text: description, bugId: issue.id });
       await audit(agent, "issue.created", issue.id, { beneficiaryUserId }, { db: tx, bugId: issue.id });
       await publish(tx, {
         tenantId: scope.tenantId,
@@ -285,6 +299,7 @@ export async function commentOnAgentIssue(agent: AgentContext, request: NextRequ
       data: { bugId, authorId: agent.ownerId, agentId: agent.agentId, body, parentId: input.parentId ?? null },
       select: { id: true, bugId: true, authorId: true, agentId: true, body: true, parentId: true, createdAt: true },
     });
+    await linkAgentAttachments(tx, agent, { requested: input.attachmentIds, text: body, bugId, commentId: created.id });
     await tx.bugActivity.create({ data: {
       bugId, actorId: agent.ownerId, type: "commented", summary: commentedSummary(body),
       metadata: { commentId: created.id, commentPreview: commentPreview(body) },
@@ -336,4 +351,30 @@ function notifyAgentComment(
     excludeIds: mentioned,
   });
   notifyLater(...events);
+}
+
+/**
+ * Link uploads to an agent's new issue or comment (#645), the same way the web
+ * forms do: only the owner's own uploads that aren't attached anywhere yet
+ * can be claimed. Ids the agent named explicitly must all link, or the whole
+ * write is refused (422), so an agent never silently loses its evidence.
+ * Ids that only appear as /api/attachments/<id> links in the text are best
+ * effort, as on the web.
+ */
+async function linkAgentAttachments(
+  tx: Prisma.TransactionClient,
+  agent: AgentContext,
+  input: { requested?: string[]; text: string; bugId: string; commentId?: string | null },
+): Promise<void> {
+  const requested = [...new Set(input.requested ?? [])];
+  if (requested.length > 0) {
+    const linked = await linkAttachments(tx, { ids: requested, uploaderId: agent.ownerId, bugId: input.bugId, commentId: input.commentId ?? null });
+    if (linked !== requested.length) {
+      throw new IssueApiError(422, "One or more attachmentIds weren't found, belong to someone else, or are already attached.");
+    }
+  }
+  const referenced = attachmentIdsInMarkdown(input.text).filter((id) => !requested.includes(id));
+  if (referenced.length > 0) {
+    await linkAttachments(tx, { ids: referenced, uploaderId: agent.ownerId, bugId: input.bugId, commentId: input.commentId ?? null });
+  }
 }
