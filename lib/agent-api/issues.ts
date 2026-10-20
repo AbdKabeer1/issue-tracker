@@ -8,13 +8,14 @@ import { audit } from "@/lib/agents/audit";
 import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/rate-budget";
 import { createBugSchema, commentSchema, statusSchema, severitySchema } from "@/lib/validations/issue";
 import { parsePlatformFilter, platformFilterWhere } from "@/lib/platform-filter";
-import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, pageSize, toPage } from "@/lib/agent-api/create-policy";
+import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, hashCreateRequest, pageSize, toPage, type IssueCursor } from "@/lib/agent-api/create-policy";
 import { createdSummary, commentedSummary, commentPreview } from "@/lib/activity-log";
 import { extractMentionedUserIds, normalizeMentions } from "@/lib/mentions";
 import { commentDepth, MAX_COMMENT_DEPTH } from "@/lib/comments";
 import { publish } from "@/lib/agent-api/events";
 import { notifyLater } from "@/lib/notify";
 import type { NotificationEvent } from "@/lib/notifications";
+import { logger } from "@/lib/logger";
 
 export class IssueApiError extends Error {
   constructor(public status: number, message: string, public body?: Record<string, unknown>) { super(message); }
@@ -61,7 +62,7 @@ export async function agentIssueRequest(
         await audit(agent, action, target, payload);
       } catch (error) {
         // Retain the failed record in server logs for investigation/recovery.
-        console.error("[agent-api] request audit failed", {
+        logger.error("[agent-api] request audit failed", {
           tenantId: agent.tenantId, agentId: agent.agentId, action, target, payload,
         }, error);
       }
@@ -131,10 +132,49 @@ export async function readAgentIssue(scope: Scope, id: string) {
     select: { ...issueSelect, comments: {
       where: { deletedAt: null }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 100,
       select: { id: true, body: true, authorId: true, agentId: true, parentId: true, createdAt: true, editedAt: true },
-    } },
+    }, _count: { select: { comments: { where: { deletedAt: null } } } } },
   });
   if (!issue) throw new IssueApiError(404, "Issue not found.");
   return issue;
+}
+
+/** What a paged comment carries: the embedded read's fields plus who wrote it. */
+const commentSelect = {
+  id: true, body: true, authorId: true, agentId: true, parentId: true, createdAt: true, editedAt: true,
+  author: { select: { id: true, name: true } },
+  agent: { select: { id: true, name: true } },
+} satisfies Prisma.CommentSelect;
+
+/** Comments strictly after `cursor` in the older-first paging order (#604). */
+function commentsAfter(cursor: IssueCursor): Prisma.CommentWhereInput {
+  return {
+    OR: [
+      { createdAt: { gt: cursor.createdAt } },
+      { createdAt: cursor.createdAt, id: { gt: cursor.id } },
+    ],
+  };
+}
+
+/**
+ * Non-deleted comments on one issue, oldest first, so an agent can read a long
+ * thread from the start (the issue read itself keeps returning the latest 100).
+ * The cursor is the same shared (createdAt, id) one; `after` returns only newer
+ * comments. The result follows the shared list shape: `{ items, nextCursor }`.
+ */
+export async function listAgentIssueComments(scope: Scope, id: string, params: URLSearchParams) {
+  const cursorRaw = params.get("after");
+  const cursor = decodeCursor(cursorRaw);
+  if (cursorRaw !== null && !cursor) throw new IssueApiError(400, "Invalid cursor.");
+  const limit = pageSize(params.get("limit"));
+  const issue = await prisma.bug.findFirst({ where: { ...scope, id, isDeleted: false }, select: { id: true } });
+  if (!issue) throw new IssueApiError(404, "Issue not found.");
+  const rows = await prisma.comment.findMany({
+    where: { bugId: id, deletedAt: null, ...(cursor ? commentsAfter(cursor) : {}) },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    take: limit + 1,
+    select: commentSelect,
+  });
+  return toPage(rows, limit);
 }
 
 async function normalizeTenantMentions(db: Prisma.TransactionClient, tenantId: string, body: string) {
@@ -149,8 +189,20 @@ export async function createAgentIssue(agent: AgentContext, request: NextRequest
   const input = createSchema.parse(await issueJson(request));
   const scope = await issueProject(agent, request.nextUrl.searchParams, input.projectId);
   const beneficiaryUserId = input.beneficiaryUserId ?? agent.ownerId;
+  const requestHash = hashCreateRequest({
+    projectId: scope.projectId,
+    beneficiaryUserId,
+    title: input.title,
+    description: input.description,
+    categoryId: input.categoryId || null,
+    proofLinks: input.proofLinks,
+    typeId: input.typeId ?? null,
+    severity: input.severity ?? null,
+    acknowledgeSimilar: input.acknowledgeSimilar ?? null,
+  });
   const result = await createIssueWithPolicy({
     agent, projectId: scope.projectId, idempotencyKey: request.headers.get("Idempotency-Key"),
+    requestHash,
     title: input.title, typeId: input.typeId, severity: input.severity, acknowledgeSimilar: input.acknowledgeSimilar,
     insert: async (tx, policy) => {
       const member = await tx.membership.findUnique({

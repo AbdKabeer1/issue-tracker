@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdminEmail } from "@/lib/super-admin";
+import { logger } from "@/lib/logger";
 
 export type GoogleAccount = {
   id: string;
@@ -38,7 +39,7 @@ export async function upsertGoogleUser(input: {
       select: { passwordHash: true, emailVerified: true },
     });
   } catch (error) {
-    console.error("[auth] Google account pre-read failed:", error);
+    logger.error("[auth] Google account pre-read failed:", error);
     throw error;
   }
   if (existing?.passwordHash) {
@@ -75,7 +76,7 @@ export async function upsertGoogleUser(input: {
     });
     return { id: user.id, name: user.name, role: user.role, sessionVersion: user.sessionVersion };
   } catch (error) {
-    console.error("[auth] Google user upsert failed:", error);
+    logger.error("[auth] Google user upsert failed:", error);
   }
 
   try {
@@ -89,7 +90,7 @@ export async function upsertGoogleUser(input: {
     });
     return { id: user.id, name: user.name, role, sessionVersion: user.sessionVersion ?? 0 };
   } catch (error) {
-    console.error("[auth] Minimal Google user upsert failed:", error);
+    logger.error("[auth] Minimal Google user upsert failed:", error);
   }
 
   const id = randomUUID();
@@ -100,7 +101,7 @@ export async function upsertGoogleUser(input: {
       ON CONFLICT ("email") DO NOTHING
     `;
   } catch (error) {
-    console.error("[auth] Google user insert without password failed:", error);
+    logger.error("[auth] Google user insert without password failed:", error);
     await prisma.$executeRaw`
       INSERT INTO "User" ("id", "name", "email", "passwordHash", "createdAt")
       VALUES (${id}, ${name}, ${email}, '', CURRENT_TIMESTAMP)
