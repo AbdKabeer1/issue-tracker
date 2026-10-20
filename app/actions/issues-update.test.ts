@@ -163,7 +163,7 @@ describe("updateBugAction authorization (#218)", () => {
       } else {
         expect(result).toEqual({ ok: true });
         expect(written).toEqual(data);
-        if (data?.assigneeId) {
+        if (data && "assigneeId" in data && data.assigneeId) {
           expect(db.user.findFirst).toHaveBeenCalledWith({
             where: { id: data.assigneeId, memberships: { some: { tenantId: "tenant-zedu" } } },
             select: { name: true },
