@@ -287,7 +287,6 @@ export async function acceptOffer(agent: AgentContext, claimId: string) {
     throw error;
   }
 }
-}
 
 export const releaseSchema = z.object({
   projectId: id.optional(),
