@@ -102,7 +102,7 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
         {managers.length === 0 ? (
           <p className="mt-1 text-sm text-slate-600">
             {tenant.slug === ZEDU_SLUG
-              ? "Zedu has no owner yet, so nobody can invite people. The site's super admin can choose one from its members."
+              ? "Ziki has no owner yet, so nobody can invite people. The site's super admin can choose one from its members."
               : "Nobody here can invite people yet."}
           </p>
         ) : (

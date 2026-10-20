@@ -5,8 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { LocalTime } from "@/components/local-time";
 import { RelativeTime } from "@/components/relative-time";
 import { AGENT_LEVEL_DESCRIPTIONS, AGENT_LEVEL_LABELS, AGENT_LEVELS, settableLevels } from "@/lib/agents/levels";
-import { isTenantAdminRole, tenantForOwner } from "@/lib/agents/membership";
-import { projectContextFor, projectsForTenant } from "@/lib/project-context";
+import { isTenantAdminRole } from "@/lib/agents/membership";
+import { projectContextFor } from "@/lib/project-context";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { AgentKeyCopyButton } from "@/components/agent-key-copy";
 import { ensureDefaultProjectKey } from "@/lib/agents/default-key";
@@ -36,34 +36,36 @@ export default async function AgentsSettingsPage() {
   }
 
   const user = await requireUser();
-  const tenant = await tenantForOwner(user.id);
-  const isAdmin = isTenantAdminRole(tenant?.role, user.role);
+  // The organization open in the header, not the old Zedu membership.
+  const tenantId = await currentTenantIdFor(user.id);
+  const context = await projectContextFor(prisma, tenantId);
+  const membership = tenantId
+    ? await prisma.membership.findUnique({
+        where: { tenantId_userId: { tenantId, userId: user.id } },
+        select: { role: true },
+      })
+    : null;
+  const isAdmin = isTenantAdminRole(membership?.role, user.role);
+  const projects = context.projects;
 
-  const projects = tenant ? await projectsForTenant(prisma, tenant.tenantId) : [];
-  const currentTenantId = await currentTenantIdFor(user.id);
   let personalKey: Awaited<ReturnType<typeof ensureDefaultProjectKey>> = null;
   let personalProjectName: string | null = null;
-  // The header copies the key for the organization the person is in now.
-  // This page prefers one membership, so only issue the key when they match.
-  if (tenant && currentTenantId === tenant.tenantId) {
-    const context = await projectContextFor(prisma, tenant.tenantId);
-    if (context.activeProjectId) {
-      try {
-        personalKey = await ensureDefaultProjectKey({
-          userId: user.id,
-          tenantId: tenant.tenantId,
-          projectId: context.activeProjectId,
-        });
-        personalProjectName = context.projects.find((project) => project.id === context.activeProjectId)?.name ?? null;
-      } catch (error) {
-        console.error("[agents] default agent key failed", error);
-      }
+  if (tenantId && context.activeProjectId) {
+    try {
+      personalKey = await ensureDefaultProjectKey({
+        userId: user.id,
+        tenantId,
+        projectId: context.activeProjectId,
+      });
+      personalProjectName = projects.find((project) => project.id === context.activeProjectId)?.name ?? null;
+    } catch (error) {
+      console.error("[agents] default agent key failed", error);
     }
   }
-  const [mine, members] = tenant
+  const [mine, members] = tenantId
     ? await Promise.all([
         prisma.agent.findMany({
-          where: { ownerUserId: user.id, tenantId: tenant.tenantId },
+          where: { ownerUserId: user.id, tenantId },
           orderBy: [{ revokedAt: { sort: "desc", nulls: "first" } }, { createdAt: "desc" }],
           select: {
             id: true,
@@ -81,7 +83,7 @@ export default async function AgentsSettingsPage() {
           },
         }),
         prisma.membership.findMany({
-          where: { tenantId: tenant.tenantId },
+          where: { tenantId },
           orderBy: { user: { name: "asc" } },
           select: {
             role: true,
@@ -90,7 +92,7 @@ export default async function AgentsSettingsPage() {
                 id: true,
                 name: true,
                 agents: {
-                  where: { tenantId: tenant.tenantId, revokedAt: null },
+                  where: { tenantId, revokedAt: null },
                   orderBy: { createdAt: "asc" },
                   select: { id: true, name: true, model: true, level: true, burst: true },
                 },
@@ -128,7 +130,7 @@ export default async function AgentsSettingsPage() {
         </p>
       </div>
 
-      {!tenant ? (
+      {!tenantId ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
           <p>
             You aren&apos;t in a workspace yet, so you can&apos;t register agents. Join a workspace via an invite from your team, or create your own workspace to start managing agents.
@@ -176,7 +178,7 @@ export default async function AgentsSettingsPage() {
               </Link>
               .
             </p>
-            <CreateAgentForm projects={projects} />
+            <CreateAgentForm projects={projects} activeProjectId={context.activeProjectId} />
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="mine-heading">
