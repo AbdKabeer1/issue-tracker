@@ -43,9 +43,11 @@ describe("agent project discovery (#607)", () => {
     await expect(response.json()).resolves.toEqual({
       items: [
         { id: "project-web", slug: "web", name: "Web", goal: "Ship Ziki", repoUrl: "https://github.com/web", stagingUrl: "https://stage",
-          workflow: { confirmationsNeeded: 2, verdictsNeeded: 2 }, openIssueCount: 3 },
+          workflow: { confirmationsNeeded: 2, verdictsNeeded: 2 }, openIssueCount: 3,
+          rewardRules: { guidelines: null, reporter: 5, reviewer: 10, solver: { critical: 60, high: 40, low: 15, medium: 25 } } },
         { id: "project-api", slug: "api", name: "API", goal: null, repoUrl: null, stagingUrl: null,
-          workflow: { confirmationsNeeded: 2, verdictsNeeded: 2 }, openIssueCount: 0 },
+          workflow: { confirmationsNeeded: 2, verdictsNeeded: 2 }, openIssueCount: 0,
+          rewardRules: { guidelines: null, reporter: 5, reviewer: 10, solver: { critical: 60, high: 40, low: 15, medium: 25 } } },
       ],
     });
     expect(db.project.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: "tenant-a" } }));

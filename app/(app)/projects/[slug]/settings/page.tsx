@@ -25,7 +25,7 @@ export default async function ProjectSettingsPage({
   const { slug } = await params;
   const project = await prisma.project.findFirst({
     where: { tenantId, slug },
-    select: { id: true, slug: true, name: true, goal: true, repoUrl: true, stagingUrl: true, githubInstallationId: true },
+    select: { id: true, slug: true, name: true, goal: true, repoUrl: true, stagingUrl: true, githubInstallationId: true, rewardConfig: true },
   });
   if (!project) notFound();
   const areas = await prisma.projectArea.findMany({
@@ -35,12 +35,17 @@ export default async function ProjectSettingsPage({
   });
   const [issueTypes, approvalRules] = await Promise.all([
     prisma.issueType.findMany({
-      where: { isActive: true },
+      where: { tenantId, isActive: true },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
     prisma.approvalRule.findMany({
-      where: { projectId: project.id },
+      // A rule made before types were tenant-scoped can point at another
+      // organization's type. Don't show that type (or the stale rule) here.
+      where: {
+        projectId: project.id,
+        OR: [{ issueTypeId: null }, { issueType: { tenantId } }],
+      },
       include: { issueType: { select: { id: true, name: true } } },
       orderBy: { createdAt: "desc" },
     }),

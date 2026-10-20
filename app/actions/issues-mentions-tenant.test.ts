@@ -107,7 +107,7 @@ describe("addCommentAction (#502)", () => {
   it("doesn't notify someone from another tenant, and stores their tag as plain text", async () => {
     const result = await addCommentAction("bug-1", form({ body: `ping @[Dave Acme](${dave}) and @[Bob](${bob})` }));
 
-    expect(result).toMatchObject({ ok: true });
+    expect(result).toEqual({ ok: true, commentId: "comment-new" });
     expect(db.user.findMany.mock.calls[0][0].where.memberships).toEqual({ some: { tenantId: "tenant-zedu" } });
     expect(db.__tx.comment.create.mock.calls[0][0].data.body).toBe(`ping @Dave Acme and @[Bob](${bob})`);
     const events = notifyMock.mock.calls[0]!;

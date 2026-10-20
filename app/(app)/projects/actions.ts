@@ -5,11 +5,19 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth-helpers";
 import { fieldError, fromZodError } from "@/lib/form-errors";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { setActiveProjectCookie } from "@/lib/project-context";
 import { currentTenantIdFor, NO_TENANT_MESSAGE } from "@/lib/tenant-context";
 import { isTenantAdmin } from "@/lib/agents/membership";
 import { createMissionSchema, createTestMissions } from "@/lib/missions";
-import { nextProjectSlug, projectNameSchema, projectSettingsSchema, projectSlugBase } from "./validation";
+import {
+  nextProjectSlug,
+  projectNameSchema,
+  projectSettingsSchema,
+  projectSlugBase,
+  parseRewardConfigFromFormData,
+} from "./validation";
+import { parseProjectRewardConfig } from "@/lib/points/project-rewards";
 
 export type ProjectActionResult = {
   error?: string;
@@ -71,21 +79,40 @@ export async function updateProjectAction(
   const slug = String(formData.get("slug") ?? "").trim();
   const project = await prisma.project.findFirst({
     where: { tenantId, slug },
-    select: { id: true, name: true, goal: true, repoUrl: true, stagingUrl: true },
+    select: { id: true, name: true, goal: true, repoUrl: true, stagingUrl: true, rewardConfig: true },
   });
   if (!project) return { error: "Project not found." };
 
-  const changes: Record<string, { from: string | null; to: string | null }> = {};
+  const rawReward = parseRewardConfigFromFormData(formData);
+  const rewardConfig = rawReward ? parseProjectRewardConfig(rawReward) : undefined;
+
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
   for (const field of ["name", "goal", "repoUrl", "stagingUrl"] as const) {
     if (project[field] !== parsed.data[field]) {
       changes[field] = { from: project[field], to: parsed.data[field] };
     }
   }
+  if (rewardConfig !== undefined && JSON.stringify(project.rewardConfig) !== JSON.stringify(rewardConfig)) {
+    changes.rewardConfig = { from: project.rewardConfig, to: rewardConfig };
+  }
+
   if (Object.keys(changes).length > 0) {
     await prisma.$transaction(async (tx) => {
-      await tx.project.update({ where: { id: project.id }, data: parsed.data });
+      await tx.project.update({
+        where: { id: project.id },
+        data: {
+          ...parsed.data,
+          ...(rewardConfig !== undefined ? { rewardConfig } : {}),
+        },
+      });
       await tx.projectAuditEvent.create({
-        data: { tenantId, projectId: project.id, actorUserId: user.id, action: "settings.updated", changes },
+        data: {
+          tenantId,
+          projectId: project.id,
+          actorUserId: user.id,
+          action: "settings.updated",
+          changes: changes as Prisma.InputJsonValue,
+        },
       });
     });
   }
@@ -154,10 +181,18 @@ export async function createProjectAction(
     new Set(existing.map((project) => project.slug)),
   );
 
+  const rawReward = parseRewardConfigFromFormData(formData);
+  const rewardConfig = rawReward ? parseProjectRewardConfig(rawReward) : null;
+
   let project: { id: string };
   try {
     project = await prisma.project.create({
-      data: { tenantId, name: parsed.data.name, slug },
+      data: {
+        tenantId,
+        name: parsed.data.name,
+        slug,
+        rewardConfig: rewardConfig ?? undefined,
+      },
       select: { id: true },
     });
   } catch (error) {

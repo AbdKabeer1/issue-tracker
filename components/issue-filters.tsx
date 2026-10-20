@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { severities, statuses } from "@/lib/validations/issue";
 import { severityLabel, statusLabel } from "@/lib/labels";
+import { FINISHED_STATUS_FILTER } from "@/lib/issue-state";
 import {
   BUG_SORT_OPTIONS,
   bugSortLabels,
@@ -596,6 +597,9 @@ export function IssueFilters({
                         {statusLabel[status]}
                       </option>
                     ))}
+                    {/* The stat grid's "Closed" tile counts resolved + closed together
+                        (#685); the same aggregate is selectable here. */}
+                    <option value={FINISHED_STATUS_FILTER}>Closed (incl. resolved)</option>
                   </select>
                 </div>
 
@@ -770,6 +774,7 @@ export function IssueFilters({
             </li>
           ) : null}
         </ul>
+
       ) : null}
 
       {/* Active Filter Chips */}
@@ -794,7 +799,10 @@ export function IssueFilters({
           ) : null}
           {params.get("status") ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-emerald-900">
-              Status: {statusLabel[params.get("status") as keyof typeof statusLabel] ?? params.get("status")}
+              Status:{" "}
+              {params.get("status") === FINISHED_STATUS_FILTER
+                ? "Closed (incl. resolved)"
+                : statusLabel[params.get("status") as keyof typeof statusLabel] ?? params.get("status")}
               <button
                 type="button"
                 onClick={() => update("status", "")}

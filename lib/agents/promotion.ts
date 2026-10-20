@@ -39,6 +39,7 @@ type Db = PrismaClient | Prisma.TransactionClient;
 
 /** The issue context the independence rule needs, per validation. */
 const validationSelect = {
+  id: true,
   agent: { select: { id: true, ownerUserId: true } },
   bug: {
     select: {
@@ -58,15 +59,41 @@ type LoadedValidation = Prisma.IssueValidationGetPayload<{ select: typeof valida
  * an earlier reviewer no longer independent, exactly as #433's confirmation
  * count does.
  *
- * When #450 (undo) lands, an undone validation should stop standing too; today
- * nothing marks them, so this counts every validation the rule still allows.
+ * Undone validations are excluded (#623): if an admin reversed an
+ * `issue.validated` action, it no longer counts toward earned promotion.
  */
+type DbWithAudit = Db & {
+  agentAuditEvent?: {
+    findMany?: (args: {
+      where: { agentId: string; action: string; undoneAt: { not: null } };
+      select: { payload: true };
+    }) => Promise<Array<{ payload: Prisma.JsonValue }>>;
+  };
+};
+
 export async function standingValidations(agentId: string, db: Db = prisma): Promise<number> {
-  const rows = (await db.issueValidation.findMany({
-    where: { agentId },
-    select: validationSelect,
-  })) as LoadedValidation[];
+  const dbWithAudit = db as DbWithAudit;
+  const [rows, undone] = await Promise.all([
+    db.issueValidation.findMany({
+      where: { agentId },
+      select: validationSelect,
+    }) as Promise<LoadedValidation[]>,
+    typeof dbWithAudit.agentAuditEvent?.findMany === "function"
+      ? dbWithAudit.agentAuditEvent.findMany({
+          where: { agentId, action: "issue.validated", undoneAt: { not: null } },
+          select: { payload: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const undoneIds = new Set(
+    (undone as Array<{ payload: { validationId?: string } | null }>)
+      .map((e) => e?.payload?.validationId)
+      .filter(Boolean),
+  );
+
   return rows.filter((row) => {
+    if (undoneIds.has(row.id)) return false;
     // The agent that filed an issue can't validate it; the rule rejects it
     // again here in case the record predates that check.
     if (row.bug.createdByAgentId === row.agent.id) return false;

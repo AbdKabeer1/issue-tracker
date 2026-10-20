@@ -129,7 +129,10 @@ beforeEach(() => {
   db.projectArea.findFirst.mockResolvedValue({ id: "area-web", name: "Frontend" });
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
     fn({
-      bug: { update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => (written = data)) },
+      bug: {
+        update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => (written = data)),
+        findUnique: vi.fn(async () => ({ projectId: null })),
+      },
       bugActivity: {
         createMany: vi.fn(async ({ data }: { data: Array<{ type: string }> }) => {
           activities = data.map((entry) => entry.type);
@@ -302,6 +305,21 @@ describe("milestones in triage (#289)", () => {
     db.milestone.findUnique.mockResolvedValue({ title: "v2.3", isClosed: true });
     const result = await updateBugAction("bug1", form({ milestoneId: "m0" }));
     expect(result.error).toMatch(/closed/);
+    expect(written).toBeNull();
+  });
+
+  it("refuses a milestone that belongs to another organization", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "admin" });
+    db.bug.findUnique.mockResolvedValue(withMilestone(null));
+    db.milestone.findUnique.mockResolvedValue(null);
+    const result = await updateBugAction("bug1", form({ milestoneId: "other-tenant-milestone" }));
+    expect(result.error).toMatch(/no longer exists/);
+    expect(db.milestone.findUnique).toHaveBeenCalledWith({
+      where: {
+        id_tenantId: { id: "other-tenant-milestone", tenantId: "tenant-zedu" },
+      },
+      select: { title: true, isClosed: true },
+    });
     expect(written).toBeNull();
   });
 

@@ -54,7 +54,7 @@ async function main() {
     ["Design", "UI/UX and visual design tasks"],
     ["Marketing", "Marketing and promotion related tasks"],
   ]) {
-    await prisma.issueType.create({ data: { name, description, isActive: true } });
+    await prisma.issueType.create({ data: { tenantId: tenant.id, name, description, isActive: true } });
   }
 
   // Cost 4: these are throwaway test accounts and the suite signs in often.

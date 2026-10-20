@@ -96,6 +96,17 @@ describe("account menu role switch", () => {
     expect(screen.getByRole("menuitem", { name: /platforms/i })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: /types/i })).toBeTruthy();
   });
+
+  it("renders Docs & /llms.txt link in the account menu (#625)", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    await user.click(screen.getByRole("button", { name: /account menu/i }));
+
+    const docsLink = screen.getByRole("link", { name: /docs & \/llms\.txt/i });
+    expect(docsLink).toBeTruthy();
+    expect(docsLink.getAttribute("href")).toBe("/docs");
+  });
 });
 
 describe("theme toggle in header (#659)", () => {
