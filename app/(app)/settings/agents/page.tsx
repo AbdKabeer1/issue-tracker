@@ -48,6 +48,7 @@ export default async function AgentsSettingsPage() {
             name: true,
             model: true,
             level: true,
+            burst: true,
             createdAt: true,
             revokedAt: true,
             apiKeys: {
@@ -68,7 +69,7 @@ export default async function AgentsSettingsPage() {
                 agents: {
                   where: { tenantId: tenant.tenantId, revokedAt: null },
                   orderBy: { createdAt: "asc" },
-                  select: { id: true, name: true, model: true, level: true },
+                  select: { id: true, name: true, model: true, level: true, burst: true },
                 },
               },
             },
@@ -184,6 +185,8 @@ export default async function AgentsSettingsPage() {
                         levels={ownLevels}
                         projects={projects}
                         currentProjectId={agent.apiKeys.find((key) => key.project)?.project?.id}
+                        burst={agent.burst}
+                        canSetBurst={isAdmin}
                       />
                     )}
                   </li>
@@ -223,6 +226,8 @@ export default async function AgentsSettingsPage() {
                               level={agent.level}
                               levels={adminLevels}
                               projects={projects}
+                              burst={agent.burst}
+                              canSetBurst
                             />
                           ) : (
                             <Badge className={levelBadge}>{AGENT_LEVEL_LABELS[agent.level]}</Badge>
@@ -250,7 +255,8 @@ export default async function AgentsSettingsPage() {
             </dl>
             <p className="mt-3 text-xs text-slate-500">
               New agents start as observers. You can raise your own agents up to reviewer; only a team
-              admin can make one a merger.
+              admin can make one a merger. Each agent may make 30 writes an hour, including reviews.
+              An admin can turn on a higher budget of 400 writes an hour.
             </p>
           </section>
         </>

@@ -2,7 +2,7 @@
 
 import type { AgentLevel } from "@prisma/client";
 import { useState, useTransition } from "react";
-import { regenerateAgentKeyAction, revokeAgentAction, setAgentLevelAction } from "./actions";
+import { regenerateAgentKeyAction, revokeAgentAction, setAgentBurstAction, setAgentLevelAction } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -20,6 +20,8 @@ export function AgentControls({
   levels,
   projects,
   currentProjectId,
+  burst = false,
+  canSetBurst = false,
 }: {
   agentId: string;
   agentName: string;
@@ -29,10 +31,15 @@ export function AgentControls({
   projects: AgentProjectChoice[];
   /** The project the live key is limited to, when it has one. */
   currentProjectId?: string | null;
+  /** Whether this agent uses the higher hourly write budget. */
+  burst?: boolean;
+  /** Admins may raise the budget. */
+  canSetBurst?: boolean;
 }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [current, setCurrent] = useState(level);
+  const [burstOn, setBurstOn] = useState(burst);
   const [projectId, setProjectId] = useState(currentProjectId || projects[0]?.id || "");
   const [issued, setIssued] = useState<{ rawKey: string; prefix: string } | null>(null);
   const [pending, startTransition] = useTransition();
@@ -90,6 +97,25 @@ export function AgentControls({
     });
   }
 
+  function toggleBurst(next: boolean) {
+    const previous = burstOn;
+    setBurstOn(next);
+    startTransition(async () => {
+      const result = await setAgentBurstAction(agentId, next);
+      if (result.ok) {
+        toast(
+          next
+            ? `${agentName} can now make 400 writes an hour.`
+            : `${agentName} is back to 30 writes an hour.`,
+          "success",
+        );
+      } else {
+        setBurstOn(previous);
+        toast(result.error, "error");
+      }
+    });
+  }
+
   return (
     <div className="flex flex-col gap-2 sm:items-end">
       <div className="flex flex-wrap items-center gap-2">
@@ -126,6 +152,19 @@ export function AgentControls({
             </option>
           ))}
         </Select>
+        {canSetBurst ? (
+          <label className="flex items-center gap-1.5 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              checked={burstOn}
+              disabled={pending}
+              onChange={(event) => toggleBurst(event.target.checked)}
+            />
+            Higher write budget
+          </label>
+        ) : burstOn ? (
+          <span className="text-xs text-slate-500">Higher write budget</span>
+        ) : null}
         <Button type="button" variant="secondary" onClick={regenerate} disabled={pending || !projectId}>
           Regenerate key
         </Button>

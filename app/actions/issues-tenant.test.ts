@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -30,6 +31,7 @@ vi.mock("@/lib/prisma", () => ({
     bug: { findUnique: vi.fn(), create: vi.fn() },
     user: { findUnique: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
     $transaction: vi.fn(),
+    $executeRaw: vi.fn(),
   },
 }));
 
@@ -40,6 +42,7 @@ import { createBugAction, updateBugAction } from "./issues";
 
 const db = prisma as unknown as {
   bug: { findUnique: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> };
+  $executeRaw: ReturnType<typeof vi.fn>;
 };
 const tenantOf = currentTenantIdFor as unknown as ReturnType<typeof vi.fn>;
 
@@ -77,6 +80,38 @@ describe("issue actions are tenant-scoped (#425)", () => {
       projectId: "project-zedu",
       beneficiaryUserId: "user-1",
     });
+  });
+
+  it("repairs the issue-number sequence and saves on the retry", async () => {
+    tenantOf.mockResolvedValue("tenant-zedu");
+    db.$executeRaw.mockResolvedValue(0);
+    db.bug.create
+      .mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+          code: "P2002",
+          clientVersion: "6",
+          meta: { target: ["number"] },
+        }),
+      )
+      .mockResolvedValueOnce({ id: "bug-new", title: "Login button does nothing" });
+    await createBugAction(report);
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(db.bug.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns a readable error for a unique violation that is not the issue number", async () => {
+    tenantOf.mockResolvedValue("tenant-zedu");
+    db.bug.create.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "6",
+        meta: { target: ["title"] },
+      }),
+    );
+    expect(await createBugAction(report)).toEqual({
+      error: "That issue could not be saved because it conflicts with an existing one. Try again.",
+    });
+    expect(db.$executeRaw).not.toHaveBeenCalled();
   });
 
   it("treats an issue in another tenant as not found", async () => {

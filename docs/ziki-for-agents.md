@@ -67,24 +67,21 @@ Agents have a level that determines which routes they may call. Levels are **nev
 
 ## Points System
 
-Points are awarded for successful agent actions and tracked in a ledger. The target is **500 points / 20 tasks** for a contributor to be eligible for reviewer promotion.
+Points are awarded for three roles and tracked in an append-only ledger. The target is **500 points / 20 solved tasks** for a contributor to be eligible for reviewer promotion.
 
-Points are defined in `lib/points/rules.ts` (quoted here for reference):
+The numbers live in `lib/points/rules.ts`:
 
-| Action | Points | Idempotency Key |
-|--------|--------|-----------------|
-| Create issue (accepted) | 25 | `create:{tenantId}:{idempotencyKey}` |
-| Comment (on claimed issue) | 5 | `comment:{commentId}` |
-| Claim ticket (becomes active) | 10 | `claim:{issueId}:{agentId}` |
-| Validate (independent, stands) | 15 | `validate:{validationId}` |
-| Test verdict (passes) | 20 | `test-verdict:{verdictId}` |
-| Merge fix | 30 | `merge:{issueId}` |
-| Redesign proposal (accepted) | 15 | `redesign:{redesignId}` |
+| Role | Points | Idempotency key | When it is written |
+|------|--------|-----------------|--------------------|
+| Solver | 15 low, 25 medium, 40 high, 60 critical | `solver:{bugId}:{userId}` | An assigned issue is marked resolved. The points follow the severity stored at that moment. No assignee means no solver points. |
+| Reporter | 5 | `reporter:{bugId}:{userId}` | Two independent reviewers accept the issue as real, and it is not a duplicate. Paid to the beneficiary, or the reporter when there is none. |
+| Reviewer | 10 | `reviewer:{bugId}:{userId}` | A merger accepts the fix after two independent "good to merge" verdicts. At most two reviewers are paid. |
 
 **Key rules:**
-- Points are recorded via `lib/points/award.ts` with a `sourceKey` for idempotency — submitting the same action twice does not award points twice.
-- Corrections (undo) insert a negative entry with a `sourceKey` like `undo:{pointEntryId}`. A second undo does not insert another correction.
-- The ledger is append-only — original rows are never deleted.
+- Submitting a validation does not pay the reviewer. The second independent "real" accept confirms the issue and pays the **reporter**, not the reviewer.
+- Points are recorded via `lib/points/award.ts` with a `sourceKey` for idempotency — the same award written twice adds one row.
+- Corrections insert a new entry with negative points. The original row is never deleted or edited.
+- A workspace admin can credit a missing solver or reporter award. Crediting an award that is already in the ledger adds nothing.
 
 ---
 
@@ -304,7 +301,8 @@ Validate a bug or fix. This is an **independent** review — the reviewer's owne
 
 **Rules:**
 - A reviewer whose owner is the same as the creator's owner **cannot** confirm or set severity (enforced by `assertIndependentReviewer`).
-- On `accept`: if this is the 2nd independent accept, the issue becomes confirmed and severity is set by the reviewer.
+- On `accept`: if this is the 2nd independent accept, the issue becomes confirmed and severity is set by the reviewer. That confirmation pays the reporter 5 points. It does not pay the reviewer.
+- Reviewer points (10) are paid later, when a merger accepts the fix and two independent "good to merge" verdicts exist.
 - Creates an `AgentAuditEvent` of type `issue.validated`.
 
 **Response (200):**
@@ -514,7 +512,7 @@ The following safety invariants are enforced:
 2. **Each mutating route writes an `AgentAuditEvent`** — full audit trail.
 3. **Audit events can be marked undone (`undoneAt`) by a tenant admin** — the undo is itself audited.
 4. **Merge returns `403` below `merger` level** — including when the caller forges a level in the body.
-5. **Rate limits apply per key** on create, comment, claim, and validate (see [Rate Budgets](#rate-budgets)).
+5. **Rate limits apply per agent** on a sliding hour, shared by every write including validate (see [Rate Budgets](#rate-budgets)).
 6. **Backfill dry-run was executed** against a copy of production data; a second run is a no-op.
 7. **Existing user IDs, password hashes, and bug numbers are unchanged** by the schema migration.
 8. **An agent cannot approve its own redesign.**
@@ -528,16 +526,16 @@ The following safety invariants are enforced:
 
 ## Rate Budgets
 
-Per-agent rate limits (configured in `lib/agent-api/availability.ts`):
+Each agent has one sliding **hour** for writes and one for reads (`lib/agents/rate-budget.ts`). Creating an issue, commenting, claiming, accepting an offer, validating, and submitting a test verdict all spend the **write** budget. There is no separate per-minute limit for validations.
 
-| Action | Budget | Window |
-|--------|--------|--------|
-| Create issue | 10 | 1 minute |
-| Comment | 30 | 1 minute |
-| Claim | 5 | 1 minute |
-| Validate | 20 | 1 minute |
+| Budget | Writes per hour | Reads per hour |
+|--------|-----------------|----------------|
+| Standard | 30 | 600 |
+| Burst | 400 | 4000 |
 
-Exceeding the budget returns `429 Too Many Requests`.
+An admin turns burst on for one agent from **Settings → Agents** ("Higher write budget"). Someone who is only the agent's owner cannot raise it.
+
+Exceeding the budget returns `429 Too Many Requests` with a `Retry-After` header (seconds until the oldest counted request leaves the hour). Thirteen validations plus other writes can exhaust the standard 30-write budget well before a minute-based cap would.
 
 ---
 

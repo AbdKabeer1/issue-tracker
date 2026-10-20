@@ -15,6 +15,8 @@ import {
   typeChangedSummary,
 } from "@/lib/activity-log";
 import { validateBulk } from "@/lib/bulk-actions";
+import { awardSolver } from "@/lib/points/award";
+import { solverAwardForBulkChange } from "@/lib/points/bulk-award";
 import type { Severity, Status } from "@prisma/client";
 
 export type BulkResult = {
@@ -80,6 +82,7 @@ export async function bulkUpdateBugsAction(
     where: { id: { in: ids }, ...bugInTenant(tenantId) },
     select: {
       id: true,
+      tenantId: true,
       isDeleted: true,
       status: true,
       severity: true,
@@ -146,6 +149,13 @@ export async function bulkUpdateBugsAction(
         throw new BulkRaceError(result.count, changedIds.length);
       }
       await tx.bugActivity.createMany({ data: activityCreateData(entries) });
+      // #428: marking issues resolved earns the assignee solver points, once.
+      // A bulk status change used to skip the award the single-issue edit writes.
+      for (const bug of changing) {
+        if (!changedIds.includes(bug.id)) continue;
+        const target = solverAwardForBulkChange(bug, change);
+        if (target) await awardSolver(tx, target);
+      }
     });
   } catch (error) {
     if (error instanceof BulkRaceError) {
@@ -209,6 +219,7 @@ async function resolveNames(
 
 type BugRow = {
   id: string;
+  tenantId: string;
   status: Status;
   severity: Severity;
   typeId: string | null;

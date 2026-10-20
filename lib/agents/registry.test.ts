@@ -15,7 +15,7 @@ const db = vi.hoisted(() => {
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 
 import { hashSecret } from "./keys";
-import { createAgent, regenerateKey, revokeAgent, rotateKey, setAgentLevel } from "./registry";
+import { createAgent, regenerateKey, revokeAgent, rotateKey, setAgentBurst, setAgentLevel } from "./registry";
 
 const ada = { id: "ada", role: "user" as const };
 const zedu = [{ tenantId: "tenant_zedu", role: "member", tenant: { slug: "zedu" } }];
@@ -115,6 +115,30 @@ describe("revokeAgent and setAgentLevel (#427)", () => {
     expect(db.agent.update.mock.calls[0][0].data).toEqual({ level: "reviewer" });
     expect(await setAgentLevel(ada, "agent1", "merger")).toMatchObject({ ok: false });
     expect(db.agent.update).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("setAgentBurst (#440)", () => {
+  it("lets a workspace admin raise the write budget", async () => {
+    db.agent.findUnique.mockResolvedValue(agentRow);
+    db.membership.findUnique.mockResolvedValue({ role: "admin" });
+    db.agent.findUniqueOrThrow.mockResolvedValue({ burst: false });
+    expect(await setAgentBurst({ id: "lead", role: "user" }, "agent1", true)).toEqual({ ok: true });
+    expect(db.agent.update.mock.calls[0][0].data).toEqual({ burst: true });
+  });
+
+  it("lets a site admin raise the budget", async () => {
+    db.agent.findUnique.mockResolvedValue(agentRow);
+    db.membership.findUnique.mockResolvedValue({ role: "member" });
+    db.agent.findUniqueOrThrow.mockResolvedValue({ burst: false });
+    expect(await setAgentBurst({ id: "ada", role: "admin" }, "agent1", true)).toEqual({ ok: true });
+  });
+
+  it("refuses an owner who is not an admin", async () => {
+    db.agent.findUnique.mockResolvedValue(agentRow);
+    db.membership.findUnique.mockResolvedValue({ role: "member" });
+    expect(await setAgentBurst(ada, "agent1", true)).toMatchObject({ ok: false });
+    expect(db.agent.update).not.toHaveBeenCalled();
   });
 });
 
