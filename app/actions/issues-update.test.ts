@@ -6,6 +6,11 @@ vi.mock("@/lib/agent-api/web-events", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/agent-api/web-events")>()),
   publishWebEvent,
 }));
+const publish = vi.hoisted(() => vi.fn(async () => ({ id: "evt-1" })));
+vi.mock("@/lib/agent-api/events", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/agent-api/events")>()),
+  publish,
+}));
 
 // #425: run as a member of the Zedu tenant.
 vi.mock("@/lib/tenant-context", async (importOriginal) => ({
@@ -52,7 +57,7 @@ import { currentTenantAccess } from "@/lib/tenant-access";
 import { notifyLater } from "@/lib/notify";
 import { TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
 import { TICKET_TRIAGE_ERRORS } from "@/lib/ticket-triage";
-import { updateBugAction } from "./issues";
+import { assignBugAction, closeBugAction, reopenBugAction, updateBugAction } from "./issues";
 
 const db = prisma as unknown as {
   bug: { findUnique: ReturnType<typeof vi.fn> };
@@ -74,6 +79,7 @@ let written: Record<string, unknown> | null;
 let activities: string[] = [];
 let awarded: Array<Record<string, unknown>> = [];
 let claimReleases: Array<Record<string, unknown>> = [];
+let activeClaimsMock: Array<{ id: string; agentId: string; beneficiaryUserId: string }> = [];
 
 function issue(assigneeId: string | null, extra: Record<string, unknown> = {}) {
   return {
@@ -115,6 +121,7 @@ beforeEach(() => {
   activities = [];
   awarded = [];
   claimReleases = [];
+  activeClaimsMock = [];
   db.user.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({ name: where.id }));
   db.user.findFirst.mockImplementation(async ({ where }: { where: { id: string } }) => ({ name: where.id }));
   db.issueType.findUnique.mockResolvedValue({ id: "t1", name: "Fix", isActive: true });
@@ -131,6 +138,7 @@ beforeEach(() => {
       // Used once assignees auto-watch issues (#216).
       issueWatch: { createMany: vi.fn() },
       issueClaim: {
+        findMany: vi.fn(async () => activeClaimsMock),
         updateMany: vi.fn(async (input: Record<string, unknown>) => { claimReleases.push(input); return { count: 1 }; }),
       },
       projectArea: { findFirst: db.projectArea.findFirst },
@@ -376,7 +384,7 @@ describe("solver points on resolve (#428)", () => {
   });
 });
 
-describe("agents hear about triage in the web app (#600)", () => {
+describe("agents hear about triage in the web app (#600, #656)", () => {
   it("publishes issue.updated with the new status, inside the update", async () => {
     await run("user", ME, { status: "resolved" });
     expect(publishWebEvent).toHaveBeenCalledWith(
@@ -386,6 +394,92 @@ describe("agents hear about triage in the web app (#600)", () => {
         type: "issue.updated",
         actorUserId: expect.any(String),
         payload: expect.objectContaining({ changed: expect.arrayContaining(["status"]), values: expect.objectContaining({ status: "resolved" }) }),
+      }),
+    );
+  });
+
+  it("publishes claim.released events when active claims are released on resolution", async () => {
+    activeClaimsMock = [
+      { id: "claim-1", agentId: "agent-alpha", beneficiaryUserId: "user-alpha" },
+      { id: "claim-2", agentId: "agent-beta", beneficiaryUserId: "user-beta" },
+    ];
+    await run("user", ME, { status: "resolved" });
+    expect(publish).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-zedu",
+        type: "claim.released",
+        actorAgentId: "agent-alpha",
+        bugId: "bug1",
+        payload: expect.objectContaining({
+          claimId: "claim-1",
+          issueId: "bug1",
+          beneficiaryUserId: "user-alpha",
+          reason: "resolved",
+        }),
+      }),
+    );
+    expect(publish).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-zedu",
+        type: "claim.released",
+        actorAgentId: "agent-beta",
+        bugId: "bug1",
+        payload: expect.objectContaining({
+          claimId: "claim-2",
+          issueId: "bug1",
+          beneficiaryUserId: "user-beta",
+          reason: "resolved",
+        }),
+      }),
+    );
+  });
+
+  it("closeBugAction closes issue, records note, and emits issue.updated", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "user" });
+    db.bug.findUnique.mockResolvedValue(issue(ME));
+    const result = await closeBugAction("bug1", "Completed in PR");
+    expect(result).toEqual({ ok: true });
+    expect(written).toEqual(expect.objectContaining({ status: "closed" }));
+    expect(publishWebEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        bugId: "bug1",
+        type: "issue.updated",
+        payload: expect.objectContaining({ values: expect.objectContaining({ status: "closed" }) }),
+      }),
+    );
+  });
+
+  it("reopenBugAction sets status to open and emits issue.updated", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "user" });
+    db.bug.findUnique.mockResolvedValue(issue(ME, { status: "closed" }));
+    const result = await reopenBugAction("bug1");
+    expect(result).toEqual({ ok: true });
+    expect(written).toEqual(expect.objectContaining({ status: "open" }));
+    expect(publishWebEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        bugId: "bug1",
+        type: "issue.updated",
+        payload: expect.objectContaining({ values: expect.objectContaining({ status: "open" }) }),
+      }),
+    );
+  });
+
+  it("assignBugAction assigns issue and emits issue.updated", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "admin" });
+    db.bug.findUnique.mockResolvedValue(issue(null));
+    const result = await assignBugAction("bug1", SOMEONE);
+    expect(result).toEqual({ ok: true });
+    expect(written).toEqual(expect.objectContaining({ assigneeId: SOMEONE }));
+    expect(publishWebEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        bugId: "bug1",
+        type: "issue.updated",
+        payload: expect.objectContaining({ values: expect.objectContaining({ assigneeId: SOMEONE }) }),
       }),
     );
   });
