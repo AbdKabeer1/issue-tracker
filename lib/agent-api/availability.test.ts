@@ -10,13 +10,18 @@ const db = vi.hoisted(() => ({
   membership: { findMany: vi.fn() },
   bug: { updateMany: vi.fn(), findFirst: vi.fn() }, $queryRaw: vi.fn(), $transaction: vi.fn(),
 }));
-const mocks = vi.hoisted(() => ({ admin: vi.fn(), budget: vi.fn(), demote: vi.fn(), notifyLater: vi.fn() }));
+const mocks = vi.hoisted(() => ({ admin: vi.fn(), budget: vi.fn(), demote: vi.fn(), notifyLater: vi.fn(), workflow: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
+vi.mock("@/lib/workflow", async (original) => ({
+  ...await original<typeof import("@/lib/workflow")>(),
+  workflowFor: mocks.workflow,
+}));
 vi.mock("@/lib/auth-helpers", () => ({ requireSuperAdmin: mocks.admin }));
 vi.mock("@/lib/agents/promotion", () => ({ demoteFromSilence: mocks.demote }));
 vi.mock("@/lib/agents/rate-budget", async (original) => ({ ...await original<typeof import("@/lib/agents/rate-budget")>(), consumeAgentBudget: mocks.budget }));
 vi.mock("@/lib/notify", () => ({ notifyLater: mocks.notifyLater }));
 import { releaseStaleClaims, sweepStaleClaims } from "./availability";
+import { DEFAULT_PROJECT_WORKFLOW } from "@/lib/workflow-config";
 import { POST } from "@/app/api/v1/issues/[id]/heartbeat/route";
 
 const now = new Date("2026-10-19T12:00:00Z");
@@ -49,9 +54,31 @@ beforeEach(() => {
   db.webhookSubscription.findMany.mockResolvedValue([]);
   mocks.admin.mockResolvedValue({ id: "admin" });
   mocks.budget.mockResolvedValue({ allowed: true });
+  mocks.workflow.mockResolvedValue(DEFAULT_PROJECT_WORKFLOW);
   mocks.demote.mockResolvedValue({ ok: true, changed: false, releases: 1 });
 });
 afterEach(() => vi.useRealTimers());
+
+describe("project heartbeat window (#595)", () => {
+  it("uses the project's one-minute silence window", async () => {
+    mocks.workflow.mockResolvedValue({ ...DEFAULT_PROJECT_WORKFLOW, heartbeatMinutes: 1 });
+    const minuteCutoff = new Date(now.getTime() - 60_000);
+
+    await releaseStaleClaims("project");
+
+    expect(db.issueClaim.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            { lastHeartbeatAt: { lt: minuteCutoff } },
+            { lastHeartbeatAt: null, claimedAt: { lt: minuteCutoff } },
+            { deliverBy: { lt: now }, bug: { pullRequestUrl: null } },
+          ],
+        }),
+      }),
+    );
+  });
+});
 
 describe("claim heartbeats", () => {
   it("advances the claiming agent's timestamp under the scoped issue lock", async () => {

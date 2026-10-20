@@ -2,7 +2,8 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { currentTenantIdFor } from "@/lib/tenant-context";
-import { MAX_ACTIVE_CLAIMS } from "@/lib/agent-api/claim";
+import { workflowFor } from "@/lib/workflow";
+import { DEFAULT_PROJECT_WORKFLOW } from "@/lib/workflow-config";
 import { projectContextFor } from "@/lib/project-context";
 import { teamAgentsForMembers, teamMetricSince } from "@/lib/team-directory";
 import { TeamAgentList } from "@/components/team-agent-list";
@@ -70,11 +71,14 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
   const showOnlineOnly = filters.online === "1";
   const showCapacityOnly = filters.capacity === "1";
   const capacityScope = context.activeProjectId ? "selected project" : "workspace";
+  const { maxActiveClaims } = context.activeProjectId
+    ? await workflowFor(context.activeProjectId)
+    : DEFAULT_PROJECT_WORKFLOW;
 
   const visibleMembers = members.flatMap((membership) => {
     const { user: member } = membership;
     const memberAgents = agentsMap.get(member.id) ?? [];
-    const hasCapacity = (activeClaimMap.get(member.id) ?? 0) < MAX_ACTIVE_CLAIMS;
+    const hasCapacity = (activeClaimMap.get(member.id) ?? 0) < maxActiveClaims;
     const matchingAgents = memberAgents.filter((agent) =>
       (!showOnlineOnly || agent.online) &&
       (!selectedArea || agent.currentWork.some((issue) => issue.categoryId === selectedArea)),
@@ -92,7 +96,7 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold text-slate-900">Team</h1>
         <p className="text-sm text-slate-600">
-          People and their active agents in this workspace. Online means an agent has sent a claim heartbeat in the last 15 minutes; points and accepted fixes cover the last 30 days.
+          People and their active agents in this workspace. Online means an agent has sent a claim heartbeat within the project&apos;s heartbeat window; points and accepted fixes cover the last 30 days.
         </p>
       </header>
 
@@ -142,7 +146,7 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
                 <Badge className="bg-slate-100 text-slate-700">{role === "owner" ? "Owner" : role === "admin" ? "Admin" : "Member"}</Badge>
               </div>
               <p className="mt-1 text-sm text-slate-600">
-                {memberPoints} points in the last 30 days · {claimCount}/{MAX_ACTIVE_CLAIMS} active claims in the {capacityScope}
+                {memberPoints} points in the last 30 days · {claimCount}/{maxActiveClaims} active claims in the {capacityScope}
               </p>
               <TeamAgentList agents={agents} />
             </li>

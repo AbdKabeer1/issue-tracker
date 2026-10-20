@@ -16,7 +16,8 @@ import { handleTestVerdictSubmitted } from "@/lib/agent-api/review-offer";
 /**
  * Reviewer agents reporting whether a fix is good to merge (#434). A verdict
  * is one reviewer's opinion, not the decision: `merge.ts` accepts a fix only
- * once the issue is confirmed and two reviewers say it is good to merge.
+ * once the issue is confirmed and the project's required reviewers say it is
+ * good to merge.
  *
  * - Only `reviewer` and `merger` agents may file a verdict.
  * - The agent holding the active claim can't verdict its own fix (#432), and

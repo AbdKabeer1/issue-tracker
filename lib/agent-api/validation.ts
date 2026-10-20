@@ -18,6 +18,7 @@ import { offerNext, scheduleOfferExpiry } from "@/lib/agent-api/offer";
 import { notifyClaimOffered } from "@/lib/agent-notifications";
 import { WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
 import { hasBlockingRedesign } from "@/lib/redesigns";
+import { workflowFor } from "@/lib/workflow";
 
 /** Severity order for the reviewer agreement rule (#528). */
 const SEVERITY_RANK: Record<(typeof severities)[number], number> = {
@@ -45,15 +46,14 @@ function severityRank(severity: string | null): number {
  * - One validation per agent, issue and kind.
  * - Accepting kind `real` sets the issue's severity. It is the only agent
  *   path that does, so it is required there.
- * - An issue is confirmed once two independent reviewers, with different
- *   owners, have accepted it as real. When that first happens the reporter
- *   earns their points through `award()` (#428), once.
+ * - An issue is confirmed once the project's required number of independent
+ *   reviewers, with different owners, have accepted it as real. When that
+ *   first happens the reporter earns their points through `award()` (#428),
+ *   once.
  */
 
 export const VALIDATION_KINDS = ["real", "format", "duplicate", "fix"] as const satisfies readonly ValidationKind[];
 export const VALIDATION_VERDICTS = ["accept", "reject"] as const;
-/** How many independent accepts of `real` confirm an issue. */
-export const CONFIRMATIONS_NEEDED = 2;
 export const VALIDATION_NOTES_MAX = 2000;
 
 export const validationBodySchema = z
@@ -177,13 +177,14 @@ async function countedConfirmations(db: Db, bug: LoadedBug): Promise<number> {
   return owners.size;
 }
 
-/** True once two independent reviewers have accepted the issue as real (#434 uses this). */
+/** True once the project's required independent reviewers accepted the issue as real (#434 uses this). */
 export async function isConfirmed(bugId: string, db: Db = prisma): Promise<boolean> {
   const dbDelegates = db as unknown as OptionalDbDelegates;
   if (!dbDelegates.bug?.findUnique) return false;
   const bug = await db.bug.findUnique({ where: { id: bugId }, select: reviewedBugSelect });
   if (!bug) return false;
-  return (await countedConfirmations(db, bug)) >= CONFIRMATIONS_NEEDED;
+  const { confirmationsNeeded } = await workflowFor(bug.projectId, db);
+  return (await countedConfirmations(db, bug)) >= confirmationsNeeded;
 }
 
 /** Duplicates earn the reporter nothing (#422). */
@@ -337,7 +338,8 @@ export async function submitValidation(
       // Two reviewers can confirm at the same moment. Lock the issue so the
       // second transaction sees the first accept and still pays the reporter.
       await tx.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${bug.id} FOR UPDATE`;
-      const wasConfirmed = (await countedConfirmations(tx, bug)) >= CONFIRMATIONS_NEEDED;
+      const { confirmationsNeeded } = await workflowFor(bug.projectId, tx);
+      const wasConfirmed = (await countedConfirmations(tx, bug)) >= confirmationsNeeded;
 
       const validation = await tx.issueValidation.create({
         data: {
@@ -357,7 +359,7 @@ export async function submitValidation(
         await tx.bug.update({ where: { id: bug.id }, data: { severity: setsSeverity! } });
       }
 
-      const confirmed = (await countedConfirmations(tx, bug)) >= CONFIRMATIONS_NEEDED;
+      const confirmed = (await countedConfirmations(tx, bug)) >= confirmationsNeeded;
       const newlyConfirmed = confirmed && !wasConfirmed;
       if (newlyConfirmed && !(await isDuplicate(tx, bug))) {
         // The person the issue is for earns the reporter points (#422), once:

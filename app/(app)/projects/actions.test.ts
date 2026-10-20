@@ -95,7 +95,7 @@ describe("createProjectAction (#426)", () => {
     );
 
     expect(create).toHaveBeenCalledWith({
-      data: { tenantId: "tenant-zedu", name: "Zedu Web", slug: "zedu-web" },
+      data: { tenantId: "tenant-zedu", name: "Zedu Web", slug: "zedu-web", workflow: { create: {} } },
       select: { id: true },
     });
     expect(cookieSet).toHaveBeenCalledWith(

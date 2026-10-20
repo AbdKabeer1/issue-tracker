@@ -6,6 +6,7 @@ import type { AgentContext } from "@/lib/agents/require-agent";
 import { publish } from "@/lib/agent-api/events";
 import { notifyMergeFailed } from "@/lib/agent-notifications";
 import { checkApprovalOpen } from "@/lib/approvals";
+import { workflowFor } from "@/lib/workflow";
 
 /**
  * Merging the linked pull request after the tracker accepts a fix (#452).
@@ -277,7 +278,8 @@ export type MergeFailureReason =
   | "head_moved"
   | "no_permission"
   | "merge_failed"
-  | "waiting_for_human";
+  | "waiting_for_human"
+  | "auto_merge_disabled";
 
 export type MergeResult =
   | { status: 200; merged: true; mergeCommitSha: string; pullRequestUrl: string }
@@ -295,6 +297,7 @@ const mergeBugSelect = {
   id: true,
   title: true,
   tenantId: true,
+  projectId: true,
   pullRequestUrl: true,
   assigneeId: true,
   project: { select: { repoUrl: true, githubInstallationId: true } },
@@ -309,6 +312,7 @@ type LoadedBug = {
   id: string;
   title: string;
   tenantId: string;
+  projectId: string;
   pullRequestUrl: string | null;
   assigneeId: string | null;
   project: { repoUrl: string | null; githubInstallationId: string | null } | null;
@@ -427,6 +431,17 @@ export async function mergeAcceptedFix(
       409,
       "pull_request_changed",
       "This issue's accepted fix is bound to a different pull request — link the accepted one again.",
+    );
+  }
+
+  // Gate 1c (#595): a project can turn automatic GitHub merging off. Tracker
+  // acceptance still records the fix; a person merges the pull request.
+  const workflow = await workflowFor(bug.projectId, db);
+  if (!workflow.autoMerge) {
+    return fail(
+      409,
+      "auto_merge_disabled",
+      "Automatic merging is off for this project; a person must merge the pull request.",
     );
   }
 

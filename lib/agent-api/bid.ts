@@ -6,7 +6,7 @@ import { isTenantAdmin } from "@/lib/agents/membership";
 import { IssueApiError } from "@/lib/agent-api/issues";
 import { isConfirmed } from "@/lib/agent-api/validation";
 import { publish } from "@/lib/agent-api/events";
-import { MAX_ACTIVE_CLAIMS } from "@/lib/agent-api/claim";
+import { workflowFor } from "@/lib/workflow";
 import { isOfferExpired } from "@/lib/agent-api/offer";
 import { assertRedesignOpen } from "@/lib/redesigns";
 import { deliveryDeadline, deliveryWindowMinutes } from "@/lib/claim-deadline";
@@ -59,7 +59,8 @@ export async function placeBid(caller: AgentContext, projectId: string, bugId: s
     const activeClaims = await tx.issueClaim.count({
       where: { beneficiaryUserId: caller.ownerId, status: "active", releasedAt: null, bug: { tenantId: caller.tenantId, projectId } },
     });
-    if (activeClaims >= MAX_ACTIVE_CLAIMS) throw new IssueApiError(409, "This person already has the maximum number of active tasks.");
+    const { maxActiveClaims } = await workflowFor(projectId, tx);
+    if (activeClaims >= maxActiveClaims) throw new IssueApiError(409, "This person already has the maximum number of active tasks.");
 
     const existing = await tx.issueBid.findUnique({ where: { bugId_agentId: { bugId, agentId: caller.agentId } } });
     if (existing?.awardedAt) throw new IssueApiError(409, "This bid was already awarded.");
@@ -165,7 +166,7 @@ export async function awardBid(actor: Actor, bidId: string) {
         where: { id: bidId },
         include: {
           beneficiary: { select: { name: true } },
-          bug: { select: { id: true, status: true, assigneeId: true, tenantId: true, projectId: true, reporterId: true, severity: true, project: { select: { deliveryWindowMinutes: true } }, assignee: { select: { name: true } } } },
+          bug: { select: { id: true, status: true, assigneeId: true, tenantId: true, projectId: true, reporterId: true, severity: true, assignee: { select: { name: true } } } },
         },
       });
       if (!fresh || fresh.withdrawnAt || fresh.awardedAt) throw new IssueApiError(409, "This bid is no longer open.");
@@ -197,7 +198,8 @@ export async function awardBid(actor: Actor, bidId: string) {
       const activeClaims = await tx.issueClaim.count({
         where: { beneficiaryUserId: fresh.beneficiaryUserId, status: "active", releasedAt: null, bug: { tenantId: fresh.bug.tenantId, projectId: fresh.bug.projectId } },
       });
-      if (activeClaims >= MAX_ACTIVE_CLAIMS) throw new IssueApiError(409, "This person already has the maximum number of active tasks.");
+      const workflow = await workflowFor(fresh.bug.projectId, tx);
+      if (activeClaims >= workflow.maxActiveClaims) throw new IssueApiError(409, "This person already has the maximum number of active tasks.");
 
       const claim = await tx.issueClaim.create({
         data: {
@@ -207,7 +209,7 @@ export async function awardBid(actor: Actor, bidId: string) {
           status: "active",
           claimedAt: now,
           lastHeartbeatAt: now,
-          deliverBy: deliveryDeadline(now, deliveryWindowMinutes(fresh.bug.severity, fresh.bug.project?.deliveryWindowMinutes)),
+          deliverBy: deliveryDeadline(now, deliveryWindowMinutes(fresh.bug.severity, workflow.deliveryMinutes)),
         },
       });
       const marked = await tx.issueBid.updateMany({

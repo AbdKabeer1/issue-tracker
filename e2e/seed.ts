@@ -42,7 +42,7 @@ async function main() {
     data: { id: "tenant_zedu", slug: "zedu", name: "Ziki" },
   });
   await prisma.project.create({
-    data: { id: "project_zedu", tenantId: tenant.id, slug: "zedu", name: "Ziki" },
+    data: { id: "project_zedu", tenantId: tenant.id, slug: "zedu", name: "Ziki", workflow: { create: {} } },
   });
 
   for (const name of ["Desktop", "Web", "Mobile"]) {

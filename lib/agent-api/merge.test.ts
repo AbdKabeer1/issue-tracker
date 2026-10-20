@@ -27,6 +27,7 @@ const db = vi.hoisted(() => ({
   webhookSubscription: { findMany: vi.fn() },
   webhookDelivery: { createMany: vi.fn() },
   issueClaim: { updateMany: vi.fn() },
+  projectWorkflow: { findUnique: vi.fn() },
   $transaction: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
@@ -36,6 +37,7 @@ vi.mock("@/lib/redesigns", () => ({ assertRedesignOpen: redesign.assertRedesignO
 
 import { IssueApiError } from "@/lib/agent-api/issues";
 import { acceptFix } from "./merge";
+import { resetWorkflowCache } from "@/lib/workflow";
 
 const PR = "https://github.com/Zedu-Endor/issue-tracker/pull/42";
 
@@ -95,6 +97,7 @@ function verdict(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetWorkflowCache();
   state.verdicts = [];
   state.confirmations = [];
   db.$transaction.mockImplementation((fn: (tx: unknown) => unknown) => fn(db));
@@ -113,6 +116,7 @@ beforeEach(() => {
     ),
   );
   db.issueValidation.findMany.mockImplementation(async () => state.confirmations);
+  db.projectWorkflow.findUnique.mockResolvedValue(null);
 });
 
 describe("acceptFix: who may merge (#434)", () => {
@@ -182,6 +186,19 @@ describe("acceptFix: the merger must be independent too (#493)", () => {
     confirmWith("rob", "sam");
     verdict("r1", "rob");
     verdict("r2", "sam");
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({ status: 200, accepted: true });
+  });
+
+  it("requires the project's third verdict when configured (#595)", async () => {
+    db.projectWorkflow.findUnique.mockResolvedValue({ verdictsNeeded: 3 });
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({
+      status: 409,
+      missing: "verdicts",
+    });
+    verdict("r3", "kim");
     expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({ status: 200, accepted: true });
   });
 });

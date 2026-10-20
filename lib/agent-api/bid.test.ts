@@ -6,6 +6,7 @@ const db = vi.hoisted(() => {
     bugActivity: { createMany: vi.fn() },
     issueBid: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     issueClaim: { findFirst: vi.fn(), count: vi.fn(), create: vi.fn() },
+    projectWorkflow: { findUnique: vi.fn() },
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   };
@@ -22,6 +23,7 @@ vi.mock("@/lib/agents/membership", () => ({ isTenantAdmin: vi.fn(async () => fal
 import { isConfirmed } from "@/lib/agent-api/validation";
 import { publish } from "@/lib/agent-api/events";
 import { awardBid, listBids, placeBid, withdrawBid } from "./bid";
+import { resetWorkflowCache } from "@/lib/workflow";
 
 const caller = {
   agentId: "agent1",
@@ -47,11 +49,13 @@ const openBug = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetWorkflowCache();
   db.$transaction.mockImplementation((fn: (tx: typeof db) => unknown) => fn(db));
   db.$queryRaw.mockResolvedValue([{ id: "issue1" }]);
   db.bug.findFirst.mockResolvedValue({ id: "issue1", projectId: "project", status: "open" });
   db.issueClaim.findFirst.mockResolvedValue(null);
   db.issueClaim.count.mockResolvedValue(0);
+  db.projectWorkflow.findUnique.mockResolvedValue(null);
   db.issueBid.updateMany.mockResolvedValue({ count: 1 });
   db.issueBid.findUnique.mockResolvedValue(null);
   db.issueBid.create.mockResolvedValue({ id: "bid1", beneficiaryUserId: "ada" });
@@ -76,6 +80,16 @@ describe("placeBid", () => {
   it("returns the open bid instead of creating another", async () => {
     db.issueBid.findUnique.mockResolvedValue({ id: "bid1", awardedAt: null, withdrawnAt: null });
     await expect(placeBid(caller, "project", "issue1")).resolves.toMatchObject({ id: "bid1" });
+    expect(db.issueBid.create).not.toHaveBeenCalled();
+  });
+
+  it("uses the project's active-claim cap (#595)", async () => {
+    db.projectWorkflow.findUnique.mockResolvedValue({ maxActiveClaims: 1 });
+    db.issueClaim.count.mockResolvedValue(1);
+    await expect(placeBid(caller, "project", "issue1")).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining("maximum number of active tasks"),
+    });
     expect(db.issueBid.create).not.toHaveBeenCalled();
   });
 

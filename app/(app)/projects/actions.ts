@@ -192,6 +192,7 @@ export async function createProjectAction(
         name: parsed.data.name,
         slug,
         rewardConfig: rewardConfig ?? undefined,
+        workflow: { create: {} },
       },
       select: { id: true },
     });

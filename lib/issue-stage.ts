@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { CONFIRMATIONS_NEEDED } from "@/lib/agent-api/validation";
 import { reviewerConflict, type ReviewedBug } from "@/lib/agents/independence";
+import { workflowFor } from "@/lib/workflow";
+import { DEFAULT_PROJECT_WORKFLOW } from "@/lib/workflow-config";
 import { WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
 
 /** Where an open issue sits before someone starts the work. Not a status. */
@@ -22,8 +23,8 @@ export function parseIssueStageView(raw: string | null | undefined): IssueStageV
 /**
  * Reported: open, and not yet confirmed. That includes issues a person filed
  * and issues an agent filed.
- * Confirmed: two independent reviewers accepted it, and it has fewer than
- * three upvotes.
+ * Confirmed: the project's required independent reviewers accepted it, and it
+ * has fewer than three upvotes.
  * Ready: confirmed and at least three upvotes. Same gate as taking the work.
  * Anything no longer open has no intake tag.
  */
@@ -57,8 +58,11 @@ export function confirmationCount(input: {
   return owners.size;
 }
 
-export function isConfirmedCount(count: number): boolean {
-  return count >= CONFIRMATIONS_NEEDED;
+export function isConfirmedCount(
+  count: number,
+  needed = DEFAULT_PROJECT_WORKFLOW.confirmationsNeeded,
+): boolean {
+  return count >= needed;
 }
 
 /**
@@ -73,6 +77,7 @@ export async function openIssueStages(
     where: { ...where, status: "open", isDeleted: false },
     select: {
       id: true,
+      projectId: true,
       status: true,
       voteCount: true,
       beneficiaryUserId: true,
@@ -89,6 +94,10 @@ export async function openIssueStages(
   if (bugs.length === 0) return stages;
 
   const ids = bugs.map((bug) => bug.id);
+  const projectIds = [...new Set(bugs.map((bug) => bug.projectId))];
+  const workflows = new Map(
+    await Promise.all(projectIds.map(async (projectId) => [projectId, await workflowFor(projectId, db)] as const)),
+  );
   const [revisions, validations, undone] = await Promise.all([
     db.bugRevision.findMany({
       where: { bugId: { in: ids } },
@@ -150,6 +159,7 @@ export async function openIssueStages(
         undoneIds: undoneByBug.get(bug.id) ?? new Set(),
         bug: reviewed,
       }),
+      workflows.get(bug.projectId)?.confirmationsNeeded ?? DEFAULT_PROJECT_WORKFLOW.confirmationsNeeded,
     );
     const stage = issueStage({ status: bug.status, voteCount: bug.voteCount, confirmed });
     if (stage) stages.set(bug.id, stage);

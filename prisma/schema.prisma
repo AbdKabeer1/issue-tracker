@@ -628,8 +628,8 @@ model Project {
   /// Set when a tenant owner archives the project (#573). Archived projects
   /// are hidden from the switcher and cannot be selected.
   archivedAt           DateTime?
-  /// How long an accepted claim has to link a fix before it is released (#593).
-  /// High and critical issues use at least 60 minutes (lib/claim-deadline.ts).
+  /// Deprecated (#595): the delivery window now lives on ProjectWorkflow.
+  /// Kept for rollback safety; application code no longer reads or writes it.
   deliveryWindowMinutes Int              @default(15)
   /// Custom points and rewards configuration for this project (#741).
   rewardConfig         Json?
@@ -648,8 +648,26 @@ model Project {
   agentEvents          AgentEvent[]
   approvalRules        ApprovalRule[]
   goals                Goal[]
+  workflow             ProjectWorkflow?
 
   @@unique([tenantId, slug])
+}
+
+/// The per-project workflow dials (#595). One row per project; a missing row
+/// falls back to the defaults in lib/workflow-config.ts.
+model ProjectWorkflow {
+  projectId              String   @id
+  confirmationsNeeded    Int      @default(2)
+  verdictsNeeded         Int      @default(2)
+  offerWindowSeconds     Int      @default(60)
+  heartbeatMinutes       Int      @default(15)
+  deliveryMinutes        Int      @default(15)
+  maxActiveClaims        Int      @default(2)
+  volunteerWindowSeconds Int      @default(120)
+  autoMerge              Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  project                Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 /// A project-owned work area, such as frontend or backend (#609).
