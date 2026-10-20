@@ -572,6 +572,7 @@ model Project {
   testMissions         TestMission[]
   auditEvents          ProjectAuditEvent[]
   jobs                 Job[]
+  agentEvents          AgentEvent[]
   approvalRules        ApprovalRule[]
 
   @@unique([tenantId, slug])
@@ -1221,6 +1222,8 @@ model AgentEvent {
   payload      Json
   actorAgentId String?
   bugId        String?
+  /// The issue's project, filled from `bugId` by a trigger so `?projectId=` can filter (#602).
+  projectId    String?
   createdAt    DateTime          @default(now())
   /// The writing transaction's id (#739). Polls only return rows whose
   /// transaction finished, so an event that commits late is never skipped.
@@ -1228,11 +1231,14 @@ model AgentEvent {
   tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   actorAgent   Agent?            @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
   bug          Bug?              @relation(fields: [bugId], references: [id], onDelete: SetNull)
+  project      Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
   deliveries   WebhookDelivery[]
   inboxItems   AgentInboxItem[]
 
   @@index([tenantId, createdAt, id])
   @@index([tenantId, txid, id])
+  @@index([tenantId, projectId, txid, id])
+  @@index([tenantId, bugId, txid, id])
   @@index([createdAt])
 }
 
