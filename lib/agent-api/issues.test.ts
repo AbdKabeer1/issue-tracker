@@ -88,7 +88,7 @@ describe("agent issue API authentication", () => {
     expect((await comment(request("POST", { body: "hello" }), context)).status).toBe(403);
     expect(db.bug.create).not.toHaveBeenCalled();
     expect(db.comment.create).not.toHaveBeenCalled();
-    expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "issues.create", payload: { status: 403 } }) }));
+    expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "issues.create", payload: { status: 403, request: true } }) }));
   });
 
   it("uses the shared read/write budgets and preserves Retry-After", async () => {
@@ -232,7 +232,7 @@ describe("agent comments", () => {
     }));
     expect(log).toHaveBeenCalledWith("[agent-api] request audit failed", {
       tenantId: "tenant-a", agentId: "agent-a", action: "comments.create",
-      target: issue.id, payload: { status: 201 },
+      target: issue.id, payload: { status: 201, request: true },
     }, error);
   });
 
@@ -245,7 +245,7 @@ describe("agent comments", () => {
     });
     await expect(comment(request("POST", { body: "A helpful comment" }), context)).rejects.toBe(error);
     expect(log).toHaveBeenCalledWith("[agent-api] request audit failed", expect.objectContaining({
-      payload: { status: 500 },
+      payload: { status: 500, request: true },
     }), expect.any(Error));
   });
 
