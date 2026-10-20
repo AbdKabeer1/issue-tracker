@@ -81,3 +81,9 @@ curl -fsS -X POST https://ziki.dev/api/v1/webhooks/dispatch \
 
 Run it at least once a minute; retries and backoff live in `deliver.ts`, and
 repeated failures auto-disable the subscription.
+
+Each caller (the `POST` scheduler and the `GET` cron) is limited to 12 runs a
+minute (#679), enough for a run every 10 seconds plus a couple of extra
+batches. Beyond that the route answers `429` with `Retry-After` and dispatches
+nothing. Set `WEBHOOK_DISPATCH_MAX_PER_MINUTE` (1 to 120) if you need more
+batches. Calls with the wrong secret aren't counted.

@@ -1661,6 +1661,8 @@ Create an opt-in webhook subscription. The URL must be HTTPS and pass SSRF check
 
 Dispatch due webhook deliveries. This route is intended for the configured scheduler.
 
+**Rate limit:** each caller (the `POST` scheduler and the `GET` Vercel Cron) gets 12 runs a minute by default; set `WEBHOOK_DISPATCH_MAX_PER_MINUTE` (1 to 120) to change it. Past that the route answers `429` with `Retry-After` and `{"error": "...", "retryAfterSeconds": 5}`, and dispatches nothing; queued deliveries go out on a later run. Calls with the wrong secret don't count.
+
 **Response (200):**
 ```json
 {
