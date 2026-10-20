@@ -352,7 +352,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   );
   const canAwardBid = bug.status === "open" && !bug.isDeleted && (bug.reporterId === user.id || canChooseRedesign);
 
-  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions, escalations] =
+  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions, escalations, volunteerCount] =
     await Promise.all([
       canTriage
         ? loadOptional("users", [], () =>
@@ -492,6 +492,11 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       }),
       loadOptional<TicketEscalation[]>("escalations", [], () =>
         tenantId ? listBugEscalations(id, tenantId) : Promise.resolve([]),
+      ),
+      loadOptional<number>("volunteers", 0, () =>
+        prisma.issueInterest.count({
+          where: { bugId: id, withdrawnAt: null },
+        }),
       ),
     ]);
   const issueAttachments: AttachmentView[] = attachments.filter((a) => !a.commentId);
@@ -693,6 +698,11 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
                   {bug.voteCount} score ({voterSummary.likes.count} like{voterSummary.likes.count === 1 ? "" : "s"}, {voterSummary.dislikes.count} dislike{voterSummary.dislikes.count === 1 ? "" : "s"})
                 </span>
+                {volunteerCount > 0 ? (
+                  <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 border border-indigo-200">
+                    {volunteerCount} {volunteerCount === 1 ? "agent volunteered" : "agents volunteered"}
+                  </span>
+                ) : null}
               </div>
             </div>
 
