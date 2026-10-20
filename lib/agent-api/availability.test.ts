@@ -131,9 +131,62 @@ describe("stale claim release", () => {
     db.issueClaim.findFirst.mockResolvedValueOnce({ ...claim, lastHeartbeatAt: null, claimedAt: null, createdAt: stale });
     expect(await releaseStaleClaims("project")).toEqual({ released: 0 });
   });
+  it("releases an undelivered claim past deliverBy even while the agent heartbeats (#593)", async () => {
+    db.membership.findMany.mockResolvedValue([{ userId: "next-owner", user: { agents: [{ id: "agent-next" }] } }]);
+    db.issueClaim.findFirst.mockResolvedValueOnce({
+      ...claim,
+      lastHeartbeatAt: now,
+      deliverBy: new Date(now.getTime() - 1),
+      bug: { pullRequestUrl: null },
+    });
+    expect(await releaseStaleClaims("project")).toEqual({ released: 1 });
+    // The reopened issue is offered to someone else, never straight back.
+    expect(db.issueClaim.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ bugId: "issue", beneficiaryUserId: "next-owner", status: "offered" }),
+    }));
+    expect(db.agentEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ type: "claim.offered" }) }));
+    expect(db.issueClaim.update).toHaveBeenCalledWith({
+      where: { id: "claim" },
+      data: { status: "released", releasedAt: now, releaseReason: "deadline" },
+    });
+    expect(db.agentEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      type: "claim.released",
+      payload: expect.objectContaining({ reason: "deadline", claimId: "claim" }),
+    }) }));
+    expect(db.agentAuditEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      action: "claim.released",
+      payload: { claimId: "claim", reason: "deadline", projectId: "project" },
+    }) });
+    expect(mocks.demote).toHaveBeenCalledWith("agent", db, now);
+  });
+
+  it("counts the deadline boundary as overdue but leaves one millisecond after it alone", async () => {
+    db.issueClaim.findFirst.mockResolvedValueOnce({
+      ...claim, lastHeartbeatAt: now, deliverBy: now, bug: { pullRequestUrl: null },
+    });
+    expect(await releaseStaleClaims("project")).toEqual({ released: 1 });
+    db.issueClaim.update.mockClear();
+    db.issueClaim.findFirst.mockResolvedValueOnce({
+      ...claim, lastHeartbeatAt: now, deliverBy: new Date(now.getTime() + 1), bug: { pullRequestUrl: null },
+    });
+    expect(await releaseStaleClaims("project")).toEqual({ released: 0 });
+    expect(db.issueClaim.update).not.toHaveBeenCalled();
+  });
+
+  it("keeps an overdue claim whose fix is already linked", async () => {
+    db.issueClaim.findFirst.mockResolvedValueOnce({
+      ...claim,
+      lastHeartbeatAt: now,
+      deliverBy: new Date(now.getTime() - 1),
+      bug: { pullRequestUrl: "https://github.com/o/r/pull/1" },
+    });
+    expect(await releaseStaleClaims("project")).toEqual({ released: 0 });
+    expect(db.issueClaim.update).not.toHaveBeenCalled();
+  });
+
   it("limits candidates to stale active claims in the project, excluding offers", async () => {
     await releaseStaleClaims("project");
-    expect(db.issueClaim.findMany).toHaveBeenCalledWith({ where: { status: "active", releasedAt: null, bug: { projectId: "project", tenantId: "tenant", isDeleted: false, status: "in_progress" }, OR: [{ lastHeartbeatAt: { lt: cutoff } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff } }] }, select: { id: true, bugId: true } });
+    expect(db.issueClaim.findMany).toHaveBeenCalledWith({ where: { status: "active", releasedAt: null, bug: { projectId: "project", tenantId: "tenant", isDeleted: false, status: "in_progress" }, OR: [{ lastHeartbeatAt: { lt: cutoff } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff } }, { deliverBy: { lt: now }, bug: { pullRequestUrl: null } }] }, select: { id: true, bugId: true } });
     expect(db.issueClaim.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         bug: { projectId: "project", tenantId: "tenant", isDeleted: false, status: "in_progress" },
@@ -184,8 +237,8 @@ describe("scheduled stale-claim sweep (#524)", () => {
     const sweeps = db.agentAuditEvent.create.mock.calls.filter(([call]) => call.data.action === "claim.released");
     for (const [call] of sweeps) expect(call.data.actorUserId).toBeNull();
     expect(db.issueClaim.findMany).toHaveBeenCalledWith({ where: { status: "active", releasedAt: null,
-      bug: { isDeleted: false },
-      OR: [{ lastHeartbeatAt: { lt: cutoff } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff } }] },
+      bug: { isDeleted: false, status: "in_progress" },
+      OR: [{ lastHeartbeatAt: { lt: cutoff } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff } }, { deliverBy: { lt: now }, bug: { pullRequestUrl: null } }] },
       orderBy: { createdAt: "asc" }, take: 50,
       select: { id: true, bugId: true, bug: { select: { tenantId: true, projectId: true } } } });
   });

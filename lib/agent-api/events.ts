@@ -39,6 +39,7 @@ export function nextPollDelayMs(attempt: number, maxMs = EVENT_MAX_POLL_INTERVAL
  */
 export const AGENT_EVENT_TYPES = [
   "claim.accepted",
+  "claim.extended",
   "claim.offered",
   "claim.released",
   "comment.created",

@@ -86,6 +86,26 @@ describe("IssueAgentActivity (#448)", () => {
     expect(screen.getByText(/marked this issue resolved\.$/)).toBeInTheDocument();
   });
 
+  it("shows the delivery countdown and when the one extension was used (#593)", () => {
+    const deliverBy = new Date(Date.now() + 90 * 60_000).toISOString();
+    const decisions: AgentDecision[] = [
+      {
+        id: "c1",
+        at: "2026-01-01T12:00:00.000Z",
+        kind: "claimed",
+        agentName: "fixer-agent",
+        personName: "Bob",
+        deliverBy,
+        extendedAt: "2026-01-01T12:10:00.000Z",
+      },
+    ];
+
+    render(<IssueAgentActivity decisions={decisions} />);
+
+    expect(screen.getByText(/Delivery due in 1h 30m/)).toBeInTheDocument();
+    expect(screen.getByText(/extension used/)).toBeInTheDocument();
+  });
+
   it("lists the decisions in chronological order regardless of input order", () => {
     const decisions: AgentDecision[] = [
       {

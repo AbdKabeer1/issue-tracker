@@ -9,6 +9,7 @@ import { publish } from "@/lib/agent-api/events";
 import { MAX_ACTIVE_CLAIMS } from "@/lib/agent-api/claim";
 import { isOfferExpired } from "@/lib/agent-api/offer";
 import { assertRedesignOpen } from "@/lib/redesigns";
+import { deliveryDeadline, deliveryWindowMinutes } from "@/lib/claim-deadline";
 import { assigneeChangedSummary, statusChangedSummary } from "@/lib/activity-log";
 import { ensureWatching } from "@/lib/watch";
 import type { AppRole } from "@/lib/roles";
@@ -157,7 +158,7 @@ export async function awardBid(actor: Actor, bidId: string) {
       where: { id: bidId },
       include: {
         beneficiary: { select: { name: true } },
-        bug: { select: { id: true, status: true, assigneeId: true, tenantId: true, projectId: true, reporterId: true, assignee: { select: { name: true } } } },
+        bug: { select: { id: true, status: true, assigneeId: true, tenantId: true, projectId: true, reporterId: true, severity: true, project: { select: { deliveryWindowMinutes: true } }, assignee: { select: { name: true } } } },
       },
     });
     if (!fresh || fresh.withdrawnAt || fresh.awardedAt) throw new IssueApiError(409, "This bid is no longer open.");
@@ -193,6 +194,7 @@ export async function awardBid(actor: Actor, bidId: string) {
         status: "active",
         claimedAt: now,
         lastHeartbeatAt: now,
+        deliverBy: deliveryDeadline(now, deliveryWindowMinutes(fresh.bug.severity, fresh.bug.project?.deliveryWindowMinutes)),
       },
     });
     const marked = await tx.issueBid.updateMany({

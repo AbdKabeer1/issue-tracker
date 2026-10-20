@@ -512,6 +512,9 @@ model Project {
   stagingUrl           String?
   /// GitHub App installation used to merge accepted fixes (#452). Never a token.
   githubInstallationId String?
+  /// How long an accepted claim has to link a fix before it is released (#593).
+  /// High and critical issues use at least 60 minutes (lib/claim-deadline.ts).
+  deliveryWindowMinutes Int              @default(15)
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   tenant               Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -708,9 +711,16 @@ model IssueClaim {
   offeredAt         DateTime?
   claimedAt         DateTime?
   lastHeartbeatAt   DateTime?
+  /// When the fix is due (#593). Set when an offer or bid becomes active.
+  deliverBy         DateTime?
+  /// Set when the agent spends its one extension; a second request is refused.
+  extendedAt        DateTime?
+  /// Why the agent asked for more time, shown in the audit log.
+  extensionReason   String?
   releasedAt        DateTime?
-  /// Why it was released: "silence" (#438), "expired" (#449), "undo" (#450),
-  /// "agent", "resolved", or "closed". #451 counts only silence releases.
+  /// Why it was released: "silence" (#438), "deadline" (#593), "expired"
+  /// (#449), "undo" (#450), "agent", "resolved", or "closed". #451 counts
+  /// silence and deadline releases.
   releaseReason     String?
   createdAt         DateTime    @default(now())
   bug               Bug         @relation(fields: [bugId], references: [id], onDelete: Cascade)
@@ -721,6 +731,7 @@ model IssueClaim {
   @@index([bugId, releasedAt])
   @@index([beneficiaryUserId, releasedAt])
   @@index([agentId])
+  @@index([deliverBy])
   // Enforced by a partial unique index in the migration: one pending offer per issue.
 }
 
