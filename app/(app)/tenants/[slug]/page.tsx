@@ -12,13 +12,18 @@ import { prisma } from "@/lib/prisma";
 import { ZEDU_SLUG } from "@/lib/tenant";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { MEMBERSHIP_ROLE_LABELS, memberTenantBySlug, tenantMembersFrom } from "@/lib/tenants";
-import { revokeInviteAction, revokeShareLinkAction, selectTenantAction } from "../actions";
+import {
+  reviewTenantJoinRequestAction,
+  revokeInviteAction,
+  revokeShareLinkAction,
+  selectTenantAction,
+  updateTenantDiscoveryAction,
+} from "../actions";
 import { CopyLinkButton } from "@/components/copy-link-button";
 import { joinedSummary, listShareLinks, shareLinkStatusLabel } from "@/lib/share-invites";
 import { InviteForm } from "./invite-form";
 import { ShareLinkForm } from "./share-link-form";
-import { pendingTenantJoinRequests, TENANT_DESCRIPTION_MAX } from "@/lib/tenant-join-requests";
-import { reviewTenantJoinRequestAction, updateTenantDiscoveryAction } from "../actions";
+import { pendingTenantJoinRequests, TENANT_DESCRIPTION_MAX, tenantSummary } from "@/lib/tenant-join-requests";
 
 /* Static on purpose: a title built from the slug could name someone else's tenant. */
 export const metadata = { title: "Tenant" };
@@ -29,7 +34,11 @@ function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 
-/** Memberships and users are loaded apart so a missing user does not fail the page. */
+/**
+ * Memberships and users are loaded apart so a missing user does not fail the page.
+ * Owners and admins are taken from this list for the same reason: joining `user`
+ * in one query throws "Field user is required" and the whole page dies.
+ */
 async function loadTenantMembers(tenantId: string) {
   try {
     const rows = await prisma.membership.findMany({
@@ -63,28 +72,15 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
 
   const canManage = canInvite(tenant.role);
   const canChangeRoles = tenant.role === "owner" || isSuperAdmin(user.role);
-  const [currentTenantId, counts, managers, invites, members, shareLinks, joinRequests] = await Promise.all([
+  const [currentTenantId, summary, invites, members, shareLinks, joinRequests] = await Promise.all([
     currentTenantIdFor(user.id),
-    prisma.tenant.findUnique({
-      where: { id: tenant.id },
-      select: {
-        description: true,
-        discoverable: true,
-        _count: { select: { memberships: true, projects: true } },
-      },
-    }),
-    prisma.membership.findMany({
-      where: { tenantId: tenant.id, role: { in: ["owner", "admin"] } },
-      select: { role: true, user: { select: { id: true, name: true } } },
-      // Owners first: the enum is declared owner, admin, member.
-      orderBy: [{ role: "asc" }, { createdAt: "asc" }],
-      take: 20,
-    }),
+    tenantSummary(prisma, tenant.id),
     canManage ? pendingInvites(prisma, tenant.id) : [],
     loadTenantMembers(tenant.id),
     canManage ? listShareLinks(prisma, tenant.id) : [],
     canManage ? pendingTenantJoinRequests(prisma, tenant.id) : [],
   ]);
+  const managers = members.filter((member) => member.role === "owner" || member.role === "admin").slice(0, 20);
   const ownerCount = members.filter((member) => member.role === "owner").length;
   const current = tenant.id === currentTenantId;
 
@@ -102,8 +98,8 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
         </div>
         <p className="text-sm text-slate-600">
           You&apos;re {tenant.role === "member" ? "a" : "an"} {MEMBERSHIP_ROLE_LABELS[tenant.role].toLowerCase()}
-          {counts
-            ? ` · ${plural(counts._count.memberships, "member")} · ${plural(counts._count.projects, "project")}`
+          {summary
+            ? ` · ${plural(summary.memberships, "member")} · ${plural(summary.projects, "project")}`
             : null}
         </p>
         {current ? null : (
@@ -188,11 +184,11 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
             <form action={updateTenantDiscoveryAction} className="mt-4 space-y-4">
               <input type="hidden" name="tenantId" value={tenant.id} />
               <label className="flex items-start gap-3 text-sm text-slate-800">
-                <input type="checkbox" name="discoverable" defaultChecked={counts?.discoverable ?? false} className="mt-0.5 rounded border-slate-300 text-teal-700 focus:ring-teal-600" />
+                <input type="checkbox" name="discoverable" defaultChecked={summary?.discoverable ?? false} className="mt-0.5 rounded border-slate-300 text-teal-700 focus:ring-teal-600" />
                 <span><span className="font-medium">Accept join requests</span><span className="mt-0.5 block text-xs text-slate-500">Show this workspace in discovery to users who do not belong to a workspace.</span></span>
               </label>
               <label className="block text-sm font-medium text-slate-800" htmlFor="workspace-description">Description <span className="font-normal text-slate-500">(optional, up to {TENANT_DESCRIPTION_MAX} characters)</span></label>
-              <textarea id="workspace-description" name="description" maxLength={TENANT_DESCRIPTION_MAX} rows={3} defaultValue={counts?.description ?? ""} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600" />
+              <textarea id="workspace-description" name="description" maxLength={TENANT_DESCRIPTION_MAX} rows={3} defaultValue={summary?.description ?? ""} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600" />
               <Button type="submit">Save discovery settings</Button>
             </form>
           </section>
