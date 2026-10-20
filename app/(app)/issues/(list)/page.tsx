@@ -683,7 +683,7 @@ export default async function BugsPage({
           ) : null}
 
           {isFirstRun ? (
-            <FirstRunWelcome isAdmin={canDelete} />
+            <FirstRunWelcome isAdmin={canDelete} hasTenant={Boolean(tenantId)} />
           ) : bugs.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
               <p className="font-medium text-slate-800">
@@ -1033,8 +1033,34 @@ export default async function BugsPage({
   );
 }
 
-/** What a brand-new tracker shows instead of an empty list (#292). */
-function FirstRunWelcome({ isAdmin }: { isAdmin: boolean }) {
+/** What a brand-new tracker shows instead of an empty list (#292, #444). */
+function FirstRunWelcome({
+  isAdmin,
+  hasTenant = true,
+}: {
+  isAdmin: boolean;
+  hasTenant?: boolean;
+}) {
+  if (!hasTenant) {
+    return (
+      <section className="rounded-xl border border-amber-200 bg-amber-50/70 px-6 py-12 text-center">
+        <h2 className="text-lg font-semibold text-slate-900">No workspace yet</h2>
+        <p className="mx-auto mt-2 max-w-md text-sm text-slate-600">
+          You are not currently a member of any workspace. Join a workspace via an invite from your team,
+          or create your own workspace to start filing issues.
+        </p>
+        <div className="mt-5">
+          <Link
+            href="/tenants"
+            className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+          >
+            Create or join a workspace
+          </Link>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="rounded-xl border border-slate-200 bg-white px-6 py-12 text-center">
       <h2 className="text-lg font-semibold text-slate-900">No issues yet</h2>
