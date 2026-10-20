@@ -88,12 +88,30 @@ export async function setMilestoneClosedAction(id: string, closed: boolean): Pro
   return { ok: true };
 }
 
-/** The issues stay; the database clears their milestone (SET NULL). */
+/** Record removals atomically with the database's non-destructive SET NULL. */
 export async function deleteMilestoneAction(id: string): Promise<MilestoneActionResult> {
-  await requireAdmin();
-  const cleared = await prisma.bug.count({ where: { milestoneId: id } });
+  const admin = await requireAdmin();
+  let cleared: number;
   try {
-    await prisma.milestone.delete({ where: { id } });
+    cleared = await prisma.$transaction(async (tx) => {
+      const milestone = await tx.milestone.findUniqueOrThrow({
+        where: { id },
+        select: { title: true, bugs: { select: { id: true } } },
+      });
+      if (milestone.bugs.length) {
+        await tx.bugActivity.createMany({
+          data: milestone.bugs.map((bug) => ({
+            bugId: bug.id,
+            actorId: admin.id,
+            type: "milestone_changed",
+            summary: `removed this from milestone "${milestone.title}"`,
+            metadata: { field: "milestone", from: milestone.title, to: null },
+          })),
+        });
+      }
+      await tx.milestone.delete({ where: { id } });
+      return milestone.bugs.length;
+    }, { isolationLevel: "Serializable" });
   } catch (err) {
     if (isCode(err, "P2025")) return { error: NOT_FOUND };
     throw err;
