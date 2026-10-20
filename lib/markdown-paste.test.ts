@@ -63,6 +63,22 @@ describe("htmlToMarkdown", () => {
     expect(htmlToMarkdown(html)).toBe("- [x] done\n- [ ] todo");
   });
 
+  it.each(["checked", 'checked=""', 'checked="checked"', "CHECKED", 'checked="false"'])(
+    "preserves the checked HTML boolean attribute %s (#751)",
+    (attribute) => {
+      const html = `<ul><li><input type="checkbox" ${attribute}>Done</li></ul>`;
+      expect(htmlToMarkdown(html)).toBe("- [x] Done");
+      expect(pasteToMarkdown({ text: "Done", html })).toBe("- [x] Done");
+    },
+  );
+
+  it.each(["", "disabled", 'data-note="checked"'])(
+    "keeps a checkbox without checked incomplete (%s)",
+    (attribute) => {
+      expect(htmlToMarkdown(`<ul><li><input type="checkbox" ${attribute}>Todo</li></ul>`)).toBe("- [ ] Todo");
+    },
+  );
+
   it("converts blockquotes and rules", () => {
     expect(htmlToMarkdown("<blockquote><p>quoted</p></blockquote>")).toBe("> quoted");
     expect(htmlToMarkdown("<p>a</p><hr><p>b</p>")).toBe("a\n---\nb");
@@ -98,6 +114,17 @@ describe("pasteToMarkdown", () => {
   it("uses normalized plain text if rich conversion unexpectedly fails (#750)", () => {
     vi.spyOn(String, "fromCodePoint").mockImplementationOnce(() => { throw new Error("Conversion failed"); });
     expect(pasteToMarkdown({ text: "Safe\r\n\tfallback", html: "<b>&#65;</b>" })).toBe("Safe\n  fallback");
+  });
+
+  it("preserves a standalone rich-text link destination (#752)", () => {
+    expect(pasteToMarkdown({
+      text: "Read guide",
+      html: '<a href="https://example.com/guide">Read guide</a>',
+    })).toBe("[Read guide](https://example.com/guide)");
+  });
+
+  it.each(["javascript:alert(1)", "data:text/html,unsafe"])("keeps unsafe link %s out of pasted Markdown", (href) => {
+    expect(pasteToMarkdown({ text: "Read guide", html: `<a href="${href}">Read guide</a>` })).toBe("Read guide");
   });
 
   it("prefers converted markdown for rich sources", () => {

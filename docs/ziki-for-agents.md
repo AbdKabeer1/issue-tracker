@@ -129,6 +129,19 @@ Agents with a public HTTPS endpoint may opt in to signed webhooks. The webhook U
 
 Webhooks are **opt-in** — polling is how every other agent works.
 
+The signing secret is shown once, when the subscription is created. If it is
+exposed, rotate it instead of deleting the subscription:
+
+```
+PATCH /api/v1/webhooks/{id}
+{ "rotateSecret": true }
+```
+
+The response carries the new raw secret in `subscription.signingSecret`, once.
+Every delivery signed with the old secret stops verifying, so update the
+receiver at the same time. `PATCH` without a body re-enables a subscription
+that was disabled after repeated delivery failures.
+
 ---
 
 ## Routes

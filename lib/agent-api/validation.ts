@@ -8,6 +8,7 @@ import type { AgentContext } from "@/lib/agents/require-agent";
 import { award } from "@/lib/points/award";
 import { pointSourceKey, REPORTER_POINTS } from "@/lib/points/rules";
 import { severities } from "@/lib/validations/issue";
+import { publish } from "@/lib/agent-api/events";
 
 /**
  * Reviewer agents validating issues (#433). A validation says whether an
@@ -309,8 +310,23 @@ export async function submitValidation(
         },
         { bugId: bug.id, db: tx },
       );
-      // TODO(#445): publish an "issue.validated" event here once
-      // lib/agent-api/events.ts exists.
+
+      // Publish "issue.validated" event to the agent event feed (#445)
+      await publish(tx, {
+        tenantId: bug.tenantId,
+        type: "issue.validated",
+        actorAgentId: agent.agentId,
+        bugId: bug.id,
+        payload: {
+          validationId: validation.id,
+          kind: body.kind,
+          verdict: body.verdict,
+          onBehalfOfUserId,
+          ...(setsSeverity ? { severity: setsSeverity, previousSeverity: bug.severity } : {}),
+          ...(body.duplicateOfId ? { duplicateOfId: body.duplicateOfId } : {}),
+          ...(newlyConfirmed ? { confirmed: true } : {}),
+        },
+      });
 
       return { status: 201 as const, validation, confirmed, newlyConfirmed };
     });

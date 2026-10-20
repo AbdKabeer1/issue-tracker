@@ -31,6 +31,15 @@ describe("escapeSearchQuery", () => {
   it("handles empty string gracefully", () => {
     expect(escapeSearchQuery("")).toBe("");
   });
+
+  it("keeps the search literal, so a wildcard cannot widen the match", () => {
+    // Prisma compiles `contains` to ILIKE '%' || $1 || '%' and binds the term
+    // unescaped, so the escaping here is the only thing stopping a "%" from
+    // matching every issue. These are the values that reach PostgreSQL.
+    expect(escapeSearchQuery("%")).not.toBe("%");
+    expect(escapeSearchQuery("%")).not.toMatch(/(?<!\\)%/);
+    expect(escapeSearchQuery("_")).not.toMatch(/(?<!\\)_/);
+  });
 });
 
 describe("toSingleQueryParam", () => {
