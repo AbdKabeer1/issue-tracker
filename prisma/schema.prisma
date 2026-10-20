@@ -137,6 +137,14 @@ enum TenantJoinRequestStatus {
   rejected
 }
 
+enum CommentType {
+  comment
+  bid
+  review
+  delivery
+  request_to_merge
+}
+
 model User {
   id                    String               @id @default(cuid())
   name                  String
@@ -386,6 +394,8 @@ model Comment {
   authorId    String
   parentId    String?
   body        String
+  type        CommentType  @default(comment)
+  metadata    Json?
   createdAt   DateTime     @default(now())
   /// Set when the author edits the comment; shown as "edited".
   editedAt    DateTime?
@@ -401,6 +411,7 @@ model Comment {
   attachments Attachment[]
 
   @@index([bugId])
+  @@index([bugId, type])
   @@index([bugId, createdAt])
   @@index([parentId])
 }
