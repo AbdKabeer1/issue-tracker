@@ -296,6 +296,23 @@ async function recordMergeFailure(
 }
 
 /**
+ * The `issue.accepted` audit row that still stands for an issue (#490).
+ *
+ * Acceptance lives on the audit row rather than on `Bug.status`, so this is
+ * the single test for "a merger accepted this fix". A tenant admin undo
+ * (#450) stamps `undoneAt`; an undone acceptance must not gate anything.
+ */
+export async function standingAcceptance(
+  db: PrismaClient,
+  bugId: string,
+): Promise<{ id: string } | null> {
+  return db.agentAuditEvent.findFirst({
+    where: { bugId, action: "issue.accepted", undoneAt: null },
+    select: { id: true },
+  });
+}
+
+/**
  * Merge the accepted fix's linked pull request (#452). See the module comment
  * for the gates. Success records the merge commit sha on the `github.merged`
  * audit event and returns it.
@@ -314,11 +331,9 @@ export async function mergeAcceptedFix(
   if (!bug) return fail(404, "not_found", "No such issue in this agent's tenant.");
 
   // Gate 1: #434 accepted the fix. Gate on its audit row, not on `status`,
-  // which a person can also set by resolving the issue.
-  const accepted = await db.agentAuditEvent.findFirst({
-    where: { bugId: bug.id, action: "issue.accepted" },
-    select: { id: true },
-  });
+  // which a person can also set by resolving the issue. A tenant admin's undo
+  // (#450) stamps `undoneAt` on that row; an undone acceptance gates nothing.
+  const accepted = await standingAcceptance(db, bug.id);
   if (!accepted) {
     return fail(409, "not_accepted", "The fix has not been accepted on the tracker yet.");
   }

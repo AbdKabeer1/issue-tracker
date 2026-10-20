@@ -129,6 +129,34 @@ describe("mergeAcceptedFix gates (#452)", () => {
     expect(notify.notifyMergeFailed).not.toHaveBeenCalled();
   });
 
+  it("refuses to merge an acceptance a tenant admin has undone (#490)", async () => {
+    // A fake table holding only an undone acceptance row: the lookup must
+    // filter on `undoneAt: null` or it comes back and the merge goes ahead.
+    const rows = [{ id: "accepted-1", undoneAt: new Date("2026-10-19T10:00:00Z") }];
+    db.agentAuditEvent.findFirst.mockImplementation(async (args: { where?: { undoneAt?: null } }) =>
+      rows.find((row) => (args?.where?.undoneAt === null ? row.undoneAt === null : true)) ?? null,
+    );
+    const client = fakeClient();
+
+    const result = await mergeAcceptedFix(agent, "bug1", { client });
+
+    expect(result).toMatchObject({ status: 409, reason: "not_accepted" });
+    expect(client.getPullRequest).not.toHaveBeenCalled();
+    expect(client.mergePullRequest).not.toHaveBeenCalled();
+  });
+
+  it("still merges while the acceptance stands, never undone (#490)", async () => {
+    const rows = [{ id: "accepted-1", undoneAt: null }];
+    db.agentAuditEvent.findFirst.mockImplementation(async (args: { where?: { undoneAt?: null } }) =>
+      rows.find((row) => (args?.where?.undoneAt === null ? row.undoneAt === null : true)) ?? null,
+    );
+    const client = fakeClient();
+
+    const result = await mergeAcceptedFix(agent, "bug1", { client });
+
+    expect(result).toMatchObject({ status: 200, merged: true });
+  });
+
   it("rejects a pull request outside the project's repository", async () => {
     db.bug.findFirst.mockResolvedValue(
       bugRow({ pullRequestUrl: "https://github.com/someone/fork/pull/7" }),
