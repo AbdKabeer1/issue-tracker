@@ -149,12 +149,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const image =
             (typeof profile?.picture === "string" && profile.picture) ||
             (typeof user?.image === "string" ? user.image : undefined);
+          // Google's own verified-email claim drives safe linking (#736).
+          const emailVerified =
+            typeof profile?.email_verified === "boolean"
+              ? profile.email_verified
+              : false;
 
           let dbUser: GoogleAccount | null = null;
           let lastError: unknown;
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
-              dbUser = await upsertGoogleUser({ email, name, image });
+              dbUser = await upsertGoogleUser({ email, name, image, emailVerified });
               break;
             } catch (dbError) {
               lastError = dbError;
