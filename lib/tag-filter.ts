@@ -11,6 +11,12 @@ type TagType = { id: string; name: string };
 
 const norm = (value: string) => value.trim().toLowerCase();
 
+const encodeTag = (name: string): string =>
+  norm(name).replace(/%/g, "%25").replace(/,/g, "%2C");
+
+const decodeTag = (segment: string): string =>
+  segment.replace(/%(25|2C)/gi, (_, code: string) => (code === "25" ? "%" : ","));
+
 /** Canonical type names for the `tags` param: known types only, deduped, in URL order. */
 export function parseTagFilter<T extends TagType>(
   raw: string | string[] | null | undefined,
@@ -18,7 +24,7 @@ export function parseTagFilter<T extends TagType>(
 ): T[] {
   const values = (Array.isArray(raw) ? raw : [raw ?? ""])
     .flatMap((v) => v.split(","))
-    .map(norm)
+    .map((segment) => norm(decodeTag(segment)))
     .filter(Boolean);
 
   const byName = new Map(types.map((t) => [norm(t.name), t]));
@@ -42,7 +48,7 @@ export function tagTypeIds<T extends TagType>(selected: readonly T[], types: rea
 
 /** Value for the `tags` param, or "" to remove it. */
 export function serializeTags(names: readonly string[]): string {
-  return names.map(norm).filter(Boolean).join(",");
+  return names.map(encodeTag).filter(Boolean).join(",");
 }
 
 /**

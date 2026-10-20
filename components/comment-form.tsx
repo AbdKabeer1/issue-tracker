@@ -123,6 +123,7 @@ export function CommentForm({
         required
         rows={isReply ? 3 : 4}
         maxLength={2000}
+        disabled={pending}
         value={body}
         onChange={update}
         {...(bodyInvalid ? { "aria-invalid": true, "aria-describedby": errorId } : {})}

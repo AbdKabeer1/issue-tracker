@@ -36,6 +36,32 @@ describe("serializeTags", () => {
   });
 });
 
+describe("serializeTags / parseTagFilter round-trip (#730)", () => {
+  const commaTypes = [
+    { id: "c1", name: "Research, Design" },
+    { id: "c2", name: "Design" },
+    { id: "c3", name: "Fix" },
+  ];
+
+  const ids = (raw: string) => parseTagFilter(raw, commaTypes).map((t) => t.id);
+
+  it("keeps a type name containing a comma as exactly one selection", () => {
+    const serialized = serializeTags(["Research, Design"]);
+    expect(serialized).toBe("research%2C design");
+    expect(ids(serialized)).toEqual(["c1"]);
+  });
+
+  it("round-trips a normal name unchanged", () => {
+    expect(serializeTags(["Design"])).toBe("design");
+    expect(ids(serializeTags(["Design"]))).toEqual(["c2"]);
+  });
+
+  it("round-trips multiple selected types, comma name included", () => {
+    expect(ids(serializeTags(["Research, Design", "Fix"]))).toEqual(["c1", "c3"]);
+    expect(ids(serializeTags(["Design", "Fix"]))).toEqual(["c2", "c3"]);
+  });
+});
+
 describe("suggestTags", () => {
   it("suggests names starting with the query before names containing it", () => {
     expect(suggestTags(types, "f").map((t) => t.name)).toEqual(["Fix", "Feat"]);

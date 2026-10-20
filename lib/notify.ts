@@ -8,7 +8,7 @@ import {
   type PlannedNotification,
 } from "@/lib/notifications";
 import { shouldNotify } from "@/lib/notification-prefs";
-import { watchersFor } from "@/lib/watch";
+import { mutedUsersFor, watchersFor } from "@/lib/watch";
 import { expireUnreadCounts } from "@/lib/lookups";
 
 /**
@@ -17,7 +17,13 @@ import { expireUnreadCounts } from "@/lib/lookups";
  */
 async function withWatchers(event: NotificationEvent): Promise<NotificationEvent> {
   if (event.kind === "comment_added") {
-    return { ...event, recipientIds: await watchersFor(prisma, event.bugId, event.recipientIds) };
+    const [recipientIds, muted] = await Promise.all([
+      watchersFor(prisma, event.bugId, event.recipientIds),
+      // Explicit "Unwatch" also silences reply notices to that person (#738).
+      mutedUsersFor(prisma, event.bugId),
+    ]);
+    const excludeIds = [...new Set([...(event.excludeIds ?? []), ...muted])];
+    return { ...event, recipientIds, ...(excludeIds.length ? { excludeIds } : {}) };
   }
   if (event.kind === "status_changed") {
     const bug = await prisma.bug.findUnique({
