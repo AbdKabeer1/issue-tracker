@@ -27,6 +27,8 @@ type UserOption = { id: string; name: string };
 type ViewerProps = {
   currentUserId?: string;
   currentUserRole?: AppRole | null;
+  /** Owner, admin, or site super admin of this issue's organization. */
+  tenantAdmin?: boolean;
   /** Deleted issues: show comments but no reply, edit, delete or new comment. */
   readOnly?: boolean;
 };
@@ -94,6 +96,7 @@ function CommentItem({
   users,
   currentUserId,
   currentUserRole,
+  tenantAdmin = false,
   attachmentsByComment = {},
   readOnly = false,
 }: {
@@ -116,7 +119,7 @@ function CommentItem({
     !readOnly && comment.depth < MAX_COMMENT_DEPTH && !isDeleted;
   const canEdit = !readOnly && canEditComment(currentUserId, comment);
   const canDelete =
-    !readOnly && canDeleteComment(currentUserId, currentUserRole, comment);
+    !readOnly && canDeleteComment(currentUserId, currentUserRole, comment, tenantAdmin);
 
   const handleDelete = async () => {
     const own = comment.authorId === currentUserId;
@@ -284,6 +287,7 @@ function CommentItem({
               users={users}
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
+              tenantAdmin={tenantAdmin}
               attachmentsByComment={attachmentsByComment}
               readOnly={readOnly}
             />
@@ -302,6 +306,7 @@ export function CommentThread({
   users,
   currentUserId,
   currentUserRole,
+  tenantAdmin = false,
   attachmentsByComment = {},
   readOnly = false,
 }: {
@@ -333,6 +338,7 @@ export function CommentThread({
               users={users}
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
+              tenantAdmin={tenantAdmin}
               attachmentsByComment={attachmentsByComment}
               readOnly={readOnly}
             />

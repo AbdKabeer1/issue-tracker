@@ -18,6 +18,15 @@ vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/notify", () => ({ notifyLater: vi.fn() }));
 vi.mock("@/lib/session-user", () => ({ resolveSessionUserId: vi.fn() }));
 vi.mock("@/lib/auth-helpers", () => ({ requireUser: vi.fn() }));
+vi.mock("@/lib/tenant-access", () => ({
+  currentTenantAccess: vi.fn(async (_id: string, role: string) => ({
+    tenantId: "tenant-zedu",
+    tenantName: "Zedu",
+    tenantSlug: "zedu",
+    membershipRole: role === "admin" || role === "super_admin" ? "admin" : "member",
+    admin: role === "admin" || role === "super_admin",
+  })),
+}));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     bug: { findUnique: vi.fn() },
@@ -31,6 +40,7 @@ vi.mock("@/lib/prisma", () => ({
 
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { notifyLater } from "@/lib/notify";
 import { TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
 import { TICKET_TRIAGE_ERRORS } from "@/lib/ticket-triage";
@@ -233,6 +243,25 @@ describe("milestones in triage (#289)", () => {
     mockUser.mockResolvedValue({ id: ME, name: "Me", role: "admin" });
     db.bug.findUnique.mockResolvedValue(withMilestone("m1", "v2.4"));
     expect(await updateBugAction("bug1", form({ milestoneId: "m1" }))).toEqual({ ok: true });
+    expect(written).toBeNull();
+  });
+});
+
+describe("organization role, not the site-wide admin role (#504)", () => {
+  it("denies triage to a site admin who is only a member of this organization", async () => {
+    vi.mocked(currentTenantAccess).mockResolvedValueOnce({
+      tenantId: "tenant-zedu",
+      tenantName: "Zedu",
+      tenantSlug: "zedu",
+      membershipRole: "member",
+      admin: false,
+    });
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "admin" });
+    db.bug.findUnique.mockResolvedValue(issue(null));
+
+    const result = await updateBugAction("bug1", form({ status: "resolved" }));
+
+    expect(result).toEqual({ error: TICKET_TRIAGE_ERRORS.statusUnauthorized });
     expect(written).toBeNull();
   });
 });

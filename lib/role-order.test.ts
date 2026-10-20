@@ -2,28 +2,42 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 /**
- * /admin/users is paged in the database now, so it can no longer sort roles
- * in memory. It relies on `orderBy: { role: "desc" }` putting super admins
- * first, which is only true while the Role enum is declared in ascending
- * order of privilege — Postgres sorts an enum by its declaration order.
- *
- * Reordering the enum would silently shuffle that page, so pin it here.
+ * /admin/users lists one organization's members and orders them in the
+ * database. `orderBy: { role: "asc" }` puts owners first only while
+ * MembershipRole is declared owner, admin, member — Postgres sorts an enum
+ * by its declaration order. Reordering the enum would silently shuffle that
+ * page, so pin it here.
  */
-describe("Role enum declaration order", () => {
+describe("MembershipRole enum declaration order", () => {
   const schema = readFileSync("prisma/schema.prisma", "utf8");
 
-  it("is least to most privileged", () => {
-    const block = schema.match(/enum Role \{([^}]*)\}/);
-    expect(block, "enum Role not found in schema.prisma").not.toBeNull();
+  it("is most to least privileged, which is what the admin page sorts ascending", () => {
+    const block = schema.match(/enum MembershipRole \{([^}]*)\}/);
+    expect(block, "enum MembershipRole not found in schema.prisma").not.toBeNull();
     const members = block![1]
       .split("\n")
-      .map((line) => line.trim())
+      .map((line) => line.replace(/\/\/.*$/, "").trim())
       .filter(Boolean);
-    expect(members).toEqual(["user", "admin", "super_admin"]);
+    expect(members).toEqual(["owner", "admin", "member"]);
   });
 
   it("is what the admin users page orders by", () => {
     const page = readFileSync("app/(app)/admin/users/page.tsx", "utf8");
-    expect(page).toMatch(/orderBy:\s*\[\{\s*role:\s*"desc"\s*\}/);
+    expect(page).toMatch(/orderBy:\s*\[\{\s*role:\s*"asc"\s*\}/);
+    expect(page).toMatch(/tenantMemberWhere/);
+  });
+});
+
+describe("Role enum declaration order", () => {
+  const schema = readFileSync("prisma/schema.prisma", "utf8");
+
+  it("stays least to most privileged", () => {
+    const block = schema.match(/enum Role \{([^}]*)\}/);
+    expect(block, "enum Role not found in schema.prisma").not.toBeNull();
+    const members = block![1]
+      .split("\n")
+      .map((line) => line.replace(/\/\/.*$/, "").trim())
+      .filter((line) => line && !line.startsWith("///"));
+    expect(members).toEqual(["user", "admin", "super_admin"]);
   });
 });
