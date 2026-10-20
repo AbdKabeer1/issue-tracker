@@ -10,8 +10,10 @@ import { copyText } from "@/lib/clipboard";
 import { AGENT_LEVEL_LABELS, CREATION_LEVELS } from "@/lib/agents/levels";
 import { AGENT_MODEL_MAX, AGENT_NAME_MAX } from "@/lib/agents/registry-limits";
 
+export type AgentProjectChoice = { id: string; name: string };
+
 /** Register an agent; its key is shown here once and never again (#427). */
-export function CreateAgentForm() {
+export function CreateAgentForm({ projects }: { projects: AgentProjectChoice[] }) {
   const toast = useToast();
   const [name, setName] = useState("");
   const [model, setModel] = useState("");
@@ -63,12 +65,20 @@ export function CreateAgentForm() {
         </div>
         <p className="text-xs text-slate-600">
           The agent sends it as <code className="font-mono">Authorization: Bearer &lt;key&gt;</code>. If
-          it&apos;s lost, revoke the agent and register a new one.
+          it&apos;s lost, regenerate the key on this page. The current key stops working immediately.
         </p>
         <Button type="button" variant="secondary" onClick={() => setIssued(null)}>
           I&apos;ve saved it
         </Button>
       </div>
+    );
+  }
+
+  if (projects.length === 0) {
+    return (
+      <p className="mt-3 text-sm text-slate-600">
+        This workspace has no projects yet, so a key can&apos;t be limited to one.
+      </p>
     );
   }
 
@@ -106,17 +116,38 @@ export function CreateAgentForm() {
           />
         </div>
       </div>
-      <div className="space-y-1 sm:max-w-xs">
-        <label htmlFor="agent-level" className="block text-sm font-medium text-slate-800">
-          Starting level
-        </label>
-        <Select id="agent-level" name="level" defaultValue="observer">
-          {CREATION_LEVELS.map((level) => (
-            <option key={level} value={level}>
-              {AGENT_LEVEL_LABELS[level]}
-            </option>
-          ))}
-        </Select>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <label htmlFor="agent-project" className="block text-sm font-medium text-slate-800">
+            Project
+          </label>
+          <Select
+            id="agent-project"
+            name="projectId"
+            defaultValue={projects[0]?.id}
+            required
+            aria-invalid={error?.field === "projectId" || undefined}
+          >
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </Select>
+          <p className="text-xs text-slate-500">The key only works in this project.</p>
+        </div>
+        <div className="space-y-1">
+          <label htmlFor="agent-level" className="block text-sm font-medium text-slate-800">
+            Starting level
+          </label>
+          <Select id="agent-level" name="level" defaultValue="observer">
+            {CREATION_LEVELS.map((level) => (
+              <option key={level} value={level}>
+                {AGENT_LEVEL_LABELS[level]}
+              </option>
+            ))}
+          </Select>
+        </div>
       </div>
       {error ? (
         <p id="agent-form-error" className="text-sm text-red-700" role="alert">

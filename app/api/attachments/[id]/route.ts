@@ -25,12 +25,20 @@ export async function GET(
       size: true,
       data: true,
       bug: { select: { isDeleted: true } },
+      redesignProposal: { select: { tenantId: true } },
     },
   });
 
   const notFound = () => NextResponse.json({ error: "File not found" }, { status: 404 });
   if (!attachment) return notFound();
-  if (!attachment.bug && attachment.uploaderId !== user.id) return notFound();
+  if (!attachment.bug && !attachment.redesignProposal && attachment.uploaderId !== user.id) return notFound();
+  if (attachment.redesignProposal) {
+    const membership = await prisma.membership.findUnique({
+      where: { tenantId_userId: { tenantId: attachment.redesignProposal.tenantId, userId: user.id } },
+      select: { userId: true },
+    });
+    if (!membership) return notFound();
+  }
   if (attachment.bug?.isDeleted && !isAdmin(user.role)) return notFound();
 
   return new NextResponse(new Uint8Array(attachment.data), {

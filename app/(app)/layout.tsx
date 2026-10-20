@@ -11,6 +11,7 @@ import { FocusMainOnNavigate } from "@/components/focus-main-on-navigate";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { isAdmin } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
+import type { AgentKeyHint } from "@/components/agent-key-copy";
 import { projectContextFor, type ProjectChoice } from "@/lib/project-context";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 
@@ -40,13 +41,33 @@ export default async function AppLayout({
   // #426: the header switcher and the issue list read the same active project.
   let projects: ProjectChoice[] = [];
   let activeProjectId: string | null = null;
+  let agentKeys: AgentKeyHint[] = [];
+  let tenantId: string | null = null;
   try {
-    const tenantId = await currentTenantIdFor(user.id);
+    tenantId = await currentTenantIdFor(user.id);
     const context = await projectContextFor(prisma, tenantId);
     projects = context.projects;
     activeProjectId = context.activeProjectId;
   } catch (error) {
     console.error("[layout] project context failed", error);
+  }
+  // Prefixes only: the raw key is shown once and never stored (#742).
+  if (tenantId && activeProjectId) {
+    try {
+      const keys = await prisma.agentApiKey.findMany({
+        where: {
+          revokedAt: null,
+          agent: { ownerUserId: user.id, revokedAt: null, tenantId },
+          OR: [{ projectId: activeProjectId }, { projectId: null }],
+        },
+        select: { prefix: true, project: { select: { name: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      });
+      agentKeys = keys.map((key) => ({ prefix: key.prefix, projectName: key.project?.name ?? null }));
+    } catch (error) {
+      console.error("[layout] agent key prefixes failed", error);
+    }
   }
   // A missing Notification table must not take down every signed-in page.
   let unreadCount = 0;
@@ -83,6 +104,7 @@ export default async function AppLayout({
         userId={user.id}
         projects={projects}
         activeProjectId={activeProjectId}
+        agentKeys={agentKeys}
       />
       <main
         id={MAIN_CONTENT_ID}

@@ -136,6 +136,7 @@ export type MarkdownEditorProps = {
    * is named by a visible label rather than by `aria-label`.
    */
   labelId?: string;
+  onUploadingChange?: (uploading: boolean) => void;
 } & Omit<
   TextareaHTMLAttributes<HTMLTextAreaElement>,
   "value" | "onChange" | "children"
@@ -208,6 +209,7 @@ export const MarkdownEditor = forwardRef<
     onBlur,
     onInvalid,
     labelId,
+    onUploadingChange,
     ...rest
   },
   ref,
@@ -226,6 +228,19 @@ export const MarkdownEditor = forwardRef<
     onChangeRef.current = onChange;
   });
   const [uploading, setUploading] = useState(0);
+  const onUploadingChangeRef = useRef(onUploadingChange);
+  useEffect(() => {
+    onUploadingChangeRef.current = onUploadingChange;
+  });
+  useEffect(() => {
+    const isUploading = uploading > 0;
+    onUploadingChangeRef.current?.(isUploading);
+    return () => {
+      if (isUploading) {
+        onUploadingChangeRef.current?.(false);
+      }
+    };
+  }, [uploading]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   // `false` on the server so the first client render matches the server HTML.
@@ -306,7 +321,11 @@ export const MarkdownEditor = forwardRef<
   );
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (disabled) {
+    if (
+      disabled ||
+      event.nativeEvent.isComposing ||
+      event.nativeEvent.keyCode === 229
+    ) {
       onKeyDown?.(event);
       return;
     }

@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { isAgentLevel } from "@/lib/agents/levels";
 import { consumePairingLimit } from "@/lib/agents/rate-limit";
 import { approvePairing, findPendingPairing } from "@/lib/agents/pairing";
-import { createAgent, revokeAgent, setAgentBurst, setAgentLevel } from "@/lib/agents/registry";
+import { createAgent, regenerateKey, revokeAgent, setAgentBurst, setAgentLevel } from "@/lib/agents/registry";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 
 /** The settings page's agent actions (#427). Every one acts as the signed-in person. */
@@ -23,6 +23,7 @@ export async function createAgentAction(
     name: formData.get("name") ?? "",
     model: formData.get("model") || undefined,
     level: formData.get("level") || undefined,
+    projectId: formData.get("projectId") ?? "",
   });
   if (!result.ok) return result;
   revalidatePath("/settings/agents");
@@ -37,6 +38,25 @@ export async function revokeAgentAction(agentId: unknown): Promise<AgentActionRe
   const result = await revokeAgent(user, agentId);
   if (result.ok) revalidatePath("/settings/agents");
   return result;
+}
+
+export type RegenerateKeyActionResult =
+  | { ok: true; name: string; rawKey: string; prefix: string }
+  | { ok: false; error: string };
+
+/** Replaces every live key. The new secret is returned once (#572). */
+export async function regenerateAgentKeyAction(
+  agentId: unknown,
+  projectId: unknown,
+): Promise<RegenerateKeyActionResult> {
+  if (typeof agentId !== "string" || typeof projectId !== "string" || !projectId) {
+    return { ok: false, error: "Choose a project in this workspace." };
+  }
+  const user = await requireUser();
+  const result = await regenerateKey(user, agentId, projectId);
+  if (!result.ok) return result;
+  revalidatePath("/settings/agents");
+  return { ok: true, name: result.key.name, rawKey: result.key.rawKey, prefix: result.key.prefix };
 }
 
 export async function setAgentLevelAction(agentId: unknown, level: unknown): Promise<AgentActionResult> {
@@ -75,7 +95,7 @@ export async function pairAgentAction(
 
   const code = String(formData.get("code") ?? "");
   if (formData.get("intent") === "approve") {
-    const result = await approvePairing(user, code);
+    const result = await approvePairing(user, code, new Date(), String(formData.get("projectId") ?? ""));
     if (!result.ok) return result;
     revalidatePath("/settings/agents");
     return { ok: true, step: "done", name: result.name };

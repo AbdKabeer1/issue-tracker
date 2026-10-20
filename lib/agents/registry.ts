@@ -38,6 +38,7 @@ export const createAgentSchema = z.object({
   name: agentNameSchema,
   model: agentModelSchema.optional().transform((value) => value || null),
   level: z.enum(CREATION_LEVELS).default(DEFAULT_AGENT_LEVEL),
+  projectId: z.string().trim().min(1, "Choose the project this key can work in.").max(191),
 });
 
 export type Actor = { id: string; role?: AppRole | null };
@@ -49,13 +50,14 @@ export type IssuedKey = { agentId: string; name: string; rawKey: string; prefix:
 /** Inserts an agent and its first key. Shared by the settings page and pairing. */
 export async function insertAgentWithKey(
   db: Db,
-  input: { tenantId: string; ownerUserId: string; name: string; model: string | null; level: AgentLevel },
+  input: { tenantId: string; ownerUserId: string; name: string; model: string | null; level: AgentLevel; projectId: string },
 ): Promise<IssuedKey> {
   const key = generateApiKey();
+  const { projectId, ...agentInput } = input;
   const agent = await db.agent.create({
     data: {
-      ...input,
-      apiKeys: { create: { keyHash: key.hash, prefix: key.prefix } },
+      ...agentInput,
+      apiKeys: { create: { keyHash: key.hash, prefix: key.prefix, projectId } },
     },
     select: { id: true, name: true },
   });
@@ -64,7 +66,7 @@ export async function insertAgentWithKey(
 
 export type CreateAgentResult =
   | { ok: true; key: IssuedKey }
-  | { ok: false; error: string; field?: "name" | "model" | "level" };
+  | { ok: false; error: string; field?: "name" | "model" | "level" | "projectId" };
 
 /** The owner, signed in, registers an agent and gets its key once. */
 export async function createAgent(owner: Actor, input: unknown): Promise<CreateAgentResult> {
@@ -75,25 +77,30 @@ export async function createAgent(owner: Actor, input: unknown): Promise<CreateA
     return {
       ok: false,
       error: issue?.message ?? "Check the agent's details.",
-      field: field === "name" || field === "model" || field === "level" ? field : undefined,
+      field: field === "name" || field === "model" || field === "level" || field === "projectId" ? field : undefined,
     };
   }
   const tenant = await tenantForOwner(owner.id);
   if (!tenant) {
     return { ok: false, error: "Join or create a team before you register agents." };
   }
+  const project = await projectInTenant(tenant.tenantId, parsed.data.projectId);
+  if (!project) return { ok: false, error: "Choose a project in this workspace.", field: "projectId" };
 
   const key = await prisma.$transaction(async (tx) => {
     const issued = await insertAgentWithKey(tx, {
       tenantId: tenant.tenantId,
       ownerUserId: owner.id,
-      ...parsed.data,
+      name: parsed.data.name,
+      model: parsed.data.model,
+      level: parsed.data.level,
+      projectId: project.id,
     });
     await audit(
       { agentId: issued.agentId, tenantId: tenant.tenantId },
       "agent.created",
       `agent:${issued.agentId}`,
-      { name: issued.name, model: parsed.data.model, level: parsed.data.level, via: "settings" },
+      { name: issued.name, model: parsed.data.model, level: parsed.data.level, projectId: project.id, via: "settings" },
       { actorUserId: owner.id, db: tx },
     );
     return issued;
@@ -101,13 +108,21 @@ export async function createAgent(owner: Actor, input: unknown): Promise<CreateA
   return { ok: true, key };
 }
 
-type ManagedAgent = { id: string; tenantId: string; ownerUserId: string; revokedAt: Date | null };
+type ManagedAgent = { id: string; name: string; tenantId: string; ownerUserId: string; revokedAt: Date | null };
+
+async function projectInTenant(tenantId: string, projectId: string) {
+  if (!projectId) return null;
+  return prisma.project.findFirst({
+    where: { id: projectId, tenantId },
+    select: { id: true, slug: true, name: true },
+  });
+}
 
 /** The agent, and whether the actor may manage it: its owner or a tenant admin. */
 async function managedAgent(actor: Actor, agentId: string) {
   const agent: ManagedAgent | null = await prisma.agent.findUnique({
     where: { id: agentId },
-    select: { id: true, tenantId: true, ownerUserId: true, revokedAt: true },
+    select: { id: true, name: true, tenantId: true, ownerUserId: true, revokedAt: true },
   });
   if (!agent) return null;
   const isOwner = agent.ownerUserId === actor.id;
@@ -204,8 +219,51 @@ export async function rotateKey(agent: AgentContext, now = new Date()): Promise<
     });
     // Two rotations racing with the same key: only the first gets a new one.
     if (revoked.count !== 1) throw new Error("This key was already rotated or revoked.");
-    await tx.agentApiKey.create({ data: { agentId: agent.agentId, keyHash: key.hash, prefix: key.prefix } });
-    await audit(agent, "agent.key_rotated", `agent:${agent.agentId}`, { prefix: key.prefix }, { db: tx });
+    await tx.agentApiKey.create({
+      data: { agentId: agent.agentId, keyHash: key.hash, prefix: key.prefix, projectId: agent.projectId ?? null },
+    });
+    await audit(agent, "agent.key_rotated", `agent:${agent.agentId}`, { prefix: key.prefix, projectId: agent.projectId ?? null }, { db: tx });
     return { agentId: agent.agentId, name: agent.name, rawKey: key.raw, prefix: key.prefix };
   });
+}
+
+export type RegenerateKeyResult =
+  | { ok: true; key: IssuedKey }
+  | { ok: false; error: string; field?: "projectId" };
+
+/**
+ * The owner or a tenant admin replaces every live key without the old secret
+ * (#572). The agent, its level and its history stay. The new key is shown once
+ * and is limited to the project they choose.
+ */
+export async function regenerateKey(
+  actor: Actor,
+  agentId: string,
+  projectId: string,
+  now = new Date(),
+): Promise<RegenerateKeyResult> {
+  const managed = await managedAgent(actor, agentId);
+  if (!managed) return { ok: false, error: NOT_FOUND };
+  if (managed.agent.revokedAt) return { ok: false, error: "That agent is revoked." };
+  const project = await projectInTenant(managed.agent.tenantId, projectId);
+  if (!project) return { ok: false, error: "Choose a project in this workspace.", field: "projectId" };
+
+  const key = generateApiKey();
+  await prisma.$transaction(async (tx) => {
+    await tx.agentApiKey.updateMany({ where: { agentId, revokedAt: null }, data: { revokedAt: now } });
+    await tx.agentApiKey.create({
+      data: { agentId, keyHash: key.hash, prefix: key.prefix, projectId: project.id },
+    });
+    await audit(
+      { agentId, tenantId: managed.agent.tenantId },
+      "agent.key_rotated",
+      `agent:${agentId}`,
+      { prefix: key.prefix, projectId: project.id, by: managed.isOwner ? "owner" : "tenant_admin", via: "settings" },
+      { actorUserId: actor.id, db: tx },
+    );
+  });
+  return {
+    ok: true,
+    key: { agentId, name: managed.agent.name, rawKey: key.raw, prefix: key.prefix },
+  };
 }

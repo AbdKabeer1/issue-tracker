@@ -62,18 +62,33 @@ export async function findPendingPairing(userCode: string, now = new Date()): Pr
 export type ApprovePairingResult = { ok: true; name: string } | { ok: false; error: string };
 
 const CODE_NOT_FOUND = "That code doesn't match a waiting agent. It may have expired; ask the agent for a new one.";
+const PROJECT_REQUIRED = "Choose a project in this workspace.";
 
 /** The signed-in owner approves. Single use: the first approval wins. */
-export async function approvePairing(owner: Actor, userCode: string, now = new Date()): Promise<ApprovePairingResult> {
+export async function approvePairing(
+  owner: Actor,
+  userCode: string,
+  now = new Date(),
+  projectId = "",
+): Promise<ApprovePairingResult> {
   const code = normalizeUserCode(userCode);
   if (!code) return { ok: false, error: CODE_NOT_FOUND };
   const tenant = await tenantForOwner(owner.id);
   if (!tenant) return { ok: false, error: "Join or create a team before you register agents." };
 
+  // Checked before the pairing is claimed, so a bad project doesn't burn the code (#742).
+  const project = projectId
+    ? await prisma.project.findFirst({
+        where: { id: projectId, tenantId: tenant.tenantId },
+        select: { id: true },
+      })
+    : null;
+  if (!project) return { ok: false, error: PROJECT_REQUIRED };
+
   const codeHash = hashSecret(code);
   const approved = await prisma.agentPairing.updateMany({
     where: { codeHash, approvedAt: null, ownerUserId: null, expiresAt: { gt: now } },
-    data: { ownerUserId: owner.id, tenantId: tenant.tenantId, approvedAt: now },
+    data: { ownerUserId: owner.id, tenantId: tenant.tenantId, projectId: project.id, approvedAt: now },
   });
   if (approved.count !== 1) return { ok: false, error: CODE_NOT_FOUND };
   const pairing = await prisma.agentPairing.findUniqueOrThrow({ where: { codeHash }, select: { proposedName: true } });
@@ -104,6 +119,7 @@ export async function collectPairing(deviceCode: unknown, now = new Date()): Pro
       consumedAt: true,
       ownerUserId: true,
       tenantId: true,
+      projectId: true,
     },
   });
   if (!pairing) return { status: "invalid" };
@@ -116,6 +132,11 @@ export async function collectPairing(deviceCode: unknown, now = new Date()): Pro
   if (pairing.expiresAt.getTime() + PAIRING_TTL_MS <= now.getTime()) return { status: "expired" };
 
   const { ownerUserId, tenantId } = pairing;
+  // Resolved before the code is consumed, so a missing project doesn't burn it.
+  // Older approvals have no project; those keys use the tenant's oldest project.
+  const projectId = await projectForIssuedKey(tenantId, pairing.projectId);
+  if (!projectId) return { status: "invalid" };
+
   return prisma.$transaction(async (tx) => {
     // Two polls racing: only one marks it consumed and gets the key.
     const claimed = await tx.agentPairing.updateMany({
@@ -129,15 +150,33 @@ export async function collectPairing(deviceCode: unknown, now = new Date()): Pro
       name: pairing.proposedName,
       model: pairing.proposedModel,
       level: DEFAULT_AGENT_LEVEL,
+      projectId,
     });
     await tx.agentPairing.update({ where: { id: pairing.id }, data: { agentId: key.agentId } });
     await audit(
       { agentId: key.agentId, tenantId },
       "agent.created",
       `agent:${key.agentId}`,
-      { name: key.name, model: pairing.proposedModel, level: DEFAULT_AGENT_LEVEL, via: "pairing" },
+      { name: key.name, model: pairing.proposedModel, level: DEFAULT_AGENT_LEVEL, projectId, via: "pairing" },
       { actorUserId: ownerUserId, db: tx },
     );
     return { status: "issued", key } as const;
   });
+}
+
+/** The project a collected key is limited to. A missing id falls back to the oldest project. */
+async function projectForIssuedKey(tenantId: string, projectId: string | null): Promise<string | null> {
+  if (projectId) {
+    const chosen = await prisma.project.findFirst({
+      where: { id: projectId, tenantId },
+      select: { id: true },
+    });
+    return chosen?.id ?? null;
+  }
+  const oldest = await prisma.project.findFirst({
+    where: { tenantId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  return oldest?.id ?? null;
 }

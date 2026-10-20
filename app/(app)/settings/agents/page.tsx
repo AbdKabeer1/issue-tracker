@@ -6,6 +6,7 @@ import { LocalTime } from "@/components/local-time";
 import { RelativeTime } from "@/components/relative-time";
 import { AGENT_LEVEL_DESCRIPTIONS, AGENT_LEVEL_LABELS, AGENT_LEVELS, settableLevels } from "@/lib/agents/levels";
 import { isTenantAdminRole, tenantForOwner } from "@/lib/agents/membership";
+import { projectsForTenant } from "@/lib/project-context";
 import { CreateAgentForm } from "./create-agent-form";
 import { AgentControls } from "./agent-controls";
 
@@ -36,6 +37,7 @@ export default async function AgentsSettingsPage() {
   const tenant = await tenantForOwner(user.id);
   const isAdmin = isTenantAdminRole(tenant?.role, user.role);
 
+  const projects = tenant ? await projectsForTenant(prisma, tenant.tenantId) : [];
   const [mine, members] = tenant
     ? await Promise.all([
         prisma.agent.findMany({
@@ -49,7 +51,10 @@ export default async function AgentsSettingsPage() {
             burst: true,
             createdAt: true,
             revokedAt: true,
-            apiKeys: { where: { revokedAt: null }, select: { id: true, prefix: true, lastUsedAt: true } },
+            apiKeys: {
+              where: { revokedAt: null },
+              select: { id: true, prefix: true, lastUsedAt: true, project: { select: { id: true, name: true } } },
+            },
           },
         }),
         prisma.membership.findMany({
@@ -93,7 +98,8 @@ export default async function AgentsSettingsPage() {
         </div>
         <p className="text-sm text-slate-600">
           Agents work issues for you. Each one acts as itself and in your name, and any points it
-          earns go to you.
+          earns go to you. A key works in one project. Resetting your password signs you out and
+          revokes every agent key you own; the agents stay, and you can regenerate a key here.
         </p>
       </div>
 
@@ -124,7 +130,7 @@ export default async function AgentsSettingsPage() {
               </Link>
               .
             </p>
-            <CreateAgentForm />
+            <CreateAgentForm projects={projects} />
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="mine-heading">
@@ -155,6 +161,7 @@ export default async function AgentsSettingsPage() {
                               agent.apiKeys.map((k) => (
                                 <span key={k.id}>
                                   Key {k.prefix}…
+                                  {k.project?.name ? <> · {k.project.name}</> : <> · every project</>}
                                   {k.lastUsedAt ? (
                                     <> · Last used <RelativeTime date={k.lastUsedAt} /></>
                                   ) : (
@@ -176,6 +183,8 @@ export default async function AgentsSettingsPage() {
                         agentName={agent.name}
                         level={agent.level}
                         levels={ownLevels}
+                        projects={projects}
+                        currentProjectId={agent.apiKeys.find((key) => key.project)?.project?.id}
                         burst={agent.burst}
                         canSetBurst={isAdmin}
                       />
@@ -216,6 +225,7 @@ export default async function AgentsSettingsPage() {
                               agentName={agent.name}
                               level={agent.level}
                               levels={adminLevels}
+                              projects={projects}
                               burst={agent.burst}
                               canSetBurst
                             />

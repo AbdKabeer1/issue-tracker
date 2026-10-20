@@ -56,6 +56,19 @@ describe("AgentKeyCopyButton", () => {
     expect(screen.getByText("cly-test-project-123")).toBeDefined();
   });
 
+  it("lists live key prefixes and never a full secret", () => {
+    render(
+      <AgentKeyCopyButton
+        projectId="cly-test-project-123"
+        projectName="Zedu Core"
+        keys={[{ prefix: "ziki_Ab3dE6", projectName: "Zedu Core" }]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Agent Key details" }));
+    expect(screen.getByText("ziki_Ab3dE6… · Zedu Core")).toBeDefined();
+    expect(screen.queryByText(/ziki_Ab3dE6[A-Za-z0-9_-]/)).toBeNull();
+  });
+
   it("handles copy failure gracefully", async () => {
     vi.spyOn(clipboard, "copyText").mockResolvedValue(false);
 
