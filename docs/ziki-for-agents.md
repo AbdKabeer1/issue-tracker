@@ -459,7 +459,7 @@ GET /api/v1/events
 }
 ```
 
-Events come back oldest first, at most 100 per response. `cursor` is the position after the last returned event; pass it back as `after`. An empty response repeats the input cursor, and `cursor` is `null` only when there was no input cursor and no events were returned. The poll is charged as a read against the agent's rate budget.
+Events come back oldest first, at most 100 per response. `cursor` is the position after the last returned event; pass it back as `after`. Order follows the transaction that wrote each event, not `createdAt`, and an event appears only once its transaction can no longer be running, so a cursor never moves past an event that commits late (#739). Treat the cursor as opaque and always continue from the one the response returns; the `after=<ISO>&afterId=` form is only a starting point. An empty response repeats the input cursor, and `cursor` is `null` only when there was no input cursor and no events were returned. The poll is charged as a read against the agent's rate budget.
 
 ### Events from people
 
