@@ -2,6 +2,9 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
+import { pointTotals } from "@/lib/points/leaderboard";
+import { PointsSummary } from "@/components/points-summary";
 import { requireUser } from "@/lib/auth-helpers";
 import { roleLabels } from "@/lib/roles";
 import { Badge } from "@/components/ui/badge";
@@ -34,8 +37,12 @@ export async function generateMetadata({
 }
 
 export default async function ProfilePage({ params }: ProfileProps) {
-  await requireUser();
+  const viewer = await requireUser();
   const { id } = await params;
+  // #428: points in the viewer's tenant.
+  const tenantId = await currentTenantIdFor(viewer.id);
+  // #425, #439: a profile is another way to read issues. No membership, no issues.
+  const scope = bugInTenant(tenantId);
 
   const [person, reported, assigned, counts, assignedTotal] = await Promise.all([
     prisma.user.findUnique({
@@ -43,28 +50,32 @@ export default async function ProfilePage({ params }: ProfileProps) {
       select: { id: true, name: true, role: true, createdAt: true },
     }),
     prisma.bug.findMany({
-      where: { reporterId: id, isDeleted: false },
+      where: { reporterId: id, isDeleted: false, ...scope },
       select: { id: true, title: true, status: true, createdAt: true },
       orderBy: { createdAt: "desc" },
       take: RECENT,
     }),
     prisma.bug.findMany({
-      where: { assigneeId: id, isDeleted: false },
+      where: { assigneeId: id, isDeleted: false, ...scope },
       select: { id: true, title: true, status: true, updatedAt: true },
       orderBy: { updatedAt: "desc" },
       take: RECENT,
     }),
     prisma.bug.groupBy({
       by: ["status"],
-      where: { reporterId: id, isDeleted: false },
+      where: { reporterId: id, isDeleted: false, ...scope },
       _count: { _all: true },
     }),
     // Counted rather than taken from `assigned.length`, which stops at RECENT
     // and would quietly under-report anyone with more than that.
-    prisma.bug.count({ where: { assigneeId: id, isDeleted: false } }),
+    prisma.bug.count({ where: { assigneeId: id, isDeleted: false, ...scope } }),
   ]);
 
   if (!person) notFound();
+
+  const points = tenantId
+    ? await pointTotals(prisma, tenantId, person.id)
+    : { points: 0, solvedTasks: 0 };
 
   const reportedTotal = counts.reduce((sum, row) => sum + row._count._all, 0);
   const resolved =
@@ -73,7 +84,7 @@ export default async function ProfilePage({ params }: ProfileProps) {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
+        <Link href="/issues" className="text-sm text-teal-700 hover:underline">
           ← Back to issues
         </Link>
         <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold text-slate-900">
@@ -92,6 +103,8 @@ export default async function ProfilePage({ params }: ProfileProps) {
         <Stat label="Of those, resolved" value={resolved} />
         <Stat label="Currently assigned" value={assignedTotal} />
       </dl>
+
+      <PointsSummary points={points.points} solvedTasks={points.solvedTasks} />
 
       <IssueList
         heading="Reported"
@@ -156,7 +169,7 @@ function IssueList({
           {issues.map((issue) => (
             <li key={issue.id}>
               <Link
-                href={`/bugs/${issue.id}`}
+                href={`/issues/${issue.id}`}
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm transition hover:bg-slate-50"
               >
                 <span className="min-w-0 flex-1 break-words font-medium text-slate-900">

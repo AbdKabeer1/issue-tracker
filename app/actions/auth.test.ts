@@ -46,6 +46,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetRateLimits();
   vi.stubEnv("AUTH_PASSWORD_LOGIN", "true");
+  // Some tests stub NODE_ENV=production, which would otherwise pick the
+  // shared Postgres store (#296); these tests are about the actions.
+  vi.stubEnv("RATE_LIMIT_STORE", "memory");
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -111,15 +114,21 @@ describe("resetPasswordAction (#208, #209)", () => {
       expiresAt: new Date(Date.now() + 60_000),
     });
     const userUpdate = vi.fn();
+    const revokeKeys = vi.fn().mockResolvedValue({ count: 1 });
     db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
       fn({
         passwordResetToken: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), deleteMany: vi.fn() },
         user: { update: userUpdate },
+        agentApiKey: { updateMany: revokeKeys },
       }),
     );
 
     await expect(resetPasswordAction(undefined, input)).rejects.toMatchObject({ to: "/login" });
     expect(userUpdate.mock.calls[0][0].data.sessionVersion).toEqual({ increment: 1 });
+    expect(revokeKeys).toHaveBeenCalledWith({
+      where: { revokedAt: null, agent: { ownerUserId: "u1" } },
+      data: { revokedAt: expect.any(Date) },
+    });
   });
 });
 

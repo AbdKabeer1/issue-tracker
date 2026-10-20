@@ -1,4 +1,5 @@
 import { createConnection, type Socket } from "net";
+import { hostname as osHostname } from "os";
 import { connect as tlsConnect, type TLSSocket } from "tls";
 
 type SendMailInput = {
@@ -7,7 +8,17 @@ type SendMailInput = {
   text: string;
 };
 
-type MailEnv = { SMTP_HOST?: string; SMTP_FROM?: string; NODE_ENV?: string };
+type MailEnv = {
+  SMTP_HOST?: string;
+  SMTP_FROM?: string;
+  NODE_ENV?: string;
+  /** Override the hostname sent in EHLO; defaults to os.hostname() (#353). */
+  SMTP_EHLO_NAME?: string;
+  /** TCP connect timeout in ms (default 10 000) (#353). */
+  SMTP_CONNECT_TIMEOUT_MS?: string;
+  /** Per-command SMTP response timeout in ms (default 15 000) (#353). */
+  SMTP_COMMAND_TIMEOUT_MS?: string;
+};
 
 export function smtpConfigured(env: MailEnv = process.env as MailEnv) {
   return Boolean(env.SMTP_HOST && env.SMTP_FROM);
@@ -64,21 +75,28 @@ async function sendSmtpMail({ to, subject, text }: SendMailInput) {
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
 
-  const socket: Socket | TLSSocket = secure
-    ? await connectTls(host, port)
-    : await connectPlain(host, port);
+  // Prefer an explicit override; fall back to the machine's real hostname so
+  // the EHLO greeting is RFC-5321-compliant instead of the literal "localhost"
+  // which many mail servers treat as a spam signal (#353).
+  const ehloName = getEhloName();
+  const connectTimeoutMs = Number(process.env.SMTP_CONNECT_TIMEOUT_MS ?? "10000");
+  const commandTimeoutMs = Number(process.env.SMTP_COMMAND_TIMEOUT_MS ?? "10000");
 
-  const session = new SmtpSession(socket);
+  const socket: Socket | TLSSocket = secure
+    ? await connectTls(host, port, connectTimeoutMs)
+    : await connectPlain(host, port, connectTimeoutMs);
+
+  const session = new SmtpSession(socket, commandTimeoutMs);
 
   try {
     await session.expect(220);
-    await session.command(`EHLO localhost`, 250);
+    await session.command(`EHLO ${ehloName}`, 250);
 
     if (!secure) {
       await session.command("STARTTLS", 220);
-      const upgraded = await upgradeToTls(socket as Socket, host);
+      const upgraded = await upgradeToTls(socket as Socket, host, connectTimeoutMs);
       session.replaceSocket(upgraded);
-      await session.command(`EHLO localhost`, 250);
+      await session.command(`EHLO ${ehloName}`, 250);
     }
 
     if (user && pass) {
@@ -97,6 +115,32 @@ async function sendSmtpMail({ to, subject, text }: SendMailInput) {
   } finally {
     session.close();
   }
+}
+
+/**
+ * Returns an RFC-5321 compliant EHLO name:
+ * - Uses process.env.SMTP_EHLO_NAME if provided
+ * - If OS hostname is a valid FQDN (contains dot), uses it
+ * - If OS hostname is an address literal, uses it
+ * - Otherwise falls back to address literal "[127.0.0.1]"
+ */
+export function getEhloName(override?: string, hostname?: string): string {
+  const custom = override ?? process.env.SMTP_EHLO_NAME;
+  if (custom && custom.trim()) {
+    return custom.trim();
+  }
+  const host = (hostname ?? osHostname()).trim();
+  if (/^\[.+\]$/.test(host)) {
+    return host;
+  }
+  const isFqdn =
+    /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/.test(
+      host,
+    );
+  if (isFqdn) {
+    return host;
+  }
+  return "[127.0.0.1]";
 }
 
 /** Removes CR/LF so a value can't start a new header line (header injection). */
@@ -133,36 +177,81 @@ export function buildSmtpData({ from, to, subject, text }: SendMailInput & { fro
   ].join("\r\n");
 }
 
+/** Extracts the email address from a recipient string. */
 function extractEmail(value: string) {
   const match = value.match(/<([^>]+)>/);
   return match?.[1] ?? value.trim();
 }
 
-function connectPlain(host: string, port: number) {
+/**
+ * Establishes a plain TCP socket connection with a timeout.
+ * Rejects if the connection does not complete within timeoutMs.
+ */
+export function connectPlain(host: string, port: number, timeoutMs: number) {
   return new Promise<Socket>((resolve, reject) => {
-    const socket = createConnection({ host, port }, () => resolve(socket));
+    let timer: NodeJS.Timeout | undefined;
+    const socket = createConnection({ host, port }, () => {
+      if (timer) clearTimeout(timer);
+      resolve(socket);
+    });
     socket.setEncoding("utf8");
-    socket.on("error", reject);
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        socket.destroy(new Error(`SMTP connect timeout after ${timeoutMs}ms (${host}:${port})`));
+      }, timeoutMs);
+    }
+    socket.on("error", (err) => {
+      if (timer) clearTimeout(timer);
+      reject(err);
+    });
   });
 }
 
-function connectTls(host: string, port: number) {
+/**
+ * Establishes a direct TLS socket connection with a timeout.
+ * Rejects if the connection or TLS handshake does not complete within timeoutMs.
+ */
+export function connectTls(host: string, port: number, timeoutMs: number) {
   return new Promise<TLSSocket>((resolve, reject) => {
-    const socket = tlsConnect({ host, port, servername: host }, () =>
-      resolve(socket),
-    );
+    let timer: NodeJS.Timeout | undefined;
+    const socket = tlsConnect({ host, port, servername: host }, () => {
+      if (timer) clearTimeout(timer);
+      resolve(socket);
+    });
     socket.setEncoding("utf8");
-    socket.on("error", reject);
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        socket.destroy(new Error(`SMTP TLS connect timeout after ${timeoutMs}ms (${host}:${port})`));
+      }, timeoutMs);
+    }
+    socket.on("error", (err) => {
+      if (timer) clearTimeout(timer);
+      reject(err);
+    });
   });
 }
 
-function upgradeToTls(socket: Socket, host: string) {
+/**
+ * Upgrades an established plain TCP socket to a TLS socket.
+ * Rejects if the TLS handshake does not complete within timeoutMs.
+ */
+export function upgradeToTls(socket: Socket, host: string, timeoutMs: number) {
   return new Promise<TLSSocket>((resolve, reject) => {
-    const upgraded = tlsConnect({ socket, host, servername: host }, () =>
-      resolve(upgraded),
-    );
+    let timer: NodeJS.Timeout | undefined;
+    const upgraded = tlsConnect({ socket, host, servername: host }, () => {
+      if (timer) clearTimeout(timer);
+      resolve(upgraded);
+    });
     upgraded.setEncoding("utf8");
-    upgraded.on("error", reject);
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        upgraded.destroy(new Error(`SMTP TLS handshake timeout after ${timeoutMs}ms (${host})`));
+      }, timeoutMs);
+    }
+    upgraded.on("error", (err) => {
+      if (timer) clearTimeout(timer);
+      reject(err);
+    });
   });
 }
 
@@ -173,38 +262,95 @@ export class SmtpSession {
     code: number;
     resolve: () => void;
     reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout> | undefined;
   }> = [];
 
-  constructor(private socket: Socket | TLSSocket) {
+  /**
+   * @param socket - The underlying TCP/TLS socket.
+   * @param commandTimeoutMs - How long to wait for a server reply before
+   *   rejecting the pending command (default: no timeout, for tests). (#353)
+   */
+  constructor(
+    private socket: Socket | TLSSocket,
+    private commandTimeoutMs = 0,
+  ) {
     this.socket.on("data", (chunk: string) => {
       this.buffer += chunk;
       this.flush();
     });
+    this.socket.on("error", (err: Error) => {
+      this.close(err);
+    });
+    this.socket.on("close", () => {
+      this.close(new Error("SMTP socket closed"));
+    });
   }
 
+  /**
+   * Replaces the underlying socket after a TLS upgrade, migrating all active listeners.
+   */
   replaceSocket(socket: Socket | TLSSocket) {
     this.socket.removeAllListeners("data");
+    this.socket.removeAllListeners("error");
+    this.socket.removeAllListeners("close");
     this.socket = socket;
     this.socket.on("data", (chunk: string) => {
       this.buffer += chunk;
       this.flush();
     });
+    this.socket.on("error", (err: Error) => {
+      this.close(err);
+    });
+    this.socket.on("close", () => {
+      this.close(new Error("SMTP socket closed"));
+    });
   }
 
+  /**
+   * Writes a line to the SMTP socket and awaits the expected status code.
+   */
   command(line: string, expectCode: number) {
     this.socket.write(`${line}\r\n`);
     return this.expect(expectCode);
   }
 
+  /**
+   * Registers a waiter for an expected SMTP status code, bound to commandTimeoutMs.
+   */
   expect(code: number) {
     return new Promise<void>((resolve, reject) => {
-      this.waiters.push({ code, resolve, reject });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      if (this.commandTimeoutMs > 0) {
+        timer = setTimeout(() => {
+          // Remove this waiter so flush() can't resolve it after timeout.
+          const idx = this.waiters.findIndex((w) => w.timer === timer);
+          if (idx !== -1) this.waiters.splice(idx, 1);
+          reject(
+            new Error(`SMTP command timeout: no response for code ${code} after ${this.commandTimeoutMs}ms`),
+          );
+        }, this.commandTimeoutMs);
+      }
+      this.waiters.push({ code, resolve, reject, timer });
       this.flush();
     });
   }
 
-  close() {
-    this.socket.end();
+  /**
+   * Closes the SMTP session and rejects all pending waiters with the provided error.
+   */
+  close(error?: Error) {
+    const err = error ?? new Error("SMTP session closed");
+    // Cancel any outstanding timers and reject pending waiters
+    for (const w of this.waiters) {
+      if (w.timer !== undefined) clearTimeout(w.timer);
+      w.reject(err);
+    }
+    this.waiters = [];
+    try {
+      this.socket.end();
+    } catch {
+      // socket might already be closed/destroyed
+    }
   }
 
   private flush() {
@@ -227,6 +373,9 @@ export class SmtpSession {
       const last = responseLines[responseLines.length - 1] ?? "";
       const responseCode = Number(last.slice(0, 3));
       const waiter = this.waiters.shift()!;
+
+      // Cancel the command timeout — we got a response.
+      if (waiter.timer !== undefined) clearTimeout(waiter.timer);
 
       if (responseCode !== waiter.code) {
         waiter.reject(

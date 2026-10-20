@@ -1,0 +1,121 @@
+import { describe, expect, it } from "vitest";
+import { parseBugListFilters } from "./issue-list-filters";
+
+const tagTypes = [
+  { id: "t1", name: "Design" },
+  { id: "t2", name: "Fix" },
+];
+
+const parse = (params: Record<string, string | string[] | undefined>, over = {}) =>
+  parseBugListFilters({
+    params,
+    userId: "u1",
+    canSeeDeleted: false,
+    tagTypes,
+    ...over,
+  });
+
+describe("parseBugListFilters", () => {
+  it("shows live issues by default", () => {
+    expect(parse({}).where).toEqual({ isDeleted: false, duplicateOfId: null });
+    expect(parse({}).isDeletedView).toBe(false);
+  });
+
+  it("hides duplicates unless asked for, like the list (#285)", () => {
+    expect(parse({}).where.duplicateOfId).toBeNull();
+    expect(parse({ duplicates: "show" }).where).not.toHaveProperty("duplicateOfId");
+  });
+
+  it("keeps deleted issues away from anyone who may not see them", () => {
+    // The export is just another way of reading the same rows, so the same
+    // rule has to hold there.
+    const asUser = parse({ deleted: "true" });
+    expect(asUser.where.isDeleted).toBe(false);
+    expect(asUser.isDeletedView).toBe(false);
+
+    const asAdmin = parse({ deleted: "true" }, { canSeeDeleted: true });
+    expect(asAdmin.where.isDeleted).toBe(true);
+    expect(asAdmin.isDeletedView).toBe(true);
+  });
+
+  it("applies status and severity only when they are real values", () => {
+    expect(parse({ status: "open" }).where.status).toBe("open");
+    expect(parse({ severity: "critical" }).where.severity).toBe("critical");
+    expect(parse({ status: "sideways" }).where.status).toBeUndefined();
+    expect(parse({ severity: "spicy" }).where.severity).toBeUndefined();
+  });
+
+  it("scopes to the signed-in user for the mine filter", () => {
+    expect(parse({ mine: "assigned" }).where.assigneeId).toBe("u1");
+    expect(parse({ mine: "reported" }).where.reporterId).toBe("u1");
+    expect(parse({ mine: "created" }).where.reporterId).toBe("u1");
+    expect(parse({ mine: "mine" }).where.AND).toEqual([
+      { OR: [{ reporterId: "u1" }, { assigneeId: "u1" }] },
+    ]);
+  });
+
+  it("ignores the mine filter when there is no user to scope to", () => {
+    const anon = parse({ mine: "assigned" }, { userId: undefined });
+    expect(anon.where.assigneeId).toBeUndefined();
+  });
+
+  it("filters by tag, matching every type with that name", () => {
+    expect(parse({ tags: "design" }).where.typeId).toEqual({ in: ["t1"] });
+  });
+
+  it("searches title and description, and escapes the query", () => {
+    const where = parse({ q: "100% sure" }).where;
+    expect(where.OR).toHaveLength(2);
+    // escapeSearchQuery neutralises LIKE wildcards so "%" is not a match-all.
+    const serialized = JSON.stringify(where.OR);
+    expect(serialized).not.toContain('"100% sure"');
+  });
+
+  it("adds no search condition for whitespace", () => {
+    expect(parse({ q: "   " }).where.OR).toBeUndefined();
+  });
+
+  it("defaults the sort and accepts a real one", () => {
+    expect(parse({}).sort).toBe("top_votes");
+    expect(parse({ sort: "newest" }).sort).toBe("newest");
+    expect(parse({ sort: "nonsense" }).sort).toBe("top_votes");
+  });
+
+  it("takes the first value when a param is repeated", () => {
+    expect(parse({ status: ["open", "resolved"] }).where.status).toBe("open");
+  });
+
+  it("combines filters rather than letting the last one win", () => {
+    const where = parse({ status: "open", severity: "high", mine: "reported" }).where;
+    expect(where).toMatchObject({
+      isDeleted: false,
+      status: "open",
+      severity: "high",
+      reporterId: "u1",
+    });
+  });
+});
+
+describe("platform filter", () => {
+  const platforms = [{ id: "cat_web" }, { id: "cat_mobile" }];
+  const withPlatforms = (params: Record<string, string>) =>
+    parseBugListFilters({ params, userId: "u1", canSeeDeleted: false, tagTypes, platforms });
+
+  it("matches one platform", () => {
+    expect(withPlatforms({ platform: "cat_web" }).where.categoryId).toBe("cat_web");
+  });
+
+  it("matches issues with no platform set", () => {
+    expect(withPlatforms({ platform: "none" }).where.categoryId).toBeNull();
+  });
+
+  it("falls back to no filter for an id that no longer exists", () => {
+    // Matching the list: a bookmark pointing at a deleted platform shows
+    // issues, not a blank page the reader cannot explain.
+    expect(withPlatforms({ platform: "gone" }).where.categoryId).toBeUndefined();
+  });
+
+  it("adds nothing when no platform is asked for", () => {
+    expect(withPlatforms({}).where.categoryId).toBeUndefined();
+  });
+});

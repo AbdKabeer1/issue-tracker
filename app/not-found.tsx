@@ -14,7 +14,7 @@ export default function NotFound() {
         code="404"
         title="This page doesn't exist"
         actions={
-          <Link href="/bugs" className={primaryActionClass}>
+          <Link href="/issues" className={primaryActionClass}>
             Go to issues
           </Link>
         }

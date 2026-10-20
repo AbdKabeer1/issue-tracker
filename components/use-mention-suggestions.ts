@@ -92,7 +92,11 @@ export function useMentionSuggestions({
   /** Returns true when the key was consumed by the suggestion list. */
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
-      if (!showSuggestions) return false;
+      if (
+        !showSuggestions ||
+        event.nativeEvent.isComposing ||
+        event.nativeEvent.keyCode === 229
+      ) return false;
 
       if (event.key === "ArrowDown") {
         event.preventDefault();

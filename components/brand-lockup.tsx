@@ -24,7 +24,7 @@ export function BrandLockup({
   const content = (
     <>
       <Image
-        src={BASE_PATH ? `${BASE_PATH}/zedu-mark.svg` : "/zedu-mark.svg"}
+        src={BASE_PATH ? `${BASE_PATH}/ziki-mark.svg` : "/ziki-mark.svg"}
         alt=""
         width={dim.px}
         height={dim.px}
@@ -40,7 +40,7 @@ export function BrandLockup({
               : "whitespace-nowrap text-lg font-semibold tracking-tight text-slate-900"
           }
         >
-          Zedu Issues
+          Ziki Issues
         </span>
       ) : null}
     </>
@@ -48,7 +48,7 @@ export function BrandLockup({
 
   if (!href) {
     return (
-      <div className="inline-flex items-center gap-2.5" aria-label="Zedu Issues">
+      <div className="inline-flex items-center gap-2.5" aria-label="Ziki Issues">
         {content}
       </div>
     );
@@ -58,7 +58,7 @@ export function BrandLockup({
     <Link
       href={href}
       className="inline-flex items-center gap-2.5"
-      aria-label="Zedu Issues"
+      aria-label="Ziki Issues"
     >
       {content}
     </Link>

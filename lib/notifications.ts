@@ -1,4 +1,5 @@
 import type { Status } from "@prisma/client";
+import { commentPermalinkPath } from "@/lib/comment-window";
 import { statusLabel } from "@/lib/labels";
 
 /**
@@ -13,6 +14,20 @@ import { statusLabel } from "@/lib/labels";
  */
 
 type Base = { actorId: string; actorName: string; bugId: string; bugTitle: string };
+
+/**
+ * Events raised for a person by an agent or by the platform (#443). The actor
+ * may be an agent or nobody, so `actorId` is null unless a person did it, and
+ * an issue is optional (a question or an invite need not be about one). Each
+ * names exactly one recipient.
+ */
+type AgentBase = {
+  actorId: string | null;
+  actorName: string;
+  recipientId: string;
+  bugId?: string | null;
+  bugTitle?: string | null;
+};
 
 export type NotificationEvent =
   | (Base & {
@@ -48,9 +63,51 @@ export type NotificationEvent =
       reporterId: string;
       from: Status;
       to: Status;
+      /** What happened, written by whoever resolved or closed it (#316). */
+      note?: string | null;
       /** Watchers to tell, resolved at delivery; defaults to the reporter. */
       recipientIds?: string[];
+    })
+  | (AgentBase & {
+      /** An agent asked its owner something (#446). */
+      kind: "agent_question";
+      questionId: string;
+      excerpt?: string;
+    })
+  | (AgentBase & {
+      /** A redesign is waiting for this person to approve it (#431). */
+      kind: "approval_needed";
+      proposalId: string;
+      proposalTitle: string;
+    })
+  | (AgentBase & {
+      /** Someone invited this person to a tenant (#444). */
+      kind: "tenant_invite";
+      inviteId: string;
+      tenantName: string;
+    })
+  | (AgentBase & {
+      /** The platform offered this person an issue (#449). */
+      kind: "claim_offered";
+      claimId: string;
+      bugId: string;
+      bugTitle: string;
+    })
+  | (AgentBase & {
+      /** A linked pull request could not be merged after acceptance (#452). */
+      kind: "merge_failed";
+      /** Why the merge did not happen, already human-readable. */
+      reason: string;
     });
+
+/** The kinds raised by agents and the platform rather than by issue edits. */
+export const AGENT_NOTIFICATION_KINDS = [
+  "agent_question",
+  "approval_needed",
+  "tenant_invite",
+  "claim_offered",
+  "merge_failed",
+] as const;
 
 export type PlannedNotification = {
   userId: string;
@@ -66,21 +123,110 @@ export type PlannedNotification = {
 
 const quote = (title: string) => `“${title.length > 80 ? `${title.slice(0, 79)}…` : title}”`;
 
-function body(lines: (string | false | undefined)[], issueUrl: string, settingsUrl: string) {
+function body(
+  lines: (string | false | undefined)[],
+  openUrl: string,
+  settingsUrl: string,
+  openLabel = "Open the issue",
+) {
   return [
     ...lines.filter((line): line is string => typeof line === "string"),
     "",
-    `Open the issue: ${issueUrl}`,
+    `${openLabel}: ${openUrl}`,
     "",
     `You can turn these emails off in Settings: ${settingsUrl}`,
   ].join("\n");
 }
 
+/** Where an agent or platform event links to, and what to call that link. */
+function agentTarget(event: Extract<NotificationEvent, AgentBase>): { path: string; label: string } {
+  switch (event.kind) {
+    case "agent_question":
+      return { path: `/questions/${event.questionId}`, label: "Answer the question" };
+    case "approval_needed":
+      return { path: `/redesigns/${event.proposalId}`, label: "Review the proposal" };
+    case "tenant_invite":
+      return { path: `/tenants?invite=${encodeURIComponent(event.inviteId)}`, label: "See the invite" };
+    case "claim_offered":
+      return { path: `/issues/${event.bugId}`, label: "Open the issue" };
+    case "merge_failed":
+      return { path: `/issues/${event.bugId}`, label: "Open the issue" };
+  }
+}
+
+function planAgentNotification(
+  event: Extract<NotificationEvent, AgentBase>,
+  base: string,
+): PlannedNotification[] {
+  if (!event.recipientId || event.recipientId === event.actorId) return [];
+  const { path, label } = agentTarget(event);
+  const about = event.bugTitle ? ` about ${quote(event.bugTitle)}` : "";
+  let subject: string;
+  let lines: (string | false | undefined)[];
+  switch (event.kind) {
+    case "agent_question":
+      subject = `${event.actorName} has a question for you${about}`;
+      lines = [
+        `${event.actorName}, an agent working for you, asked you a question${about}.`,
+        event.excerpt ? `\n> ${event.excerpt}` : undefined,
+      ];
+      break;
+    case "approval_needed":
+      subject = `${event.actorName} needs your approval for ${quote(event.proposalTitle)}`;
+      lines = [
+        `${event.actorName} proposed a redesign, ${quote(event.proposalTitle)}, on your behalf${about}.`,
+        "It stays blocked until a person approves or rejects it.",
+      ];
+      break;
+    case "tenant_invite":
+      subject = `${event.actorName} invited you to ${event.tenantName}`;
+      lines = [`${event.actorName} invited you to join ${event.tenantName} on Ziki.`];
+      break;
+    case "claim_offered":
+      subject = `You've been offered ${quote(event.bugTitle)}`;
+      lines = [
+        `${event.actorName} offered you ${quote(event.bugTitle)}. Your agent has a minute to accept it, or it goes to the next person.`,
+      ];
+      break;
+    case "merge_failed": {
+      const title = event.bugTitle ?? "this issue";
+      subject = `The fix for ${quote(title)} could not be merged`;
+      lines = [
+        `The fix for ${quote(title)} was accepted on Ziki, but the pull request could not be merged.`,
+        event.reason,
+        "Nothing was changed on the tracker: the acceptance and the points stay.",
+      ];
+      break;
+    }
+  }
+  return [
+    {
+      userId: event.recipientId,
+      kind: event.kind,
+      subject: `[Ziki Issues] ${subject}`,
+      title: subject,
+      url: path,
+      text: body(lines, `${base}${path}`, `${base}/settings`, label),
+    },
+  ];
+}
+
+export function isAgentNotificationEvent(
+  event: NotificationEvent,
+): event is Extract<NotificationEvent, AgentBase> {
+  return (AGENT_NOTIFICATION_KINDS as readonly string[]).includes(event.kind);
+}
+
 export function planNotifications(event: NotificationEvent, siteUrl: string): PlannedNotification[] {
   const base = siteUrl.replace(/\/$/, "");
+  if (isAgentNotificationEvent(event)) return planAgentNotification(event, base);
   const commentId =
     event.kind === "comment_added" || event.kind === "mentioned" ? event.commentId : undefined;
-  const path = `/bugs/${event.bugId}${commentId ? `#comment-${commentId}` : ""}`;
+  // The query lets the page load down to the comment's thread even when
+  // it's older than the default window (#280).
+  const path = commentId
+    ? commentPermalinkPath(event.bugId, commentId)
+    : `/issues/${event.bugId}`;
   const issueUrl = `${base}${path}`;
   const settingsUrl = `${base}/settings`;
   const title = quote(event.bugTitle);
@@ -91,7 +237,7 @@ export function planNotifications(event: NotificationEvent, siteUrl: string): Pl
     planned.push({
       userId,
       kind: event.kind,
-      subject: `[Zedu Issues] ${subject}`,
+      subject: `[Ziki Issues] ${subject}`,
       title: subject,
       url: path,
       text: body(lines, issueUrl, settingsUrl),
@@ -144,6 +290,7 @@ export function planNotifications(event: NotificationEvent, siteUrl: string): Pl
         const yours = userId === event.reporterId;
         add(userId, `${title} is now ${statusLabel[event.to]}`, [
           `${event.actorName} changed the status of ${yours ? "your issue " : ""}${title} from ${statusLabel[event.from]} to ${statusLabel[event.to]}.`,
+          ...(event.note ? ["", `Resolution note from ${event.actorName}:`, event.note] : []),
         ]);
       }
       break;

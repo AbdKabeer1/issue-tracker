@@ -1,10 +1,29 @@
 import { isAdmin, isSuperAdmin, type AppRole } from "@/lib/roles";
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 
 export type HeaderNavItem = { href: string; label: string };
 
+/** #444: pick another tenant, create one, or accept an invite. */
+export const SWITCH_TENANT_LINK: HeaderNavItem = { href: "/tenants", label: "Switch tenant" };
+
 /** Links shown in the header for the role the user is currently viewing as. */
-export function headerNavItems(role?: AppRole | null): HeaderNavItem[] {
-  const items: HeaderNavItem[] = [{ href: "/bugs", label: "Issues" }];
+export function headerNavItems(
+  role?: AppRole | null,
+  options?: { agentPlatform?: boolean },
+): HeaderNavItem[] {
+  const items: HeaderNavItem[] = [
+    { href: "/issues", label: "Issues" },
+    // #426: projects decide which issues the board shows.
+    { href: "/projects", label: "Projects" },
+    // #289: everyone can see what's left for a release.
+    { href: "/milestones", label: "Milestones" },
+  ];
+  if (options?.agentPlatform ?? isAgentPlatformEnabled()) {
+    items.push(
+      { href: "/questions", label: "Questions" },
+      { href: "/redesigns", label: "Redesigns" },
+    );
+  }
   if (isAdmin(role)) {
     items.push(
       { href: "/admin/categories", label: "Platforms" },
@@ -24,8 +43,14 @@ export function headerNavItems(role?: AppRole | null): HeaderNavItem[] {
 export function isNavItemActive(pathname: string | null, href: string): boolean {
   if (!pathname) return false;
   const path = pathname.replace(/\/+$/, "") || "/";
-  if (href === "/bugs") {
-    return path === "/bugs" || (path.startsWith("/bugs/") && path !== "/bugs/new");
+  if (href === "/issues" || href === "/bugs") {
+    return (
+      path === "/issues" ||
+      path === "/bugs" ||
+      ((path.startsWith("/issues/") || path.startsWith("/bugs/")) &&
+        path !== "/issues/new" &&
+        path !== "/bugs/new")
+    );
   }
   return path === href || path.startsWith(`${href}/`);
 }

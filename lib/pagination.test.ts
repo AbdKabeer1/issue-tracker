@@ -88,38 +88,38 @@ describe("calculatePagination", () => {
 
 describe("buildPaginationUrl", () => {
   it("omits page param when on page 1", () => {
-    expect(buildPaginationUrl("/bugs", 1, { q: "login" })).toBe("/bugs?q=login");
+    expect(buildPaginationUrl("/issues", 1, { q: "login" })).toBe("/issues?q=login");
   });
 
   it("includes page param when > 1", () => {
-    expect(buildPaginationUrl("/bugs", 2, { q: "login" })).toBe(
-      "/bugs?q=login&page=2",
+    expect(buildPaginationUrl("/issues", 2, { q: "login" })).toBe(
+      "/issues?q=login&page=2",
     );
   });
 
   it("preserves multiple query params and omits empty/null params", () => {
     expect(
-      buildPaginationUrl("/bugs", 3, {
+      buildPaginationUrl("/issues", 3, {
         q: "test",
         status: "OPEN",
         severity: "",
         empty: null,
       }),
-    ).toBe("/bugs?q=test&status=OPEN&page=3");
+    ).toBe("/issues?q=test&status=OPEN&page=3");
   });
 
   it("preserves sort query param alongside filters across pagination URLs", () => {
     expect(
-      buildPaginationUrl("/bugs", 2, {
+      buildPaginationUrl("/issues", 2, {
         q: "crash",
         status: "open",
         sort: "top_votes",
       }),
-    ).toBe("/bugs?q=crash&status=open&sort=top_votes&page=2");
+    ).toBe("/issues?q=crash&status=open&sort=top_votes&page=2");
   });
 
   it("returns base path when no query params and page is 1", () => {
-    expect(buildPaginationUrl("/bugs", 1, {})).toBe("/bugs");
+    expect(buildPaginationUrl("/issues", 1, {})).toBe("/issues");
   });
 });
 

@@ -1,10 +1,12 @@
-# Zedu Bugs
+# Ziki Issues
 
 Team **Zendor** fork of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug-tracker).
 
 Report bugs, filter the board, triage status/assignee, vote, and leave comments.
 
-Brand mark: `public/zedu-mark.svg`.
+See the [new-ticket feed handbook](docs/handbook.md) for the human feed and agent polling API.
+
+Brand mark: `public/ziki-mark.svg`.
 
 ## Stack
 
@@ -12,13 +14,13 @@ Brand mark: `public/zedu-mark.svg`.
 - Auth.js v5 — Google OAuth; email/password for local dev only (off in production, see `AUTH_PASSWORD_LOGIN`)
 - Prisma + PostgreSQL
 - pnpm
-- Docker / Coolify deploy (served from root at `issues.zedu.chat`)
+- Docker / Coolify deploy (served from root at `ziki.dev`)
 
 ## Live (production)
 
-https://issues.zedu.chat
+https://ziki.dev
 
-(Legacy sub-path: `https://contributors.zedu.chat/bug-tracker`)
+(Old links on `https://issues.zedu.chat` and the legacy sub-path `https://contributors.zedu.chat/bug-tracker` still work.)
 
 ## Roles (RBAC)
 
@@ -29,6 +31,20 @@ https://issues.zedu.chat
 | `super_admin` | Everything `admin` can do, plus `/admin/users` management (promote users to admin) |
 
 Super-admin credentials come from `SUPER_ADMIN_*` env vars (see below). The seeder is idempotent and does not overwrite an existing super admin unless `SUPER_ADMIN_FORCE_UPDATE=true`.
+
+## Keyboard shortcuts
+
+Shortcuts are enabled by default and can be turned off in **Settings → Keyboard shortcuts**. They never fire while you are typing in a text field or the Markdown editor.
+
+| Shortcut | Action |
+| --- | --- |
+| `n` or `c` | Report a new issue |
+| `/` or `Ctrl/Cmd+K` | Search issues |
+| `g` then `i` | Go to issues |
+| `g` then `d` | Go to the admin dashboard (admins only) |
+| `g` then `n` | Go to notifications |
+| `j` / `k` | Next / previous issue in the list |
+| `?` | Show the shortcuts help dialog |
 
 ## Demo accounts (credentials seed)
 
@@ -53,11 +69,11 @@ pnpm db:seed                  # empty DB only
 pnpm dev                      # http://localhost:3001
 ```
 
-The app is served from the root domain at **`http://localhost:3001`** (matching production at `issues.zedu.chat`). Legacy `/bug-tracker` paths automatically redirect to root.
+The app is served from the root domain at **`http://localhost:3001`** (matching production at `ziki.dev`). Legacy `/bug-tracker` paths automatically redirect to root.
 
 ## Link previews (Open Graph / Twitter)
 
-Bug detail URLs (`/bugs/[id]`) emit OG + Twitter Card metadata so Slack, Discord, X, WhatsApp, and similar clients can unfurl a card with **title**, **status**, **author**, a **description snippet**, the **zedu-mark.svg** thumbnail, and a **canonical URL**.
+Issue detail URLs (`/issues/[id]`, with legacy `/bugs/[id]` backwards-compatible redirects) emit OG + Twitter Card metadata so Slack, Discord, X, WhatsApp, and similar clients can unfurl a card with **title**, **status**, **author**, a **description snippet**, the **zedu-mark.svg** thumbnail, and a **canonical URL**.
 
 ### Privacy (auth-gated pages)
 

@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { commentInTenant, currentTenantIdFor } from "@/lib/tenant-context";
+import { attachmentIdsInMarkdown, linkAttachments } from "@/lib/attachment-link";
 import { requireUser } from "@/lib/auth-helpers";
-import { commentSchema } from "@/lib/validations/bug";
+import { commentSchema } from "@/lib/validations/issue";
 import {
   extractMentionedUserIds,
   newlyMentionedUserIds,
@@ -21,13 +23,18 @@ import {
   commentPreview,
 } from "@/lib/activity-log";
 import { notifyLater } from "@/lib/notify";
+import {
+  checkRateLimit,
+  ACTION_RATE_LIMITS,
+  RATE_LIMIT_MESSAGE,
+} from "@/lib/rate-limit";
 
 export type CommentActionResult = { error?: string; ok?: boolean };
 
-async function loadComment(commentId: unknown) {
+async function loadComment(commentId: unknown, tenantId: string | null) {
   if (typeof commentId !== "string" || commentId.trim().length === 0) return null;
   return prisma.comment.findUnique({
-    where: { id: commentId },
+    where: { id: commentId, ...commentInTenant(tenantId) },
     select: {
       id: true,
       bugId: true,
@@ -46,7 +53,16 @@ export async function updateCommentAction(
   formData: FormData,
 ): Promise<CommentActionResult> {
   const user = await requireUser();
-  const comment = await loadComment(commentId);
+
+  const limit = checkRateLimit(
+    `edit-comment:${user.id}`,
+    ACTION_RATE_LIMITS.editComment,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
+
+  const comment = await loadComment(commentId, await currentTenantIdFor(user.id));
   if (!comment) return { error: COMMENT_ERRORS.notFound };
   if (comment.bug.isDeleted) return { error: COMMENT_ERRORS.issueDeleted };
   if (comment.deletedAt) return { error: COMMENT_ERRORS.deleted };
@@ -73,6 +89,13 @@ export async function updateCommentAction(
     await tx.comment.update({
       where: { id: comment.id },
       data: { body, editedAt: new Date() },
+    });
+    // Images pasted while editing (#305).
+    await linkAttachments(tx, {
+      ids: attachmentIdsInMarkdown(body),
+      uploaderId: user.id,
+      bugId: comment.bugId,
+      commentId: comment.id,
     });
 
     await tx.bugActivity.updateMany({
@@ -106,6 +129,7 @@ export async function updateCommentAction(
     });
   }
 
+  revalidatePath(`/issues/${comment.bugId}`);
   revalidatePath(`/bugs/${comment.bugId}`);
   return { ok: true };
 }
@@ -120,7 +144,7 @@ export async function deleteCommentAction(
   commentId: string,
 ): Promise<CommentActionResult> {
   const user = await requireUser();
-  const comment = await loadComment(commentId);
+  const comment = await loadComment(commentId, await currentTenantIdFor(user.id));
   if (!comment) return { error: COMMENT_ERRORS.notFound };
   if (comment.bug.isDeleted) return { error: COMMENT_ERRORS.issueDeleted };
   if (comment.deletedAt) return { error: COMMENT_ERRORS.deleted };
@@ -169,6 +193,7 @@ export async function deleteCommentAction(
     return { error: COMMENT_ERRORS.failed };
   }
 
+  revalidatePath(`/issues/${comment.bugId}`);
   revalidatePath(`/bugs/${comment.bugId}`);
   return { ok: true };
 }

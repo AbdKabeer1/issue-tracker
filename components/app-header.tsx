@@ -3,18 +3,22 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { logoutAction } from "@/app/actions/auth";
+import { SignOutButton } from "@/components/sign-out-button";
 import { BrandLockup } from "@/components/brand-lockup";
+import { ProjectSwitcher } from "@/components/project-switcher";
+import { AgentKeyCopyButton, type AgentKeyHint } from "@/components/agent-key-copy";
 import { RoleSwitcher } from "@/components/role-switcher";
-import { clearUserDrafts } from "@/lib/form-drafts";
+import type { ProjectChoice } from "@/lib/project-context";
 import {
+  SWITCH_TENANT_LINK,
   headerNavItems,
-  initialsOf,
   isNavItemActive,
   realRoleOf,
   roleViewLabels,
 } from "@/lib/header-nav";
 import { isAdmin, type AppRole } from "@/lib/roles";
+import { FOCUSABLE, wrapFocusIndex } from "@/lib/focus-trap";
+import { Avatar } from "@/components/avatar";
 
 /** Closes a popover on outside click or Escape, returning focus to its trigger. */
 function useDismiss(
@@ -41,6 +45,62 @@ function useDismiss(
       document.removeEventListener("keydown", onKey);
     };
   }, [open, close, containerRef, triggerRef]);
+}
+
+/**
+ * While the mobile menu is open it behaves like a modal (#308): Tab cycles
+ * between the toggle and the panel's controls, everything outside the header
+ * is inert — unreachable by keyboard and hidden from screen readers — and
+ * the page behind stops scrolling. Escape and outside clicks are handled by
+ * useDismiss, which returns focus to the toggle.
+ */
+function useMenuFocusTrap(
+  open: boolean,
+  headerRef: React.RefObject<HTMLElement | null>,
+  panelRef: React.RefObject<HTMLElement | null>,
+  triggerRef: React.RefObject<HTMLElement | null>,
+) {
+  useEffect(() => {
+    const header = headerRef.current;
+    const panel = panelRef.current;
+    if (!open || !header || !panel) return;
+
+    // Everything beside the header — main content, the skip link, the
+    // floating report button — goes inert for as long as the menu is open.
+    const siblings = Array.from(header.parentElement?.children ?? []).filter(
+      (el): el is HTMLElement => el !== header && el instanceof HTMLElement,
+    );
+    const wasInert = siblings.map((el) => el.inert);
+    siblings.forEach((el) => (el.inert = true));
+
+    const scroll = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+
+    const stops = () => [
+      ...(triggerRef.current ? [triggerRef.current] : []),
+      ...Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)),
+    ];
+
+    // Start on the first link, so the first Tab is already inside the menu.
+    panel.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const list = stops();
+      const index = list.indexOf(document.activeElement as HTMLElement);
+      const next = wrapFocusIndex(index, list.length, event.shiftKey);
+      if (next === null) return;
+      event.preventDefault();
+      list[next].focus();
+    };
+    document.addEventListener("keydown", onKey);
+
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      siblings.forEach((el, i) => (el.inert = wasInert[i]));
+      document.documentElement.style.overflow = scroll;
+    };
+  }, [open, headerRef, panelRef, triggerRef]);
 }
 
 function PlusIcon({ className = "h-4 w-4" }: { className?: string }) {
@@ -84,37 +144,35 @@ function NotificationsBell({ unreadCount, active }: { unreadCount: number; activ
   );
 }
 
-function Avatar({ name, size = "md" }: { name?: string | null; size?: "md" | "lg" }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-teal-700 font-semibold text-white ${
-        size === "lg" ? "h-10 w-10 text-sm" : "h-8 w-8 text-xs"
-      }`}
-    >
-      {initialsOf(name)}
-    </span>
-  );
-}
-
 const linkFocus =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2";
 
 export function AppHeader({
   userName,
+  userImage,
   role,
   isRealSuperAdmin,
   isRealAdmin,
   unreadCount = 0,
   userId,
+  projects = [],
+  activeProjectId = null,
+  agentKeys = [],
 }: {
   userName?: string | null;
+  /** Their picture, if their sign-in provider gave one (#290). */
+  userImage?: string | null;
   role?: AppRole | null;
   isRealSuperAdmin?: boolean;
   isRealAdmin?: boolean;
   /** Unread in-app notifications (#216). */
   unreadCount?: number;
   userId?: string | null;
+  /** The tenant's projects and the one currently active (#426). */
+  projects?: ProjectChoice[];
+  activeProjectId?: string | null;
+  /** Prefixes of this person's live agent keys for the active project. */
+  agentKeys?: AgentKeyHint[];
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -124,11 +182,13 @@ export function AppHeader({
   const accountButtonRef = useRef<HTMLButtonElement>(null);
   const headerRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuPanelRef = useRef<HTMLDivElement>(null);
 
   const closeAccount = () => setAccountOpen(false);
   const closeMenu = () => setMenuOpen(false);
   useDismiss(accountOpen, closeAccount, accountRef, accountButtonRef);
   useDismiss(menuOpen, closeMenu, headerRef, menuButtonRef);
+  useMenuFocusTrap(menuOpen, headerRef, menuPanelRef, menuButtonRef);
 
   // Close menus when the page changes (state adjusted during render, not in an effect).
   const [lastPath, setLastPath] = useState(pathname);
@@ -142,21 +202,42 @@ export function AppHeader({
   const canSwitchRole = Boolean((isRealSuperAdmin || isRealAdmin) && role);
   const realRole = realRoleOf({ isRealSuperAdmin, isRealAdmin });
   const viewingAsOther = canSwitchRole && role !== realRole;
-  const onNewIssue = pathname?.replace(/\/+$/, "") === "/bugs/new";
+  const onNewIssue =
+    pathname?.replace(/\/+$/, "") === "/issues/new" ||
+    pathname?.replace(/\/+$/, "") === "/bugs/new";
   const effectiveRole: AppRole = role ?? "user";
 
   return (
-    <header
-      ref={headerRef}
-      className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80"
-    >
-      <div className="mx-auto flex h-14 max-w-5xl items-center gap-4 px-4 sm:gap-6">
+    <header ref={headerRef} className="sticky top-0 z-40">
+      {/* Blur lives on its own layer. backdrop-filter on the header itself
+          clips overflow, which hid the account menu under the bar. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 -z-10 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80"
+      />
+      <div className="relative mx-auto flex h-14 max-w-7xl items-center gap-4 px-4 sm:gap-6">
         <div className="shrink-0">
-          <BrandLockup href="/bugs" size="sm" />
+          <BrandLockup href="/issues" size="sm" />
+        </div>
+
+        {/* #426: the active project and agent key, visible wherever projects change what a page shows. */}
+        <div className="hidden shrink-0 items-center gap-2 md:flex">
+          <ProjectSwitcher
+            projects={projects}
+            activeProjectId={activeProjectId}
+          />
+          <AgentKeyCopyButton
+            projectId={activeProjectId ?? projects[0]?.id}
+            projectName={projects.find((p) => p.id === (activeProjectId ?? projects[0]?.id))?.name}
+            keys={agentKeys}
+          />
         </div>
 
         {/* Desktop navigation: the active page is underlined on the header's edge. */}
-        <nav aria-label="Main" className="hidden h-full items-stretch gap-1 md:flex">
+        <nav
+          aria-label="Main"
+          className="hidden h-full min-w-0 flex-1 items-stretch gap-1 overflow-x-auto md:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           {items.map((item) => {
             const active = isNavItemActive(pathname, item.href);
             return (
@@ -166,7 +247,7 @@ export function AppHeader({
                 aria-current={active ? "page" : undefined}
                 className={`relative inline-flex items-center rounded-sm px-2.5 text-sm transition-colors ${linkFocus} ${
                   active
-                    ? "font-medium text-slate-900 after:absolute after:inset-x-2.5 after:-bottom-px after:h-0.5 after:rounded-full after:bg-teal-700"
+                    ? "font-medium text-slate-900 after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-teal-700"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
@@ -176,7 +257,7 @@ export function AppHeader({
           })}
         </nav>
 
-        <div className="ml-auto flex items-center gap-2 sm:gap-3">
+        <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
           {viewingAsOther ? (
             <button
               type="button"
@@ -194,7 +275,7 @@ export function AppHeader({
           />
 
           <Link
-            href="/bugs/new"
+            href="/issues/new"
             aria-current={onNewIssue ? "page" : undefined}
             aria-label="New issue"
             className={`inline-flex h-9 items-center gap-1.5 rounded-lg bg-teal-700 px-2.5 text-sm font-medium text-white shadow-xs transition-colors hover:bg-teal-800 sm:px-3.5 ${linkFocus}`}
@@ -215,7 +296,7 @@ export function AppHeader({
               className={`relative flex items-center gap-1 rounded-full p-0.5 pr-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 ${linkFocus}`}
             >
               <span className="sr-only">Account menu for {userName}</span>
-              <Avatar name={userName} />
+              <Avatar name={userName} image={userImage} size="md" />
               {viewingAsOther ? (
                 <span
                   className="absolute left-6 top-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-amber-500 lg:hidden"
@@ -234,9 +315,9 @@ export function AppHeader({
             {accountOpen ? (
               <div
                 id="account-menu"
-                className="absolute right-0 top-full mt-2 w-64 origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg ring-1 ring-black/5 motion-safe:animate-[header-pop_120ms_ease-out]"
+                className="absolute right-0 top-full z-50 mt-2 w-64 origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg ring-1 ring-black/5 motion-safe:animate-[header-pop_120ms_ease-out]"
               >
-                <AccountSummary userName={userName} role={effectiveRole} realRole={realRole} />
+                <AccountSummary userName={userName} userImage={userImage} role={effectiveRole} realRole={realRole} />
                 {canSwitchRole ? (
                   <div className="border-t border-slate-100 px-2 py-2.5">
                     <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
@@ -251,17 +332,16 @@ export function AppHeader({
                       Dashboard
                     </MenuLink>
                   ) : null}
+                  <MenuLink
+                    href={SWITCH_TENANT_LINK.href}
+                    active={isNavItemActive(pathname, SWITCH_TENANT_LINK.href)}
+                  >
+                    {SWITCH_TENANT_LINK.label}
+                  </MenuLink>
                   <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")}>
                     Settings
                   </MenuLink>
-                  <form action={logoutAction} onSubmit={() => clearUserDrafts(userId)}>
-                    <button
-                      type="submit"
-                      className={`w-full rounded-md px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50 ${linkFocus}`}
-                    >
-                      Sign out
-                    </button>
-                  </form>
+                  <SignOutButton userId={userId} className={linkFocus} />
                 </div>
               </div>
             ) : null}
@@ -298,8 +378,24 @@ export function AppHeader({
       {menuOpen ? (
         <div
           id="mobile-menu"
-          className="max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-4 pt-2 md:hidden"
+          ref={menuPanelRef}
+          className="relative max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-4 pt-2 md:hidden"
         >
+          {projects.length > 0 ? (
+            <div className="flex flex-col gap-2 border-b border-slate-200 pb-3">
+              <ProjectSwitcher
+                projects={projects}
+                activeProjectId={activeProjectId}
+                fullWidth
+              />
+              <AgentKeyCopyButton
+                projectId={activeProjectId ?? projects[0]?.id}
+                projectName={projects.find((p) => p.id === (activeProjectId ?? projects[0]?.id))?.name}
+                keys={agentKeys}
+                fullWidth
+              />
+            </div>
+          ) : null}
           <nav aria-label="Main" className="flex flex-col py-1">
             {items.map((item) => (
               <MenuLink
@@ -320,30 +416,28 @@ export function AppHeader({
                 Dashboard
               </MenuLink>
             ) : null}
+            <MenuLink
+              href={SWITCH_TENANT_LINK.href}
+              active={isNavItemActive(pathname, SWITCH_TENANT_LINK.href)}
+              large
+            >
+              {SWITCH_TENANT_LINK.label}
+            </MenuLink>
             <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")} large>
               Settings
             </MenuLink>
           </nav>
 
           <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50/60">
-            <AccountSummary userName={userName} role={effectiveRole} realRole={realRole} />
+            <AccountSummary userName={userName} userImage={userImage} role={effectiveRole} realRole={realRole} />
             {canSwitchRole ? (
               <div className="border-t border-slate-200 px-3 py-3">
                 <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
               </div>
             ) : null}
-            <form
-              action={logoutAction}
-              className="border-t border-slate-200 p-2"
-              onSubmit={() => clearUserDrafts(userId)}
-            >
-              <button
-                type="submit"
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-white ${linkFocus}`}
-              >
-                Sign out
-              </button>
-            </form>
+            <div className="border-t border-slate-200 p-2">
+              <SignOutButton userId={userId} className={linkFocus} />
+            </div>
           </div>
         </div>
       ) : null}
@@ -353,16 +447,18 @@ export function AppHeader({
 
 function AccountSummary({
   userName,
+  userImage,
   role,
   realRole,
 }: {
   userName?: string | null;
+  userImage?: string | null;
   role: AppRole;
   realRole: AppRole;
 }) {
   return (
     <div className="flex items-center gap-3 px-2 py-2.5">
-      <Avatar name={userName} size="lg" />
+      <Avatar name={userName} image={userImage} size="lg" />
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-slate-900">{userName}</p>
         <p className="truncate text-xs text-slate-500">

@@ -1,10 +1,12 @@
+import Link from "next/link";
 import { BrandLockup } from "@/components/brand-lockup";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { LoginForm } from "@/components/login-form";
 import { isPasswordAuthEnabled } from "@/lib/auth-mode";
+import { isGoogleOAuthConfigured } from "@/lib/google-oauth";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
 
-/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Sign in" };
 
 /**
@@ -25,13 +27,22 @@ export default async function LoginPage({
 }) {
   const params = await searchParams;
   const callbackUrl = safeCallbackUrl(params.callbackUrl);
+  const googleConfigured = isGoogleOAuthConfigured();
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4 py-16">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm">
-        <BrandLockup size="md" />
+        <div className="mb-4">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1 text-xs font-medium text-teal-700 hover:text-teal-900 hover:underline"
+          >
+            ← Back to Homepage
+          </Link>
+        </div>
+        <BrandLockup href="/" size="md" />
         <h1 className="mt-4 text-xl font-semibold text-slate-900">
-          Sign in to Zedu Issues
+          Sign in to Ziki Issues
         </h1>
         <p className="mt-1.5 text-sm text-slate-600">
           Sign in with your Google account to report, vote, and track issues.
@@ -68,10 +79,57 @@ export default async function LoginPage({
               AUTH_PASSWORD_LOGIN=true) this page offered no way to sign in and
               /forgot-password + /reset-password were unreachable by link. */}
           {isPasswordAuthEnabled() ? (
-            <LoginForm callbackUrl={callbackUrl} googleEnabled />
-          ) : (
+            <LoginForm callbackUrl={callbackUrl} googleEnabled={googleConfigured} />
+          ) : googleConfigured ? (
             <GoogleSignInButton callbackUrl={callbackUrl} />
+          ) : (
+            <div className="rounded-lg bg-amber-50 p-4 text-sm text-amber-900" role="alert">
+              <p className="font-medium">Google sign-in is not configured.</p>
+              <p className="mt-1">
+                Set <code className="font-mono px-1 rounded bg-amber-100">GOOGLE_CLIENT_ID</code> and
+                <code className="font-mono px-1 rounded bg-amber-100">GOOGLE_CLIENT_SECRET</code>
+                in your environment to enable Google sign-in.
+              </p>
+              <p className="mt-2">
+                <a
+                  href="https://console.cloud.google.com/apis/credentials"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-teal-700 hover:underline"
+                >
+                  Configure in Google Cloud Console
+                </a>
+              </p>
+            </div>
           )}
+        </div>
+
+        {/* Guidance for autonomous agents & API documentation */}
+        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs">
+          <div className="flex items-center gap-2 font-semibold text-slate-800">
+            <span className="flex h-5 w-5 items-center justify-center rounded-md bg-teal-100 text-teal-700 text-xs">
+              🤖
+            </span>
+            <span>Looking for Agent API Docs or LLM Specs?</span>
+          </div>
+          <p className="mt-1 text-slate-600 leading-normal">
+            Autonomous agents interact via API keys and the live event feed. Inspect the machine-readable spec or explore the platform overview.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3 font-medium">
+            <Link
+              href="/llms.txt"
+              className="text-teal-700 hover:text-teal-800 hover:underline"
+            >
+              /llms.txt Specification &rarr;
+            </Link>
+            <span className="text-slate-300">·</span>
+            <Link
+              href="/"
+              className="text-slate-700 hover:text-slate-900 hover:underline"
+            >
+              Public Homepage
+            </Link>
+          </div>
         </div>
       </div>
     </main>

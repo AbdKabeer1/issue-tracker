@@ -1,0 +1,389 @@
+import { describe, expect, it, vi } from "vitest";
+import type { Severity } from "@prisma/client";
+import {
+  ALREADY_RESOLVED,
+  NO_ENTRY_ON_THIS_DISPUTE,
+  NOBODY_TO_AWARD,
+  NOT_IN_WORKSPACE,
+  NOT_YOUR_ENTRY,
+  correctionSourceKey,
+  correctEntry,
+  disputeInputSchema,
+  disputesForMember,
+  grantMissingAward,
+  missingAwardEntry,
+  openDispute,
+  openDisputes,
+  rejectDispute,
+  type DisputeInput,
+  type DisputeRow,
+} from "./disputes";
+
+/** The fake `award()` ledger: same unique-by-sourceKey rule as Postgres. */
+function fakeLedger() {
+  const rows: Array<Record<string, unknown>> = [];
+  const db = {
+    pointEntry: {
+      createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
+        let count = 0;
+        for (const row of data) {
+          if (rows.some((existing) => existing.sourceKey === row.sourceKey)) continue;
+          rows.push(row);
+          count += 1;
+        }
+        return { count };
+      }),
+      update: vi.fn(async (): Promise<Record<string, unknown>> => ({})),
+      findFirst: vi.fn(async (): Promise<{ id: string } | null> => null),
+      findMany: vi.fn(async (): Promise<unknown[]> => []),
+    },
+    pointDispute: {
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+        id: "dispute-new",
+        ...data,
+      })),
+      update: vi.fn(async (): Promise<Record<string, unknown>> => ({})),
+      findMany: vi.fn(async (): Promise<unknown[]> => []),
+    },
+    bug: {
+      findFirst: vi.fn(async (): Promise<{ id: string } | null> => null),
+    },
+  };
+  return { rows, db: db as never, raw: db };
+}
+
+const TENANT = "tenant-a";
+const OTHER_TENANT = "tenant-b";
+const ME = "user-me";
+const ADMIN = "user-admin";
+
+const bugOn = {
+  id: "bug-1",
+  number: 42,
+  tenantId: TENANT,
+  reporterId: ME,
+  assigneeId: "user-solver",
+  severity: "high" as Severity,
+};
+
+function openDisputeRow(overrides: Partial<DisputeRow> = {}): DisputeRow {
+  return {
+    id: "dispute-1",
+    tenantId: TENANT,
+    userId: ME,
+    bugId: bugOn.id,
+    pointEntryId: null,
+    status: "open",
+    ...overrides,
+  };
+}
+
+describe("disputeInputSchema", () => {
+  it("accepts a missing-award dispute with a role", () => {
+    const parsed = disputeInputSchema.safeParse({
+      bugNumber: "42",
+      kind: "missing",
+      role: "solver",
+      reason: "I resolved it but got nothing.",
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects a missing-award dispute with no role", () => {
+    const parsed = disputeInputSchema.safeParse({
+      bugNumber: "42",
+      kind: "missing",
+      reason: "Something is missing.",
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects a wrong-award dispute with no entry id", () => {
+    const parsed = disputeInputSchema.safeParse({
+      bugNumber: "42",
+      kind: "wrong",
+      reason: "The points look wrong.",
+    });
+    expect(parsed.success).toBe(false);
+  });
+});
+
+describe("missingAwardEntry", () => {
+  it("builds the canonical solver award with severity points", () => {
+    expect(missingAwardEntry(bugOn, "solver")).toEqual({
+      tenantId: TENANT,
+      userId: "user-solver",
+      bugId: "bug-1",
+      role: "solver",
+      points: 40,
+      sourceKey: "solver:bug-1:user-solver",
+    });
+  });
+
+  it("builds the canonical reporter award worth 5 points", () => {
+    const entry = missingAwardEntry(bugOn, "reporter");
+    expect(entry?.points).toBe(5);
+    expect(entry?.sourceKey).toBe("reporter:bug-1:user-me");
+  });
+
+  it("returns null for a solver award when nobody is assigned", () => {
+    expect(missingAwardEntry({ ...bugOn, assigneeId: null }, "solver")).toBeNull();
+  });
+});
+
+describe("openDispute", () => {
+  const input: DisputeInput = {
+    bugNumber: 42,
+    kind: "missing",
+    role: "solver",
+    reason: "I resolved it but got nothing.",
+  };
+
+  it("rejects a bug from another tenant", async () => {
+    const { db } = fakeLedger();
+    const result = await openDispute(db, { tenantId: OTHER_TENANT, userId: ME, input });
+    expect(result).toEqual({ ok: false, error: NOT_IN_WORKSPACE });
+  });
+
+  it("opens a dispute on an issue in the member's own workspace", async () => {
+    const { db, raw } = fakeLedger();
+    raw.bug.findFirst.mockResolvedValue({ id: "bug-1" });
+    const result = await openDispute(db, { tenantId: TENANT, userId: ME, input });
+    expect(result).toEqual({ ok: true, disputeId: "dispute-new" });
+    expect(raw.pointDispute.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tenantId: TENANT,
+          userId: ME,
+          bugId: "bug-1",
+          pointEntryId: null,
+        }),
+      }),
+    );
+  });
+
+  it("rejects disputing a points entry that isn't yours", async () => {
+    const { db, raw } = fakeLedger();
+    raw.bug.findFirst.mockResolvedValue({ id: "bug-1" });
+    raw.pointEntry.findFirst.mockResolvedValue(null);
+    const result = await openDispute(db, {
+      tenantId: TENANT,
+      userId: ME,
+      input: { bugNumber: 42, kind: "wrong", pointEntryId: "entry-x", reason: "Wrong severity." },
+    });
+    expect(result).toEqual({ ok: false, error: NOT_YOUR_ENTRY });
+  });
+});
+
+describe("grantMissingAward", () => {
+  it("grants the missing solver award once", async () => {
+    const { db, raw } = fakeLedger();
+    const result = await grantMissingAward(db, {
+      dispute: openDisputeRow(),
+      bug: bugOn,
+      role: "solver",
+      resolvedById: ADMIN,
+    });
+    expect(result).toEqual({ ok: true, awarded: true });
+    expect(raw.pointEntry.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({
+            role: "solver",
+            points: 40,
+            sourceKey: "solver:bug-1:user-solver",
+          }),
+        ],
+      }),
+    );
+    expect(raw.pointDispute.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "dispute-1" },
+        data: expect.objectContaining({ status: "granted", resolvedById: ADMIN }),
+      }),
+    );
+  });
+
+  it("granting twice does not add points twice", async () => {
+    // A race: both grants see the dispute still open, but the ledger's unique
+    // sourceKey keeps the points honest.
+    const { db, rows } = fakeLedger();
+    const first = await grantMissingAward(db, {
+      dispute: openDisputeRow(),
+      bug: bugOn,
+      role: "solver",
+      resolvedById: ADMIN,
+    });
+    const second = await grantMissingAward(db, {
+      dispute: openDisputeRow(),
+      bug: bugOn,
+      role: "solver",
+      resolvedById: ADMIN,
+    });
+    expect(first).toEqual({ ok: true, awarded: true });
+    expect(second).toEqual({ ok: true, awarded: false });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ points: 40 });
+  });
+
+  it("refuses to resolve a dispute that is already resolved", async () => {
+    const { db, rows } = fakeLedger();
+    const result = await grantMissingAward(db, {
+      dispute: openDisputeRow({ status: "granted" }),
+      bug: bugOn,
+      role: "solver",
+      resolvedById: ADMIN,
+    });
+    expect(result).toEqual({ ok: false, error: ALREADY_RESOLVED });
+    expect(rows).toHaveLength(0);
+  });
+
+  it("refuses a bug from a different tenant than the dispute", async () => {
+    const { db } = fakeLedger();
+    const result = await grantMissingAward(db, {
+      dispute: openDisputeRow(),
+      bug: { ...bugOn, tenantId: OTHER_TENANT },
+      role: "solver",
+      resolvedById: ADMIN,
+    });
+    expect(result).toEqual({ ok: false, error: NOT_IN_WORKSPACE });
+  });
+
+  it("refuses a solver award when nobody is assigned", async () => {
+    const { db } = fakeLedger();
+    const result = await grantMissingAward(db, {
+      dispute: openDisputeRow(),
+      bug: { ...bugOn, assigneeId: null },
+      role: "solver",
+      resolvedById: ADMIN,
+    });
+    expect(result).toEqual({ ok: false, error: NOBODY_TO_AWARD });
+  });
+});
+
+describe("correctEntry", () => {
+  const entry = {
+    id: "entry-1",
+    tenantId: TENANT,
+    userId: ME,
+    bugId: "bug-1" as string | null,
+    role: "solver" as const,
+    points: 25,
+  };
+
+  it("marks the entry corrected and writes the reversing row", async () => {
+    const { db, raw, rows } = fakeLedger();
+    const result = await correctEntry(db, {
+      dispute: openDisputeRow({ pointEntryId: "entry-1" }),
+      entry,
+      resolvedById: ADMIN,
+      note: "It was a low, not a medium.",
+    });
+    expect(result).toEqual({ ok: true, awarded: true });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      points: -25,
+      sourceKey: correctionSourceKey("dispute-1"),
+    });
+    expect(raw.pointEntry.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "entry-1" },
+        data: { correctedAt: expect.any(Date) },
+      }),
+    );
+    expect(raw.pointDispute.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "granted",
+          resolution: "It was a low, not a medium.",
+        }),
+      }),
+    );
+  });
+
+  it("refuses an entry the dispute doesn't point at", async () => {
+    const { db, rows } = fakeLedger();
+    const result = await correctEntry(db, {
+      dispute: openDisputeRow({ pointEntryId: "entry-other" }),
+      entry,
+      resolvedById: ADMIN,
+    });
+    expect(result).toEqual({ ok: false, error: NO_ENTRY_ON_THIS_DISPUTE });
+    expect(rows).toHaveLength(0);
+  });
+
+  it("refuses a dispute that is already resolved", async () => {
+    const { db } = fakeLedger();
+    const result = await correctEntry(db, {
+      dispute: openDisputeRow({ pointEntryId: "entry-1", status: "rejected" }),
+      entry,
+      resolvedById: ADMIN,
+    });
+    expect(result).toEqual({ ok: false, error: ALREADY_RESOLVED });
+  });
+});
+
+describe("rejectDispute", () => {
+  it("rejects an open dispute without touching the ledger", async () => {
+    const { db, raw, rows } = fakeLedger();
+    const result = await rejectDispute(db, {
+      dispute: openDisputeRow(),
+      resolvedById: ADMIN,
+      note: "The award is already there.",
+    });
+    expect(result).toEqual({ ok: true, disputeId: "dispute-1" });
+    expect(rows).toHaveLength(0);
+    expect(raw.pointDispute.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "rejected", resolution: "The award is already there." }),
+      }),
+    );
+  });
+
+  it("refuses to reject a dispute that is already resolved", async () => {
+    const { db } = fakeLedger();
+    const result = await rejectDispute(db, {
+      dispute: openDisputeRow({ status: "granted" }),
+      resolvedById: ADMIN,
+    });
+    expect(result).toEqual({ ok: false, error: ALREADY_RESOLVED });
+  });
+});
+
+describe("dispute list queries", () => {
+  it("maps a dispute row to the view shape", async () => {
+    const { db, raw } = fakeLedger();
+    raw.pointDispute.findMany.mockResolvedValue([
+      {
+        id: "dispute-1",
+        status: "open",
+        reason: "Missing solver award.",
+        resolution: null,
+        resolvedAt: null,
+        createdAt: new Date("2026-10-19"),
+        pointEntryId: null,
+        bug: { id: "bug-1", number: 42, title: "Login is broken" },
+        user: { id: ME, name: "Ada" },
+        pointEntry: null,
+      },
+    ]);
+    const views = await openDisputes(db, TENANT);
+    expect(views).toEqual([
+      expect.objectContaining({
+        id: "dispute-1",
+        kind: "missing",
+        bugNumber: 42,
+        openerName: "Ada",
+        entry: null,
+      }),
+    ]);
+  });
+
+  it("scopes a member's disputes to their tenant and user", async () => {
+    const { db, raw } = fakeLedger();
+    await disputesForMember(db, { tenantId: TENANT, userId: ME });
+    expect(raw.pointDispute.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: TENANT, userId: ME } }),
+    );
+  });
+});

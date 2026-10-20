@@ -1,5 +1,7 @@
 import type { ActivityType } from "@prisma/client";
+import { activityNote } from "@/lib/resolution-note";
 import { LocalTime } from "@/components/local-time";
+import { ExpandableText } from "@/components/expandable-text";
 
 export type ActivityEntry = {
   id: string;
@@ -7,6 +9,7 @@ export type ActivityEntry = {
   summary: string;
   createdAt: Date;
   actor: { name: string };
+  metadata?: unknown;
 };
 
 const typeLabel: Record<ActivityType, string> = {
@@ -16,6 +19,7 @@ const typeLabel: Record<ActivityType, string> = {
   assignee_changed: "Assignee",
   commented: "Comment",
   edited: "Edit",
+  milestone_changed: "Milestone",
   boosted: "Boost",
   unboosted: "Unboost",
   deleted: "Deleted",
@@ -23,6 +27,7 @@ const typeLabel: Record<ActivityType, string> = {
   comment_deleted: "Moderation",
   type_changed: "Type",
   category_changed: "Category",
+  duplicate_changed: "Duplicate",
 };
 
 export function ActivityTimeline({
@@ -72,8 +77,17 @@ export function ActivityTimeline({
                 <span className="font-medium text-slate-900">
                   {entry.actor.name}
                 </span>{" "}
-                {entry.summary}
+                <ExpandableText maxLines={2} expandText="View more" collapseText="View less">
+                  {entry.summary}
+                </ExpandableText>
               </p>
+              {entry.type === "status_changed" && activityNote(entry.metadata) ? (
+                <ExpandableText maxLines={3} expandText="View more" collapseText="View less">
+                  <blockquote className="mt-1 whitespace-pre-wrap break-words border-l-2 border-emerald-300 pl-3 text-sm text-slate-700">
+                    {activityNote(entry.metadata)}
+                  </blockquote>
+                </ExpandableText>
+              ) : null}
             </li>
           ))}
         </ol>

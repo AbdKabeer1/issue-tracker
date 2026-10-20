@@ -1,0 +1,278 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+
+// #425: run as a member of the Zedu tenant.
+vi.mock("@/lib/tenant-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/tenant-context")>()),
+  currentTenantIdFor: vi.fn(async () => "tenant-zedu"),
+  defaultProjectIdFor: vi.fn(async () => "project-zedu"),
+  tenantIdForUser: vi.fn(async () => "tenant-zedu"),
+}));
+vi.mock("@/lib/tenant-viewer", () => ({
+  viewerBugScope: vi.fn(async () => ({ tenantId: "tenant-zedu" })),
+}));
+
+const pageSource = readFileSync(
+  path.resolve(__dirname, "page.tsx"),
+  "utf8",
+);
+
+vi.mock("next/navigation", () => ({
+  notFound: vi.fn(),
+  redirect: vi.fn(),
+}));
+
+vi.mock("@/lib/session-user", () => ({
+  resolveSessionUserId: vi.fn(),
+}));
+
+vi.mock("@/lib/auth-helpers", () => ({
+  requireUser: vi.fn(),
+}));
+
+vi.mock("@/lib/roles", () => ({
+  isAdmin: vi.fn((role) => role === "admin" || role === "super_admin"),
+  isSuperAdmin: vi.fn((role) => role === "super_admin"),
+}));
+
+vi.mock("@/lib/ticket-deletion", () => ({
+  canDeleteTicket: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock("@/lib/ticket-editing", () => ({
+  canEditTicket: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock("@/lib/ticket-assignment", () => ({
+  canAssignTicket: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock("@/lib/voter-summaries", () => ({
+  fetchVoterSummary: vi.fn().mockResolvedValue({
+    likes: { count: 0, preview: [] },
+    dislikes: { count: 0, preview: [] },
+  }),
+  createEmptyVoterSummary: vi.fn().mockReturnValue({
+    likes: { count: 0, preview: [] },
+    dislikes: { count: 0, preview: [] },
+  }),
+}));
+
+vi.mock("@/lib/lookups", () => ({
+  getActiveIssueTypesCached: vi.fn().mockResolvedValue([]),
+  getActivePlatforms: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("@/lib/comment-window", () => ({
+  COMMENT_THREADS_PER_PAGE: 10,
+  earlierThreadsHref: vi.fn().mockReturnValue("#"),
+  loadCommentWindow: vi.fn().mockResolvedValue({
+    comments: [],
+    threads: [],
+    totalThreads: 0,
+    shownThreads: 0,
+    hiddenThreads: 0,
+    visibleCount: 0,
+  }),
+  parseCommentTarget: vi.fn(),
+  parseThreadWindow: vi.fn().mockReturnValue(10),
+}));
+
+vi.mock("@/lib/platforms", () => ({
+  getActivePlatforms: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    bug: { findUnique: vi.fn() },
+    membership: { findUnique: vi.fn().mockResolvedValue({ role: "member", userId: "user-123" }) },
+    redesignProposal: { findMany: vi.fn().mockResolvedValue([]) },
+    user: { findMany: vi.fn() },
+    category: { findMany: vi.fn().mockResolvedValue([]) },
+    bugActivity: {
+      count: vi.fn().mockResolvedValue(0),
+      findMany: vi.fn().mockResolvedValue([]),
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
+    issueWatch: { findUnique: vi.fn().mockResolvedValue(null) },
+    attachment: { findMany: vi.fn().mockResolvedValue([]) },
+    bugRevision: { findFirst: vi.fn().mockResolvedValue(null) },
+    milestone: { findMany: vi.fn().mockResolvedValue([]) },
+    issueValidation: { findMany: vi.fn().mockResolvedValue([]) },
+    issueClaim: { findMany: vi.fn().mockResolvedValue([]) },
+    testVerdict: { findMany: vi.fn().mockResolvedValue([]) },
+    agentAuditEvent: { findMany: vi.fn().mockResolvedValue([]) },
+  },
+}));
+
+import { resolveSessionUserId } from "@/lib/session-user";
+import { requireUser } from "@/lib/auth-helpers";
+import { prisma } from "@/lib/prisma";
+import BugDetailPage from "./page";
+
+const mockResolveSessionUserId = vi.mocked(resolveSessionUserId);
+const mockRequireUser = vi.mocked(requireUser);
+const mockUserFindMany = vi.mocked(prisma.user.findMany);
+const mockBugFindUnique = vi.mocked(prisma.bug.findUnique);
+
+describe("BugDetailPage conditional user query (#349)", () => {
+  it("guards prisma.user.findMany behind canTriage in source code", () => {
+    // Assert structural invariant: user query must be conditionally executed
+    expect(pageSource).toMatch(/canTriage[\s\S]*?prisma\.user\.findMany/);
+  });
+
+  describe("runtime execution", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mockResolveSessionUserId.mockResolvedValue({ userId: "user-123" });
+      mockBugFindUnique.mockResolvedValue({
+        id: "bug-1",
+        number: 42,
+        title: "Test Bug",
+        description: "Test Description",
+        status: "open",
+        severity: "medium",
+        voteCount: 0,
+        proofLinks: [],
+        reporterId: "reporter-1",
+        assigneeId: null,
+        type: null,
+        reporter: { name: "Reporter", email: "rep@zedu.dev", role: "user" },
+        assignee: null,
+        category: null,
+        milestone: null,
+        duplicateOf: null,
+        duplicates: [],
+        _count: { duplicates: 0 },
+        comments: [],
+        activities: [],
+        votes: [],
+        isDeleted: false,
+      } as unknown as Awaited<ReturnType<typeof prisma.bug.findUnique>>);
+    });
+
+    it("does not query database users when viewer is a non-admin user", async () => {
+      mockRequireUser.mockResolvedValue({
+        id: "user-123",
+        role: "user",
+      } as unknown as Awaited<ReturnType<typeof requireUser>>);
+
+      await BugDetailPage({
+        params: Promise.resolve({ id: "bug-1" }),
+      });
+
+      expect(mockUserFindMany).not.toHaveBeenCalled();
+    });
+
+    it("queries database users when viewer is an admin", async () => {
+      mockRequireUser.mockResolvedValue({
+        id: "admin-123",
+        role: "admin",
+      } as unknown as Awaited<ReturnType<typeof requireUser>>);
+      mockUserFindMany.mockResolvedValue([
+        { id: "u-1", name: "Alice", role: "admin", image: null },
+      ] as unknown as Awaited<ReturnType<typeof prisma.user.findMany>>);
+
+      await BugDetailPage({
+        params: Promise.resolve({ id: "bug-1" }),
+      });
+
+      expect(mockUserFindMany).toHaveBeenCalledTimes(1);
+      expect(mockUserFindMany).toHaveBeenCalledWith({
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, role: true, image: true },
+      });
+    });
+
+    it("queries database users when viewer is a super admin", async () => {
+      mockRequireUser.mockResolvedValue({
+        id: "super-123",
+        role: "super_admin",
+      } as unknown as Awaited<ReturnType<typeof requireUser>>);
+      mockUserFindMany.mockResolvedValue([
+        { id: "u-1", name: "Alice", role: "admin", image: null },
+      ] as unknown as Awaited<ReturnType<typeof prisma.user.findMany>>);
+
+      await BugDetailPage({
+        params: Promise.resolve({ id: "bug-1" }),
+      });
+
+      expect(mockUserFindMany).toHaveBeenCalledTimes(1);
+      expect(mockUserFindMany).toHaveBeenCalledWith({
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, role: true, image: true },
+      });
+    });
+
+    it("observes database query counts and asserts non-triage viewer does not execute full user directory query (#349)", async () => {
+      mockRequireUser.mockResolvedValue({
+        id: "user-123",
+        role: "user",
+      } as unknown as Awaited<ReturnType<typeof requireUser>>);
+
+      const countQueries = () =>
+        mockBugFindUnique.mock.calls.length +
+        mockUserFindMany.mock.calls.length +
+        vi.mocked(prisma.attachment.findMany).mock.calls.length;
+
+      const before = countQueries();
+      await BugDetailPage({
+        params: Promise.resolve({ id: "bug-1" }),
+      });
+      const executed = countQueries() - before;
+
+      // Non-triage viewer must execute queries for bug and attachments, but 0 user directory queries
+      expect(executed).toBeGreaterThan(0);
+      expect(mockUserFindMany).toHaveBeenCalledTimes(0);
+    });
+
+    it("falls back to querying without milestone when Bug.milestoneId column does not exist (#289)", async () => {
+      mockRequireUser.mockResolvedValue({
+        id: "user-123",
+        role: "user",
+      } as unknown as Awaited<ReturnType<typeof requireUser>>);
+
+      mockBugFindUnique
+        .mockRejectedValueOnce(new Error("The column Bug.milestoneId does not exist in the current database."))
+        .mockResolvedValueOnce({
+          id: "bug-1",
+          number: 1,
+          title: "Test bug",
+          status: "open",
+          severity: "low",
+          description: "description",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          reporterId: "user-123",
+          assigneeId: null,
+          categoryId: null,
+          typeId: null,
+          isDeleted: false,
+          type: null,
+          reporter: { name: "Test User", email: "test@example.com", role: "user", image: null },
+          assignee: null,
+          category: null,
+          votes: [],
+          duplicateOf: null,
+          duplicates: [],
+          _count: { duplicates: 0 },
+        } as unknown as Awaited<ReturnType<typeof prisma.bug.findUnique>>);
+
+      const element = await BugDetailPage({
+        params: Promise.resolve({ id: "bug-1" }),
+      });
+
+      expect(element).toBeDefined();
+      expect(mockBugFindUnique).toHaveBeenCalledTimes(2);
+      expect(mockBugFindUnique).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          include: expect.not.objectContaining({
+            milestone: expect.anything(),
+          }),
+        }),
+      );
+    });
+  });
+});
+

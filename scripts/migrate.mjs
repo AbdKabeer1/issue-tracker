@@ -9,7 +9,8 @@ import { existsSync } from "fs";
  * which silently drops columns/tables that schema.prisma no longer has.
  *
  * If deploy stops early, scripts/sql/ensure-bug-number.sql still adds the
- * missing issue reference column. It does not drop anything.
+ * missing issue reference column, and scripts/sql/ensure-bug-duplicates.sql
+ * adds Bug.duplicateOfId. Neither drops anything.
  */
 
 let url = process.env.DATABASE_URL;
@@ -44,10 +45,19 @@ const prismaBin = existsSync("./node_modules/.bin/prisma")
   : "pnpm exec prisma";
 
 const bugNumberMigration = "20261017140000_bug_reference_number";
+const duplicateMigration = "20261019020000_bug_duplicates";
+const milestoneMigration = "20261019030000_milestones";
 const detailMigrations = [
   "20261017140000_issue_watch_and_notifications",
   "20261017150000_attachments",
 ];
+const userSettingsMigrations = [
+  "20261017100000_user_email_notifications",
+  "20261017150000_notification_preferences",
+  "20261020000000_keyboard_shortcuts",
+  "20261020010000_theme_preference",
+];
+const agentPlatformMigration = "20261021000000_agent_platform";
 
 function runPrisma(args, inherit = false) {
   return execSync(`${prismaBin} ${args}`, {
@@ -130,5 +140,232 @@ try {
   console.error(
     "[db:migrate] Could not add Bug.number:",
     ensureError instanceof Error ? ensureError.message : String(ensureError),
+  );
+}
+
+// The issues list filters on Bug.duplicateOfId. If an earlier migration is
+// stuck, deploy never reaches 20261019020000_bug_duplicates and every list
+// request fails. Add the column, then record that migration so the retry
+// does not try to add it again.
+try {
+  console.log("[db:migrate] Ensuring Bug.duplicateOfId exists...");
+  runPrisma(
+    "db execute --schema prisma/schema.prisma --file scripts/sql/ensure-bug-duplicates.sql",
+    true,
+  );
+  console.log("[db:migrate] Bug.duplicateOfId is present.");
+  try {
+    runPrisma(
+      "db execute --schema prisma/schema.prisma --file scripts/sql/ensure-duplicate-activity-type.sql",
+      true,
+    );
+  } catch (enumError) {
+    console.error(
+      "[db:migrate] Could not add ActivityType duplicate_changed:",
+      enumError instanceof Error ? enumError.message.split("\n")[0] : enumError,
+    );
+  }
+  try {
+    runPrisma(`migrate resolve --applied ${duplicateMigration}`, true);
+    console.log(`[db:migrate] Recorded ${duplicateMigration} as applied.`);
+  } catch (resolveError) {
+    const message =
+      resolveError instanceof Error ? resolveError.message : String(resolveError);
+    console.log(
+      "[db:migrate] Duplicate migration was already recorded:",
+      message.split("\n")[0],
+    );
+    // A failed row blocks resolve --applied. Clear it, then record the repair.
+    if (/failed|P3018|P3009/i.test(message)) {
+      try {
+        runPrisma(`migrate resolve --rolled-back ${duplicateMigration}`, true);
+        runPrisma(`migrate resolve --applied ${duplicateMigration}`, true);
+        console.log(`[db:migrate] Recorded ${duplicateMigration} as applied.`);
+      } catch (retryResolveError) {
+        console.error(
+          "[db:migrate] Could not record the duplicate migration:",
+          retryResolveError instanceof Error
+            ? retryResolveError.message.split("\n")[0]
+            : retryResolveError,
+        );
+      }
+    }
+  }
+  try {
+    deploy();
+  } catch (retryError) {
+    console.error(
+      "[db:migrate] migrate deploy still failing after duplicate repair:",
+      retryError instanceof Error ? retryError.message : String(retryError),
+    );
+  }
+} catch (duplicateError) {
+  console.error(
+    "[db:migrate] Could not add Bug.duplicateOfId:",
+    duplicateError instanceof Error ? duplicateError.message : String(duplicateError),
+  );
+}
+
+// #289: The issue page queries Bug.milestoneId and Milestone. If an earlier
+// migration failed or stopped, deploy never reaches 20261019030000_milestones
+// and issue detail pages crash. Add the table and column, then record that
+// migration so the retry does not try to add it again.
+try {
+  console.log("[db:migrate] Ensuring Milestone and Bug.milestoneId exist...");
+  runPrisma(
+    "db execute --schema prisma/schema.prisma --file scripts/sql/ensure-milestones.sql",
+    true,
+  );
+  console.log("[db:migrate] Milestone and Bug.milestoneId are present.");
+  try {
+    runPrisma(
+      "db execute --schema prisma/schema.prisma --file scripts/sql/ensure-milestone-activity-type.sql",
+      true,
+    );
+  } catch (enumError) {
+    console.error(
+      "[db:migrate] Could not add ActivityType milestone_changed:",
+      enumError instanceof Error ? enumError.message.split("\n")[0] : enumError,
+    );
+  }
+  try {
+    runPrisma(`migrate resolve --applied ${milestoneMigration}`, true);
+    console.log(`[db:migrate] Recorded ${milestoneMigration} as applied.`);
+  } catch (resolveError) {
+    const message =
+      resolveError instanceof Error ? resolveError.message : String(resolveError);
+    console.log(
+      "[db:migrate] Milestone migration was already recorded:",
+      message.split("\n")[0],
+    );
+    // A failed row blocks resolve --applied. Clear it, then record the repair.
+    if (/failed|P3018|P3009/i.test(message)) {
+      try {
+        runPrisma(`migrate resolve --rolled-back ${milestoneMigration}`, true);
+        runPrisma(`migrate resolve --applied ${milestoneMigration}`, true);
+        console.log(`[db:migrate] Recorded ${milestoneMigration} as applied.`);
+      } catch (retryResolveError) {
+        console.error(
+          "[db:migrate] Could not record the milestone migration:",
+          retryResolveError instanceof Error
+            ? retryResolveError.message.split("\n")[0]
+            : retryResolveError,
+        );
+      }
+    }
+  }
+  try {
+    deploy();
+  } catch (retryError) {
+    console.error(
+      "[db:migrate] migrate deploy still failing after milestone repair:",
+      retryError instanceof Error ? retryError.message : String(retryError),
+    );
+  }
+} catch (milestoneError) {
+  console.error(
+    "[db:migrate] Could not add Milestone or Bug.milestoneId:",
+    milestoneError instanceof Error ? milestoneError.message : String(milestoneError),
+  );
+}
+
+// Settings page queries User.theme, User.keyboardShortcuts, and email notification preferences.
+// If an earlier migration was stuck, deploy never reaches those migrations and settings crashes.
+try {
+  console.log("[db:migrate] Ensuring User settings columns and ThemePreference exist...");
+  runPrisma(
+    "db execute --schema prisma/schema.prisma --file scripts/sql/ensure-user-settings.sql",
+    true,
+  );
+  console.log("[db:migrate] User settings columns are present.");
+  for (const name of userSettingsMigrations) {
+    try {
+      runPrisma(`migrate resolve --applied ${name}`, true);
+      console.log(`[db:migrate] Recorded ${name} as applied.`);
+    } catch (resolveError) {
+      const message =
+        resolveError instanceof Error ? resolveError.message : String(resolveError);
+      console.log(
+        `[db:migrate] ${name} was already recorded:`,
+        message.split("\n")[0],
+      );
+      if (/failed|P3018|P3009/i.test(message)) {
+        try {
+          runPrisma(`migrate resolve --rolled-back ${name}`, true);
+          runPrisma(`migrate resolve --applied ${name}`, true);
+          console.log(`[db:migrate] Recorded ${name} as applied.`);
+        } catch (retryResolveError) {
+          console.error(
+            `[db:migrate] Could not record ${name}:`,
+            retryResolveError instanceof Error
+              ? retryResolveError.message.split("\n")[0]
+              : retryResolveError,
+          );
+        }
+      }
+    }
+  }
+  try {
+    deploy();
+  } catch (retryError) {
+    console.error(
+      "[db:migrate] migrate deploy still failing after user settings repair:",
+      retryError instanceof Error ? retryError.message : String(retryError),
+    );
+  }
+} catch (settingsError) {
+  console.error(
+    "[db:migrate] Could not add User settings columns:",
+    settingsError instanceof Error ? settingsError.message : String(settingsError),
+  );
+}
+
+// Agent platform data model (tenants, projects, memberships, agent tables, Bug/Comment columns).
+// If an earlier migration was stuck or 20261021000000_agent_platform failed partially,
+// migrate deploy halts and /issues, /tenants, and layout crash.
+try {
+  console.log("[db:migrate] Ensuring Agent platform schema (tenants, projects, memberships) exists...");
+  runPrisma(
+    "db execute --schema prisma/schema.prisma --file scripts/sql/ensure-agent-platform.sql",
+    true,
+  );
+  console.log("[db:migrate] Agent platform schema is present.");
+  try {
+    runPrisma(`migrate resolve --applied ${agentPlatformMigration}`, true);
+    console.log(`[db:migrate] Recorded ${agentPlatformMigration} as applied.`);
+  } catch (resolveError) {
+    const message =
+      resolveError instanceof Error ? resolveError.message : String(resolveError);
+    console.log(
+      `[db:migrate] ${agentPlatformMigration} was already recorded:`,
+      message.split("\n")[0],
+    );
+    if (/failed|P3018|P3009/i.test(message)) {
+      try {
+        runPrisma(`migrate resolve --rolled-back ${agentPlatformMigration}`, true);
+        runPrisma(`migrate resolve --applied ${agentPlatformMigration}`, true);
+        console.log(`[db:migrate] Recorded ${agentPlatformMigration} as applied.`);
+      } catch (retryResolveError) {
+        console.error(
+          `[db:migrate] Could not record ${agentPlatformMigration}:`,
+          retryResolveError instanceof Error
+            ? retryResolveError.message.split("\n")[0]
+            : retryResolveError,
+        );
+      }
+    }
+  }
+  try {
+    deploy();
+  } catch (retryError) {
+    console.error(
+      "[db:migrate] migrate deploy still failing after agent platform repair:",
+      retryError instanceof Error ? retryError.message : String(retryError),
+    );
+  }
+} catch (agentPlatformError) {
+  console.error(
+    "[db:migrate] Could not add Agent platform schema:",
+    agentPlatformError instanceof Error ? agentPlatformError.message : String(agentPlatformError),
   );
 }

@@ -1,32 +1,87 @@
+import { ThemeSettings } from "@/components/theme-settings";
+import { parseTheme } from "@/lib/theme";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { NotificationSettings } from "@/components/notification-settings";
+import { DisplayNameForm } from "@/components/display-name-form";
+import { KeyboardShortcutSettings } from "@/components/keyboard-shortcut-settings";
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 
-/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const settings = await prisma.user.findUnique({
-    where: { id: user.id },
-    select: {
-      email: true,
-      emailNotifications: true,
-      notifyMentions: true,
-      notifyAssignments: true,
-      notifyStatusChanges: true,
-    },
-  });
+  let settings: {
+    name?: string | null;
+    email?: string | null;
+    theme?: string | null;
+    emailNotifications?: boolean;
+    notifyMentions?: boolean;
+    notifyAssignments?: boolean;
+    notifyStatusChanges?: boolean;
+    keyboardShortcuts?: boolean;
+  } | null = null;
+
+  try {
+    settings = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        name: true,
+        email: true,
+        theme: true,
+        emailNotifications: true,
+        notifyMentions: true,
+        notifyAssignments: true,
+        notifyStatusChanges: true,
+        keyboardShortcuts: true,
+      },
+    });
+  } catch (error) {
+    console.error("[settings] full settings query failed, falling back to minimal fields:", error);
+    try {
+      settings = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: {
+          name: true,
+          email: true,
+        },
+      });
+    } catch (fallbackError) {
+      console.error("[settings] fallback user query failed:", fallbackError);
+      settings = {
+        name: user.name ?? null,
+        email: user.email ?? null,
+      };
+    }
+  }
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="space-y-1">
-        <Link href="/bugs" className="text-sm text-teal-700 hover:underline">
+        <Link href="/issues" className="text-sm text-teal-700 hover:underline">
           ← Back to issues
         </Link>
         <h1 className="text-2xl font-semibold text-slate-900">Settings</h1>
       </div>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Profile
+        </h2>
+        <DisplayNameForm initialName={settings?.name ?? user.name ?? ""} />
+        <p className="mt-3 text-sm">
+          <Link href={`/users/${user.id}`} className="text-teal-700 hover:underline">
+            See how your profile looks to others
+          </Link>
+        </p>
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Appearance
+        </h2>
+        <ThemeSettings initialTheme={parseTheme(settings?.theme)} />
+      </section>
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Email notifications
@@ -43,6 +98,33 @@ export default async function SettingsPage() {
             notifyStatusChanges: settings?.notifyStatusChanges ?? true,
           }}
         />
+      </section>
+      {isAgentPlatformEnabled() ? (
+        <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Agents
+          </h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Register the AI agents that work issues for you, and see your team&apos;s.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-4 text-sm">
+            <Link href="/settings/agents" className="font-medium text-teal-700 hover:underline">
+              Manage agents
+            </Link>
+            <Link href="/settings/agents/pair" className="font-medium text-teal-700 hover:underline">
+              Pair an agent
+            </Link>
+            <Link href="/settings/audit" className="font-medium text-teal-700 hover:underline">
+              Agent audit log
+            </Link>
+          </div>
+        </section>
+      ) : null}
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Keyboard shortcuts
+        </h2>
+        <KeyboardShortcutSettings initialEnabled={settings?.keyboardShortcuts ?? true} />
       </section>
     </div>
   );

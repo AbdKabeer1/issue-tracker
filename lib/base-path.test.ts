@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveBasePath, toAppPath } from "./base-path";
 
 describe("resolveBasePath", () => {
-  it("defaults to empty string for root domain issues.zedu.chat", () => {
+  it("serves the canonical ziki.dev from the root (#424)", () => {
+    expect(resolveBasePath({ AUTH_URL: "https://ziki.dev/api/auth" })).toBe("");
+    expect(resolveBasePath({ NEXT_PUBLIC_SITE_URL: "https://ziki.dev" })).toBe("");
+  });
+
+  it("still serves the old issues.zedu.chat host from the root", () => {
     expect(
       resolveBasePath({
         AUTH_URL: "https://issues.zedu.chat/api/auth",
@@ -33,10 +38,25 @@ describe("resolveBasePath", () => {
       }),
     ).toBe("/bug-tracker");
   });
+
+  it("defaults to empty string for vercel domains even if URL contains bug-tracker in hostname or path", () => {
+    expect(
+      resolveBasePath({
+        AUTH_URL: "https://bug-tracker-eight-theta.vercel.app",
+      }),
+    ).toBe("");
+    expect(
+      resolveBasePath({
+        AUTH_URL: "https://bug-tracker-eight-theta.vercel.app/api/auth",
+      }),
+    ).toBe("");
+  });
 });
 
 describe("toAppPath", () => {
   it("strips the legacy /bug-tracker prefix", () => {
+    expect(toAppPath("/bug-tracker/issues")).toBe("/issues");
+    expect(toAppPath("/bug-tracker/issues/42")).toBe("/issues/42");
     expect(toAppPath("/bug-tracker/bugs")).toBe("/bugs");
     expect(toAppPath("/bug-tracker/bugs/42")).toBe("/bugs/42");
     expect(toAppPath("/bug-tracker/api/auth/session")).toBe(

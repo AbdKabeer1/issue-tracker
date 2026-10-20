@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { absoluteUrl } from "@/lib/site-url";
 
 /**
  * Owns robots.txt rather than letting the platform generate it (#224).
@@ -19,7 +20,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: "/bugs",
+        allow: ["/issues", "/bugs"],
         disallow: [
           "/admin",
           "/settings",
@@ -31,5 +32,7 @@ export default function robots(): MetadataRoute.Robots {
         ],
       },
     ],
+    // Points crawlers at the sitemap (#310), on the configured origin.
+    sitemap: absoluteUrl("/sitemap.xml"),
   };
 }

@@ -1,5 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+// #425: run as a member of the Zedu tenant.
+vi.mock("@/lib/tenant-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/tenant-context")>()),
+  currentTenantIdFor: vi.fn(async () => "tenant-zedu"),
+  defaultProjectIdFor: vi.fn(async () => "project-zedu"),
+  tenantIdForUser: vi.fn(async () => "tenant-zedu"),
+}));
+
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
@@ -103,5 +111,19 @@ describe("updateCommentAction mention notifications (#228)", () => {
     await edit(`cc @[Bob](${bobId}), fixed a typo`);
 
     expect(notifyMock).not.toHaveBeenCalled();
+  });
+
+  it("enforces rate limit when editing comments rapidly (#350)", async () => {
+    const { resetRateLimits, ACTION_RATE_LIMITS, RATE_LIMIT_MESSAGE } = await import("@/lib/rate-limit");
+    resetRateLimits();
+    findCommentMock.mockResolvedValue(existingComment("Initial comment"));
+
+    for (let i = 0; i < ACTION_RATE_LIMITS.editComment.max; i++) {
+      const res = await edit(`Edit iteration ${i}`);
+      expect(res).toEqual({ ok: true });
+    }
+
+    const blocked = await edit("One edit too many");
+    expect(blocked).toEqual({ error: RATE_LIMIT_MESSAGE });
   });
 });

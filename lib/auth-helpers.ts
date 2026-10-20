@@ -44,19 +44,20 @@ export async function requireUser(): Promise<SessionAppUser> {
   let userId: string;
   if ("error" in resolved) {
     const email = session.user.email?.toLowerCase();
-    // Google-only production has no password reset. A session with an email
-    // and no matching row was saved under Google's subject, not User.id.
+    // A session with an email and no matching row was saved under Google's subject, not User.id.
     if (!email || isPasswordAuthEnabled()) {
       redirect(SESSION_EXPIRED_PATH);
     }
     try {
-      userId = (
-        await upsertGoogleUser({
-          email,
-          name: session.user.name,
-          image: session.user.image,
-        })
-      ).id;
+      const googleAccount = await upsertGoogleUser({
+        email,
+        name: session.user.name,
+        image: session.user.image,
+      });
+      if ((session.user.sessionVersion ?? 0) !== googleAccount.sessionVersion) {
+        redirect(SESSION_EXPIRED_PATH);
+      }
+      userId = googleAccount.id;
     } catch (error) {
       console.error("[auth] Google session could not be linked to a user", error);
       redirect(SESSION_EXPIRED_PATH);
@@ -119,28 +120,28 @@ export async function requireUser(): Promise<SessionAppUser> {
   };
 }
 
-/** Require one of the given roles. Redirects unauthorized users to /bugs. */
+/** Require one of the given roles. Redirects unauthorized users to /issues. */
 export async function requireRole(
   roles: Role | Role[],
 ): Promise<SessionAppUser> {
   const user = await requireUser();
   const allowed = Array.isArray(roles) ? roles : [roles];
   if (!allowed.includes(user.role)) {
-    redirect("/bugs");
+    redirect("/issues");
   }
   return user;
 }
 
-/** Admin or super_admin. Redirects non-admins to /bugs. */
+/** Admin or super_admin. Redirects non-admins to /issues. */
 export async function requireAdmin(): Promise<SessionAppUser> {
   const user = await requireUser();
   if (!isAdmin(user.role)) {
-    redirect("/bugs");
+    redirect("/issues");
   }
   return user;
 }
 
-/** Super admin only. Redirects everyone else to /bugs. */
+/** Super admin only. Redirects everyone else to /issues. */
 export async function requireSuperAdmin(): Promise<SessionAppUser> {
   return requireRole("super_admin");
 }

@@ -11,6 +11,7 @@ import {
   ACTIVE_ROLE_COOKIE_NAME,
 } from "@/lib/roles";
 import { isSuperAdminEmail } from "@/lib/super-admin";
+import { defaultTenantProject } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
@@ -120,6 +121,8 @@ export async function GET(request: NextRequest) {
 
         const bug = await tx.bug.create({
           data: {
+            ...(await defaultTenantProject(tx)),
+            beneficiaryUserId: user.id,
             title: `Health Check Bug ${testId}`,
             description:
               "Testing bug creation and voting lifecycle in production DB",

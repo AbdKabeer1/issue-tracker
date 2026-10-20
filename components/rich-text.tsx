@@ -4,6 +4,7 @@ import {
   looksLikeMarkdown,
   safeHref,
   stripLegacyMarkup,
+  tokenizeInline,
 } from "@/lib/rich-text";
 
 type RichTextProps = {
@@ -219,7 +220,9 @@ function renderBlocks(
       if (i < lines.length) i += 1;
       nodes.push(
         /* Focusable so a keyboard user can scroll a long line: a code block
-           overflows on purpose, and axe flags an unreachable scroll region. */
+           overflows on purpose, and axe flags an unreachable scroll region.
+           A focusable scroll container is the fix, not the bug. */
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
         <pre key={`pre-${key++}`} tabIndex={0} role="group" aria-label="Code block">
           <code>{fence.join("\n")}</code>
         </pre>,
@@ -291,72 +294,8 @@ function renderBlocks(
   return nodes;
 }
 
-type InlineToken =
-  | { type: "text"; value: string }
-  | { type: "code"; value: string }
-  | { type: "bold"; value: string }
-  | { type: "italic"; value: string }
-  | { type: "strikethrough"; value: string }
-  | { type: "link"; label: string; href: string }
-  | { type: "image"; alt: string; src: string }
-  | { type: "autolink"; href: string };
 
-/**
- * Links require an http(s) href so soft-mentions `@[Name](userId)` stay text,
- * and bare URLs are linked automatically.
- */
-const INLINE_RE =
-  /(!?\[[^\]]*\]\((?:https?:\/\/|mailto:)[^)\s]*\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\s][^*]*\*|(?<![\w])_[^_\s][^_]*_(?![\w])|(?<![\w/.-])(https?:\/\/[^\s<>()]+))/g;
 
-const MARKDOWN_TARGET_RE = /^(!?)\[([^\]]*)\]\(([^)\s]+)\)$/;
-const TRAILING_PUNCTUATION_RE = /[.,;:!?]+$/;
-
-function tokenizeInline(text: string): InlineToken[] {
-  const tokens: InlineToken[] = [];
-  let last = 0;
-
-  for (const match of text.matchAll(INLINE_RE)) {
-    const index = match.index ?? 0;
-    if (index > last) {
-      tokens.push({ type: "text", value: text.slice(last, index) });
-    }
-    const raw = match[0];
-
-    const target = MARKDOWN_TARGET_RE.exec(raw);
-    if (target) {
-      if (target[1] === "!") {
-        tokens.push({ type: "image", alt: target[2] ?? "", src: target[3] ?? "" });
-      } else {
-        tokens.push({ type: "link", label: target[2] ?? raw, href: target[3] ?? "" });
-      }
-    } else if (raw.startsWith("`")) {
-      tokens.push({ type: "code", value: raw.slice(1, -1) });
-    } else if (raw.startsWith("**") || raw.startsWith("__")) {
-      tokens.push({ type: "bold", value: raw.slice(2, -2) });
-    } else if (raw.startsWith("~~")) {
-      tokens.push({ type: "strikethrough", value: raw.slice(2, -2) });
-    } else if (
-      (raw.startsWith("*") && raw.endsWith("*")) ||
-      (raw.startsWith("_") && raw.endsWith("_"))
-    ) {
-      tokens.push({ type: "italic", value: raw.slice(1, -1) });
-    } else {
-      const href = raw.replace(TRAILING_PUNCTUATION_RE, "");
-      tokens.push({ type: "autolink", href });
-      if (href !== raw) {
-        tokens.push({ type: "text", value: raw.slice(href.length) });
-      }
-    }
-
-    last = index + raw.length;
-  }
-
-  if (last < text.length) {
-    tokens.push({ type: "text", value: text.slice(last) });
-  }
-
-  return tokens.length > 0 ? tokens : [{ type: "text", value: text }];
-}
 
 function renderInline(
   text: string,
@@ -424,7 +363,15 @@ function renderInline(
     const label = token.type === "link" ? token.label : token.href;
     if (!href) return <span key={index}>{label}</span>;
     return (
-      <a key={index} href={href} target="_blank" rel="noopener noreferrer">
+      <a
+        key={index}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        // A bare URL already shows its address; the print stylesheet uses
+        // this to avoid printing it twice (#300).
+        data-bare-url={label === token.href ? "" : undefined}
+      >
         {label}
       </a>
     );

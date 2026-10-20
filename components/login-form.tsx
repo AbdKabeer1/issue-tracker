@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
 import { googleSignInAction, loginAction } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
@@ -9,16 +9,29 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 
 export function LoginForm({
-  callbackUrl = "/bugs",
+  callbackUrl = "/issues",
   googleEnabled = false,
 }: {
   callbackUrl?: string;
   googleEnabled?: boolean;
 }) {
+  // Only show Google button if OAuth is actually configured
+  const showGoogleButton = googleEnabled;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // True when the error is about the credentials, so both fields are marked
+  // invalid and described by the one message (#309). It never says which of
+  // the two was wrong: that would reveal whether the account exists.
+  const [credentialsInvalid, setCredentialsInvalid] = useState(false);
   const [pending, startTransition] = useTransition();
+  useEffect(() => {
+    if (credentialsInvalid) document.getElementById("email")?.focus();
+  }, [credentialsInvalid]);
+
+  const fieldAttrs = credentialsInvalid
+    ? ({ "aria-invalid": true, "aria-describedby": "login-error" } as const)
+    : {};
 
   return (
     <form
@@ -26,6 +39,7 @@ export function LoginForm({
       onSubmit={(event) => {
         event.preventDefault();
         setError(null);
+        setCredentialsInvalid(false);
         const formData = new FormData();
         formData.set("email", email);
         formData.set("password", password);
@@ -35,6 +49,7 @@ export function LoginForm({
             const result = await loginAction(undefined, formData);
             if (result?.error) {
               setError(result.error);
+              setCredentialsInvalid(Boolean(result.field));
             }
             // Success uses server redirect() only — no client router.push
             // (avoids navigation storms with middleware redirects).
@@ -59,6 +74,7 @@ export function LoginForm({
           required
           value={email}
           onChange={(event) => setEmail(event.target.value)}
+          {...fieldAttrs}
         />
       </div>
       <div className="space-y-1.5">
@@ -84,17 +100,18 @@ export function LoginForm({
           required
           value={password}
           onChange={(event) => setPassword(event.target.value)}
+          {...fieldAttrs}
         />
       </div>
       {error ? (
-        <p className="text-sm text-red-600" role="alert">
+        <p id="login-error" className="text-sm text-red-600" role="alert">
           {error}
         </p>
       ) : null}
       <Button type="submit" className="w-full" disabled={pending}>
         {pending ? "Signing in…" : "Sign in"}
       </Button>
-      {googleEnabled ? (
+      {showGoogleButton ? (
         <>
           <div className="relative py-1 text-center text-xs text-slate-500">
             <span className="bg-white px-2 relative z-10">or</span>

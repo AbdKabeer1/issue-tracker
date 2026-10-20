@@ -4,7 +4,7 @@ import { stripMarkdown } from "@/lib/rich-text";
 /** Root = 0. Replies may nest up to this depth (3 levels total). */
 export const MAX_COMMENT_DEPTH = 2;
 
-export type CommentAuthor = { name: string; role?: AppRole | null };
+export type CommentAuthor = { name: string; role?: AppRole | null; image?: string | null };
 
 export type FlatComment = {
   id: string;
@@ -15,6 +15,8 @@ export type FlatComment = {
   parentId: string | null;
   authorId: string;
   author: CommentAuthor;
+  agentId?: string | null;
+  agent?: { name: string } | null;
   parent: {
     id: string;
     body: string;

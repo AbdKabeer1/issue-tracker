@@ -29,8 +29,8 @@ describe("getSiteUrl", () => {
 describe("absoluteUrl", () => {
   it("joins path under the site origin including basePath", () => {
     process.env.AUTH_URL = "https://contributors.zedu.chat/bug-tracker";
-    expect(absoluteUrl("/bugs/abc")).toBe(
-      "https://contributors.zedu.chat/bug-tracker/bugs/abc",
+    expect(absoluteUrl("/issues/abc")).toBe(
+      "https://contributors.zedu.chat/bug-tracker/issues/abc",
     );
     expect(absoluteUrl("/zedu-mark.svg")).toBe(
       "https://contributors.zedu.chat/bug-tracker/zedu-mark.svg",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { addCommentAction } from "@/app/actions/bugs";
+import { addCommentAction } from "@/app/actions/issues";
 import { Button } from "@/components/ui/button";
 import {
   MarkdownEditor,
@@ -40,6 +40,12 @@ export function CommentForm({
   const [pending, startTransition] = useTransition();
   const isReply = Boolean(parentId);
   const key = draftKey(bugId, parentId);
+  const bodyId = parentId ? `body-${parentId}` : "body";
+  const errorId = `${bodyId}-error`;
+  const [bodyInvalid, setBodyInvalid] = useState(false);
+  const [editorUploading, setEditorUploading] = useState(false);
+  const [pickerUploading, setPickerUploading] = useState(false);
+  const isUploading = editorUploading || pickerUploading;
 
   // localStorage only exists on the client, so this cannot be a state
   // initializer without the server and client rendering different markup,
@@ -68,12 +74,24 @@ export function CommentForm({
     <form
       ref={formRef}
       className="space-y-3"
+      onSubmit={(event) => {
+        if (pending || isUploading) {
+          event.preventDefault();
+        }
+      }}
       action={(formData) => {
+        if (pending || isUploading) return;
         setError(null);
+        setBodyInvalid(false);
         startTransition(async () => {
           const result = await addCommentAction(bugId, formData);
           if (result.error) {
             setError(result.error);
+            // The only field is the body, so a field error is about it (#309).
+            if (result.field) {
+              setBodyInvalid(true);
+              document.getElementById(bodyId)?.focus();
+            }
           } else {
             setBody("");
             setRestored(false);
@@ -107,8 +125,10 @@ export function CommentForm({
         maxLength={2000}
         value={body}
         onChange={update}
+        {...(bodyInvalid ? { "aria-invalid": true, "aria-describedby": errorId } : {})}
         users={users}
         renderMentions={(text) => <MentionText text={text} users={users} />}
+        onUploadingChange={setEditorUploading}
         placeholder={
           isReply
             ? "Write your reply… Type @ to mention someone"
@@ -123,9 +143,13 @@ export function CommentForm({
           ) : null
         }
       />
-      <AttachmentPicker key={pickerKey} disabled={pending} />
+      <AttachmentPicker
+        key={pickerKey}
+        disabled={pending}
+        onUploadingChange={setPickerUploading}
+      />
       {error ? (
-        <p className="text-sm text-red-600" role="alert">
+        <p id={errorId} className="text-sm text-red-600" role="alert">
           {error}
         </p>
       ) : null}
@@ -142,14 +166,16 @@ export function CommentForm({
         </p>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={pending || !body.trim()}>
+        <Button type="submit" disabled={pending || !body.trim() || isUploading}>
           {pending
             ? isReply
               ? "Replying…"
               : "Posting…"
-            : isReply
-              ? "Post reply"
-              : "Post comment"}
+            : isUploading
+              ? "Uploading…"
+              : isReply
+                ? "Post reply"
+                : "Post comment"}
         </Button>
         {onCancel ? (
           <Button

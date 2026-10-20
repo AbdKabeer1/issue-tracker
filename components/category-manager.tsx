@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import {
   createCategoryAction,
   updateCategoryAction,
@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { InUseNotice, type InUse } from "@/components/in-use-notice";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 
@@ -25,14 +26,30 @@ export type CategoryWithCount = {
 
 export function CategoryManager({
   initialCategories,
+  deletedCounts = {},
 }: {
   initialCategories: CategoryWithCount[];
+  /** Soft-deleted issues per platform, which block deletion but are hidden. */
+  deletedCounts?: Record<string, number>;
 }) {
+  const [inUse, setInUse] = useState<InUse | null>(null);
   const [newName, setNewName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // The input the current error is about, if any (#309): it is marked
+  // invalid, described by the message, and focused.
+  const [errorField, setErrorField] = useState<string | null>(null);
+  const invalidAttrs = (id: string) =>
+    errorField === id
+      ? ({ "aria-invalid": true, "aria-describedby": "platform-error" } as const)
+      : {};
   const [pending, startTransition] = useTransition();
+  // The inputs are disabled while a request is pending, and focusing a
+  // disabled control silently does nothing — so wait until it is enabled.
+  useEffect(() => {
+    if (errorField && !pending) document.getElementById(errorField)?.focus();
+  }, [errorField, pending]);
   const confirm = useConfirm();
   const toast = useToast();
 
@@ -40,6 +57,7 @@ export function CategoryManager({
     e.preventDefault();
     if (!newName.trim()) return;
     setError(null);
+    setErrorField(null);
 
     const formData = new FormData();
     formData.set("name", newName.trim());
@@ -48,6 +66,7 @@ export function CategoryManager({
       const res = await createCategoryAction(formData);
       if (res.error) {
         setError(res.error);
+        setErrorField("newPlatformName");
       } else {
         setNewName("");
       }
@@ -63,6 +82,7 @@ export function CategoryManager({
   const handleSaveEdit = (categoryId: string) => {
     if (!editingName.trim()) return;
     setError(null);
+    setErrorField(null);
 
     const formData = new FormData();
     formData.set("name", editingName.trim());
@@ -71,6 +91,7 @@ export function CategoryManager({
       const res = await updateCategoryAction(categoryId, formData);
       if (res.error) {
         setError(res.error);
+        setErrorField(`rename-platform-${categoryId}`);
       } else {
         setEditingId(null);
         setEditingName("");
@@ -90,11 +111,19 @@ export function CategoryManager({
 
   const handleDelete = async (category: CategoryWithCount) => {
     if (category._count.bugs > 0) {
-      setError(
-        `Cannot delete "${category.name}": it is currently in use by ${category._count.bugs} issue${category._count.bugs === 1 ? "" : "s"}. Reassign or deactivate it instead.`,
-      );
+      setError(null);
+      setInUse({
+        kind: "platform",
+        id: category.id,
+        name: category.name,
+        filterValue: category.id,
+        total: category._count.bugs,
+        deleted: deletedCounts[category.id] ?? 0,
+        isActive: category.isActive,
+      });
       return;
     }
+    setInUse(null);
 
     const confirmed = await confirm({
       title: `Delete platform "${category.name}"?`,
@@ -140,6 +169,7 @@ export function CategoryManager({
             // #213: this field had no accessible name - screen readers only
             // announced the placeholder, which many drop once a value is typed.
             aria-label="New platform name"
+            {...invalidAttrs("newPlatformName")}
           />
           <Button type="submit" disabled={pending || !newName.trim()}>
             {pending ? "Adding…" : "Add platform"}
@@ -147,8 +177,29 @@ export function CategoryManager({
         </form>
       </div>
 
+      {inUse ? (
+        <InUseNotice
+          inUse={inUse}
+          pending={pending}
+          onDismiss={() => setInUse(null)}
+          onDeactivate={() =>
+            startTransition(async () => {
+              const res = await toggleCategoryStatusAction(inUse.id);
+              if (res.error) {
+                toast(res.error, "error");
+              } else {
+                // The row re-renders as inactive from the refreshed props.
+                toast(`Platform “${inUse.name}” deactivated.`);
+                setInUse(null);
+              }
+            })
+          }
+        />
+      ) : null}
+
       {error ? (
         <div
+          id="platform-error"
           className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"
           role="alert"
         >
@@ -191,11 +242,15 @@ export function CategoryManager({
                           onChange={(e) => setEditingName(e.target.value)}
                           className="h-8 w-48 text-sm"
                           disabled={pending}
+                          // Focus the field the user just opened for renaming;
+                          // this is not a page-load autofocus.
+                          // eslint-disable-next-line jsx-a11y/no-autofocus
                           autoFocus
                           minLength={2}
                           maxLength={50}
                           // #213: the rename field announced only "edit, text".
                           aria-label={`Rename platform ${cat.name}`}
+                          {...invalidAttrs(`rename-platform-${cat.id}`)}
                         />
                         <Button
                           className="px-2.5 py-1 text-xs"
@@ -256,16 +311,20 @@ export function CategoryManager({
                       {cat.isActive ? "Deactivate" : "Activate"}
                     </Button>
 
+                    {/*
+                      Not disabled when the platform is in use (#314): a
+                      disabled button cannot say why, and that is exactly the
+                      question. Clicking it explains instead of deleting.
+                    */}
                     <Button
-                      className="px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
+                      className={`px-2.5 py-1 text-xs ${
+                        cat._count.bugs > 0
+                          ? "text-slate-600 hover:bg-slate-100"
+                          : "text-red-600 hover:bg-red-50 hover:text-red-700"
+                      }`}
                       variant="ghost"
                       onClick={() => handleDelete(cat)}
-                      disabled={pending || cat._count.bugs > 0}
-                      title={
-                        cat._count.bugs > 0
-                          ? "Cannot delete: platform has existing issues"
-                          : "Delete platform"
-                      }
+                      disabled={pending}
                     >
                       Delete
                     </Button>
