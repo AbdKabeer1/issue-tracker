@@ -173,6 +173,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
       mockBugFindUnique.mockResolvedValue({
         id: "bug-1",
         number: 42,
+        tenantId: "tenant-zedu",
         title: "Test Bug",
         tenantId: "tenant-zedu",
         description: "Test Description",
@@ -244,6 +245,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
       });
 
       expect(mockUserFindMany).toHaveBeenCalledTimes(1);
+      // #502: only the issue's tenant can be mentioned or assigned.
       expect(mockUserFindMany).toHaveBeenCalledWith({
         where: { memberships: { some: { tenantId: "tenant-zedu" } } },
         orderBy: { name: "asc" },
@@ -265,6 +267,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
       });
 
       expect(mockUserFindMany).toHaveBeenCalledTimes(1);
+      // #502: only the issue's tenant can be mentioned or assigned.
       expect(mockUserFindMany).toHaveBeenCalledWith({
         where: { memberships: { some: { tenantId: "tenant-zedu" } } },
         orderBy: { name: "asc" },

@@ -15,6 +15,7 @@ import {
   normalizeMentions,
 } from "@/lib/mentions";
 import { agentMentionNames, agentOwnerIds, mentionedAgents } from "@/lib/agent-mentions";
+import { tenantMemberWhere } from "@/lib/tenant-mentions";
 import {
   canDeleteComment,
   canEditComment,
@@ -80,7 +81,7 @@ export async function updateCommentAction(
   const mentionedIds = extractMentionedUserIds(parsed.data.body);
   const known = mentionedIds.length
     ? await prisma.user.findMany({
-        where: { id: { in: mentionedIds } },
+        where: { id: { in: mentionedIds }, ...tenantMemberWhere(comment.bug.tenantId) },
         select: { id: true, name: true },
       })
     : [];

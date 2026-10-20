@@ -32,6 +32,7 @@ import {
   newlyMentionedUserIds,
   normalizeMentions,
 } from "@/lib/mentions";
+import { resolveTenantMentions, tenantMemberWhere } from "@/lib/tenant-mentions";
 import {
   commentSchema,
   createBugSchema,
@@ -110,12 +111,13 @@ export type ActionResult = {
 };
 
 /**
- * Resolves `@[Name](userId)` tags against real accounts: known ids are
- * rewritten to the current name, unknown ids degrade to plain `@Name`.
+ * Resolves `@[Name](userId)` tags against this tenant's members: known ids are
+ * rewritten to the current name, anyone else degrades to plain `@Name` (#502).
  * `agents` are the issue tenant's agents the text may keep tags for (#603).
  */
 async function normalizeMentionTags(
   text: string,
+  tenantId: string,
   agents: MentionedAgent[] = [],
 ): Promise<string> {
   const mentionedIds = extractMentionedUserIds(text);
@@ -123,7 +125,7 @@ async function normalizeMentionTags(
 
   const validUsers = mentionedIds.length
     ? await prisma.user.findMany({
-        where: { id: { in: mentionedIds } },
+        where: { id: { in: mentionedIds }, ...tenantMemberWhere(tenantId) },
         select: { id: true, name: true },
       })
     : [];
@@ -283,8 +285,6 @@ export async function createBugAction(
     }
   }
 
-  const description = await normalizeMentionTags(parsed.data.description);
-
   const categoryId =
     parsed.data.categoryId && parsed.data.categoryId.length > 0
       ? parsed.data.categoryId
@@ -292,6 +292,8 @@ export async function createBugAction(
   const areaId = parsed.data.areaId && parsed.data.areaId.length > 0
     ? parsed.data.areaId
     : null;
+  // #502: mentions resolve only to members of the issue's tenant.
+  const description = await resolveTenantMentions(prisma, tenantId, parsed.data.description);
 
   if (categoryId) {
     const category = await prisma.category.findFirst({
@@ -973,7 +975,7 @@ export async function editBugContentAction(
     return fromZodError(parsed.error);
   }
 
-  const normalizedDescription = await normalizeMentionTags(parsed.data.description);
+  const normalizedDescription = await resolveTenantMentions(prisma, existing.tenantId, parsed.data.description);
   const changedFields = getChangedEditFields(existing, {
     title: parsed.data.title,
     description: normalizedDescription,
@@ -1280,7 +1282,7 @@ export async function addCommentAction(
 
   // #603: only agents in this issue's organization can be mentioned.
   const agents = await mentionedAgents(prisma, bug.tenantId, parsed.data.body);
-  const normalizedBody = await normalizeMentionTags(parsed.data.body, agents);
+  const normalizedBody = await normalizeMentionTags(parsed.data.body, bug.tenantId, agents);
 
   const commentId = await prisma.$transaction(async (tx) => {
     const created = await tx.comment.create({

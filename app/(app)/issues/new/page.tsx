@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { currentTenantAccess } from "@/lib/tenant-access";
 import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
 import { currentTenantIdFor } from "@/lib/tenant-context";
+import { tenantMemberWhere } from "@/lib/tenant-mentions";
 import { CreateIssueForm } from "@/components/create-issue-form";
 import { activeProjectIdFor } from "@/lib/project-context";
 
@@ -23,9 +24,13 @@ async function loadOrEmpty<T>(label: string, load: () => Promise<T>, empty: T): 
   }
 }
 
-async function loadMentionUsers(): Promise<MentionUser[]> {
+async function loadMentionUsers(tenantId: string | null): Promise<MentionUser[]> {
+  // #502: only members of the tenant the issue goes into can be mentioned.
+  if (!tenantId) return [];
+  const where = tenantMemberWhere(tenantId);
   try {
     return await prisma.user.findMany({
+      where,
       select: { id: true, name: true, role: true, image: true },
       orderBy: { name: "asc" },
     });
@@ -33,6 +38,7 @@ async function loadMentionUsers(): Promise<MentionUser[]> {
     console.error("[issues/new] user lookup failed, retrying without image", error);
     try {
       const rows = await prisma.user.findMany({
+        where,
         select: { id: true, name: true, role: true },
         orderBy: { name: "asc" },
       });
@@ -58,12 +64,12 @@ async function loadAssigneeUsers(tenantId: string | null): Promise<MentionUser[]
 export default async function NewBugPage() {
   const user = await requireUser();
   const admin = (await currentTenantAccess(user.id, user.role)).admin;
-  // Every signed-in user is needed for @mentions; admins additionally get
-  // the assignee picker. Each lookup fails on its own: the list page already
-  // does this, and a throw here is the error page instead of the form.
   const tenantId = await currentTenantIdFor(user.id);
+  // The tenant's members are needed for @mentions (#502); admins additionally
+  // get the assignee picker. Each lookup fails on its own: the list page
+  // already does this, and a throw here is the error page instead of the form.
   const [users, assigneeUsers, categories, types] = await Promise.all([
-    loadMentionUsers(),
+    loadMentionUsers(tenantId),
     loadAssigneeUsers(tenantId),
     // Cached (#297). getActivePlatforms also seeds the default platforms,
     // but only when they're actually missing — it used to upsert all three
