@@ -34,6 +34,7 @@ export function isPublicPath(
     isAuthPage ||
     isPasswordResetPage ||
     isIssuePreview ||
+    pathWithoutBase === "/" ||
     pathWithoutBase.startsWith("/session-expired") ||
     // Shareable invite links (#444). Guests must see the organization and
     // sign in with Google before the link is used; the page itself never
