@@ -9,6 +9,7 @@ import { REPORT_FORM_URL } from "@/lib/report-form";
 import { MAIN_CONTENT_ID, SkipLink } from "@/components/skip-link";
 import { FocusMainOnNavigate } from "@/components/focus-main-on-navigate";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
+import { isAdmin } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { projectContextFor, type ProjectChoice } from "@/lib/project-context";
 import { currentTenantIdFor } from "@/lib/tenant-context";
@@ -100,7 +101,10 @@ export default async function AppLayout({
       </main>
       <ReportIssueFab href={REPORT_FORM_URL} />
       <FocusMainOnNavigate />
-      <KeyboardShortcuts enabled={shortcutsEnabled} />
+      <KeyboardShortcuts
+        enabled={shortcutsEnabled}
+        dashboard={isAdmin(user.role)}
+      />
     </div>
   );
 }
