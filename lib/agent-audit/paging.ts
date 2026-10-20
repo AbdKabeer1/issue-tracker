@@ -6,7 +6,12 @@
 /** Rows per page. */
 export const AUDIT_PAGE_SIZE = 100;
 
-export type AuditPageParams = { agent?: string | null; issue?: string | null; before?: string | null };
+export type AuditPageParams = {
+  agent?: string | null;
+  issue?: string | null;
+  before?: string | null;
+  show?: string | null;
+};
 
 /** `/settings/audit` with the given filters and cursor; empty values are left out. */
 export function auditPageHref(params: AuditPageParams): string {
@@ -14,6 +19,7 @@ export function auditPageHref(params: AuditPageParams): string {
   if (params.agent) query.set("agent", params.agent);
   if (params.issue) query.set("issue", params.issue);
   if (params.before) query.set("before", params.before);
+  if (params.show) query.set("show", params.show);
   const qs = query.toString();
   return qs ? `/settings/audit?${qs}` : "/settings/audit";
 }

@@ -13,7 +13,12 @@ import { AUDIT_PAGE_SIZE, auditPageHref, splitAuditPage } from "@/lib/agent-audi
 export const metadata = { title: "Agent audit log" };
 
 type Props = {
-  searchParams: Promise<{ agent?: string | string[]; issue?: string | string[]; before?: string | string[] }>;
+  searchParams: Promise<{
+    agent?: string | string[];
+    issue?: string | string[];
+    before?: string | string[];
+    show?: string | string[];
+  }>;
 };
 
 const single = (value: string | string[] | undefined): string | null => {
@@ -54,6 +59,8 @@ export default async function AuditLogPage({ searchParams }: Props) {
   const agentId = single(params.agent);
   const issueInput = single(params.issue);
   const before = single(params.before);
+  // Request rows are hidden by default so each action reads once (#575).
+  const includeRequests = single(params.show) === "requests";
 
   // #576: the issue filter takes "#123", "123", an issue link or an id.
   const ref = issueInput ? parseIssueRef(issueInput) : null;
@@ -73,7 +80,7 @@ export default async function AuditLogPage({ searchParams }: Props) {
     noSuchIssue
       ? []
       : prisma.agentAuditEvent.findMany({
-          where: auditWhere(access, { agentId, issueId }),
+          where: auditWhere(access, { agentId, issueId, includeRequests }),
           // id breaks ties so the cursor never skips or repeats a row.
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: AUDIT_PAGE_SIZE + 1,
@@ -115,7 +122,7 @@ export default async function AuditLogPage({ searchParams }: Props) {
     payload: event.payload,
     undoneAt: event.undoneAt,
   }));
-  const filtered = Boolean(agentId || issueInput);
+  const filtered = Boolean(agentId || issueInput || includeRequests);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -146,6 +153,16 @@ export default async function AuditLogPage({ searchParams }: Props) {
               </option>
             ))}
           </select>
+        </label>
+        <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            name="show"
+            value="requests"
+            defaultChecked={includeRequests}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          Show request rows
         </label>
         <label className="text-sm">
           <span className="block font-medium text-slate-700">Issue</span>
@@ -182,7 +199,14 @@ export default async function AuditLogPage({ searchParams }: Props) {
       {before || olderCursor ? (
         <nav aria-label="Audit log pages" className="flex items-center justify-between text-sm">
           {before ? (
-            <Link href={auditPageHref({ agent: agentId, issue: issueInput })} className="text-teal-700 hover:underline">
+            <Link
+              href={auditPageHref({
+                agent: agentId,
+                issue: issueInput,
+                show: includeRequests ? "requests" : undefined,
+              })}
+              className="text-teal-700 hover:underline"
+            >
               ← Newest
             </Link>
           ) : (
@@ -190,7 +214,12 @@ export default async function AuditLogPage({ searchParams }: Props) {
           )}
           {olderCursor ? (
             <Link
-              href={auditPageHref({ agent: agentId, issue: issueInput, before: olderCursor })}
+              href={auditPageHref({
+                agent: agentId,
+                issue: issueInput,
+                before: olderCursor,
+                show: includeRequests ? "requests" : undefined,
+              })}
               className="font-medium text-teal-700 hover:underline"
             >
               Older →
