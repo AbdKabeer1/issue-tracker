@@ -22,8 +22,8 @@ import { IssueApiError } from "@/lib/agent-api/issues";
  * An agent can't change its own level: none of these functions reads a level
  * from an agent request, and the only caller-supplied level is an admin's.
  *
- * `runLevelPromotions` is the daily/admin-invoked entry point. The rule
- * functions take a `db` so tests (and a future cron) can drive them directly.
+ * Validation and silence-release transactions invoke the rule functions as
+ * events happen. `runLevelPromotions` remains available as an admin sweep.
  */
 
 export const EARNED_REVIEWER_VALIDATIONS = 10;

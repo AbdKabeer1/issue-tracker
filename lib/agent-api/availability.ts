@@ -3,6 +3,7 @@ import { requireSuperAdmin } from "@/lib/auth-helpers";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { audit } from "@/lib/agents/audit";
 import { IssueApiError } from "@/lib/agent-api/issues";
+import { demoteFromSilence } from "@/lib/agents/promotion";
 
 const SILENCE_MS = 15 * 60 * 1000;
 
@@ -51,6 +52,7 @@ export async function releaseStaleClaims(projectId: string) {
         isDeleted: false, assigneeId: claim.beneficiaryUserId, status: "in_progress" }, data: { assigneeId: null, status: "open" } });
       await audit({ agentId: claim.agentId, tenantId: project.tenantId }, "claim.released", claim.bugId,
         { claimId: claim.id, reason: "silence", projectId }, { db: tx, bugId: claim.bugId, actorUserId: admin.id });
+      await demoteFromSilence(claim.agentId, tx, now);
       return true;
     });
     if (didRelease) released++;

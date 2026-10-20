@@ -7,9 +7,10 @@ const db = vi.hoisted(() => ({
   issueClaim: { findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), count: vi.fn() },
   bug: { updateMany: vi.fn() }, $queryRaw: vi.fn(), $transaction: vi.fn(),
 }));
-const mocks = vi.hoisted(() => ({ admin: vi.fn(), budget: vi.fn() }));
+const mocks = vi.hoisted(() => ({ admin: vi.fn(), budget: vi.fn(), demote: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/lib/auth-helpers", () => ({ requireSuperAdmin: mocks.admin }));
+vi.mock("@/lib/agents/promotion", () => ({ demoteFromSilence: mocks.demote }));
 vi.mock("@/lib/agents/rate-budget", async (original) => ({ ...await original<typeof import("@/lib/agents/rate-budget")>(), consumeAgentBudget: mocks.budget }));
 import { releaseStaleClaims } from "./availability";
 import { POST } from "@/app/api/v1/issues/[id]/heartbeat/route";
@@ -36,6 +37,7 @@ beforeEach(() => {
   db.issueClaim.count.mockResolvedValue(0);
   mocks.admin.mockResolvedValue({ id: "admin" });
   mocks.budget.mockResolvedValue({ allowed: true });
+  mocks.demote.mockResolvedValue({ ok: true, changed: false, releases: 1 });
 });
 afterEach(() => vi.useRealTimers());
 
@@ -89,6 +91,7 @@ describe("stale claim release", () => {
     expect(db.issueClaim.update).toHaveBeenCalledWith({ where: { id: "claim" }, data: { status: "released", releasedAt: now, releaseReason: "silence" } });
     expect(db.bug.updateMany).toHaveBeenCalledWith({ where: { id: "issue", projectId: "project", tenantId: "tenant", isDeleted: false, assigneeId: "owner", status: "in_progress" }, data: { assigneeId: null, status: "open" } });
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: "claim.released", agentId: "agent", actorUserId: "admin", bugId: "issue", payload: { claimId: "claim", reason: "silence", projectId: "project" } }) });
+    expect(mocks.demote).toHaveBeenCalledWith("agent", db, now);
     expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(db.issueClaim.findFirst.mock.invocationCallOrder[0]);
   });
   it.each([cutoff, new Date(cutoff.getTime() + 1), now])("keeps a heartbeat at or after the 15-minute boundary (%s)", async (lastHeartbeatAt) => {
