@@ -7,13 +7,29 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyProjectIdButton } from "./copy-project-id";
 import { CreateProjectForm } from "./create-project-form";
-import { switchProjectAction } from "./actions";
+import {
+  deleteProjectAction,
+  renameProjectAction,
+  setProjectArchivedAction,
+  switchProjectAction,
+} from "./actions";
+import { PROJECT_NAME_MAX } from "./validation";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Projects" };
 
-export default async function ProjectsPage() {
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string | string[]; notice?: string | string[] }>;
+}) {
   const user = await requireUser();
+  const {
+    error: errorParam,
+    notice: noticeParam,
+  } = await searchParams;
+  const error = typeof errorParam === "string" ? errorParam : "";
+  const notice = typeof noticeParam === "string" ? noticeParam : "";
   const tenantId = await currentTenantIdFor(user.id);
 
   if (!tenantId) {
@@ -35,7 +51,7 @@ export default async function ProjectsPage() {
     );
   }
 
-  const [tenant, projects, activeProjectId] = await Promise.all([
+  const [tenant, projects, activeProjectId, membership] = await Promise.all([
     prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { name: true },
@@ -46,13 +62,21 @@ export default async function ProjectsPage() {
         id: true,
         name: true,
         slug: true,
+        archivedAt: true,
         createdAt: true,
         _count: { select: { bugs: true } },
       },
       orderBy: { createdAt: "asc" },
     }),
     activeProjectIdFor(prisma, tenantId),
+    prisma.membership.findUnique({
+      where: { tenantId_userId: { tenantId, userId: user.id } },
+      select: { role: true },
+    }),
   ]);
+  const isOwner = membership?.role === "owner";
+  const activeProjects = projects.filter((project) => !project.archivedAt);
+  const archivedProjects = projects.filter((project) => project.archivedAt);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -66,6 +90,17 @@ export default async function ProjectsPage() {
           New issues and the issue list use the active project.
         </p>
       </div>
+
+      {error ? (
+        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {error}
+        </p>
+      ) : null}
+      {notice ? (
+        <p className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+          {notice}
+        </p>
+      ) : null}
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-base font-semibold text-slate-900">
@@ -83,13 +118,15 @@ export default async function ProjectsPage() {
             Switching here also changes the project shown in the header.
           </p>
         </div>
-        {projects.length === 0 ? (
+        {activeProjects.length === 0 ? (
           <p className="px-4 py-6 text-sm text-slate-600 sm:px-6">
-            No projects yet. Create the first one above.
+            {archivedProjects.length > 0
+              ? "No active projects. Restore one below or create a new one."
+              : "No projects yet. Create the first one above."}
           </p>
         ) : (
           <ul className="divide-y divide-slate-200">
-            {projects.map((project) => {
+            {activeProjects.map((project) => {
               const active = project.id === activeProjectId;
               return (
                 <li
@@ -116,6 +153,66 @@ export default async function ProjectsPage() {
                       </code>
                       <CopyProjectIdButton projectId={project.id} />
                     </div>
+
+                    {isOwner ? (
+                      <details className="mt-3 text-xs text-slate-600">
+                        <summary className="cursor-pointer font-medium text-slate-700">
+                          Manage project
+                        </summary>
+                        <div className="mt-2 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <form action={renameProjectAction} className="space-y-1">
+                            <input type="hidden" name="projectId" value={project.id} />
+                            <label
+                              htmlFor={`project-name-${project.id}`}
+                              className="block font-medium text-slate-700"
+                            >
+                              Name
+                            </label>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <input
+                                id={`project-name-${project.id}`}
+                                name="name"
+                                defaultValue={project.name}
+                                maxLength={PROJECT_NAME_MAX}
+                                required
+                                className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
+                              />
+                              <Button type="submit" variant="secondary">
+                                Save name
+                              </Button>
+                            </div>
+                          </form>
+
+                          <form action={setProjectArchivedAction}>
+                            <input type="hidden" name="projectId" value={project.id} />
+                            <input type="hidden" name="archived" value="true" />
+                            <Button type="submit" variant="secondary">
+                              Archive project
+                            </Button>
+                          </form>
+
+                          <form action={deleteProjectAction} className="space-y-1">
+                            <input type="hidden" name="projectId" value={project.id} />
+                            <p className="font-medium text-slate-700">Delete project</p>
+                            <p>
+                              Only works when the project has no issues. Otherwise archive it.
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <input
+                                name="confirmName"
+                                placeholder={`Type ${project.name}`}
+                                autoComplete="off"
+                                required
+                                className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
+                              />
+                              <Button type="submit" variant="danger-secondary">
+                                Delete project
+                              </Button>
+                            </div>
+                          </form>
+                        </div>
+                      </details>
+                    ) : null}
                   </div>
                   {active ? null : (
                     <form action={switchProjectAction}>
@@ -131,6 +228,58 @@ export default async function ProjectsPage() {
           </ul>
         )}
       </section>
+
+      {isOwner && archivedProjects.length > 0 ? (
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 sm:px-6">
+            <h2 className="text-base font-semibold text-slate-900">Archived projects</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Archived projects are hidden from the switcher and can&apos;t be selected.
+              Restore one to use it again.
+            </p>
+          </div>
+          <ul className="divide-y divide-slate-200">
+            {archivedProjects.map((project) => (
+              <li key={project.id} className="space-y-3 px-4 py-3 sm:px-6">
+                <div>
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900">
+                    <span className="truncate">{project.name}</span>
+                    <Badge className="bg-amber-50 text-amber-800 ring-1 ring-amber-200">
+                      Archived
+                    </Badge>
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {project.slug} · {project._count.bugs}{" "}
+                    {project._count.bugs === 1 ? "issue" : "issues"}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <form action={setProjectArchivedAction}>
+                    <input type="hidden" name="projectId" value={project.id} />
+                    <input type="hidden" name="archived" value="false" />
+                    <Button type="submit" variant="secondary">
+                      Restore {project.name}
+                    </Button>
+                  </form>
+                  <form action={deleteProjectAction} className="flex flex-wrap items-center gap-2">
+                    <input type="hidden" name="projectId" value={project.id} />
+                    <input
+                      name="confirmName"
+                      placeholder={`Type ${project.name}`}
+                      autoComplete="off"
+                      required
+                      className="rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
+                    />
+                    <Button type="submit" variant="danger-secondary">
+                      Delete
+                    </Button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }

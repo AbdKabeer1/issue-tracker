@@ -23,9 +23,12 @@ import {
   CREATE_TENANT_RATE_LIMIT,
   createTenant,
   createTenantSchema,
+  deleteTenant,
   memberTenantById,
   promoteFirstZeduOwner,
+  renameTenant,
   setActiveTenantCookie,
+  setTenantArchived,
   type PromoteOwnerResult,
 } from "@/lib/tenants";
 
@@ -57,6 +60,9 @@ export async function selectTenantAction(formData: FormData): Promise<void> {
   const user = await requireUser();
   const tenant = await memberTenantById(prisma, user.id, String(formData.get("tenantId") ?? ""));
   if (!tenant) redirect("/tenants");
+  if (tenant.archivedAt) {
+    redirect(`/tenants?error=${encodeURIComponent("Restore this tenant before opening it.")}`);
+  }
   await enterTenant(tenant.id);
 }
 
@@ -69,7 +75,7 @@ export async function switchTenantForIssueAction(formData: FormData): Promise<vo
   const user = await requireUser();
   const issueId = String(formData.get("issueId") ?? "");
   const tenant = await memberTenantById(prisma, user.id, String(formData.get("tenantId") ?? ""));
-  if (!tenant) redirect("/issues");
+  if (!tenant || tenant.archivedAt) redirect("/issues");
   await setActiveTenantCookie(tenant.id);
   await setActiveProjectCookie("");
   revalidatePath("/", "layout");
@@ -97,6 +103,60 @@ export async function createTenantAction(
   const result = await createTenant(prisma, user, input);
   if (!result.ok) return fieldError(result.field ?? "name", result.error);
   return enterTenant(result.tenant.id, result.projectId);
+}
+
+/** Rename a tenant the person owns; the slug stays the same. */
+export async function renameTenantAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const tenantId = String(formData.get("tenantId") ?? "");
+  const tenant = await memberTenantById(prisma, user.id, tenantId);
+  if (!tenant) redirect("/tenants");
+
+  const result = await renameTenant(prisma, user.id, tenantId, formData.get("name"));
+  if (!result.ok) {
+    redirect(`/tenants/${tenant.slug}?error=${encodeURIComponent(result.error)}`);
+  }
+
+  revalidatePath("/", "layout");
+  revalidatePath("/tenants");
+  revalidatePath(`/tenants/${tenant.slug}`);
+  redirect(`/tenants/${tenant.slug}?notice=${encodeURIComponent("Tenant renamed.")}`);
+}
+
+/** Archive or restore a tenant the person owns. */
+export async function setTenantArchivedAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const tenantId = String(formData.get("tenantId") ?? "");
+  const tenant = await memberTenantById(prisma, user.id, tenantId);
+  if (!tenant) redirect("/tenants");
+
+  const archived = String(formData.get("archived") ?? "") === "true";
+  const result = await setTenantArchived(prisma, user.id, tenantId, archived);
+  if (!result.ok) {
+    redirect(`/tenants/${tenant.slug}?error=${encodeURIComponent(result.error)}`);
+  }
+
+  revalidatePath("/", "layout");
+  revalidatePath("/tenants");
+  revalidatePath(`/tenants/${tenant.slug}`);
+  redirect(`/tenants?notice=${encodeURIComponent(archived ? "Tenant archived." : "Tenant restored.")}`);
+}
+
+/** Delete an empty tenant after the owner types its name. */
+export async function deleteTenantAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const tenantId = String(formData.get("tenantId") ?? "");
+  const tenant = await memberTenantById(prisma, user.id, tenantId);
+  if (!tenant) redirect("/tenants");
+
+  const result = await deleteTenant(prisma, user.id, tenantId, formData.get("confirmName"));
+  if (!result.ok) {
+    redirect(`/tenants/${tenant.slug}?error=${encodeURIComponent(result.error)}`);
+  }
+
+  revalidatePath("/", "layout");
+  revalidatePath("/tenants");
+  redirect(`/tenants?notice=${encodeURIComponent("Tenant deleted.")}`);
 }
 
 export type CreateInviteActionResult =
