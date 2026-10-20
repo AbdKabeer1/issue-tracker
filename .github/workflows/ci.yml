@@ -50,6 +50,15 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # packages/mcp-server is standalone (#612): its own dependencies and lockfile.
+      - name: MCP server (install, type check, test, build)
+        working-directory: packages/mcp-server
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm test
+          pnpm build
+
       - name: Build
         env:
           DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"

@@ -55,7 +55,7 @@ export function EditableProofLinks({ bugId, initialLinks, canEdit }: EditablePro
     <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Proof links
+          GitHub PR
         </h2>
         {canEdit && !isEditing ? (
           <Button
@@ -80,7 +80,7 @@ export function EditableProofLinks({ bugId, initialLinks, canEdit }: EditablePro
           ) : null}
 
           <label htmlFor="edit-proof-links" className="sr-only">
-            Proof links (GitHub)
+            GitHub PR
           </label>
           <Textarea
             id="edit-proof-links"
@@ -90,7 +90,7 @@ export function EditableProofLinks({ bugId, initialLinks, canEdit }: EditablePro
             onChange={(e) => setValue(e.target.value)}
             disabled={pending}
             placeholder={
-              "https://github.com/organization/repo/issues/123\nhttps://github.com/organization/repo/pull/456"
+              "https://github.com/organization/repo/pull/123"
             }
           />
           <p className="text-xs text-slate-500">
@@ -107,7 +107,7 @@ export function EditableProofLinks({ bugId, initialLinks, canEdit }: EditablePro
           </div>
         </form>
       ) : initialLinks.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-500">No proof links attached to this report.</p>
+        <p className="mt-3 text-sm text-slate-500">No GitHub PR attached to this report.</p>
       ) : (
         <ul className="mt-3 space-y-2">
           {initialLinks.map((url, index) => (

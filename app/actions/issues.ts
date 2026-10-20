@@ -100,6 +100,7 @@ export type ActionResult = {
   /** Which field failed, when there is one (#309). */
   field?: string;
   fieldErrors?: Record<string, string>;
+  commentId?: string;
 };
 
 /**
@@ -781,10 +782,25 @@ export async function updateBugAction(
         });
       }
       if (data.status === "resolved" || data.status === "closed") {
+        const activeClaims = typeof tx.issueClaim?.findMany === "function"
+          ? await tx.issueClaim.findMany({
+              where: { bugId, status: "active", releasedAt: null },
+              select: { id: true, agentId: true, beneficiaryUserId: true },
+            })
+          : [];
         await tx.issueClaim.updateMany({
           where: { bugId, status: "active", releasedAt: null },
           data: { status: "released", releasedAt: new Date(), releaseReason: data.status },
         });
+        for (const claim of activeClaims) {
+          await publish(tx, {
+            tenantId: existing.tenantId,
+            type: "claim.released",
+            actorAgentId: claim.agentId,
+            bugId,
+            payload: { claimId: claim.id, issueId: bugId, beneficiaryUserId: claim.beneficiaryUserId, reason: data.status },
+          });
+        }
       }
       if (data.assigneeId) {
         // The new assignee starts watching (#216).
@@ -849,6 +865,44 @@ export async function updateBugAction(
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
+}
+
+/**
+ * Closes an issue with an optional resolution note.
+ */
+export async function closeBugAction(
+  bugId: string,
+  note?: string,
+): Promise<ActionResult> {
+  const formData = new FormData();
+  formData.append("status", "closed");
+  if (note) {
+    formData.append("resolutionNote", note);
+  }
+  return updateBugAction(bugId, formData);
+}
+
+/**
+ * Reopens an issue by setting its status back to open.
+ */
+export async function reopenBugAction(
+  bugId: string,
+): Promise<ActionResult> {
+  const formData = new FormData();
+  formData.append("status", "open");
+  return updateBugAction(bugId, formData);
+}
+
+/**
+ * Assigns an issue to a user or clears the assignee if null or empty.
+ */
+export async function assignBugAction(
+  bugId: string,
+  assigneeId: string | null,
+): Promise<ActionResult> {
+  const formData = new FormData();
+  formData.append("assigneeId", assigneeId ?? "");
+  return updateBugAction(bugId, formData);
 }
 
 /** Allows the reporter or an admin to edit an issue's title and description. */
@@ -1294,7 +1348,7 @@ export async function addCommentAction(
   revalidatePath(`/issues/${bugId}`);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
-  return { ok: true };
+  return { ok: true, commentId };
 }
 
 export type ToggleVoteResult = ActionResult & {
@@ -1602,6 +1656,13 @@ export async function toggleBoostBugAction(
             to: String(nextBoosted),
           } as Prisma.InputJsonValue,
         },
+      });
+
+      await publishWebEvent(tx, {
+        bugId,
+        type: "issue.updated",
+        actorUserId: user.id,
+        payload: issueChangePayload({ isBoosted: nextBoosted }),
       });
     });
   } catch (error) {
