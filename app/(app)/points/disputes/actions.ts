@@ -140,7 +140,7 @@ export async function resolveDisputeAction(
     if (!dispute.pointEntryId) return { ok: false, error: NO_ENTRY_ON_THIS_DISPUTE };
     const entry = await prisma.pointEntry.findUnique({
       where: { id: dispute.pointEntryId },
-      select: { id: true, tenantId: true, userId: true, bugId: true, role: true, points: true },
+      select: { id: true, tenantId: true, userId: true, bugId: true, role: true, points: true, correctedAt: true },
     });
     if (!entry || entry.tenantId !== dispute.tenantId) {
       return { ok: false, error: NOT_IN_WORKSPACE };
