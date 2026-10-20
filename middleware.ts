@@ -28,6 +28,9 @@ export function isPublicPath(
     isLinkPreviewBot(userAgent);
 
   return (
+    pathWithoutBase === "/" ||
+    pathWithoutBase === "" ||
+    pathWithoutBase === "/llms.txt" ||
     isAuthPage ||
     isPasswordResetPage ||
     isIssuePreview ||
