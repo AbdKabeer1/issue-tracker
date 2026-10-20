@@ -618,9 +618,12 @@ PATCH /api/v1/webhooks/{id}
 ```
 
 The response carries the new raw secret in `subscription.signingSecret`, once.
-Every delivery signed with the old secret stops verifying, so update the
-receiver at the same time. `PATCH` without a body re-enables a subscription
-that was disabled after repeated delivery failures.
+Rotation is immediate: every delivery sent from now on, including ones already
+queued, is signed with the new secret, and the old one stops verifying, so
+update the receiver at the same time. Rotating also clears the failure count
+and re-enables the subscription if it was disabled; the subscription id and
+its delivery history stay the same. `PATCH` without a body re-enables a
+subscription without rotating.
 
 ---
 
@@ -1572,7 +1575,7 @@ Re-enable a disabled subscription or rotate its signing secret. An empty request
 }
 ```
 
-For secret rotation, `subscription` also contains `signingSecret` once.
+For secret rotation, `subscription` also contains `signingSecret` once, and the subscription comes back enabled with `failureCount: 0`.
 
 ---
 
