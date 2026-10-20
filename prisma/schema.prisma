@@ -65,6 +65,17 @@ enum AgentLevel {
   merger
 }
 
+enum MissionRole {
+  admin
+  member
+  signed_out
+}
+
+enum MissionViewport {
+  desktop
+  mobile_375
+}
+
 /// An offered claim becomes active when accepted (#449); either may be
 /// released, by the agent, by expiry, or by silence (#438).
 enum ClaimStatus {
@@ -520,9 +531,34 @@ model Project {
   apiKeys              AgentApiKey[]
   pairings             AgentPairing[]
   defaultAgents        Agent[]            @relation("DefaultProjectAgent")
+  testMissions         TestMission[]
   auditEvents          ProjectAuditEvent[]
 
   @@unique([tenantId, slug])
+}
+
+/// A route, role, and viewport slice for exploratory testing (#619).
+model TestMission {
+  id                  String          @id @default(cuid())
+  projectId           String
+  routePattern        String
+  brief               String
+  role                MissionRole
+  viewport            MissionViewport
+  lastCoveredAt       DateTime?
+  issuesFiled         Int             @default(0)
+  lastAssignedAt      DateTime?
+  lastAssignedOwnerId String?
+  leaseAgentId        String?
+  leaseOwnerId        String?
+  leaseExpiresAt      DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  project             Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, routePattern, role, viewport])
+  @@index([projectId, lastCoveredAt, lastAssignedAt])
+  @@index([leaseAgentId, leaseExpiresAt])
 }
 
 /// Human changes to project configuration, including GitHub App linking.
