@@ -31,7 +31,7 @@ export async function releaseStaleClaims(projectId: string) {
   if (!project) throw new IssueApiError(404, "Project not found.");
   const cutoff = new Date(Date.now() - SILENCE_MS);
   const candidates = await prisma.issueClaim.findMany({ where: {
-    status: "active", releasedAt: null, bug: { projectId, tenantId: project.tenantId, isDeleted: false },
+    status: "active", releasedAt: null, bug: { projectId, tenantId: project.tenantId, isDeleted: false, status: "in_progress" },
     OR: [{ lastHeartbeatAt: { lt: cutoff } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff } }],
   }, select: { id: true, bugId: true } });
   let released = 0;
@@ -40,7 +40,7 @@ export async function releaseStaleClaims(projectId: string) {
       await tx.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${candidate.bugId} FOR NO KEY UPDATE`;
       // Re-read after locking: a heartbeat or another sweep may have won the race.
       const claim = await tx.issueClaim.findFirst({ where: { id: candidate.id, status: "active", releasedAt: null,
-        bug: { projectId, tenantId: project.tenantId, isDeleted: false } } });
+        bug: { projectId, tenantId: project.tenantId, isDeleted: false, status: "in_progress" } } });
       const lastSeen = claim?.lastHeartbeatAt ?? claim?.claimedAt;
       if (!claim || !lastSeen || lastSeen.getTime() >= cutoff.getTime()) return false;
       const now = new Date();

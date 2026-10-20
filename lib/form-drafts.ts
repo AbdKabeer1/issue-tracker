@@ -11,12 +11,18 @@ export function buildDraftKey(params: {
   formType: "create-bug" | "update-bug" | "comment";
   bugId?: string | null;
   parentId?: string | null;
+  projectId?: string | null;
 }): string {
   const userSegment = params.userId ? params.userId : "anon";
 
   switch (params.formType) {
     case "create-bug":
-      return `${DRAFT_PREFIX}:${userSegment}:bug:new`;
+      // Scoped to the active project so a draft never follows the person
+      // into a different project's form (#729); unscoped when the context
+      // is unknown, matching the historical key.
+      return params.projectId
+        ? `${DRAFT_PREFIX}:${userSegment}:bug:new:${params.projectId}`
+        : `${DRAFT_PREFIX}:${userSegment}:bug:new`;
     case "update-bug":
       return `${DRAFT_PREFIX}:${userSegment}:bug:${params.bugId ?? "unknown"}:update`;
     case "comment":

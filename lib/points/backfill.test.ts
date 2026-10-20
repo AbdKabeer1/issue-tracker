@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backfillEntries, backfillPoints, type HistoricalBug } from "./backfill";
+import { backfillEntries, backfillPoints, parseBackfillArgs, type HistoricalBug } from "./backfill";
 
 const bug = (overrides: Partial<HistoricalBug>): HistoricalBug => ({
   id: "bug-1",
@@ -127,10 +127,47 @@ describe("backfill points (#435)", () => {
     expect(ledger.filter((r) => r.role === "solver")).toHaveLength(1);
   });
 
+  it("counts an award that loses a race to a real one as already awarded", async () => {
+    const { db, ledger } = fixture([bug({ assigneeId: null })]);
+    // Another process writes the key after the lookup, so the lookup misses it.
+    const lookup = (db as { pointEntry: { findMany: unknown } }).pointEntry;
+    lookup.findMany = async () => [];
+    ledger.push({ sourceKey: "reporter:bug-1:reporter-1", role: "reporter", points: 5, userId: "reporter-1" });
+
+    const lines: boolean[] = [];
+    const result = await backfillPoints(db, { onLine: (l) => lines.push(l.alreadyAwarded) });
+
+    expect(result).toEqual({ bugs: 1, planned: 1, written: 0, existing: 1 });
+    expect(lines).toEqual([true]);
+  });
+
   it("walks every ticket across batches", async () => {
     const bugs = Array.from({ length: 7 }, (_, i) => bug({ id: `bug-${i}`, assigneeId: null }));
     const { db, ledger } = fixture(bugs);
     expect(await backfillPoints(db, { batchSize: 3 })).toMatchObject({ bugs: 7, written: 7 });
     expect(ledger).toHaveLength(7);
+  });
+});
+
+describe("backfill script arguments (#435)", () => {
+  it("accepts --dry-run, which also prints every line", () => {
+    expect(parseBackfillArgs(["--dry-run"])).toEqual({ ok: true, dryRun: true, verbose: true });
+  });
+
+  it("runs for real only with no flags or --verbose", () => {
+    expect(parseBackfillArgs([])).toEqual({ ok: true, dryRun: false, verbose: false });
+    expect(parseBackfillArgs(["--verbose"])).toEqual({ ok: true, dryRun: false, verbose: true });
+  });
+
+  it("refuses a mistyped flag instead of writing", () => {
+    for (const typo of ["--dryrun", "--dry_run", "-n", "dry-run"]) {
+      const parsed = parseBackfillArgs([typo]);
+      expect(parsed.ok).toBe(false);
+      if (!parsed.ok) expect(parsed.error).toContain(typo);
+    }
+  });
+
+  it("refuses an unknown flag next to a valid one", () => {
+    expect(parseBackfillArgs(["--dry-run", "--force"]).ok).toBe(false);
   });
 });
