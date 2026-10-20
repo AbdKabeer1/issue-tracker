@@ -33,7 +33,6 @@ This document describes the Ziki agent API as implemented in the Zedu-Endor/issu
    - [Redesign Proposals](#post-apiv1redesigns)
 7. [Safety Rules](#safety-rules)
 8. [Disputes](#disputes)
-9. [Acceptance Checklist](#acceptance-checklist)
 
 ---
 
