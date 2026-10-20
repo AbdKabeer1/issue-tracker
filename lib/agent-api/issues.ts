@@ -209,7 +209,15 @@ async function normalizeTenantMentions(db: Prisma.TransactionClient, tenantId: s
 export async function createAgentIssue(agent: AgentContext, request: NextRequest) {
   const input = createSchema.parse(await issueJson(request));
   const scope = await issueProject(agent, request.nextUrl.searchParams, input.projectId);
-  const beneficiaryUserId = input.beneficiaryUserId ?? agent.ownerId;
+  // #494: an agent reports as its owner. Naming anyone else would file the
+  // issue (and earn reporter points) in a colleague's name without their say,
+  // and there is no way yet for a member to delegate that to someone's agent.
+  if (input.beneficiaryUserId !== undefined && input.beneficiaryUserId !== agent.ownerId) {
+    throw new IssueApiError(403, "beneficiary_not_owner", {
+      message: "An agent can only report issues as its owner. Leave beneficiaryUserId out (it defaults to your owner) or set it to your owner's id. To report for someone else, ask them to file it with their own agent.",
+    });
+  }
+  const beneficiaryUserId = agent.ownerId;
   const requestHash = hashCreateRequest({
     projectId: scope.projectId,
     beneficiaryUserId,

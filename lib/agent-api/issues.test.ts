@@ -233,18 +233,27 @@ describe("agent comment paging (#604)", () => {
 });
 
 describe("agent issue creation via the real shared create policy", () => {
-  it("stores the named person and agent and ignores client severity", async () => {
-    const response = await create(request("POST", { ...validBody, beneficiaryUserId: "beneficiary-a", severity: "critical" }));
+  it("stores the owner and agent and ignores client severity", async () => {
+    const response = await create(request("POST", { ...validBody, beneficiaryUserId: "owner-a", severity: "critical" }));
     expect(response.status).toBe(201);
     expect(db.bug.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
-      tenantId: "tenant-a", projectId: "project-a", reporterId: "beneficiary-a", beneficiaryUserId: "beneficiary-a", createdByAgentId: "agent-a", severity: "medium", status: "open",
+      tenantId: "tenant-a", projectId: "project-a", reporterId: "owner-a", beneficiaryUserId: "owner-a", createdByAgentId: "agent-a", severity: "medium", status: "open",
     }) }));
     expect(db.idempotencyKey.update).toHaveBeenCalledWith({ where: { id: "held-key" }, data: { bugId: issue.id } });
     expect(db.agentEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       tenantId: "tenant-a", type: "issue.created", actorAgentId: "agent-a", bugId: issue.id,
-      payload: { issueId: issue.id, projectId: "project-a", beneficiaryUserId: "beneficiary-a" },
+      payload: { issueId: issue.id, projectId: "project-a", beneficiaryUserId: "owner-a" },
     }) }));
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "issue.created", bugId: issue.id }) }));
+  });
+
+  it("refuses to file an issue in someone else's name (#494)", async () => {
+    const response = await create(request("POST", { ...validBody, beneficiaryUserId: "beneficiary-a" }));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "beneficiary_not_owner", message: expect.stringContaining("only report issues as its owner") });
+    expect(db.bug.create).not.toHaveBeenCalled();
+    expect(db.membership.findUnique).not.toHaveBeenCalled();
+    expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "issues.create" }) }));
   });
 
   it("defaults the beneficiary to the owner, including when severity is invalid", async () => {
