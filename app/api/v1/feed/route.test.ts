@@ -29,7 +29,7 @@ describe("feed authentication and scope", () => {
     expect((await GET(request("?projectId=project", true))).status).toBe(200);
     expect(mocks.budget).toHaveBeenCalledWith({ id: "agent", burst: false }, "read");
     expect(mocks.audit).toHaveBeenCalled();
-    expect(mocks.read).toHaveBeenCalledWith("tenant", "project", null);
+    expect(mocks.read).toHaveBeenCalledWith("tenant", "project", null, null);
     expect(mocks.session).not.toHaveBeenCalled();
   });
   it("allows a current session", async () => {

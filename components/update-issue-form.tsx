@@ -14,6 +14,7 @@ import { triageFieldsKey } from "@/lib/triage-options";
 
 type UserOption = { id: string; name: string; role: AppRole; image?: string | null };
 type CategoryOption = { id: string; name: string };
+type AreaOption = { id: string; name: string };
 type TypeOption = { id: string; name: string };
 type MilestoneOption = { id: string; title: string; isClosed: boolean };
 
@@ -23,6 +24,7 @@ type Draft = {
   typeId: string;
   severity: string;
   categoryId: string;
+  areaId: string;
   assigneeId: string;
   milestoneId: string;
 };
@@ -40,9 +42,11 @@ export function UpdateIssueForm({
   typeId,
   assigneeId,
   categoryId,
+  areaId,
   milestoneId,
   users,
   categories = [],
+  areas = [],
   types = [],
   milestones = [],
   canEditTriage = true,
@@ -53,10 +57,12 @@ export function UpdateIssueForm({
   typeId?: string | null;
   assigneeId: string | null;
   categoryId?: string | null;
+  areaId?: string | null;
   /** #289: the issue's milestone, if any. */
   milestoneId?: string | null;
   users: UserOption[];
   categories?: CategoryOption[];
+  areas?: AreaOption[];
   types?: TypeOption[];
   /** Open milestones, plus the current one even if it was since closed. */
   milestones?: MilestoneOption[];
@@ -74,6 +80,7 @@ export function UpdateIssueForm({
     typeId: typeId ?? "",
     severity,
     categoryId: categoryId ?? "",
+    areaId: areaId ?? "",
     assigneeId: assigneeId ?? "",
     milestoneId: milestoneId ?? "",
   };
@@ -127,6 +134,7 @@ export function UpdateIssueForm({
           formData.set("typeId", draft.typeId);
           formData.set("severity", draft.severity);
           formData.set("categoryId", draft.categoryId);
+          formData.set("areaId", draft.areaId);
           formData.set("assigneeId", draft.assigneeId);
           formData.set("milestoneId", draft.milestoneId);
         } else if (assigneeId) {
@@ -149,7 +157,7 @@ export function UpdateIssueForm({
       {/* Remount the fields when the saved values change so they never show
           (and re-submit) stale values after a save (#261). */}
       <div
-        key={triageFieldsKey({ status, severity, typeId, categoryId, assigneeId, milestoneId })}
+        key={triageFieldsKey({ status, severity, typeId, categoryId, areaId, assigneeId, milestoneId })}
         className={
           canEditTriage
             ? "grid gap-3 sm:grid-cols-4"
@@ -236,6 +244,21 @@ export function UpdateIssueForm({
                     {cat.name}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="areaId" className="mb-1 block text-xs font-medium text-slate-700">
+                Area
+              </label>
+              <select
+                id="areaId"
+                name="areaId"
+                value={draft.areaId}
+                onChange={(event) => set("areaId", event.target.value)}
+                className={selectClass}
+              >
+                <option value="">None</option>
+                {areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
               </select>
             </div>
             <div>

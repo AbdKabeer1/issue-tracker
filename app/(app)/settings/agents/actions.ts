@@ -6,7 +6,7 @@ import { isAgentLevel } from "@/lib/agents/levels";
 import { consumePairingLimit } from "@/lib/agents/rate-limit";
 import { approvePairing, findPendingPairing } from "@/lib/agents/pairing";
 import { currentTenantIdFor } from "@/lib/tenant-context";
-import { createAgent, regenerateKey, revokeAgent, setAgentBurst, setAgentLevel } from "@/lib/agents/registry";
+import { createAgent, regenerateKey, revokeAgent, setAgentAreaPreferences, setAgentBurst, setAgentLevel } from "@/lib/agents/registry";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 
@@ -80,6 +80,24 @@ export async function setAgentBurstAction(agentId: unknown, burst: unknown): Pro
   }
   const user = await requireUser();
   const result = await setAgentBurst(user, agentId, burst);
+  if (result.ok) revalidatePath("/settings/agents");
+  return result;
+}
+
+export async function setAgentAreaPreferencesAction(
+  agentId: unknown,
+  projectId: unknown,
+  areaIds: unknown,
+): Promise<AgentActionResult> {
+  if (
+    typeof agentId !== "string" || typeof projectId !== "string" || !projectId ||
+    !Array.isArray(areaIds) || areaIds.length > 25 ||
+    areaIds.some((areaId) => typeof areaId !== "string" || areaId.length > 191)
+  ) {
+    return { ok: false, error: "Choose a project and valid areas." };
+  }
+  const user = await requireUser();
+  const result = await setAgentAreaPreferences(user, agentId, projectId, areaIds);
   if (result.ok) revalidatePath("/settings/agents");
   return result;
 }

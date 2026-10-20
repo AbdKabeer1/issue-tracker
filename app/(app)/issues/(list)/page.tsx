@@ -69,6 +69,7 @@ import {
   parsePlatformFilter,
   platformFilterWhere,
 } from "@/lib/platform-filter";
+import { AREA_PARAM, parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Issues" };
@@ -78,6 +79,7 @@ type SearchParams = Promise<{
   status?: string | string[];
   severity?: string | string[];
   platform?: string | string[];
+  area?: string | string[];
   sort?: string | string[];
   page?: string | string[];
   deleted?: string | string[];
@@ -191,7 +193,7 @@ export default async function BugsPage({
   // These lookups are filters only. Each one fails on its own: Promise.all
   // used to throw away the ones that succeeded when Milestone was missing,
   // and the admin path below then queried them again outside this catch.
-  const [tagTypes, platforms, milestones] = await Promise.all([
+  const [tagTypes, platforms, milestones, areas] = await Promise.all([
     // Cached, expired by the admin actions that change them (#297).
     loadOrEmpty("issue types", () => getIssueTypes(), []),
     // Every platform, not just active ones: a link filtered on a platform
@@ -206,6 +208,13 @@ export default async function BugsPage({
           select: { id: true, title: true, isClosed: true },
           orderBy: [{ isClosed: "asc" }, { dueDate: { sort: "asc", nulls: "last" } }, { title: "asc" }],
         }),
+      [],
+    ),
+    loadOrEmpty(
+      "project areas",
+      () => projectId
+        ? prisma.projectArea.findMany({ where: { projectId }, select: { id: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }] })
+        : Promise.resolve([]),
       [],
     ),
   ]);
@@ -226,6 +235,8 @@ export default async function BugsPage({
   // Platform filter: one category, or the issues with none set.
   const selectedPlatform = parsePlatformFilter(params.platform, platforms);
   Object.assign(where, platformFilterWhere(selectedPlatform));
+  const selectedArea = parseProjectAreaFilter(params[AREA_PARAM], areas);
+  Object.assign(where, projectAreaFilterWhere(selectedArea));
   Object.assign(where, milestoneWhere(selectedMilestone));
   if (qParam?.trim()) {
     const q = escapeSearchQuery(qParam.trim());
@@ -349,6 +360,7 @@ export default async function BugsPage({
         reporter: { select: { name: true, role: true, image: true } },
         assignee: { select: { name: true, role: true, image: true } },
         category: { select: { id: true, name: true } },
+        area: { select: { id: true, name: true } },
         votes: userId
           ? { where: { userId }, select: { id: true, value: true }, take: 1 }
           : false,
@@ -551,6 +563,7 @@ export default async function BugsPage({
               tagTypes={tagTypes}
               platforms={platforms}
               milestones={milestones}
+              areas={areas}
             />
           </Suspense>
         )}
@@ -701,6 +714,11 @@ export default async function BugsPage({
                               {bug.category ? (
                                 <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
                                   {bug.category.name}
+                                </span>
+                              ) : null}
+                              {bug.area ? (
+                                <span className="inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-900">
+                                  {bug.area.name}
                                 </span>
                               ) : null}
                               <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-medium text-slate-700">

@@ -11,6 +11,7 @@ import { NextRequest } from "next/server";
 
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/lib/auth-helpers", () => ({ requireUser: vi.fn() }));
+vi.mock("@/lib/project-context", () => ({ activeProjectIdFor: vi.fn().mockResolvedValue("project-zedu") }));
 vi.mock("@/lib/lookups", () => ({
   getIssueTypes: vi.fn().mockResolvedValue([]),
   getPlatforms: vi.fn().mockResolvedValue([]),
@@ -18,6 +19,7 @@ vi.mock("@/lib/lookups", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     milestone: { findMany: vi.fn().mockResolvedValue([]) },
+    projectArea: { findMany: vi.fn().mockResolvedValue([{ id: "area-web", name: "Frontend" }]) },
     bug: {
       findMany: vi.fn(),
       count: vi.fn().mockResolvedValue(0),
@@ -61,7 +63,7 @@ describe("GET /issues/export", () => {
 
     const text = await res.text();
     // Headers row
-    expect(text).toContain("id,title,status,severity,type,platform,reporter,assignee,votes,boosted,created_at,updated_at");
+    expect(text).toContain("id,title,status,severity,type,platform,area,reporter,assignee,votes,boosted,created_at,updated_at");
   });
 
   it("streams rows matching query", async () => {
@@ -77,6 +79,7 @@ describe("GET /issues/export", () => {
         updatedAt: new Date("2026-01-02T00:00:00Z"),
         type: { name: "Bug" },
         category: { name: "Web" },
+        area: { name: "Frontend" },
         reporter: { name: "Alice" },
         assignee: { name: "Bob" },
       },
@@ -86,7 +89,13 @@ describe("GET /issues/export", () => {
     const res = await GET(req);
     const text = await res.text();
 
-    expect(text).toContain("bug-1,Button broken,Open,High,Bug,Web,Alice,Bob,5,false");
+    expect(text).toContain("bug-1,Button broken,Open,High,Bug,Web,Frontend,Alice,Bob,5,false");
+  });
+
+  it("applies the selected project area to exports", async () => {
+    const response = await GET(new NextRequest("http://localhost:3000/issues/export?area=area-web"));
+    await response.text();
+    expect(findManyBugs.mock.calls[0][0].where).toMatchObject({ areaId: "area-web", projectId: "project-zedu" });
   });
 
   it("exports only the viewer's tenant (#425)", async () => {
@@ -144,6 +153,7 @@ describe("GET /issues/export?format=json (#664)", () => {
           severity: "high",
           type: "Bug",
           platform: null,
+          area: null,
           reporter: "Alice",
           assignee: null,
           votes: 5,
