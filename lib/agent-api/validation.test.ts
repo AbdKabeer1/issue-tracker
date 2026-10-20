@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Row = {
   id: string;
@@ -17,11 +17,14 @@ const state = vi.hoisted(() => ({
   agents: {} as Record<string, { id: string; ownerUserId: string }>,
 }));
 const promotion = vi.hoisted(() => ({ promoteEarnedReviewer: vi.fn() }));
+const notifications = vi.hoisted(() => ({ notifyClaimOffered: vi.fn() }));
 
 const db = vi.hoisted(() => ({
   bug: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
-  membership: { findUnique: vi.fn() },
+  membership: { findMany: vi.fn(), findUnique: vi.fn() },
   issueValidation: { findMany: vi.fn(), create: vi.fn(), count: vi.fn() },
+  issueClaim: { findFirst: vi.fn(), groupBy: vi.fn(), findMany: vi.fn(), create: vi.fn() },
+  redesignProposal: { count: vi.fn() },
   pointEntry: { createMany: vi.fn() },
   agentAuditEvent: { create: vi.fn(), findMany: vi.fn() },
   agentEvent: { create: vi.fn() },
@@ -32,6 +35,11 @@ const db = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/lib/agents/promotion", () => promotion);
+vi.mock("@/lib/agent-notifications", () => notifications);
+vi.mock("@/lib/redesigns", () => ({
+  assertRedesignOpen: vi.fn(),
+  hasBlockingRedesign: vi.fn(async () => false),
+}));
 
 import { isConfirmed, submitValidation } from "./validation";
 
@@ -40,6 +48,11 @@ function bugRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "bug1",
     tenantId: "tenant_zedu",
+    projectId: "project_web",
+    title: "Example issue",
+    status: "open",
+    assigneeId: null,
+    voteCount: 3,
     severity: "medium",
     reporterId: "ada",
     beneficiaryUserId: "ada",
@@ -67,6 +80,12 @@ beforeEach(() => {
   db.bug.findFirst.mockResolvedValue(bugRow());
   db.bug.findUnique.mockResolvedValue(bugRow());
   db.membership.findUnique.mockResolvedValue({ id: "m1" });
+  db.membership.findMany.mockResolvedValue([]);
+  db.issueClaim.findFirst.mockResolvedValue(null);
+  db.issueClaim.groupBy.mockResolvedValue([]);
+  db.issueClaim.findMany.mockResolvedValue([]);
+  db.issueClaim.create.mockResolvedValue({ id: "claim1", offeredAt: new Date() });
+  db.redesignProposal.count.mockResolvedValue(0);
   db.pointEntry.createMany.mockResolvedValue({ count: 1 });
   db.agentAuditEvent.findMany.mockResolvedValue([]);
   db.agentEvent.create.mockResolvedValue({ id: "evt1" });
@@ -92,6 +111,10 @@ beforeEach(() => {
     state.validations.push(row);
     return row;
   });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("submitValidation: who may validate (#433)", () => {
@@ -246,6 +269,46 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
       (call) => call[0].data.type,
     );
     expect(types.filter((type) => type === "issue.confirmed")).toHaveLength(1);
+  });
+
+  it("automatically offers a ready issue when the second independent reviewer confirms it (#590)", async () => {
+    vi.useFakeTimers();
+    db.membership.findMany.mockResolvedValue([
+      { userId: "bob", user: { agents: [{ id: "agent-bob" }] } },
+    ]);
+    const reviewerOne = reviewer("r1", "rob");
+    const reviewerTwo = reviewer("r2", "sam");
+
+    await submitValidation(reviewerOne, "bug1", acceptReal);
+    const result = await submitValidation(reviewerTwo, "bug1", acceptReal);
+
+    expect(result).toMatchObject({ status: 201, confirmed: true, newlyConfirmed: true });
+    expect(db.issueClaim.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        bugId: "bug1",
+        beneficiaryUserId: "bob",
+        agentId: "agent-bob",
+        status: "offered",
+      }),
+    });
+    expect(db.agentEvent.create.mock.calls.map(([call]) => call.data.type)).toContain("claim.offered");
+    expect(notifications.notifyClaimOffered).toHaveBeenCalledWith(expect.objectContaining({
+      bugId: "bug1",
+      beneficiaryUserId: "bob",
+    }));
+  });
+
+  it("does not automatically offer a confirmed issue before work-readiness votes are met", async () => {
+    vi.useFakeTimers();
+    db.bug.findUnique.mockResolvedValue(bugRow({ voteCount: 2 }));
+    db.membership.findMany.mockResolvedValue([
+      { userId: "bob", user: { agents: [{ id: "agent-bob" }] } },
+    ]);
+
+    await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal);
+    await submitValidation(reviewer("r2", "sam"), "bug1", acceptReal);
+
+    expect(db.issueClaim.create).not.toHaveBeenCalled();
   });
 
   it("one accepting reviewer does not confirm; two do, and the reporter is paid once", async () => {

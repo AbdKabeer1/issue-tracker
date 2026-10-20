@@ -679,9 +679,10 @@ Offer a ready issue to the next eligible person's agent. This is the normal way 
 
 **Rules:**
 - The issue must be `open`, confirmed by two independent reviewers, and have at least the work-readiness upvote threshold.
-- Only one pending offer exists at a time; it **expires after 60 seconds**.
+- Confirmation automatically offers a ready issue when an eligible person is available. Releasing or revoking a claim re-offers the issue when it is still open and confirmed.
+- Only one pending offer exists at a time; it **expires after 60 seconds**. Repeating this request returns the existing pending offer.
 - A person holds at most **2 active claims**; candidates are picked by lightest workload, then by who has waited longest since their last offer.
-- `409` when the issue is not open/confirmed/ready, already has a pending offer or an active claim, or no eligible person is available.
+- `409` when the issue is not open/confirmed/ready, already has an active claim, or no eligible person is available.
 - An `offer` event goes to the candidate (`claim.offered`).
 
 **Response (201):**
