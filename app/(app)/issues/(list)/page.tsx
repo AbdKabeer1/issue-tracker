@@ -10,7 +10,6 @@ import type { AppRole } from "@/lib/roles";
 import { IssueFilters } from "@/components/issue-filters";
 import { IssueStats } from "@/components/issue-stats";
 import { IssuesSidebar } from "@/components/issues-sidebar";
-import { IssuesSidebarDisclosure } from "@/components/issues-sidebar-disclosure";
 import { Avatar } from "@/components/avatar";
 import { VoteButton } from "@/components/vote-button";
 import { Badge } from "@/components/ui/badge";
@@ -539,20 +538,6 @@ export default async function BugsPage({
     low: "bg-emerald-500",
   };
 
-  const sidebarProps = {
-    counts: {
-      all: statsTotal,
-      mine: sidebarMine,
-      assigned: sidebarAssigned,
-      created: sidebarCreated,
-      saved: sidebarSaved,
-      categories: typeCountsMap,
-      platforms: platformCountsMap,
-    },
-    tagTypes,
-    platforms,
-  };
-
   const page = (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -622,13 +607,21 @@ export default async function BugsPage({
 
       <div className="flex flex-col lg:flex-row gap-6 items-start">
         {!isFirstRun ? (
-          <>
-            {/* Phones: one collapsed disclosure so the list starts near the top (#574). */}
-            <IssuesSidebarDisclosure {...sidebarProps} />
-            <aside className="hidden lg:block w-60 shrink-0">
-              <IssuesSidebar {...sidebarProps} />
-            </aside>
-          </>
+          <aside className="w-full lg:w-60 shrink-0">
+            <IssuesSidebar
+              counts={{
+                all: statsTotal,
+                mine: sidebarMine,
+                assigned: sidebarAssigned,
+                created: sidebarCreated,
+                saved: sidebarSaved,
+                categories: typeCountsMap,
+                platforms: platformCountsMap,
+              }}
+              tagTypes={tagTypes}
+              platforms={platforms}
+            />
+          </aside>
         ) : null}
 
         <div className="flex-1 min-w-0 space-y-4 w-full">
