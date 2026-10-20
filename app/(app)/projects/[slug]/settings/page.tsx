@@ -6,6 +6,7 @@ import { isTenantAdmin } from "@/lib/agents/membership";
 import { prisma } from "@/lib/prisma";
 import { Button } from "@/components/ui/button";
 import { ProjectSettingsForm } from "./settings-form";
+import { ProjectAreasManager } from "./areas-manager";
 import { ProjectApprovalRulesSection } from "./approval-rules";
 
 export const metadata = { title: "Project settings" };
@@ -27,6 +28,11 @@ export default async function ProjectSettingsPage({
     select: { id: true, slug: true, name: true, goal: true, repoUrl: true, stagingUrl: true, githubInstallationId: true },
   });
   if (!project) notFound();
+  const areas = await prisma.projectArea.findMany({
+    where: { projectId: project.id },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    select: { id: true, name: true, slug: true, description: true, paths: true },
+  });
   const [issueTypes, approvalRules] = await Promise.all([
     prisma.issueType.findMany({
       where: { isActive: true },
@@ -69,6 +75,7 @@ export default async function ProjectSettingsPage({
           issueTypes={issueTypes}
         />
       </section>
+      <ProjectAreasManager projectSlug={project.slug} areas={areas} />
       <Link href="/issues" className="inline-block text-sm text-teal-700 hover:underline">Back to issues</Link>
     </div>
   );

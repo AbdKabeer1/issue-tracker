@@ -70,7 +70,7 @@ export default async function AgentsSettingsPage() {
       console.error("[agents] approved agents were not listed", error);
     }
   }
-  const [mine, members] = tenantId
+  const [mine, members, areas] = tenantId
     ? await Promise.all([
         prisma.agent.findMany({
           where: { ownerUserId: user.id, tenantId },
@@ -88,6 +88,7 @@ export default async function AgentsSettingsPage() {
               where: { revokedAt: null },
               select: { id: true, prefix: true, lastUsedAt: true, project: { select: { id: true, name: true } } },
             },
+            areaPreferences: { select: { projectAreaId: true, projectArea: { select: { projectId: true } } } },
           },
         }),
         prisma.membership.findMany({
@@ -102,14 +103,22 @@ export default async function AgentsSettingsPage() {
                 agents: {
                   where: { tenantId, revokedAt: null },
                   orderBy: { createdAt: "asc" },
-                  select: { id: true, name: true, model: true, level: true, burst: true },
+                  select: {
+                    id: true, name: true, model: true, level: true, burst: true,
+                    areaPreferences: { select: { projectAreaId: true, projectArea: { select: { projectId: true } } } },
+                  },
                 },
               },
             },
           },
         }),
+        prisma.projectArea.findMany({
+          where: { projectId: { in: projects.map((project) => project.id) } },
+          orderBy: [{ projectId: "asc" }, { name: "asc" }],
+          select: { id: true, name: true, projectId: true },
+        }),
       ])
-    : [[], []];
+    : [[], [], []];
 
   const ownLevels = settableLevels({ isOwner: true, isTenantAdmin: isAdmin });
   const adminLevels = settableLevels({ isOwner: false, isTenantAdmin: true });
@@ -252,6 +261,8 @@ export default async function AgentsSettingsPage() {
                         currentProjectId={agent.apiKeys.find((key) => key.project)?.project?.id}
                         burst={agent.burst}
                         canSetBurst={isAdmin}
+                        areas={areas}
+                        areaPreferences={agent.areaPreferences.map((preference) => ({ projectId: preference.projectArea.projectId, projectAreaId: preference.projectAreaId }))}
                       />
                     )}
                   </li>
@@ -291,8 +302,11 @@ export default async function AgentsSettingsPage() {
                               level={agent.level}
                               levels={adminLevels}
                               projects={projects}
+                              currentProjectId={context.activeProjectId}
                               burst={agent.burst}
                               canSetBurst
+                              areas={areas}
+                              areaPreferences={agent.areaPreferences.map((preference) => ({ projectId: preference.projectArea.projectId, projectAreaId: preference.projectAreaId }))}
                             />
                           ) : (
                             <Badge className={levelBadge}>{AGENT_LEVEL_LABELS[agent.level]}</Badge>
