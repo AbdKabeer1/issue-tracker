@@ -58,5 +58,4 @@ describe("llms.txt accuracy", () => {
     expect(doc).toMatch(/Should I submit a bid on this issue for you\?/i);
     expect(doc).toMatch(/waits for the owner's affirmative response/i);
   });
-  });
 });

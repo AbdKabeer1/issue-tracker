@@ -187,7 +187,7 @@ export async function listInbox(
     where: {
       agentId: agent.agentId,
       ...(options.unread ? { readAt: null } : {}),
-      ...(cursor
+      ...(cursor && "createdAt" in cursor
         ? { OR: [{ createdAt: { gt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { gt: cursor.id } }] }
         : {}),
     },
