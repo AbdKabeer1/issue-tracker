@@ -47,6 +47,12 @@ describe("isPublicPath (#348)", () => {
     expect(isPublicPath("/session-expired/")).toBe(true);
   });
 
+  it("treats the root homepage and /llms.txt as public (#487)", () => {
+    expect(isPublicPath("/")).toBe(true);
+    expect(isPublicPath("")).toBe(true);
+    expect(isPublicPath("/llms.txt")).toBe(true);
+  });
+
   it("treats auth and password reset pages as public", () => {
     expect(isPublicPath("/login")).toBe(true);
     expect(isPublicPath("/signup")).toBe(true);
@@ -79,6 +85,14 @@ describe("isPublicPath (#348)", () => {
 });
 
 describe("middleware routing (#348)", () => {
+  it("allows unauthenticated requests to / without redirecting to /login (#487)", () => {
+    const req = createMockReq({ pathname: "/", isLoggedIn: false });
+    const res = runMiddleware(req);
+
+    expect(res.status).not.toBe(307);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
   it("allows unauthenticated requests to /session-expired without redirecting to /login", () => {
     const req = createMockReq({ pathname: "/session-expired", isLoggedIn: false });
     const res = runMiddleware(req);

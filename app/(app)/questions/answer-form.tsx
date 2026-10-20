@@ -6,7 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
 /** The owner's one-shot answer to an agent's question (#446). */
-export function AnswerForm({ questionId }: { questionId: string }) {
+export function AnswerForm({
+  questionId,
+  labelledBy,
+}: {
+  questionId: string;
+  labelledBy?: string;
+}) {
   const [result, action, pending] = useActionState<AnswerActionResult | undefined, FormData>(
     answerQuestionAction,
     undefined,
@@ -17,15 +23,18 @@ export function AnswerForm({ questionId }: { questionId: string }) {
     <form action={action} className="space-y-3">
       <input type="hidden" name="questionId" value={questionId} />
       <div className="space-y-1">
-        <label htmlFor="answer" className="block text-sm font-medium text-slate-800">
-          Your answer
-        </label>
+        {!labelledBy ? (
+          <label htmlFor="answer" className="block text-sm font-medium text-slate-800">
+            Your answer
+          </label>
+        ) : null}
         <Textarea
           id="answer"
           name="answer"
           rows={4}
           required
           maxLength={2000}
+          aria-labelledby={labelledBy}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? "answer-error" : undefined}
         />

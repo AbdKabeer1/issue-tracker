@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const findUnique = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/prisma", () => ({ prisma: { agentApiKey: { findUnique } } }));
+const update = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/prisma", () => ({ prisma: { agentApiKey: { findUnique, update } } }));
 
 import { hashSecret } from "./keys";
 import { AgentLevelError } from "./levels";
@@ -12,9 +13,14 @@ const request = (authorization?: string) => ({
   headers: { get: (name: string) => (name === "authorization" ? (authorization ?? null) : null) },
 });
 
-function keyRow(overrides: { revokedAt?: Date | null; agent?: Record<string, unknown> } = {}) {
+function keyRow(overrides: {
+  revokedAt?: Date | null;
+  lastUsedAt?: Date | null;
+  agent?: Record<string, unknown>;
+} = {}) {
   return {
     id: "key1",
+    lastUsedAt: overrides.lastUsedAt ?? null,
     revokedAt: overrides.revokedAt ?? null,
     agent: {
       id: "agent1",
@@ -39,7 +45,10 @@ async function failure(promise: Promise<unknown>) {
   throw new Error("expected requireAgent to reject");
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  update.mockResolvedValue({});
+});
 
 describe("requireAgent (#427)", () => {
   it("rejects a request with no key without touching the database", async () => {
@@ -81,10 +90,35 @@ describe("requireAgent (#427)", () => {
     expect((await failure(requireAgent(request(`Bearer ${KEY}`)))).code).toBe("invalid_key");
   });
 
-  it("writes nothing", async () => {
-    findUnique.mockResolvedValue(keyRow());
+  it("updates lastUsedAt when null", async () => {
+    findUnique.mockResolvedValue(keyRow({ lastUsedAt: null }));
+    update.mockResolvedValue({});
     await requireAgent(request(`Bearer ${KEY}`));
-    expect(findUnique).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "key1" },
+      data: { lastUsedAt: expect.any(Date) },
+    });
+  });
+
+  it("updates lastUsedAt when older than 1 minute", async () => {
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+    findUnique.mockResolvedValue(keyRow({ lastUsedAt: twoMinutesAgo }));
+    update.mockResolvedValue({});
+    await requireAgent(request(`Bearer ${KEY}`));
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "key1" },
+      data: { lastUsedAt: expect.any(Date) },
+    });
+  });
+
+  it("throttles and skips updating lastUsedAt when used within the last minute", async () => {
+    const thirtySecondsAgo = new Date(Date.now() - 30 * 1000);
+    findUnique.mockResolvedValue(keyRow({ lastUsedAt: thirtySecondsAgo }));
+    update.mockResolvedValue({});
+    await requireAgent(request(`Bearer ${KEY}`));
+    expect(update).not.toHaveBeenCalled();
   });
 });
 

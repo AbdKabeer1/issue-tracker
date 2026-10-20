@@ -22,6 +22,9 @@ const nextConfig: NextConfig = {
         ? `https://contributors.zedu.chat${BASE_PATH}/api/auth`
         : "https://ziki.dev/api/auth"),
   },
+  outputFileTracingIncludes: {
+    "/llms.txt": ["./docs/ziki-for-agents.md"],
+  },
   async headers() {
     // #222: the app previously sent no security headers at all, which left
     // every page (including /login) framable by any origin and clickable-over.

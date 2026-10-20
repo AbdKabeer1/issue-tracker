@@ -5,6 +5,7 @@ import { activeProjectIdFor } from "@/lib/project-context";
 import { currentTenantIdFor, NO_TENANT_MESSAGE } from "@/lib/tenant-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CopyProjectIdButton } from "./copy-project-id";
 import { CreateProjectForm } from "./create-project-form";
 import { switchProjectAction } from "./actions";
 
@@ -19,9 +20,17 @@ export default async function ProjectsPage() {
     return (
       <div className="mx-auto max-w-2xl space-y-4">
         <h1 className="text-2xl font-semibold text-slate-900">Projects</h1>
-        <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          {NO_TENANT_MESSAGE}
-        </p>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p>{NO_TENANT_MESSAGE}</p>
+          <div className="mt-3">
+            <Link
+              href="/tenants"
+              className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-teal-800"
+            >
+              Create or join a workspace &rarr;
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
@@ -100,6 +109,13 @@ export default async function ProjectsPage() {
                       {project.slug} · {project._count.bugs}{" "}
                       {project._count.bugs === 1 ? "issue" : "issues"}
                     </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-slate-500">Project ID:</span>
+                      <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-700">
+                        {project.id}
+                      </code>
+                      <CopyProjectIdButton projectId={project.id} />
+                    </div>
                   </div>
                   {active ? null : (
                     <form action={switchProjectAction}>

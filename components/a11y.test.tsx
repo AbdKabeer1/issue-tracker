@@ -8,11 +8,16 @@ import { CommentForm } from "./comment-form";
 import { CreateBugForm } from "./create-issue-form";
 import { UserSearch } from "./user-search";
 import { VoteButton } from "./vote-button";
+import { AnswerForm } from "@/app/(app)/questions/answer-form";
 
 vi.mock("@/app/actions/issues", () => ({
   addCommentAction: vi.fn(),
   createBugAction: vi.fn(),
   toggleVoteAction: vi.fn(),
+}));
+
+vi.mock("@/app/(app)/questions/actions", () => ({
+  answerQuestionAction: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -99,5 +104,18 @@ describe("component accessibility (axe)", () => {
   it("UserSearch has no violations", async () => {
     const { container } = render(<UserSearch />);
     await expectNoA11yViolations(container);
+  });
+
+  it("AnswerForm (with aria-labelledby) has no violations and avoids duplicate label", async () => {
+    const { container } = render(
+      <div>
+        <h2 id="your-answer-heading">Your answer</h2>
+        <AnswerForm questionId="q1" labelledBy="your-answer-heading" />
+      </div>,
+    );
+    await expectNoA11yViolations(container);
+    expect(container.querySelectorAll("label")).toHaveLength(0);
+    const textarea = container.querySelector("textarea")!;
+    expect(textarea.getAttribute("aria-labelledby")).toBe("your-answer-heading");
   });
 });

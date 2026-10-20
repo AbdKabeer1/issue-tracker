@@ -15,39 +15,65 @@ export type ShortcutAction =
   | "previous-row"
   | "new-issue"
   | "go-issues"
+  | "go-dashboard"
   | "go-notifications"
   | "show-help";
 
-export type ShortcutSpec = { keys: string[]; label: string; action: ShortcutAction | "open-row" | "leave-search" };
+export type ShortcutSpec = {
+  keys: string[];
+  label: string;
+  action: ShortcutAction | "open-row" | "leave-search";
+  /** Keys are alternatives ("or") rather than a sequence ("then"). */
+  joiner?: "then" | "or";
+};
 
-/** What the cheat sheet lists, in order. */
-export const SHORTCUT_GROUPS: { title: string; items: ShortcutSpec[] }[] = [
-  {
-    title: "Issues list",
-    items: [
-      { keys: ["/"], label: "Search", action: "focus-search" },
-      { keys: ["Esc"], label: "Leave the search box", action: "leave-search" },
-      { keys: ["j"], label: "Next issue", action: "next-row" },
-      { keys: ["k"], label: "Previous issue", action: "previous-row" },
-      { keys: ["Enter"], label: "Open the selected issue", action: "open-row" },
-    ],
-  },
-  {
-    title: "Anywhere",
-    items: [
-      { keys: ["c"], label: "Report a new issue", action: "new-issue" },
-      { keys: ["g", "i"], label: "Go to issues", action: "go-issues" },
-      { keys: ["g", "n"], label: "Go to notifications", action: "go-notifications" },
-      { keys: ["?"], label: "Show these shortcuts", action: "show-help" },
-    ],
-  },
-];
+export type ShortcutOptions = {
+  /** The dashboard is admin-only, so it's hidden for everyone else. */
+  dashboard?: boolean;
+};
+
+/**
+ * What the cheat sheet lists, in order. The dashboard entry is omitted when
+ * the signed-in user isn't an admin, since the route redirects them away.
+ */
+export function shortcutGroups({
+  dashboard = true,
+}: ShortcutOptions = {}): { title: string; items: ShortcutSpec[] }[] {
+  const anywhere: ShortcutSpec[] = [
+    { keys: ["n", "c"], label: "Report a new issue", action: "new-issue", joiner: "or" },
+    { keys: ["Ctrl/Cmd+K"], label: "Search", action: "focus-search" },
+    { keys: ["g", "i"], label: "Go to issues", action: "go-issues" },
+  ];
+  if (dashboard) {
+    anywhere.push({ keys: ["g", "d"], label: "Go to dashboard", action: "go-dashboard" });
+  }
+  anywhere.push(
+    { keys: ["g", "n"], label: "Go to notifications", action: "go-notifications" },
+    { keys: ["?"], label: "Show these shortcuts", action: "show-help" },
+  );
+
+  return [
+    {
+      title: "Issues list",
+      items: [
+        { keys: ["/"], label: "Search", action: "focus-search" },
+        { keys: ["Esc"], label: "Leave the search box", action: "leave-search" },
+        { keys: ["j"], label: "Next issue", action: "next-row" },
+        { keys: ["k"], label: "Previous issue", action: "previous-row" },
+        { keys: ["Enter"], label: "Open the selected issue", action: "open-row" },
+      ],
+    },
+    { title: "Anywhere", items: anywhere },
+  ];
+}
 
 /** How long after `g` the second key still counts. */
 export const SEQUENCE_TIMEOUT_MS = 1200;
 
 export type KeyEventLike = {
   key: string;
+  /** Physical key, so Ctrl/Cmd+K also works on non-Latin layouts. */
+  code?: string;
   ctrlKey?: boolean;
   metaKey?: boolean;
   altKey?: boolean;
@@ -91,15 +117,28 @@ export function shortcutFor(
   target: TargetLike,
   state: SequenceState,
   now: number,
+  { dashboard = true }: ShortcutOptions = {},
 ): { action: ShortcutAction | null; state: SequenceState } {
   if (event.defaultPrevented || event.isComposing) return { action: null, state: IDLE };
-  if (event.ctrlKey || event.metaKey || event.altKey) return { action: null, state: IDLE };
+  if (event.altKey) return { action: null, state: IDLE };
+
+  // Enter, Space and every plain key belong to whatever is focused. Letting
+  // the editor keep Ctrl/Cmd+K for "insert link" avoids stealing it.
   if (isTypingTarget(target)) return { action: null, state: IDLE };
+
+  if (event.ctrlKey || event.metaKey) {
+    // `code` covers layouts where K isn't the letter produced (e.g. Cyrillic).
+    if (event.key.toLowerCase() === "k" || event.code === "KeyK") {
+      return { action: "focus-search", state: IDLE };
+    }
+    return { action: null, state: IDLE };
+  }
 
   const key = event.key;
   if (state.pending === "g" && now - state.at <= SEQUENCE_TIMEOUT_MS) {
     if (key === "i") return { action: "go-issues", state: IDLE };
     if (key === "n") return { action: "go-notifications", state: IDLE };
+    if (key === "d" && dashboard) return { action: "go-dashboard", state: IDLE };
   }
   switch (key) {
     case "/":
@@ -108,6 +147,7 @@ export function shortcutFor(
       return { action: "next-row", state: IDLE };
     case "k":
       return { action: "previous-row", state: IDLE };
+    case "n":
     case "c":
       return { action: "new-issue", state: IDLE };
     case "?":

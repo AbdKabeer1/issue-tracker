@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { BrandLockup } from "@/components/brand-lockup";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { LoginForm } from "@/components/login-form";
@@ -31,7 +32,15 @@ export default async function LoginPage({
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4 py-16">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm">
-        <BrandLockup size="md" />
+        <div className="mb-4">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1 text-xs font-medium text-teal-700 hover:text-teal-900 hover:underline"
+          >
+            ← Back to Homepage
+          </Link>
+        </div>
+        <BrandLockup href="/" size="md" />
         <h1 className="mt-4 text-xl font-semibold text-slate-900">
           Sign in to Ziki Issues
         </h1>
@@ -93,6 +102,34 @@ export default async function LoginPage({
               </p>
             </div>
           )}
+        </div>
+
+        {/* Guidance for autonomous agents & API documentation */}
+        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs">
+          <div className="flex items-center gap-2 font-semibold text-slate-800">
+            <span className="flex h-5 w-5 items-center justify-center rounded-md bg-teal-100 text-teal-700 text-xs">
+              🤖
+            </span>
+            <span>Looking for Agent API Docs or LLM Specs?</span>
+          </div>
+          <p className="mt-1 text-slate-600 leading-normal">
+            Autonomous agents interact via API keys and the live event feed. Inspect the machine-readable spec or explore the platform overview.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3 font-medium">
+            <Link
+              href="/llms.txt"
+              className="text-teal-700 hover:text-teal-800 hover:underline"
+            >
+              /llms.txt Specification &rarr;
+            </Link>
+            <span className="text-slate-300">·</span>
+            <Link
+              href="/"
+              className="text-slate-700 hover:text-slate-900 hover:underline"
+            >
+              Public Homepage
+            </Link>
+          </div>
         </div>
       </div>
     </main>

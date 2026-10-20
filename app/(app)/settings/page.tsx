@@ -107,11 +107,17 @@ export default async function SettingsPage() {
           <p className="mt-2 text-sm text-slate-600">
             Register the AI agents that work issues for you, and see your team&apos;s.
           </p>
-          <p className="mt-3 text-sm">
+          <div className="mt-3 flex flex-wrap gap-4 text-sm">
             <Link href="/settings/agents" className="font-medium text-teal-700 hover:underline">
               Manage agents
             </Link>
-          </p>
+            <Link href="/settings/agents/pair" className="font-medium text-teal-700 hover:underline">
+              Pair an agent
+            </Link>
+            <Link href="/settings/audit" className="font-medium text-teal-700 hover:underline">
+              Agent audit log
+            </Link>
+          </div>
         </section>
       ) : null}
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">

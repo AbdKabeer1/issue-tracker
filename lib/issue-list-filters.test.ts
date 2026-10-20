@@ -48,6 +48,10 @@ describe("parseBugListFilters", () => {
   it("scopes to the signed-in user for the mine filter", () => {
     expect(parse({ mine: "assigned" }).where.assigneeId).toBe("u1");
     expect(parse({ mine: "reported" }).where.reporterId).toBe("u1");
+    expect(parse({ mine: "created" }).where.reporterId).toBe("u1");
+    expect(parse({ mine: "mine" }).where.AND).toEqual([
+      { OR: [{ reporterId: "u1" }, { assigneeId: "u1" }] },
+    ]);
   });
 
   it("ignores the mine filter when there is no user to scope to", () => {

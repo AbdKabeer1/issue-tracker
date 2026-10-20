@@ -15,6 +15,8 @@ export type FlatComment = {
   parentId: string | null;
   authorId: string;
   author: CommentAuthor;
+  agentId?: string | null;
+  agent?: { name: string } | null;
   parent: {
     id: string;
     body: string;

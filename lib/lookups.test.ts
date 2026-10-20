@@ -27,11 +27,13 @@ import {
   expireTag,
   expireUnreadCounts,
   getActivePlatforms,
+  getIssueTypes,
   getPlatforms,
   platformsNeedRepair,
 } from "./lookups";
 
 const findPlatforms = prisma.category.findMany as unknown as ReturnType<typeof vi.fn>;
+const findIssueTypes = prisma.issueType.findMany as unknown as ReturnType<typeof vi.fn>;
 const upsert = prisma.category.upsert as unknown as ReturnType<typeof vi.fn>;
 
 const healthy = [
@@ -81,6 +83,41 @@ describe("getPlatforms", () => {
       { id: "2", name: "Mobile" },
       { id: "3", name: "Web" },
     ]);
+  });
+});
+
+describe("getIssueTypes", () => {
+  const rows = [{ id: "t1", name: "Fix", description: null, isActive: true }];
+
+  it("reads templates with the types", async () => {
+    findIssueTypes.mockResolvedValue(rows.map((row) => ({ ...row, template: "steps" })));
+    await expect(getIssueTypes()).resolves.toEqual(rows.map((row) => ({ ...row, template: "steps" })));
+    expect(findIssueTypes).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads types without a template column when that migration has not run", async () => {
+    findIssueTypes
+      .mockRejectedValueOnce(new Error("The column `IssueType.template` does not exist in the current database."))
+      .mockResolvedValueOnce(rows);
+    await expect(getIssueTypes()).resolves.toEqual(rows.map((row) => ({ ...row, template: null })));
+    expect(findIssueTypes).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        select: { id: true, name: true, description: true, isActive: true },
+      }),
+    );
+  });
+
+  it("does not hide an unrelated read failure", async () => {
+    findIssueTypes.mockRejectedValue(new Error('column "voteCount" does not exist'));
+    await expect(getIssueTypes()).rejects.toThrow(/voteCount/);
+    expect(findIssueTypes).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a P2022 on template as a missing column, not a query that mentions it", async () => {
+    findIssueTypes
+      .mockRejectedValueOnce({ code: "P2022", meta: { column: "IssueType.template" } })
+      .mockResolvedValueOnce(rows);
+    await expect(getIssueTypes()).resolves.toEqual(rows.map((row) => ({ ...row, template: null })));
   });
 });
 
