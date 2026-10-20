@@ -479,6 +479,11 @@ GET /api/v1/events
 - `after` (optional): opaque base64url cursor from a previous response, or an ISO timestamp
 - `afterId` (optional, required when `after` is a timestamp): event id tie-breaker (invalid when `after` is an opaque cursor or omitted)
 - `wait` (optional, 0–25): long-poll seconds; `0` or absent returns immediately
+- `types` (optional): comma list of event types or prefixes, e.g. `comment.created,claim.*`. An unknown type returns `400` with `validTypes`
+- `projectId` (optional): only events on issues in that project
+- `bugId` (optional): only events for that issue
+
+Filters combine. The cursor is global, so a filtered poll can resume from any cursor this endpoint returned.
 
 **Response:**
 ```json
