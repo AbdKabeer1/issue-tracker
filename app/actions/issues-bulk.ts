@@ -55,11 +55,14 @@ export async function bulkUpdateBugsAction(
     });
     if (!type) return { error: "Issue type not found" };
   }
+  const tenantId = await currentTenantIdFor(user.id);
   if (typeof change.categoryId === "string") {
-    const category = await prisma.category.findUnique({
-      where: { id: change.categoryId },
-      select: { id: true },
-    });
+    const category = tenantId
+      ? await prisma.category.findFirst({
+          where: { id: change.categoryId, tenantId },
+          select: { id: true },
+        })
+      : null;
     if (!category) return { error: "Platform not found" };
   }
   if (typeof change.assigneeId === "string") {
@@ -74,7 +77,7 @@ export async function bulkUpdateBugsAction(
   // what actually changed on it — the same entries a single edit produces,
   // rather than an opaque "bulk update" line nobody can read later.
   const found = await prisma.bug.findMany({
-    where: { id: { in: ids }, ...bugInTenant(await currentTenantIdFor(user.id)) },
+    where: { id: { in: ids }, ...bugInTenant(tenantId) },
     select: {
       id: true,
       isDeleted: true,
@@ -113,7 +116,7 @@ export async function bulkUpdateBugsAction(
   }
 
   // Names for whatever the fields are being set to, looked up once.
-  const toNames = await resolveNames(change);
+  const toNames = await resolveNames(change, tenantId);
 
   const entries = changing.flatMap((bug) => buildEntries(bug, change, toNames, user.id));
 
@@ -179,13 +182,19 @@ class BulkRaceError extends Error {
 type ToNames = { typeId?: string | null; categoryId?: string | null; assigneeId?: string | null };
 
 /** Display names for the ids being assigned, so summaries read properly. */
-async function resolveNames(change: Record<string, string | null>): Promise<ToNames> {
+async function resolveNames(
+  change: Record<string, string | null>,
+  tenantId: string | null,
+): Promise<ToNames> {
   const [type, category, assignee] = await Promise.all([
     typeof change.typeId === "string"
       ? prisma.issueType.findUnique({ where: { id: change.typeId }, select: { name: true } })
       : null,
-    typeof change.categoryId === "string"
-      ? prisma.category.findUnique({ where: { id: change.categoryId }, select: { name: true } })
+    typeof change.categoryId === "string" && tenantId
+      ? prisma.category.findFirst({
+          where: { id: change.categoryId, tenantId },
+          select: { name: true },
+        })
       : null,
     typeof change.assigneeId === "string"
       ? prisma.user.findUnique({ where: { id: change.assigneeId }, select: { name: true } })

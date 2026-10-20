@@ -209,6 +209,13 @@ describe("createTenant (#444)", () => {
         // Exactly one membership: the creator's, as owner. Nobody else joins.
         memberships: { create: { userId: "ada", role: "owner" } },
         projects: { create: { slug: "acme-web", name: "Acme Web" } },
+        categories: {
+          create: [
+            { name: "Desktop", isActive: true },
+            { name: "Web", isActive: true },
+            { name: "Mobile", isActive: true },
+          ],
+        },
       },
     });
   });

@@ -48,11 +48,12 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.entries(),
   );
 
+  const tenantId = await currentTenantIdFor(user.id);
   const [tagTypes, platforms, milestones] = await Promise.all([
     getIssueTypes(),
-    // Every platform, active or not: a filter on a platform that was since
-    // deactivated still has to resolve, exactly as it does on the list.
-    getPlatforms(),
+    // Every platform in this organization, active or not: a filter on a
+    // platform that was since deactivated still has to resolve.
+    getPlatforms(tenantId),
     prisma.milestone.findMany({ select: { id: true } }),
   ]);
 
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest) {
   });
 
   // #425: only the viewer's tenant, exactly as on the list.
-  const where = { ...filters, ...bugInTenant(await currentTenantIdFor(user.id)) };
+  const where = { ...filters, ...bugInTenant(tenantId) };
   const orderBy = getBugOrderBy(sort, { boostFirst: mine !== "watching" });
 
   const encoder = new TextEncoder();

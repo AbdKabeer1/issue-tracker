@@ -280,13 +280,20 @@ model Bug {
   @@index([isDeleted, isBoosted(sort: Desc), boostedAt(sort: Desc), createdAt(sort: Desc), id(sort: Desc)], map: "Bug_list_newest_idx")
 }
 
+/// A platform (Desktop, Web, Mobile) inside one organization.
+/// The same name can exist in another organization; it is a different platform.
 model Category {
   id        String   @id @default(cuid())
-  name      String   @unique
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   bugs      Bug[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
 }
 
 /// A release or sprint grouping issues (#289).
@@ -461,6 +468,7 @@ model Tenant {
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   projects      Project[]
+  categories    Category[]
   memberships   Membership[]
   agents        Agent[]
   bugs          Bug[]
@@ -475,7 +483,7 @@ model Tenant {
 }
 
 /// A product inside a tenant, e.g. Zedu Web or Zedu Desktop. Not the same as
-/// Category, which stays the "platform" filter.
+/// Category, the per-organization platform filter.
 model Project {
   id                   String             @id @default(cuid())
   tenantId             String

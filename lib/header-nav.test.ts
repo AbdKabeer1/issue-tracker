@@ -63,6 +63,17 @@ describe("headerNavItems", () => {
     ]);
   });
 
+  it("shows Platforms to an organization owner who is not a site admin", () => {
+    expect(headerNavItems("user", { managePlatforms: true }).map((i) => i.label)).toEqual([
+      "Issues",
+      "Projects",
+      "Milestones",
+      "Questions",
+      "Redesigns",
+      "Platforms",
+    ]);
+  });
+
   it("adds Admins for super admins", () => {
     expect(headerNavItems("super_admin").map((i) => i.label)).toEqual([
       "Issues",

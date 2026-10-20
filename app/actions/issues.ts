@@ -212,21 +212,21 @@ export async function createBugAction(
       ? parsed.data.categoryId
       : null;
 
-  if (categoryId) {
-    const category = await prisma.category.findUnique({
-      where: { id: categoryId },
-      select: { id: true, isActive: true },
-    });
-    if (!category || !category.isActive) {
-      return fieldError("categoryId", "Platform not found or inactive");
-    }
-  }
-
   // #425: the issue goes into the reporter's tenant. No membership, no issue.
   const tenantId = await currentTenantIdFor(userId);
   const projectId = tenantId ? await defaultProjectIdFor(prisma, tenantId) : null;
   if (!tenantId || !projectId) {
     return { error: NO_TENANT_MESSAGE };
+  }
+
+  if (categoryId) {
+    const category = await prisma.category.findFirst({
+      where: { id: categoryId, tenantId, isActive: true },
+      select: { id: true },
+    });
+    if (!category) {
+      return fieldError("categoryId", "Platform not found or inactive");
+    }
   }
 
   // Always open at creation — createBugSchema rejects client status.
@@ -556,8 +556,8 @@ export async function updateBugAction(
   ) {
     let toName: string | null = null;
     if (data.categoryId) {
-      const cat = await prisma.category.findUnique({
-        where: { id: data.categoryId },
+      const cat = await prisma.category.findFirst({
+        where: { id: data.categoryId, tenantId: existing.tenantId },
         select: { id: true, name: true },
       });
       if (!cat) {
@@ -575,8 +575,8 @@ export async function updateBugAction(
       },
     });
   } else if (data.categoryId) {
-    const cat = await prisma.category.findUnique({
-      where: { id: data.categoryId },
+    const cat = await prisma.category.findFirst({
+      where: { id: data.categoryId, tenantId: existing.tenantId },
       select: { id: true },
     });
     if (!cat) {
