@@ -225,15 +225,18 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   const access = await currentTenantAccess(user.id, user.role);
   const canTriage = access.admin;
   const canDelete = canDeleteTicket(user.role, access.membershipRole);
+  const userTenantId = await currentTenantIdFor(userId);
   // #289: open milestones for the triage panel (admins only). Started here,
   // alongside the issue query, and awaited where the form needs them.
   const milestoneOptionsPromise: Promise<{ id: string; title: string; isClosed: boolean }[]> = canTriage
     ? loadOptional("milestones", [], () =>
-        prisma.milestone.findMany({
-          where: { isClosed: false },
-          select: { id: true, title: true, isClosed: true },
-          orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { title: "asc" }],
-        }),
+        userTenantId
+          ? prisma.milestone.findMany({
+              where: { isClosed: false, tenantId: userTenantId },
+              select: { id: true, title: true, isClosed: true },
+              orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { title: "asc" }],
+            })
+          : Promise.resolve([]),
       )
     : Promise.resolve([]);
 
@@ -388,7 +391,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             select: { id: true, name: true },
           }))
         : Promise.resolve([]),
-      canTriage ? loadOptional("types", [], () => getActiveIssueTypesCached()) : Promise.resolve([]),
+      canTriage ? loadOptional("types", [], () => getActiveIssueTypesCached(bug.tenantId)) : Promise.resolve([]),
       loadOptional("votes", createEmptyVoterSummary(), () => fetchVoterSummary(id)),
       loadOptional("activity", [] as ActivityEntry[], () =>
         prisma.bugActivity.findMany({

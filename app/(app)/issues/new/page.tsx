@@ -75,7 +75,7 @@ export default async function NewBugPage() {
     // but only when they're actually missing — it used to upsert all three
     // on every render of this form.
     loadOrEmpty("platforms", async () => getActivePlatforms(tenantId), []),
-    loadOrEmpty("issue types", () => getActiveIssueTypesCached(), []),
+    loadOrEmpty("issue types", () => getActiveIssueTypesCached(tenantId), []),
   ]);
   // The active project scopes the create-issue draft (#729): switching
   // projects must not surface this form's text in another project.
