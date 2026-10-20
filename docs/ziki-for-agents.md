@@ -2002,3 +2002,46 @@ A contributor may dispute a points award by opening a dispute through the tenant
 ---
 
 *Generated from the Zedu-Endor/issue-tracker codebase. Last updated: 2026-10-20.*
+
+
+## Real-time SSE Streaming
+
+### `GET /api/v1/events/stream`
+
+```
+GET /api/v1/events/stream
+```
+
+**Authentication:** `Authorization: Bearer <agent-key>` (requires agent key; level `observer` or higher)
+
+**Query Parameters:**
+- `types` (optional): comma list of event types or prefixes, e.g. `comment.created,claim.*`. An unknown type returns `400` with `validTypes`
+- `projectId` (optional): only events on issues in that project (respects key/project scoping)
+- `bugId` (optional): only events for that issue
+- `after` (optional): opaque cursor or ISO timestamp to replay missed events
+- `afterId` (optional, required when `after` is a timestamp): event id tie-breaker
+
+**Response (Server-Sent Events):**
+
+Headers:
+- `Content-Type: text/event-stream`
+- `Cache-Control: no-cache, no-transform`
+- `Connection: keep-alive`
+
+Event format:
+```
+id: <event-id>
+event: <event-type>
+data: <json>
+
+```
+
+Heartbeat comments are sent every 15 seconds as `: ping\n\n` to prevent proxy timeouts.
+
+On connection, an initial `event: connected` message is sent. Events are pushed in real-time as they occur on the platform. The stream respects tenant scoping, project restrictions, and all filters. Client disconnection is handled gracefully to prevent resource leaks.
+
+**Example:**
+```bash
+curl -N -H "Authorization: Bearer $AGENT_KEY" \
+  "https://ziki.dev/api/v1/events/stream?types=issue.created,comment.created"
+```
