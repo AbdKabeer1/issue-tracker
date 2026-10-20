@@ -13,6 +13,8 @@ import { createdSummary, commentedSummary, commentPreview } from "@/lib/activity
 import { extractMentionedUserIds, normalizeMentions } from "@/lib/mentions";
 import { commentDepth, MAX_COMMENT_DEPTH } from "@/lib/comments";
 import { publish } from "@/lib/agent-api/events";
+import { notifyLater } from "@/lib/notify";
+import type { NotificationEvent } from "@/lib/notifications";
 
 export class IssueApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -30,21 +32,29 @@ const agentCommentSchema = commentSchema.extend({ projectId: idSchema.optional()
 export async function agentIssueRequest(
   request: NextRequest, action: string, level: AgentLevel, target: string | null,
   run: (agent: AgentContext) => Promise<Response>,
+  options: { budget?: "none" } = {},
 ): Promise<Response> {
   let agent: AgentContext | undefined;
   let response: Response | undefined;
   try {
     agent = await requireAgent(request);
     requireLevel(agent, level);
-    const budget = await consumeAgentBudget({ id: agent.agentId, burst: agent.burst }, level === "observer" ? "read" : "write");
-    response = budget.allowed ? await run(agent) : agentBudgetExceededResponse(budget.retryAfterSeconds);
+    if (options.budget === "none") {
+      // Retired or non-working routes must not spend the caller's budget (#554).
+      response = await run(agent);
+    } else {
+      const budget = await consumeAgentBudget({ id: agent.agentId, burst: agent.burst }, level === "observer" ? "read" : "write");
+      response = budget.allowed ? await run(agent) : agentBudgetExceededResponse(budget.retryAfterSeconds);
+    }
   } catch (error) {
     if (error instanceof IssueApiError) response = NextResponse.json({ error: error.message }, { status: error.status });
     else if (error instanceof z.ZodError) response = NextResponse.json({ error: "Invalid input.", details: error.issues }, { status: 422 });
     else response = agentErrorResponse(error);
   } finally {
     if (agent) {
-      const payload = { status: response?.status ?? 500 };
+      // `request: true` marks the supplementary row so the audit page can hide
+      // it by default: the domain audit already records successful writes (#575).
+      const payload = { status: response?.status ?? 500, request: true as const };
       try {
         // Required domain audits commit inside the domain transaction. This
         // supplementary request log must not turn a committed write into a failure.
@@ -66,11 +76,17 @@ export async function issueJson(request: NextRequest): Promise<unknown> {
   catch { throw new IssueApiError(400, "Send a valid JSON body."); }
 }
 
+/** The 400 for an issue route called without a project. */
+export const PROJECT_ID_REQUIRED =
+  "projectId is required. Pass it as ?projectId= or in the JSON body. Your owner can copy it from the agent key menu in the Ziki header.";
+
 /** Every call names a project; a project id alone never grants access to its tenant. */
 export async function issueProject(agent: AgentContext, params: URLSearchParams, bodyProjectId?: string) {
   const queryId = params.get("projectId");
   if (queryId && bodyProjectId && queryId !== bodyProjectId) throw new IssueApiError(400, "Conflicting projectId values.");
-  const projectId = idSchema.parse(queryId ?? bodyProjectId);
+  // #563: name the missing parameter instead of a raw validation dump.
+  if (!queryId?.trim() && !bodyProjectId?.trim()) throw new IssueApiError(400, PROJECT_ID_REQUIRED);
+  const projectId = idSchema.parse(queryId || bodyProjectId);
   const project = await prisma.project.findFirst({ where: { id: projectId, tenantId: agent.tenantId }, select: { id: true } });
   if (!project) throw new IssueApiError(404, "Project not found.");
   // A key issued for one project cannot read or change another (#742).
@@ -173,18 +189,40 @@ export async function createAgentIssue(agent: AgentContext, request: NextRequest
   if (result.status !== 200 && result.status !== 201) return NextResponse.json(result, { status: result.status });
   // A reused key can refer to another project; never return an out-of-scope issue.
   const issue = await readAgentIssue(scope, result.bugId);
+  // #533: people mentioned in an agent's report hear about it, as they would
+  // from a person's. A replayed create was already announced.
+  if (!result.replayed) {
+    const mentioned = extractMentionedUserIds(issue.description ?? "");
+    if (mentioned.length > 0) {
+      notifyLater({
+        kind: "mentioned",
+        place: "description",
+        actorId: agent.ownerId,
+        actorName: agent.name,
+        bugId: issue.id,
+        bugTitle: issue.title,
+        recipientIds: mentioned,
+      });
+    }
+  }
   return NextResponse.json({ issue, replayed: result.replayed }, { status: result.status });
 }
 
 export async function commentOnAgentIssue(agent: AgentContext, request: NextRequest, bugId: string) {
   const input = agentCommentSchema.parse(await issueJson(request));
   const scope = await issueProject(agent, request.nextUrl.searchParams, input.projectId);
+  let bug: { id: string; title: string; reporterId: string; assigneeId: string | null } | null = null;
+  let parentAuthorId: string | null = null;
   const comment = await prisma.$transaction(async (tx) => {
-    const bug = await tx.bug.findFirst({ where: { ...scope, id: bugId, isDeleted: false }, select: { id: true } });
+    bug = await tx.bug.findFirst({
+      where: { ...scope, id: bugId, isDeleted: false },
+      select: { id: true, title: true, reporterId: true, assigneeId: true },
+    });
     if (!bug) throw new IssueApiError(404, "Issue not found.");
     if (input.parentId) {
-      const parent = await tx.comment.findFirst({ where: { id: input.parentId, bugId, deletedAt: null }, select: { id: true } });
+      const parent = await tx.comment.findFirst({ where: { id: input.parentId, bugId, deletedAt: null }, select: { id: true, authorId: true } });
       if (!parent) throw new IssueApiError(422, "Parent comment not found on this issue.");
+      parentAuthorId = parent.authorId;
       const thread = await tx.comment.findMany({ where: { bugId }, select: { id: true, parentId: true } });
       if (commentDepth(parent.id, new Map(thread.map((row) => [row.id, row.parentId]))) >= MAX_COMMENT_DEPTH) {
         throw new IssueApiError(422, "The reply nesting limit has been reached.");
@@ -212,5 +250,38 @@ export async function commentOnAgentIssue(agent: AgentContext, request: NextRequ
     });
     return created;
   });
+  notifyAgentComment(agent, bug, comment, parentAuthorId);
   return NextResponse.json({ comment }, { status: 201 });
+}
+
+/**
+ * #533: an agent's comment notifies the same people a person's would:
+ * anyone it @mentions, and the issue's watchers (reporter, assignee and
+ * watch rows), with a "replied to your comment" for the parent's author.
+ * The agent's owner is the actor, so they aren't told about their own agent.
+ */
+function notifyAgentComment(
+  agent: AgentContext,
+  bug: { id: string; title: string; reporterId: string; assigneeId: string | null } | null,
+  comment: { id: string; body: string },
+  parentAuthorId: string | null,
+): void {
+  if (!bug) return;
+  const actor = { actorId: agent.ownerId, actorName: agent.name, bugId: bug.id, bugTitle: bug.title };
+  const excerpt = commentPreview(comment.body);
+  const mentioned = extractMentionedUserIds(comment.body);
+  const events: NotificationEvent[] = [];
+  if (mentioned.length > 0) {
+    events.push({ ...actor, kind: "mentioned", place: "comment", recipientIds: mentioned, excerpt, commentId: comment.id });
+  }
+  events.push({
+    ...actor,
+    kind: "comment_added",
+    commentId: comment.id,
+    excerpt,
+    parentAuthorId,
+    recipientIds: [bug.reporterId, bug.assigneeId].filter((id): id is string => Boolean(id)),
+    excludeIds: mentioned,
+  });
+  notifyLater(...events);
 }

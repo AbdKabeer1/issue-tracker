@@ -13,8 +13,10 @@ export interface IssuesSidebarProps {
     categories: Record<string, number>;
     platforms: Record<string, number>;
   };
-  tagTypes?: { id: string; name: string }[];
-  platforms?: { id: string; name: string }[];
+  /** The tenant's issue types (#541). Inactive ones are left out unless selected. */
+  tagTypes?: { id: string; name: string; isActive?: boolean }[];
+  /** The tenant's platforms (#541). Inactive ones are left out unless selected. */
+  platforms?: { id: string; name: string; isActive?: boolean }[];
 }
 
 export function IssuesSidebar({
@@ -40,34 +42,32 @@ export function IssuesSidebar({
     return qs ? `/issues?${qs}` : "/issues";
   }
 
-  // Predefined category styling
+  // Known type names keep their colour; any other type gets a neutral dot.
   const categoryColors: Record<string, string> = {
     Features: "bg-emerald-500",
+    Feat: "bg-emerald-500",
     Fixes: "bg-red-500",
+    Fix: "bg-red-500",
     Design: "bg-purple-500",
     Marketing: "bg-amber-500",
     Documentation: "bg-sky-500",
     Other: "bg-slate-500",
   };
 
-  const defaultCategories = [
-    "Features",
-    "Fixes",
-    "Design",
-    "Marketing",
-    "Documentation",
-    "Other",
-  ];
-
-  // Merge default categories with any dynamic ones from tagTypes
+  // #541: only this tenant's own issue types and platforms, not a built-in
+  // list. Names that don't exist here always counted 0 and their links
+  // filtered on nothing. An inactive one stays visible while it's selected,
+  // so a filtered link still shows what it's filtered on.
   const allCategoryNames = Array.from(
-    new Set([...defaultCategories, ...tagTypes.map((t) => t.name)]),
+    new Set(
+      tagTypes
+        .filter((t) => t.isActive !== false || currentTags.toLowerCase() === t.name.toLowerCase())
+        .map((t) => t.name),
+    ),
   );
 
-  const defaultPlatforms = ["Web", "Mobile", "Desktop", "API/Backend"];
-  const allPlatformNames = Array.from(
-    new Set([...defaultPlatforms, ...platforms.map((p) => p.name)]),
-  );
+  const shownPlatforms = platforms.filter((p) => p.isActive !== false || currentPlatform === p.id);
+  const allPlatformNames = Array.from(new Set(shownPlatforms.map((p) => p.name)));
 
   const views = [
     {
@@ -229,192 +229,201 @@ export function IssuesSidebar({
         })}
       </div>
 
-      <hr className="border-slate-100" />
+      {allCategoryNames.length > 0 ? (
+        <>
+          <hr className="border-slate-100" />
 
-      {/* 2. Categories Section */}
-      <div className="space-y-1">
-        <div className="px-3 pb-1 text-[11px] font-bold tracking-wider text-slate-600 uppercase">
-          Categories
-        </div>
+          {/* 2. Categories Section */}
+          <div className="space-y-1">
+            <div className="px-3 pb-1 text-[11px] font-bold tracking-wider text-slate-600 uppercase">
+              Categories
+            </div>
 
-        {/* All Categories Option */}
-        <Link
-          href={makeHref("tags", "")}
-          className={`flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-            currentTags === ""
-              ? "text-slate-900 font-semibold"
-              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-          }`}
-        >
-          <span className="h-2.5 w-2.5 rounded-full bg-blue-600 shrink-0" />
-          <span className="truncate">All categories</span>
-          <span className="ml-auto text-xs text-slate-600 tabular-nums">
-            {counts.all}
-          </span>
-        </Link>
-
-        {allCategoryNames.map((name) => {
-          const isCategoryActive =
-            currentTags.toLowerCase() === name.toLowerCase();
-          const dotColor = categoryColors[name] ?? "bg-slate-400";
-          const catCount = counts.categories[name] ?? 0;
-
-          return (
+            {/* All Categories Option */}
             <Link
-              key={name}
-              href={makeHref("tags", name)}
+              href={makeHref("tags", "")}
               className={`flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                isCategoryActive
-                  ? "bg-blue-50 text-blue-700 font-semibold"
+                currentTags === ""
+                  ? "text-slate-900 font-semibold"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
               }`}
             >
-              <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${dotColor}`} />
-              <span className="truncate">{name}</span>
+              <span className="h-2.5 w-2.5 rounded-full bg-blue-600 shrink-0" />
+              <span className="truncate">All categories</span>
               <span className="ml-auto text-xs text-slate-600 tabular-nums">
-                {catCount}
+                {counts.all}
               </span>
             </Link>
-          );
-        })}
-      </div>
 
-      <hr className="border-slate-100" />
+            {allCategoryNames.map((name) => {
+              const isCategoryActive =
+                currentTags.toLowerCase() === name.toLowerCase();
+              const dotColor = categoryColors[name] ?? "bg-slate-400";
+              const catCount = counts.categories[name] ?? 0;
 
-      {/* 3. Platforms Section */}
-      <div className="space-y-1">
-        <div className="px-3 pb-1 text-[11px] font-bold tracking-wider text-slate-600 uppercase">
-          Platforms
-        </div>
+              return (
+                <Link
+                  key={name}
+                  href={makeHref("tags", name)}
+                  className={`flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                    isCategoryActive
+                      ? "bg-blue-50 text-blue-700 font-semibold"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  }`}
+                >
+                  <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${dotColor}`} />
+                  <span className="truncate">{name}</span>
+                  <span className="ml-auto text-xs text-slate-600 tabular-nums">
+                    {catCount}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
 
-        {/* All Platforms Option */}
-        <Link
-          href={makeHref("platform", "")}
-          className={`flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-            currentPlatform === ""
-              ? "text-slate-900 font-semibold"
-              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-          }`}
-        >
-          <svg
-            className="h-4 w-4 text-slate-500 shrink-0"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth="2"
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <span className="truncate">All platforms</span>
-          <span className="ml-auto text-xs text-slate-600 tabular-nums">
-            {counts.all}
-          </span>
-        </Link>
+        </>
+      ) : null}
 
-        {allPlatformNames.map((platformName) => {
-          const matchingPlatform = platforms.find(
-            (p) =>
-              p.name.toLowerCase() === platformName.toLowerCase() ||
-              p.id === platformName,
-          );
-          const platformTarget = matchingPlatform
-            ? matchingPlatform.id
-            : platformName;
-          const isPlatformActive =
-            currentPlatform === platformTarget ||
-            (matchingPlatform && currentPlatform === matchingPlatform.id) ||
-            currentPlatform.toLowerCase() === platformName.toLowerCase();
-          const platCount =
-            (matchingPlatform
-              ? counts.platforms[matchingPlatform.id]
-              : undefined) ??
-            counts.platforms[platformName] ??
-            0;
+      {allPlatformNames.length > 0 ? (
+        <>
+          <hr className="border-slate-100" />
 
-          return (
+          {/* 3. Platforms Section */}
+          <div className="space-y-1">
+            <div className="px-3 pb-1 text-[11px] font-bold tracking-wider text-slate-600 uppercase">
+              Platforms
+            </div>
+
+            {/* All Platforms Option */}
             <Link
-              key={platformName}
-              href={makeHref("platform", platformTarget)}
+              href={makeHref("platform", "")}
               className={`flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                isPlatformActive
-                  ? "bg-blue-50 text-blue-700 font-semibold"
+                currentPlatform === ""
+                  ? "text-slate-900 font-semibold"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
               }`}
             >
-              {platformName === "Web" ? (
-                <svg
-                  className="h-4 w-4 text-slate-500 shrink-0"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                  />
-                </svg>
-              ) : platformName === "Mobile" ? (
-                <svg
-                  className="h-4 w-4 text-slate-500 shrink-0"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
-                  />
-                </svg>
-              ) : platformName === "Desktop" ? (
-                <svg
-                  className="h-4 w-4 text-slate-500 shrink-0"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                  />
-                </svg>
-              ) : (
-                <svg
-                  className="h-4 w-4 text-slate-500 shrink-0"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"
-                  />
-                </svg>
-              )}
-              <span className="truncate">{platformName}</span>
+              <svg
+                className="h-4 w-4 text-slate-500 shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <span className="truncate">All platforms</span>
               <span className="ml-auto text-xs text-slate-600 tabular-nums">
-                {platCount}
+                {counts.all}
               </span>
             </Link>
-          );
-        })}
-      </div>
+
+            {allPlatformNames.map((platformName) => {
+              const matchingPlatform = shownPlatforms.find(
+                (p) =>
+                  p.name.toLowerCase() === platformName.toLowerCase() ||
+                  p.id === platformName,
+              );
+              const platformTarget = matchingPlatform
+                ? matchingPlatform.id
+                : platformName;
+              const isPlatformActive =
+                currentPlatform === platformTarget ||
+                (matchingPlatform && currentPlatform === matchingPlatform.id) ||
+                currentPlatform.toLowerCase() === platformName.toLowerCase();
+              const platCount =
+                (matchingPlatform
+                  ? counts.platforms[matchingPlatform.id]
+                  : undefined) ??
+                counts.platforms[platformName] ??
+                0;
+
+              return (
+                <Link
+                  key={platformName}
+                  href={makeHref("platform", platformTarget)}
+                  className={`flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                    isPlatformActive
+                      ? "bg-blue-50 text-blue-700 font-semibold"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  }`}
+                >
+                  {platformName === "Web" ? (
+                    <svg
+                      className="h-4 w-4 text-slate-500 shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                      />
+                    </svg>
+                  ) : platformName === "Mobile" ? (
+                    <svg
+                      className="h-4 w-4 text-slate-500 shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
+                      />
+                    </svg>
+                  ) : platformName === "Desktop" ? (
+                    <svg
+                      className="h-4 w-4 text-slate-500 shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="h-4 w-4 text-slate-500 shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"
+                      />
+                    </svg>
+                  )}
+                  <span className="truncate">{platformName}</span>
+                  <span className="ml-auto text-xs text-slate-600 tabular-nums">
+                    {platCount}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </>
+      ) : null}
     </nav>
   );
 }

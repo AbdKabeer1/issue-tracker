@@ -23,12 +23,12 @@ describe("SWITCH_TENANT_LINK (#444)", () => {
 });
 
 describe("headerNavItems", () => {
-  it("shows Issues, Projects, Milestones, Questions, and Redesigns to normal users by default", () => {
+  it("shows Issues, Projects, Milestones, Escalations, and Redesigns to normal users by default", () => {
     expect(headerNavItems("user").map((i) => i.label)).toEqual([
       "Issues",
       "Projects",
       "Milestones",
-      "Questions",
+      "Escalations",
       "Redesigns",
     ]);
   });
@@ -41,14 +41,23 @@ describe("headerNavItems", () => {
     ]);
   });
 
-  it("includes Questions and Redesigns when agent platform is enabled (#627)", () => {
+  it("includes Escalations and Redesigns when agent platform is enabled (#627)", () => {
     expect(headerNavItems("user", { agentPlatform: true }).map((i) => i.label)).toEqual([
       "Issues",
       "Projects",
       "Milestones",
-      "Questions",
+      "Escalations",
       "Redesigns",
     ]);
+  });
+
+  it("includes pending escalations badge count when provided (#763)", () => {
+    const items = headerNavItems("user", { agentPlatform: true, pendingEscalations: 3 });
+    const escalationsItem = items.find((i) => i.href === "/escalations");
+    expect(escalationsItem?.badge).toBe(3);
+
+    const zeroItems = headerNavItems("user", { agentPlatform: true, pendingEscalations: 0 });
+    expect(zeroItems.find((i) => i.href === "/escalations")?.badge).toBeUndefined();
   });
 
   it("adds Platforms and Types for admins", () => {
@@ -56,7 +65,7 @@ describe("headerNavItems", () => {
       "Issues",
       "Projects",
       "Milestones",
-      "Questions",
+      "Escalations",
       "Redesigns",
       "Platforms",
       "Types",
@@ -68,7 +77,7 @@ describe("headerNavItems", () => {
       "Issues",
       "Projects",
       "Milestones",
-      "Questions",
+      "Escalations",
       "Redesigns",
       "Platforms",
     ]);
@@ -79,7 +88,7 @@ describe("headerNavItems", () => {
       "Issues",
       "Projects",
       "Milestones",
-      "Questions",
+      "Escalations",
       "Redesigns",
       "Platforms",
       "Types",
@@ -104,6 +113,14 @@ describe("isNavItemActive", () => {
     expect(isNavItemActive("/admin/typesx", "/admin/types")).toBe(false);
     expect(isNavItemActive("/settings", "/admin/types")).toBe(false);
     expect(isNavItemActive(null, "/issues")).toBe(false);
+  });
+
+  it("marks Escalations active for /escalations and legacy /questions (#763)", () => {
+    expect(isNavItemActive("/escalations", "/escalations")).toBe(true);
+    expect(isNavItemActive("/escalations/q1", "/escalations")).toBe(true);
+    expect(isNavItemActive("/questions", "/escalations")).toBe(true);
+    expect(isNavItemActive("/questions/q1", "/escalations")).toBe(true);
+    expect(isNavItemActive("/issues", "/escalations")).toBe(false);
   });
 });
 

@@ -4,6 +4,7 @@ import { audit } from "@/lib/agents/audit";
 import { generateApiKey, generateDeviceCode, generateUserCode, hashSecret, normalizeUserCode } from "@/lib/agents/keys";
 import { tenantForOwner } from "@/lib/agents/membership";
 import { agentModelSchema, agentNameSchema, insertAgentWithKey, type Actor, type IssuedKey } from "@/lib/agents/registry";
+import { AGENT_LIMIT_MESSAGE, MAX_ACTIVE_AGENTS_PER_OWNER } from "@/lib/agents/registry-limits";
 
 /**
  * Pairing an agent with its owner (#427), like a TV signing in to an account:
@@ -114,6 +115,12 @@ export async function approvePairing(
 
   const codeHash = hashSecret(code);
   return prisma.$transaction(async (tx) => {
+    // Checked before the pairing is claimed, so hitting the cap does not burn
+    // the code the person already typed (#511).
+    const active = await tx.agent.count({
+      where: { tenantId: tenant, ownerUserId: owner.id, revokedAt: null },
+    });
+    if (active >= MAX_ACTIVE_AGENTS_PER_OWNER) return { ok: false, error: AGENT_LIMIT_MESSAGE } as const;
     const approved = await tx.agentPairing.updateMany({
       where: { codeHash, approvedAt: null, ownerUserId: null, expiresAt: { gt: now } },
       data: { ownerUserId: owner.id, tenantId: tenant, projectId: project.id, approvedAt: now },
