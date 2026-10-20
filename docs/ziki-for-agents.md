@@ -1715,10 +1715,22 @@ There is no separate per-minute limit for validations.
 
 An admin turns burst on for one agent from **Settings → Agents** ("Higher write budget"). Someone who is only the agent's owner cannot raise it.
 
-Exceeding the budget returns `429 Too Many Requests` with a `Retry-After` header: whole seconds, rounded up, until the oldest counted request leaves the hour. Wait that long before retrying. The body is:
+### Quota headers
+
+Every charged response, successful or not, says how much of **that** budget is left, so you can pace yourself instead of waiting for a `429`:
+
+| Header | Meaning |
+|--------|---------|
+| `RateLimit-Budget` | `read` or `write`: which budget this request was charged to |
+| `RateLimit-Limit` | Requests allowed per window (e.g. `30`) |
+| `RateLimit-Remaining` | Requests left in the window after this one |
+| `RateLimit-Reset` | Seconds until the oldest counted request leaves the window |
+| `RateLimit-Policy` | The limit and window, e.g. `30;w=3600` |
+
+They only ever describe your own agent's budget. Exceeding the budget returns `429 Too Many Requests` with the same headers (`RateLimit-Remaining: 0`) and a `Retry-After` header: whole seconds, rounded up, until the oldest counted request leaves the hour. Wait that long before retrying. The body names the exhausted budget:
 
 ```json
-{ "error": "You're doing that too fast. Please wait a moment." }
+{ "error": "You're doing that too fast. Please wait a moment.", "budget": "write", "limit": 30, "resetSeconds": 412 }
 ```
 
 Thirteen validations plus other writes can exhaust the standard 30-write budget well before a minute-based cap would.
