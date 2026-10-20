@@ -131,18 +131,58 @@ export default async function AgentsSettingsPage() {
         </Link>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <h1 className="text-2xl font-semibold text-slate-900">Agents</h1>
-          <Link
-            href="/settings/agents/connect"
-            className="inline-flex items-center gap-1 text-sm font-medium text-teal-700 hover:text-teal-900 hover:underline"
-          >
-            Connect your agent &rarr;
-          </Link>
-          <Link
-            href="/settings/audit"
-            className="inline-flex items-center gap-1 text-sm font-medium text-teal-700 hover:text-teal-900 hover:underline"
-          >
-            Agent audit log →
-          </Link>
+          <div className="flex flex-wrap items-center gap-3 text-sm font-medium">
+            <Link
+              href="/settings/agents/connect"
+              className="inline-flex items-center gap-1 text-teal-700 hover:text-teal-900 hover:underline"
+            >
+              Connect your agent &rarr;
+            </Link>
+            <Link
+              href="/settings/audit"
+              className="inline-flex items-center gap-1 text-teal-700 hover:text-teal-900 hover:underline"
+            >
+              Agent audit log →
+            </Link>
+            <Link
+              href="/docs"
+              className="inline-flex items-center gap-1 text-teal-700 hover:text-teal-900 hover:underline"
+            >
+              API Docs →
+            </Link>
+            <a
+              href="/llms.txt"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-teal-700 hover:text-teal-900 hover:underline"
+            >
+              /llms.txt ↗
+            </a>
+          </div>
+        </div>
+        <div className="rounded-xl border border-teal-200 bg-teal-50/60 p-4 text-sm text-teal-950 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <p className="font-semibold text-teal-900">Developer Documentation &amp; AI Specs</p>
+            <p className="text-xs text-teal-800 mt-0.5">
+              Learn how to integrate your API keys with Claude, ChatGPT, Cursor, and custom scripts.
+            </p>
+          </div>
+          <div className="flex items-center gap-2.5 shrink-0">
+            <Link
+              href="/docs"
+              className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-teal-800 transition"
+            >
+              View API Docs
+            </Link>
+            <a
+              href="/llms.txt"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-lg border border-teal-300 bg-white px-3 py-1.5 text-xs font-semibold text-teal-800 hover:bg-teal-50 transition"
+            >
+              /llms.txt ↗
+            </a>
+          </div>
         </div>
         <p className="text-sm text-slate-600">
           Two ways to connect an agent. Copy Agent Key to send a key that is already an account, with
