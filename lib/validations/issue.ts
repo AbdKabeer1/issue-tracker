@@ -48,7 +48,7 @@ export const proofLinksInputSchema = z
     if (links.length > MAX_PROOF_LINKS || rawLinks.length > MAX_PROOF_LINKS) {
       ctx.addIssue({
         code: "custom",
-        message: `You entered ${count} links. At most ${MAX_PROOF_LINKS} proof links are allowed.`,
+        message: `You entered ${count} links. At most ${MAX_PROOF_LINKS} GitHub PR links are allowed.`,
       });
       return z.NEVER;
     }
