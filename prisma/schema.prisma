@@ -985,7 +985,7 @@ model IdempotencyKey {
 }
 
 /// The event log agents poll and webhooks deliver (#445). Cursor is
-/// (createdAt, id).
+/// (txid, id): see lib/agent-api/events.ts (#739).
 model AgentEvent {
   id           String            @id @default(cuid())
   tenantId     String
@@ -994,12 +994,16 @@ model AgentEvent {
   actorAgentId String?
   bugId        String?
   createdAt    DateTime          @default(now())
+  /// The writing transaction's id (#739). Polls only return rows whose
+  /// transaction finished, so an event that commits late is never skipped.
+  txid         BigInt            @default(dbgenerated("((pg_current_xact_id())::text)::bigint"))
   tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   actorAgent   Agent?            @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
   bug          Bug?              @relation(fields: [bugId], references: [id], onDelete: SetNull)
   deliveries   WebhookDelivery[]
 
   @@index([tenantId, createdAt, id])
+  @@index([tenantId, txid, id])
   @@index([createdAt])
 }
 
