@@ -278,6 +278,9 @@ export default async function AgentsSettingsPage() {
                         {agent.defaultProjectId ? <span className="font-normal text-slate-500"> · personal</span> : null}
                         {agent.model ? <span className="font-normal text-slate-500"> · {agent.model}</span> : null}
                       </p>
+                      <Link href={`/settings/agents/${agent.id}/messages`} className="text-xs text-teal-700 hover:underline">
+                        Messages and instructions
+                      </Link>
                       <p className="mt-0.5 text-xs text-slate-500">
                         {agent.revokedAt ? (
                           <>
@@ -352,6 +355,14 @@ export default async function AgentsSettingsPage() {
                           <span className="text-sm text-slate-700">
                             {agent.name}
                             {agent.model ? <span className="text-slate-500"> · {agent.model}</span> : null}
+                            {isAdmin && member.id !== user.id ? (
+                              <>
+                                {" "}·{" "}
+                                <Link href={`/settings/agents/${agent.id}/messages`} className="text-xs text-teal-700 hover:underline">
+                                  Message
+                                </Link>
+                              </>
+                            ) : null}
                           </span>
                           {isAdmin && member.id !== user.id ? (
                             <AgentControls

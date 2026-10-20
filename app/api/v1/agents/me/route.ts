@@ -3,12 +3,13 @@ import { agentErrorResponse, requireAgent } from "@/lib/agents/require-agent";
 import { agentBudgetExceededResponse, consumeAgentBudget } from "@/lib/agents/rate-budget";
 import { withAgentBudgetHeaders } from "@/lib/agents/rate-budget-headers";
 import { listAgentProjectSummaries } from "@/lib/agent-api/projects";
+import { readAgentInstructions } from "@/lib/agent-messages";
 
 /**
  * GET /api/v1/agents/me — who this key belongs to (#427). Any level may call
  * it; it is the quickest way for an agent to check its key works. It also
  * lists the tenant's projects (#607) so an agent can pick the `projectId`
- * every issue route needs.
+ * every issue route needs, and the owner's standing `instructions` (#605).
  */
 export async function GET(req: NextRequest) {
   try {
@@ -20,7 +21,10 @@ export async function GET(req: NextRequest) {
       "read",
     );
     if (!budget.allowed) return agentBudgetExceededResponse(budget.retryAfterSeconds, budget);
-    const projects = await listAgentProjectSummaries(agent.tenantId);
+    const [projects, instructions] = await Promise.all([
+      listAgentProjectSummaries(agent.tenantId),
+      readAgentInstructions(agent.agentId),
+    ]);
     return withAgentBudgetHeaders(
       NextResponse.json({
         id: agent.agentId,
@@ -31,6 +35,7 @@ export async function GET(req: NextRequest) {
         project_id: agent.projectId ?? null,
         project_slug: agent.projectSlug ?? null,
         projects,
+        instructions,
       }),
       budget,
     );
