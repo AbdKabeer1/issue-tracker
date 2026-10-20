@@ -120,6 +120,23 @@ describe("agent issue API authentication", () => {
     expect(db.bug.create).not.toHaveBeenCalled();
   });
 
+  it("says how much of the budget is left on success and on a 429 (#646)", async () => {
+    budget.mockResolvedValueOnce({ allowed: true, kind: "read", limit: 600, windowSeconds: 3600, remaining: 412, resetSeconds: 1800 });
+    const ok = await list(request());
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("ratelimit-budget")).toBe("read");
+    expect(ok.headers.get("ratelimit-remaining")).toBe("412");
+    expect(ok.headers.get("ratelimit-reset")).toBe("1800");
+    expect(ok.headers.get("ratelimit-policy")).toBe("600;w=3600");
+
+    budget.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 90, kind: "write", limit: 30, windowSeconds: 3600, remaining: 0, resetSeconds: 90 });
+    const limited = await create(request("POST", validBody));
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("ratelimit-budget")).toBe("write");
+    expect(limited.headers.get("ratelimit-remaining")).toBe("0");
+    expect(await limited.json()).toMatchObject({ budget: "write", limit: 30, resetSeconds: 90 });
+  });
+
   it("retires direct claims with 410 and without spending the write budget (#554)", async () => {
     db.project.findFirst.mockResolvedValue({ id: "project-a" });
     const response = await claim(request("POST", { projectId: "project-a" }), context);

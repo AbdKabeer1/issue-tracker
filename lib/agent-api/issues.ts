@@ -6,6 +6,7 @@ import { agentErrorResponse, assertKeyProject, requireAgent, type AgentContext }
 import { requireLevel } from "@/lib/agents/levels";
 import { audit } from "@/lib/agents/audit";
 import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/rate-budget";
+import { withAgentBudgetHeaders } from "@/lib/agents/rate-budget-headers";
 import { createBugSchema, commentSchema, statusSchema, severitySchema } from "@/lib/validations/issue";
 import { parsePlatformFilter, platformFilterWhere } from "@/lib/platform-filter";
 import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, hashCreateRequest, pageSize, toPage, type IssueCursor } from "@/lib/agent-api/create-policy";
@@ -45,7 +46,9 @@ export async function agentIssueRequest(
       response = await run(agent);
     } else {
       const budget = await consumeAgentBudget({ id: agent.agentId, burst: agent.burst }, level === "observer" ? "read" : "write");
-      response = budget.allowed ? await run(agent) : agentBudgetExceededResponse(budget.retryAfterSeconds);
+      response = budget.allowed ? await run(agent) : agentBudgetExceededResponse(budget.retryAfterSeconds, budget);
+      // #646: every charged response says what's left of the budget it used.
+      if (budget.allowed) response = withAgentBudgetHeaders(response, budget);
     }
   } catch (error) {
     if (error instanceof IssueApiError) response = NextResponse.json({ error: error.message }, { status: error.status });
