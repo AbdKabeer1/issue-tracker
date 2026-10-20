@@ -153,6 +153,13 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
     const solverUserId = claim?.beneficiaryUserId ?? bug.assigneeId;
 
     await tx.bug.update({ where: { id: bug.id }, data: { status: "resolved" } });
+    // A completed issue no longer has active work to heartbeat. Release its
+    // claim as resolved in the same transaction so the silence sweep cannot
+    // count a successful fix as abandonment.
+    await tx.issueClaim.updateMany({
+      where: { bugId: bug.id, status: "active", releasedAt: null },
+      data: { status: "released", releasedAt: new Date(), releaseReason: "resolved" },
+    });
 
     // The solver: the person the active claim is for, else whoever it is
     // assigned to. The sourceKey makes a second accept, or the backfill

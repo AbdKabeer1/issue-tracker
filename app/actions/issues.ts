@@ -709,6 +709,12 @@ export async function updateBugAction(
           data,
         });
       }
+      if (data.status === "resolved" || data.status === "closed") {
+        await tx.issueClaim.updateMany({
+          where: { bugId, status: "active", releasedAt: null },
+          data: { status: "released", releasedAt: new Date(), releaseReason: data.status },
+        });
+      }
       if (data.assigneeId) {
         // The new assignee starts watching (#216).
         await ensureWatching(tx, bugId, [data.assigneeId]);
