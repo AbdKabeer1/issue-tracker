@@ -30,7 +30,15 @@ export default async function LoginPage({
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4 py-16">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm">
-        <BrandLockup size="md" />
+        <div className="mb-4">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1 text-xs font-medium text-teal-700 hover:text-teal-900 hover:underline"
+          >
+            ← Back to Homepage
+          </Link>
+        </div>
+        <BrandLockup href="/" size="md" />
         <h1 className="mt-4 text-xl font-semibold text-slate-900">
           Sign in to Ziki Issues
         </h1>
