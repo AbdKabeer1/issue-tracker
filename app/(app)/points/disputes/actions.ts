@@ -93,6 +93,9 @@ export async function resolveDisputeAction(
   if (!(await canManagePoints(user, dispute.tenantId))) {
     return { ok: false, error: "Only a workspace admin can resolve disputes." };
   }
+  if (dispute.userId === user.id) {
+    return { ok: false, error: "You cannot resolve your own points dispute." };
+  }
 
   const noteValue = formData.get("note");
   const note = typeof noteValue === "string" ? noteValue : null;

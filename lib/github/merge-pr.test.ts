@@ -174,6 +174,47 @@ describe("mergeAcceptedFix gates (#452)", () => {
     expect(result).toMatchObject({ status: 200, merged: true });
   });
 
+  it("refuses a different pull request than the one that was accepted (#489)", async () => {
+    db.agentAuditEvent.findFirst.mockResolvedValue({
+      id: "accepted-1",
+      payload: { pullRequestUrl: "https://github.com/zedu/web/pull/3", headSha: "accepted-sha" },
+    });
+    const client = fakeClient();
+
+    const result = await mergeAcceptedFix(agent, "bug1", { client });
+
+    expect(result).toMatchObject({ status: 409, reason: "pull_request_changed" });
+    expect(client.getPullRequest).not.toHaveBeenCalled();
+    expect(client.mergePullRequest).not.toHaveBeenCalled();
+  });
+
+  it("refuses when commits landed on the accepted pull request after acceptance (#489)", async () => {
+    db.agentAuditEvent.findFirst.mockResolvedValue({
+      id: "accepted-1",
+      payload: { pullRequestUrl: "https://github.com/zedu/web/pull/7", headSha: "accepted-sha" },
+    });
+    const client = fakeClient({
+      getPullRequest: vi.fn(async () => ({ merged: false, mergeable: true, headSha: "new-sha" })),
+    });
+
+    const result = await mergeAcceptedFix(agent, "bug1", { client });
+
+    expect(result).toMatchObject({ status: 409, reason: "head_moved" });
+    expect(client.mergePullRequest).not.toHaveBeenCalled();
+  });
+
+  it("merges when the linked pull request and head commit are the accepted ones (#489)", async () => {
+    db.agentAuditEvent.findFirst.mockResolvedValue({
+      id: "accepted-1",
+      payload: { pullRequestUrl: "https://github.com/zedu/web/pull/7", headSha: "head-sha" },
+    });
+    const client = fakeClient();
+
+    const result = await mergeAcceptedFix(agent, "bug1", { client });
+
+    expect(result).toMatchObject({ status: 200, merged: true });
+  });
+
   it("rejects a pull request outside the project's repository", async () => {
     db.bug.findFirst.mockResolvedValue(
       bugRow({ pullRequestUrl: "https://github.com/someone/fork/pull/7" }),

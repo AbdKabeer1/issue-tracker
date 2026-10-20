@@ -106,7 +106,12 @@ describe("human approval rule", () => {
     expect(db.redesignProposal.updateMany).not.toHaveBeenCalled();
   });
   it("records the approver/time, audit and event atomically", async () => {
-    db.redesignProposal.findFirst.mockResolvedValueOnce({ ...proposal, bugId: null });
+    db.membership.findUnique.mockResolvedValue({ userId: "human", role: "admin" });
+    db.redesignProposal.findFirst.mockResolvedValueOnce({
+      ...proposal,
+      bugId: null,
+      authorAgent: { ownerUserId: "owner" },
+    });
     const response = await decide(request({ decision: "approved" }), context);
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toContain("no-store");
@@ -116,7 +121,11 @@ describe("human approval rule", () => {
   });
   it("lets a tenant admin choose a linked design and supersedes its alternatives", async () => {
     db.membership.findUnique.mockResolvedValue({ userId: "human", role: "admin" });
-    db.redesignProposal.findFirst.mockResolvedValue({ ...proposal, bugId: "issue" });
+    db.redesignProposal.findFirst.mockResolvedValue({
+      ...proposal,
+      bugId: "issue",
+      authorAgent: { ownerUserId: "owner" },
+    });
     db.redesignProposal.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 2 });
     const result = await decideRedesign("human", "tenant", "proposal", "chosen");
     expect(result).toMatchObject({ id: "proposal", status: "approved", supersededCount: 2 });
@@ -125,6 +134,8 @@ describe("human approval rule", () => {
     expect(mocks.publish).toHaveBeenCalledWith(db, expect.objectContaining({ type: "redesign.chosen", payload: expect.objectContaining({ winningProposalId: "proposal", supersededCount: 2 }) }));
   });
   it("requires linked proposals to be chosen from the issue comparison", async () => {
+    db.membership.findUnique.mockResolvedValue({ userId: "human", role: "admin" });
+    db.redesignProposal.findFirst.mockResolvedValue({ ...proposal, authorAgent: { ownerUserId: "owner" } });
     await expect(decideRedesign("human", "tenant", "proposal", "approved")).rejects.toThrow("Choose an issue-linked design");
     expect(db.redesignProposal.updateMany).not.toHaveBeenCalled();
   });
@@ -132,20 +143,41 @@ describe("human approval rule", () => {
     expect((await decide(request({ decision: "chosen" }), context)).status).toBe(403);
     expect(db.redesignProposal.updateMany).not.toHaveBeenCalled();
   });
-  it("lets a person reject without recording approval", async () => {
+  it("lets a workspace admin reject without recording approval", async () => {
+    db.membership.findUnique.mockResolvedValue({ userId: "human", role: "admin" });
+    db.redesignProposal.findFirst.mockResolvedValue({ ...proposal, authorAgent: { ownerUserId: "owner" } });
     expect((await decide(request({ decision: "rejected" }), context)).status).toBe(200);
     expect(db.redesignProposal.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { status: "rejected", approverId: null, approvedAt: null } }));
   });
   it("hides other tenants and prevents conflicting decisions", async () => {
+    db.membership.findUnique.mockResolvedValue({ userId: "human", role: "admin" });
     db.redesignProposal.findFirst.mockResolvedValueOnce(null);
     expect((await decide(request({ decision: "approved" }), context)).status).toBe(404);
-    db.redesignProposal.findFirst.mockResolvedValueOnce({ ...proposal, bugId: null });
+    db.redesignProposal.findFirst.mockResolvedValueOnce({
+      ...proposal,
+      bugId: null,
+      authorAgent: { ownerUserId: "owner" },
+    });
     db.redesignProposal.updateMany.mockResolvedValueOnce({ count: 0 });
     expect((await decide(request({ decision: "approved" }), context)).status).toBe(409);
     expect(mocks.publish).not.toHaveBeenCalled();
-    expect(db.redesignProposal.findFirst).toHaveBeenCalledWith({ where: { id: "proposal", tenantId: "tenant" } });
+    expect(db.redesignProposal.findFirst).toHaveBeenCalledWith({
+      where: { id: "proposal", tenantId: "tenant" },
+      include: { authorAgent: { select: { ownerUserId: true } } },
+    });
+  });
+  it("refuses the proposing agent's owner", async () => {
+    db.membership.findUnique.mockResolvedValue({ userId: "human", role: "admin" });
+    db.redesignProposal.findFirst.mockResolvedValue({
+      ...proposal,
+      bugId: null,
+      authorAgent: { ownerUserId: "human" },
+    });
+    expect((await decide(request({ decision: "approved" }), context)).status).toBe(403);
+    expect(db.redesignProposal.updateMany).not.toHaveBeenCalled();
   });
   it("returns a storage failure without a successful decision", async () => {
+    db.membership.findUnique.mockResolvedValue({ userId: "human", role: "admin" });
     db.redesignProposal.findFirst.mockRejectedValueOnce(new Error("DB"));
     expect((await decide(request({ decision: "approved" }), context)).status).toBe(503);
     expect(mocks.publish).not.toHaveBeenCalled();
@@ -153,11 +185,14 @@ describe("human approval rule", () => {
 });
 
 describe("claim gate and human page", () => {
-  it("blocks pending/rejected redesigns and allows an approved or unlinked issue", async () => {
+  it("blocks pending redesigns and allows rejected, approved, or unlinked issues", async () => {
     db.redesignProposal.count.mockResolvedValueOnce(1);
     await expect(assertRedesignOpen("issue", db as never)).rejects.toThrow("waiting for a person");
     await expect(assertRedesignOpen("issue", db as never)).resolves.toBeUndefined();
-    expect(db.redesignProposal.count).toHaveBeenCalledWith({ where: { bugId: "issue", status: { in: ["proposed", "rejected"] } } });
+    await expect(assertRedesignOpen("issue", db as never)).resolves.toBeUndefined();
+    await expect(assertRedesignOpen("issue", db as never)).resolves.toBeUndefined();
+    expect(db.redesignProposal.count).toHaveBeenCalledTimes(4);
+    expect(db.redesignProposal.count).toHaveBeenCalledWith({ where: { bugId: "issue", status: "proposed" } });
   });
   it("shows the pending state in the active project's tenant-scoped page", async () => {
     const html = renderToStaticMarkup(await RedesignsPage());

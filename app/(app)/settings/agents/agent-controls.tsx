@@ -2,7 +2,7 @@
 
 import type { AgentLevel } from "@prisma/client";
 import { useState, useTransition } from "react";
-import { regenerateAgentKeyAction, revokeAgentAction, setAgentBurstAction, setAgentLevelAction } from "./actions";
+import { regenerateAgentKeyAction, revokeAgentAction, setAgentAreaPreferencesAction, setAgentBurstAction, setAgentLevelAction } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -22,6 +22,8 @@ export function AgentControls({
   currentProjectId,
   burst = false,
   canSetBurst = false,
+  areas = [],
+  areaPreferences = [],
 }: {
   agentId: string;
   agentName: string;
@@ -35,12 +37,23 @@ export function AgentControls({
   burst?: boolean;
   /** Admins may raise the budget. */
   canSetBurst?: boolean;
+  areas?: { id: string; name: string; projectId: string }[];
+  areaPreferences?: { projectId: string; projectAreaId: string }[];
 }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [current, setCurrent] = useState(level);
   const [burstOn, setBurstOn] = useState(burst);
   const [projectId, setProjectId] = useState(currentProjectId || projects[0]?.id || "");
+  const [preferenceProjectId, setPreferenceProjectId] = useState(currentProjectId || projects[0]?.id || "");
+  const [savedPreferences, setSavedPreferences] = useState<Record<string, string[]>>(() => {
+    const grouped: Record<string, string[]> = {};
+    for (const preference of areaPreferences) {
+      (grouped[preference.projectId] ??= []).push(preference.projectAreaId);
+    }
+    return Object.fromEntries(Object.entries(grouped).map(([id, ids]) => [id, [...ids].sort()]));
+  });
+  const [draftPreferences, setDraftPreferences] = useState<Record<string, string[]>>(savedPreferences);
   const [issued, setIssued] = useState<{ rawKey: string; prefix: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -111,6 +124,35 @@ export function AgentControls({
         );
       } else {
         setBurstOn(previous);
+        toast(result.error, "error");
+      }
+    });
+  }
+
+  const projectAreas = areas.filter((area) => area.projectId === preferenceProjectId);
+  const selectedAreaIds = draftPreferences[preferenceProjectId] ?? [];
+  const savedAreaIds = savedPreferences[preferenceProjectId] ?? [];
+  const areaPreferencesChanged = selectedAreaIds.length !== savedAreaIds.length ||
+    selectedAreaIds.some((id) => !savedAreaIds.includes(id));
+
+  function toggleArea(areaId: string, checked: boolean) {
+    setDraftPreferences((currentPreferences) => {
+      const currentIds = currentPreferences[preferenceProjectId] ?? [];
+      const nextIds = checked
+        ? [...new Set([...currentIds, areaId])].sort()
+        : currentIds.filter((id) => id !== areaId);
+      return { ...currentPreferences, [preferenceProjectId]: nextIds };
+    });
+  }
+
+  function saveAreaPreferences() {
+    const nextIds = selectedAreaIds;
+    startTransition(async () => {
+      const result = await setAgentAreaPreferencesAction(agentId, preferenceProjectId, nextIds);
+      if (result.ok) {
+        setSavedPreferences((currentPreferences) => ({ ...currentPreferences, [preferenceProjectId]: [...nextIds] }));
+        toast("Area preferences saved.", "success");
+      } else {
         toast(result.error, "error");
       }
     });
@@ -191,6 +233,45 @@ export function AgentControls({
           </div>
         </div>
       ) : null}
+      <details className="w-full text-left sm:max-w-md">
+        <summary className="cursor-pointer text-xs font-medium text-teal-800 hover:underline">
+          Preferred areas{selectedAreaIds.length ? ` (${selectedAreaIds.length})` : ""}
+        </summary>
+        <div className="mt-2 space-y-2 rounded-md border border-slate-200 p-3">
+          <label className="block text-xs font-medium text-slate-700" htmlFor={`area-project-${agentId}`}>
+            Project
+          </label>
+          <Select
+            id={`area-project-${agentId}`}
+            value={preferenceProjectId}
+            disabled={pending || projects.length === 0}
+            onChange={(event) => setPreferenceProjectId(event.target.value)}
+          >
+            {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+          </Select>
+          {projectAreas.length ? (
+            <fieldset className="space-y-1">
+              <legend className="text-xs font-medium text-slate-700">Prefer this agent for</legend>
+              {projectAreas.map((area) => (
+                <label key={area.id} className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={selectedAreaIds.includes(area.id)}
+                    disabled={pending}
+                    onChange={(event) => toggleArea(area.id, event.target.checked)}
+                  />
+                  {area.name}
+                </label>
+              ))}
+            </fieldset>
+          ) : (
+            <p className="text-xs text-slate-500">This project has no areas yet.</p>
+          )}
+          <Button type="button" variant="secondary" disabled={pending || !areaPreferencesChanged} onClick={saveAreaPreferences}>
+            {pending ? "Saving…" : "Save area preferences"}
+          </Button>
+        </div>
+      </details>
     </div>
   );
 }

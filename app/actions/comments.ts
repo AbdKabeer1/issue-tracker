@@ -8,8 +8,14 @@ import { currentTenantAccess } from "@/lib/tenant-access";
 import { attachmentIdsInMarkdown, linkAttachments } from "@/lib/attachment-link";
 import { requireUser } from "@/lib/auth-helpers";
 import { commentSchema } from "@/lib/validations/issue";
-import { newlyMentionedUserIds } from "@/lib/mentions";
-import { resolveTenantMentions } from "@/lib/tenant-mentions";
+import {
+  extractMentionedUserIds,
+  newlyMentionedAgentIds,
+  newlyMentionedUserIds,
+  normalizeMentions,
+} from "@/lib/mentions";
+import { agentMentionNames, agentOwnerIds, mentionedAgents } from "@/lib/agent-mentions";
+import { tenantMemberWhere } from "@/lib/tenant-mentions";
 import {
   canDeleteComment,
   canEditComment,
@@ -22,7 +28,7 @@ import {
 } from "@/lib/activity-log";
 import { notifyLater } from "@/lib/notify";
 import {
-  checkRateLimit,
+  consumeRateLimit,
   ACTION_RATE_LIMITS,
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
@@ -53,7 +59,7 @@ export async function updateCommentAction(
 ): Promise<CommentActionResult> {
   const user = await requireUser();
 
-  const limit = checkRateLimit(
+  const limit = await consumeRateLimit(
     `edit-comment:${user.id}`,
     ACTION_RATE_LIMITS.editComment,
   );
@@ -72,8 +78,22 @@ export async function updateCommentAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid comment" };
   }
 
-  // #502: mentions resolve only to members of the issue's tenant.
-  const body = await resolveTenantMentions(prisma, comment.bug.tenantId, parsed.data.body);
+  const mentionedIds = extractMentionedUserIds(parsed.data.body);
+  const known = mentionedIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: mentionedIds }, ...tenantMemberWhere(comment.bug.tenantId) },
+        select: { id: true, name: true },
+      })
+    : [];
+  // #603: agent tags survive only for agents in this issue's organization.
+  const agents = await mentionedAgents(prisma, comment.bug.tenantId, parsed.data.body);
+  const body = normalizeMentions(
+    parsed.data.body,
+    new Map([
+      ...known.map((u) => [u.id, u.name] as [string, string]),
+      ...agentMentionNames(agents),
+    ]),
+  );
 
   const result = await prisma.$transaction(async (tx) => {
     const updated = await tx.comment.updateMany({
@@ -121,7 +141,13 @@ export async function updateCommentAction(
     return result;
   }
 
-  const newlyMentioned = newlyMentionedUserIds(comment.body, body);
+  const newlyMentionedAgents = new Set(newlyMentionedAgentIds(comment.body, body));
+  const newlyMentioned = [
+    ...new Set([
+      ...newlyMentionedUserIds(comment.body, body),
+      ...agentOwnerIds(agents.filter((agent) => newlyMentionedAgents.has(agent.id))),
+    ]),
+  ];
   if (newlyMentioned.length > 0) {
     notifyLater({
       kind: "mentioned",

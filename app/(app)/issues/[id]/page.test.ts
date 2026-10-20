@@ -175,6 +175,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
         number: 42,
         tenantId: "tenant-zedu",
         title: "Test Bug",
+        tenantId: "tenant-zedu",
         description: "Test Description",
         status: "open",
         severity: "medium",

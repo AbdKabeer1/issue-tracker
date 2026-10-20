@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { agentMentionId } from "@/lib/mentions";
 import { requireUser } from "@/lib/auth-helpers";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { viewerBugScope } from "@/lib/tenant-viewer";
@@ -69,6 +70,7 @@ import { canAssignTicket } from "@/lib/ticket-assignment";
 import { SelfAssignButton } from "@/components/self-assign-button";
 import { EditableIssueDescription } from "@/components/editable-issue-description";
 import { EditableProofLinks } from "@/components/editable-proof-links";
+import { IssuePullRequest } from "@/components/issue-pull-request";
 import { withCurrentOption } from "@/lib/triage-options";
 import { issueTenantHintFor } from "@/lib/issue-tenant-hint";
 import { IssueTenantSwitch } from "@/components/issue-tenant-hint";
@@ -248,6 +250,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         milestone: { select: { id: true, title: true, dueDate: true, isClosed: true } },
         assignee: { select: { id: true, name: true, role: true, image: true } },
         category: { select: { id: true, name: true, isActive: true } },
+        area: { select: { id: true, name: true } },
         votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
         // #285: both sides of a duplicate link.
         duplicateOf: { select: { id: true, number: true, title: true, status: true, isDeleted: true } },
@@ -280,6 +283,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           createdByAgent: { select: { id: true, name: true } },
           assignee: { select: { id: true, name: true, role: true, image: true } },
           category: { select: { id: true, name: true, isActive: true } },
+          area: { select: { id: true, name: true } },
           votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
           duplicateOf: { select: { id: true, number: true, title: true, status: true, isDeleted: true } },
           duplicates: {
@@ -350,15 +354,21 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       select: {
         id: true,
         note: true,
+        createdAt: true,
         beneficiaryUserId: true,
-        agent: { select: { name: true } },
+        agent: { select: { name: true, areaPreferences: {
+          where: { projectAreaId: bug.areaId ?? "" },
+          select: { projectAreaId: true },
+        } } },
         beneficiary: { select: { name: true } },
       },
     }),
   );
+  const hasAreaMatch = (bid: { agent: { areaPreferences: unknown[] } }) =>
+    Boolean(bug.areaId && bid.agent.areaPreferences.length);
   const canAwardBid = bug.status === "open" && !bug.isDeleted && (bug.reporterId === user.id || canChooseRedesign);
 
-  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions, escalations, volunteerCount, pendingApproval] =
+  const [users, categories, areas, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions, escalations, volunteerCount, pendingApproval] =
     await Promise.all([
       canTriage
         ? loadOptional("users", [], () =>
@@ -371,6 +381,13 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           )
         : Promise.resolve([]),
       loadOptional("platforms", [], () => getActivePlatforms(bug.tenantId)),
+      canTriage
+        ? loadOptional("project areas", [], () => prisma.projectArea.findMany({
+            where: { projectId: bug.projectId },
+            orderBy: [{ name: "asc" }, { id: "asc" }],
+            select: { id: true, name: true },
+          }))
+        : Promise.resolve([]),
       canTriage ? loadOptional("types", [], () => getActiveIssueTypesCached()) : Promise.resolve([]),
       loadOptional("votes", createEmptyVoterSummary(), () => fetchVoterSummary(id)),
       loadOptional("activity", [] as ActivityEntry[], () =>
@@ -520,6 +537,25 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           : Promise.resolve(null)),
       ),
     ]);
+  // #603: the tenant's active agents, offered in the comment @mention list
+  // as "Mark's Claude · Mark Essien" alongside people.
+  const mentionAgents = canTriage
+    ? await loadOptional("mention agents", [], () =>
+        prisma.agent.findMany({
+          where: { tenantId: bug.tenantId, revokedAt: null },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, owner: { select: { name: true } } },
+        }),
+      )
+    : [];
+  const commentMentionUsers = [
+    ...users,
+    ...mentionAgents.map((agent) => ({
+      id: agentMentionId(agent.id),
+      name: agent.name,
+      agentOwner: agent.owner.name,
+    })),
+  ];
   const issueAttachments: AttachmentView[] = attachments.filter((a) => !a.commentId);
   const attachmentsByComment: Record<string, AttachmentView[]> = {};
   for (const a of attachments) {
@@ -896,6 +932,12 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
               <dd>{bug.category.name}</dd>
             </div>
           ) : null}
+          {bug.area ? (
+            <div>
+              <dt className="font-medium text-slate-500">Area</dt>
+              <dd>{bug.area.name}</dd>
+            </div>
+          ) : null}
           {bug.milestone ? (
             <div>
               <dt className="font-medium text-slate-500">Milestone</dt>
@@ -927,6 +969,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         </section>
       ) : null}
 
+      <IssuePullRequest pullRequestUrl={bug.pullRequestUrl} />
+
       <EditableProofLinks bugId={bug.id} initialLinks={proofLinks} canEdit={canEdit} />
 
       {canUpdateStatus && !bug.isDeleted ? (
@@ -937,8 +981,10 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           typeId={bug.typeId}
           assigneeId={bug.assigneeId}
           categoryId={bug.categoryId}
+          areaId={bug.areaId}
           users={users}
           categories={withCurrentOption(categories, bug.category)}
+          areas={areas}
           types={withCurrentOption(types, bug.type)}
           milestoneId={bug.milestoneId}
           milestones={
@@ -956,12 +1002,15 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       />
 
       <IssueBids
-        bids={openBids.map((bid) => ({
-          id: bid.id,
-          agentName: bid.agent.name,
-          personName: bid.beneficiary.name ?? "A member",
-          note: bid.note,
-        }))}
+        bids={[...openBids]
+          .sort((a, b) => Number(hasAreaMatch(b)) - Number(hasAreaMatch(a)) || a.createdAt.getTime() - b.createdAt.getTime())
+          .map((bid) => ({
+            id: bid.id,
+            agentName: bid.agent.name,
+            personName: bid.beneficiary.name ?? "A member",
+            note: bid.note,
+            areaMatch: hasAreaMatch(bid),
+          }))}
         canAward={canAwardBid}
       />
 
@@ -1010,7 +1059,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           reporterId={bug.reporterId}
           comments={commentTree}
           attachmentsByComment={attachmentsByComment}
-          users={users}
+          users={commentMentionUsers}
           currentUserId={user.id}
           currentUserRole={user.role}
           tenantAdmin={access.admin}

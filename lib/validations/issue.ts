@@ -48,7 +48,7 @@ export const proofLinksInputSchema = z
     if (links.length > MAX_PROOF_LINKS || rawLinks.length > MAX_PROOF_LINKS) {
       ctx.addIssue({
         code: "custom",
-        message: `You entered ${count} links. At most ${MAX_PROOF_LINKS} proof links are allowed.`,
+        message: `You entered ${count} links. At most ${MAX_PROOF_LINKS} GitHub PR links are allowed.`,
       });
       return z.NEVER;
     }
@@ -77,6 +77,7 @@ export const createBugSchema = z
     typeId: z.string().optional().nullable().or(z.literal("")),
     assigneeId: userIdSchema.optional().or(z.literal("")),
     categoryId: z.string().optional().or(z.literal("")),
+    areaId: z.string().optional().or(z.literal("")),
     proofLinks: proofLinksInputSchema,
   })
   .strict();
@@ -87,6 +88,7 @@ export const updateBugSchema = z.object({
   assigneeId: userIdSchema.nullable().optional().or(z.literal("")),
   severity: severitySchema.optional(),
   categoryId: z.string().nullable().optional().or(z.literal("")),
+  areaId: z.string().nullable().optional().or(z.literal("")),
 });
 
 export const editBugContentSchema = z
