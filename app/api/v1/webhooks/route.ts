@@ -3,10 +3,12 @@ import { z } from "zod";
 import { agentIssueRequest, issueJson } from "@/lib/agent-api/issues";
 import { checkSsrf } from "@/lib/webhooks/ssrf";
 import { generateSigningSecret, encryptSigningSecret } from "@/lib/webhooks/sign";
+import { createSubscriptionRecord, normalizeSubscriptionEvents } from "@/lib/webhooks/manage";
 import { prisma } from "@/lib/prisma";
 
 const createWebhookSchema = z.object({
   url: z.string().url().max(2048),
+  events: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
 }).strict();
 
 /**
@@ -19,6 +21,9 @@ const createWebhookSchema = z.object({
  * - Generates a signing secret shown once in the response body.
  * - The secret is stored AES-256-GCM encrypted (not hashed) so the server
  *   can sign deliveries.
+ * - An agent keeps at most 3 subscriptions and each URL only once (409 otherwise).
+ * - Optional `events` array narrows deliveries to those event types; an empty
+ *   or omitted array receives every event.
  *
  * Rate: write (creation), read (list).
  */
@@ -30,6 +35,7 @@ export async function GET(request: NextRequest) {
         id: true,
         url: true,
         enabled: true,
+        events: true,
         failureCount: true,
         disabledAt: true,
         createdAt: true,
@@ -58,23 +64,17 @@ export async function POST(request: NextRequest) {
       const rawSecret = generateSigningSecret();
       const signingSecretEncrypted = encryptSigningSecret(rawSecret);
 
-      const subscription = await prisma.webhookSubscription.create({
-        data: {
-          agentId: agent.agentId,
-          url: input.url,
-          signingSecretEncrypted,
-        },
-        select: {
-          id: true,
-          url: true,
-          enabled: true,
-          createdAt: true,
-        },
+      const result = await createSubscriptionRecord(prisma, {
+        agentId: agent.agentId,
+        url: input.url,
+        events: normalizeSubscriptionEvents(input.events),
+        signingSecretEncrypted,
       });
+      if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
 
       // The raw secret is returned exactly once.
       return NextResponse.json(
-        { subscription: { ...subscription, signingSecret: rawSecret } },
+        { subscription: { ...result.subscription, signingSecret: rawSecret } },
         { status: 201 },
       );
     } catch {

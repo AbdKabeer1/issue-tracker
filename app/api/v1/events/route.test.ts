@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const db = vi.hoisted(() => ({
-  agentApiKey: { findUnique: vi.fn() }, agentAuditEvent: { create: vi.fn() }, agentEvent: { findMany: vi.fn() },
-  webhookSubscription: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), delete: vi.fn(), update: vi.fn() },
+  agentApiKey: { findUnique: vi.fn() }, agentAuditEvent: { create: vi.fn() }, agentEvent: { findMany: vi.fn() }, $queryRaw: vi.fn(),
+  webhookSubscription: { findMany: vi.fn(), findFirst: vi.fn(), count: vi.fn(), create: vi.fn(), delete: vi.fn(), update: vi.fn() },
 }));
 const budget = vi.hoisted(() => vi.fn());
 const ssrf = vi.hoisted(() => vi.fn());
@@ -22,7 +22,7 @@ function request(path = "/events", method = "GET", body?: unknown, key = true) {
   });
 }
 const context = { params: Promise.resolve({ id: "subscription-a" }) };
-const event = { id: "event-a", createdAt: new Date("2026-10-19T12:00:00Z"), type: "issue.created", payload: {}, actorAgentId: "agent-a", bugId: "issue-a" };
+const event = { id: "event-a", txid: BigInt("100"), createdAt: new Date("2026-10-19T12:00:00Z"), type: "issue.created", payload: {}, actorAgentId: "agent-a", bugId: "issue-a" };
 function key(level = "contributor") {
   return { id: "key-a", revokedAt: null, agent: { id: "agent-a", name: "Agent", ownerUserId: "owner", tenantId: "tenant-a", level, burst: false, revokedAt: null, owner: { memberships: [{ tenantId: "tenant-a" }] } } };
 }
@@ -32,7 +32,9 @@ beforeEach(() => {
   db.agentApiKey.findUnique.mockResolvedValue(key());
   budget.mockResolvedValue({ allowed: true });
   db.agentEvent.findMany.mockResolvedValue([]);
+  db.$queryRaw.mockResolvedValue([{ xmin: "1000" }]);
   db.webhookSubscription.findMany.mockResolvedValue([]);
+  db.webhookSubscription.count.mockResolvedValue(0);
   db.webhookSubscription.findFirst.mockResolvedValue({ id: "subscription-a" });
   db.webhookSubscription.create.mockResolvedValue({ id: "subscription-a", url: "https://receiver.test/hook" });
   db.webhookSubscription.update.mockResolvedValue({ id: "subscription-a", enabled: true });
@@ -54,7 +56,7 @@ describe("events endpoint", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(response.headers.get("content-type")).toContain("application/json");
-    expect(db.agentEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: "tenant-a" } }));
+    expect(db.agentEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: "tenant-a", txid: { lt: BigInt("1000") } } }));
     expect(budget).toHaveBeenCalledWith({ id: "agent-a", burst: false }, "read");
     expect(db.agentAuditEvent.create).toHaveBeenCalled();
     expect(decodeEventCursor((await response.json()).cursor)?.id).toBe(event.id);
@@ -68,7 +70,7 @@ describe("events endpoint", () => {
     const empty = await (await GET(request(`/events?after=${page.cursor}`))).json();
     expect(empty.cursor).toBe(page.cursor);
     expect(db.agentEvent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: {
-      tenantId: "tenant-a", OR: [{ createdAt: { gt: event.createdAt } }, { createdAt: event.createdAt, id: { gt: "event-99" } }],
+      tenantId: "tenant-a", txid: { lt: BigInt("1000") }, OR: [{ txid: { gt: event.txid } }, { txid: event.txid, id: { gt: "event-99" } }],
     } }));
   });
   it("long-polls until an event arrives and returns immediately for wait=0", async () => {
@@ -116,8 +118,10 @@ describe("webhook subscription endpoints", () => {
     expect((await PATCH(request("/webhooks/id", "PATCH"), context)).status).toBe(403);
   });
   it("encrypts a one-time secret and excludes it from list queries", async () => {
+    db.webhookSubscription.findFirst.mockResolvedValue(null);
     const response = await subscribe(request("/webhooks", "POST", { url: "https://receiver.test/hook" }));
     expect(response.status).toBe(201);
+    expect(db.webhookSubscription.create.mock.calls[0][0].data.events).toEqual([]);
     const secret = (await response.json()).subscription.signingSecret;
     const stored = db.webhookSubscription.create.mock.calls[0][0].data.signingSecretEncrypted;
     expect(stored).not.toBe(secret);
@@ -132,6 +136,19 @@ describe("webhook subscription endpoints", () => {
     expect((await subscribe(request("/webhooks", "POST", { url: "https://127.0.0.1" }))).status).toBe(422);
     expect(db.webhookSubscription.create).not.toHaveBeenCalled();
   });
+  it("enforces the subscription cap and per-agent URL uniqueness (#512)", async () => {
+    db.webhookSubscription.count.mockResolvedValueOnce(3);
+    db.webhookSubscription.findFirst.mockResolvedValue(null);
+    const capped = await subscribe(request("/webhooks", "POST", { url: "https://receiver.test/hook" }));
+    expect(capped.status).toBe(409);
+    expect((await capped.json()).error).toContain("at most 3");
+    expect(db.webhookSubscription.create).not.toHaveBeenCalled();
+    db.webhookSubscription.findFirst.mockResolvedValueOnce({ id: "subscription-a" });
+    const duplicate = await subscribe(request("/webhooks", "POST", { url: "https://receiver.test/hook" }));
+    expect(duplicate.status).toBe(409);
+    expect((await duplicate.json()).error).toContain("already subscribed");
+    expect(db.webhookSubscription.create).not.toHaveBeenCalled();
+  });
   it("scopes deletion/re-enabling and handles unavailable storage", async () => {
     db.webhookSubscription.findFirst.mockResolvedValueOnce(null);
     expect((await DELETE(request("/webhooks/id", "DELETE"), context)).status).toBe(404);
@@ -143,5 +160,59 @@ describe("webhook subscription endpoints", () => {
     expect((await subscriptions(request("/webhooks"))).status).toBe(503);
     vi.stubEnv("WEBHOOK_SECRET_KEY", "invalid");
     expect((await subscribe(request("/webhooks", "POST", { url: "https://receiver.test" }))).status).toBe(503);
+  });
+
+  it("rotates the signing secret and shows the raw secret once (#682)", async () => {
+    const response = await PATCH(
+      request("/webhooks/id", "PATCH", { rotateSecret: true }),
+      context,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const rawSecret = body.subscription.signingSecret;
+    expect(rawSecret).toBeTruthy();
+    // The stored copy is encrypted, so the server can keep signing deliveries.
+    const stored = db.webhookSubscription.update.mock.calls[0][0].data.signingSecretEncrypted;
+    expect(stored).not.toBe(rawSecret);
+    expect(decryptSigningSecret(stored)).toBe(rawSecret);
+    // Rotating replaces only the secret: the subscription keeps its state.
+    expect(db.webhookSubscription.update.mock.calls[0][0].data).toEqual({ signingSecretEncrypted: stored });
+  });
+
+  it("re-enables without rotating when no rotation is asked for", async () => {
+    const response = await PATCH(request("/webhooks/id", "PATCH"), context);
+    expect(response.status).toBe(200);
+    expect((await response.json()).subscription.signingSecret).toBeUndefined();
+    expect(db.webhookSubscription.update.mock.calls[0][0].data).toEqual({
+      enabled: true,
+      disabledAt: null,
+      failureCount: 0,
+    });
+  });
+
+  it("rejects a malformed rotation body, and only after the key is accepted", async () => {
+    const response = await PATCH(
+      request("/webhooks/id", "PATCH", { rotateSecret: "yes" }),
+      context,
+    );
+    expect(response.status).toBe(400);
+    expect(db.webhookSubscription.update).not.toHaveBeenCalled();
+
+    // An anonymous caller must not be able to tell a bad body from a good one.
+    const anonymous = await PATCH(
+      request("/webhooks/id", "PATCH", { rotateSecret: "yes" }, false),
+      context,
+    );
+    expect(anonymous.status).toBe(401);
+  });
+
+  it("will not rotate a subscription the agent does not own", async () => {
+    db.webhookSubscription.findFirst.mockResolvedValueOnce(null);
+    const response = await PATCH(
+      request("/webhooks/id", "PATCH", { rotateSecret: true }),
+      context,
+    );
+    expect(response.status).toBe(404);
+    expect(db.webhookSubscription.update).not.toHaveBeenCalled();
   });
 });

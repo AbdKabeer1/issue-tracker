@@ -35,7 +35,7 @@ jobs:
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: "pnpm"
 
       - name: Install dependencies
@@ -85,6 +85,11 @@ jobs:
       NEXTAUTH_URL: "http://localhost:3000"
       AUTH_TRUST_HOST: "true"
       AUTH_PASSWORD_LOGIN: "true"
+      # The agent platform is on by default in production; run e2e against the
+      # real UI (#588) and give webhook signing a valid dummy 32-byte key.
+      AGENT_PLATFORM: "true"
+      NEXT_PUBLIC_AGENT_PLATFORM: "true"
+      WEBHOOK_SECRET_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
     steps:
       - name: Checkout
@@ -98,7 +103,7 @@ jobs:
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: "pnpm"
 
       - name: Install dependencies

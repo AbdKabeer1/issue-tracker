@@ -19,6 +19,7 @@ const options = { url: "https://receiver.test/hook", resolvedAddress: "93.184.21
 function delivery(attemptCount = 0) {
   return { id: "delivery-a", attemptCount, subscription: {
     id: "subscription-a", enabled: true, url: options.url, signingSecretEncrypted: encryptSigningSecret(options.rawSecret),
+    events: [],
     agent: { tenantId: "tenant-a", revokedAt: null, owner: { memberships: [{ tenantId: "tenant-a" }] } },
   }, event: { id: "event-a", tenantId: "tenant-a", type: "issue.created", payload: { issueId: "issue-a" }, actorAgentId: "agent-a", bugId: "issue-a", createdAt: new Date(0) } };
 }
@@ -102,6 +103,20 @@ describe("durable delivery attempts", () => {
     expect(mocks.request).not.toHaveBeenCalled();
     expect(db.webhookDelivery.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ status: "pending", OR: expect.any(Array) }) }));
   });
+  it("does not send events outside the subscription filter (#512)", async () => {
+    const filtered = delivery();
+    (filtered.subscription as { events?: string[] }).events = ["issue.created"];
+    filtered.event.type = "comment.created";
+    db.webhookDelivery.findUnique.mockResolvedValue(filtered);
+
+    await processDelivery("delivery-a");
+
+    expect(mocks.request).not.toHaveBeenCalled();
+    expect(db.webhookDelivery.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "dead" }),
+    }));
+  });
+
   it("rejects DNS rebinding and revoked agent access without making a request", async () => {
     mocks.check.mockResolvedValueOnce({ ok: false });
     await processDelivery("delivery-a");

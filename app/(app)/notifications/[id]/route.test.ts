@@ -6,6 +6,12 @@ vi.mock("@/lib/lookups", () => ({
   expireTag: vi.fn(),
   TAGS: { unread: (id: string) => `unread:${id}` },
 }));
+vi.mock("@/lib/tenants", () => ({
+  memberTenantById: vi.fn(),
+  readActiveTenantCookie: vi.fn(),
+  setActiveTenantCookie: vi.fn(),
+}));
+vi.mock("@/lib/project-context", () => ({ setActiveProjectCookie: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     notification: {
@@ -18,12 +24,18 @@ vi.mock("@/lib/prisma", () => ({
 import { resolveSessionUserId } from "@/lib/session-user";
 import { expireTag } from "@/lib/lookups";
 import { prisma } from "@/lib/prisma";
+import { memberTenantById, readActiveTenantCookie, setActiveTenantCookie } from "@/lib/tenants";
+import { setActiveProjectCookie } from "@/lib/project-context";
 import { GET } from "./route";
 
 const sessionUser = vi.mocked(resolveSessionUserId) as unknown as ReturnType<typeof vi.fn>;
 const findUnique = vi.mocked(prisma.notification.findUnique) as unknown as ReturnType<typeof vi.fn>;
 const update = vi.mocked(prisma.notification.update) as unknown as ReturnType<typeof vi.fn>;
 const expireTagMock = vi.mocked(expireTag) as unknown as ReturnType<typeof vi.fn>;
+const memberTenantMock = vi.mocked(memberTenantById) as unknown as ReturnType<typeof vi.fn>;
+const activeTenantMock = vi.mocked(readActiveTenantCookie) as unknown as ReturnType<typeof vi.fn>;
+const setTenantMock = vi.mocked(setActiveTenantCookie) as unknown as ReturnType<typeof vi.fn>;
+const setProjectMock = vi.mocked(setActiveProjectCookie) as unknown as ReturnType<typeof vi.fn>;
 
 function makeRequest(id: string) {
   return GET(new NextRequest(`http://localhost:3000/notifications/${id}`), {
@@ -35,6 +47,8 @@ describe("GET /notifications/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionUser.mockResolvedValue({ userId: "u1" });
+    memberTenantMock.mockResolvedValue({ id: "tenant-2" });
+    activeTenantMock.mockResolvedValue("tenant-2");
   });
 
   it("redirects to /login if user is not signed in", async () => {
@@ -79,6 +93,29 @@ describe("GET /notifications/[id]", () => {
       data: { readAt: expect.any(Date) },
     });
     expect(expireTagMock).toHaveBeenCalledWith("unread:u1");
+  });
+
+  it("switches to the notification's tenant before opening its issue", async () => {
+    findUnique.mockResolvedValue({
+      userId: "u1",
+      tenantId: "tenant-2",
+      url: "/issues/bug-42",
+      readAt: null,
+    });
+    activeTenantMock.mockResolvedValue("tenant-1");
+    const res = await makeRequest("notif-tenant-2");
+    expect(res.headers.get("location")).toBe("http://localhost:3000/issues/bug-42");
+    expect(memberTenantMock).toHaveBeenCalledWith(expect.anything(), "u1", "tenant-2");
+    expect(setTenantMock).toHaveBeenCalledWith("tenant-2");
+    expect(setProjectMock).toHaveBeenCalledWith("");
+  });
+
+  it("does not open a notification for a workspace the user left", async () => {
+    findUnique.mockResolvedValue({ userId: "u1", tenantId: "tenant-2", url: "/issues/bug-42", readAt: null });
+    memberTenantMock.mockResolvedValue(null);
+    const res = await makeRequest("notif-left-tenant");
+    expect(res.headers.get("location")).toBe("http://localhost:3000/notifications");
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("does not re-update if notification was already read", async () => {

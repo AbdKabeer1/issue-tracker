@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { displayNameSchema } from "@/lib/display-name";
+import { BCRYPT_MAX_PASSWORD_BYTES } from "@/lib/password";
 import { isGitHubUrl, splitProofLinkLines } from "@/lib/proof-links";
 import { stripGitHubMarkup } from "@/lib/github-paste";
 
@@ -108,6 +109,13 @@ export const editBugContentSchema = z
   })
   .strict();
 
+/** Replace an issue's proof links after it was filed (#737). Empty clears them. */
+export const editProofLinksSchema = z
+  .object({
+    proofLinks: proofLinksInputSchema,
+  })
+  .strict();
+
 export const categorySchema = z.object({
   name: z
     .string()
@@ -146,7 +154,15 @@ export const loginSchema = z.object({
 const passwordField = z
   .string()
   .min(8, "Password must be at least 8 characters")
-  .max(128);
+  .max(128)
+  .refine(
+    (password) =>
+      new TextEncoder().encode(password).length <= BCRYPT_MAX_PASSWORD_BYTES,
+    {
+      message:
+        "Password is too long: bcrypt keeps only the first 72 bytes, so choose something shorter.",
+    },
+  );
 
 export const signupSchema = z
   .object({
@@ -182,3 +198,17 @@ export const resetPasswordSchema = z
     message: "Passwords do not match",
     path: ["confirmPassword"],
   });
+
+/**
+ * An EVM wallet address (#618): `0x` followed by 40 hex characters. Shape
+ * only — no checksum validation — because the person is the one who chooses
+ * where their points would go. Blank clears the address, which is why "" is
+ * accepted here and comes out of the transform as `null`.
+ */
+export const walletAddressSchema = z
+  .string()
+  .trim()
+  .refine((value) => value === "" || /^0x[0-9a-fA-F]{40}$/.test(value), {
+    message: "Enter a valid EVM address: 0x followed by 40 hex characters.",
+  })
+  .transform((value) => (value === "" ? null : value));

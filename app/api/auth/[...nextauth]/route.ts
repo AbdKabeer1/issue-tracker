@@ -35,15 +35,13 @@ function withNormalizedRequest(req: NextRequest): NextRequest {
   return new NextRequest(url, req);
 }
 
+import { logger } from "@/lib/logger";
+
 /** Generic sign-in failure redirect with diagnostic details (#118). */
 function loginErrorRedirect(req: NextRequest, error: unknown): Response {
   recordAuthError(error);
-  console.error("[auth] handler threw exception:", error);
+  logger.error("[auth] handler threw exception:", error);
   const redirectUrl = new URL(`${BASE_PATH}/login?error=Configuration`, trustedOrigin(req));
-  const errDesc = error instanceof Error ? error.message : String(error);
-  if (errDesc) {
-    redirectUrl.searchParams.set("reason", errDesc.slice(0, 140));
-  }
   return Response.redirect(redirectUrl.toString());
 }
 
@@ -80,7 +78,7 @@ function normalizeResponse(response: Response): Response {
 
   if (location.includes("error=")) {
     // Details were already logged by the Auth.js logger (lib/auth-diagnostics.ts).
-    console.error("[AUTH_REDIRECT_ERROR]", {
+    logger.error("[AUTH_REDIRECT_ERROR]", {
       location: finalLocation,
       status: response.status,
     });

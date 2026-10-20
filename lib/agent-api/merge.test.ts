@@ -5,6 +5,7 @@ type VerdictRow = {
   bugId: string;
   goodToMerge: boolean;
   onBehalfOfUserId: string;
+  pullRequestUrl: string | null;
   createdAt: Date;
   agent: { id: string; ownerUserId: string };
 };
@@ -16,6 +17,7 @@ const state = vi.hoisted(() => ({
 
 const db = vi.hoisted(() => ({
   bug: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+  bugActivity: { create: vi.fn() },
   testVerdict: { findMany: vi.fn() },
   issueValidation: { findMany: vi.fn() },
   pointEntry: { createMany: vi.fn() },
@@ -23,6 +25,7 @@ const db = vi.hoisted(() => ({
   agentEvent: { create: vi.fn() },
   webhookSubscription: { findMany: vi.fn() },
   webhookDelivery: { createMany: vi.fn() },
+  issueClaim: { updateMany: vi.fn() },
   $transaction: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
@@ -33,10 +36,13 @@ vi.mock("@/lib/redesigns", () => ({ assertRedesignOpen: redesign.assertRedesignO
 import { IssueApiError } from "@/lib/agent-api/issues";
 import { acceptFix } from "./merge";
 
+const PR = "https://github.com/Zedu-Endor/issue-tracker/pull/42";
+
 function bugRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "bug1",
     tenantId: "tenant_zedu",
+    pullRequestUrl: PR,
     severity: "medium",
     status: "open",
     assigneeId: "ada",
@@ -60,11 +66,12 @@ function confirmWith(ownerA: string, ownerB: string) {
   ];
 }
 
-function verdict(agentId: string, ownerId: string, onBehalfOfUserId = ownerId) {
+function verdict(agentId: string, ownerId: string, onBehalfOfUserId = ownerId, pullRequestUrl: string | null = PR) {
   state.verdicts.push({
     id: `v-${agentId}`,
     bugId: "bug1",
     goodToMerge: true,
+    pullRequestUrl,
     onBehalfOfUserId,
     createdAt: new Date(),
     agent: { id: agentId, ownerUserId: ownerId },
@@ -79,13 +86,16 @@ beforeEach(() => {
   db.bug.findFirst.mockResolvedValue(bugRow());
   db.bug.findUnique.mockResolvedValue(bugRow());
   db.bug.update.mockResolvedValue({});
+  db.bugActivity.create.mockResolvedValue({});
   db.pointEntry.createMany.mockResolvedValue({ count: 1 });
   db.agentEvent.create.mockResolvedValue({ id: "e1" });
   db.webhookSubscription.findMany.mockResolvedValue([]);
   db.agentAuditEvent.findMany.mockResolvedValue([]);
   redesign.assertRedesignOpen.mockResolvedValue(undefined);
-  db.testVerdict.findMany.mockImplementation(async () =>
-    state.verdicts.filter((v) => v.bugId === "bug1" && v.goodToMerge),
+  db.testVerdict.findMany.mockImplementation(async ({ where }: { where: { pullRequestUrl?: string } }) =>
+    state.verdicts.filter(
+      (v) => v.bugId === "bug1" && v.goodToMerge && (where.pullRequestUrl === undefined || v.pullRequestUrl === where.pullRequestUrl),
+    ),
   );
   db.issueValidation.findMany.mockImplementation(async () => state.confirmations);
 });
@@ -161,6 +171,19 @@ describe("acceptFix: a successful accept (#434)", () => {
     const result = await acceptFix(merger("m1", "mo", "merger"), "bug1");
     expect(result).toMatchObject({ status: 200, accepted: true, solverUserId: "ada" });
     expect(db.bug.update).toHaveBeenCalledWith({ where: { id: "bug1" }, data: { status: "resolved" } });
+    expect(db.bugActivity.create).toHaveBeenCalledWith({
+      data: {
+        bugId: "bug1",
+        actorId: "mo",
+        type: "status_changed",
+        summary: "changed status from Open to Resolved",
+        metadata: { field: "status", from: "open", to: "resolved" },
+      },
+    });
+    expect(db.issueClaim.updateMany).toHaveBeenCalledWith({
+      where: { bugId: "bug1", status: "active", releasedAt: null },
+      data: { status: "released", releasedAt: expect.any(Date), releaseReason: "resolved" },
+    });
 
     const awards = db.pointEntry.createMany.mock.calls.map((call) => call[0].data[0]);
     expect(awards).toContainEqual({
@@ -177,6 +200,21 @@ describe("acceptFix: a successful accept (#434)", () => {
       target: "bug:bug1",
     });
     expect(db.agentEvent.create.mock.calls[0][0].data).toMatchObject({ type: "issue.accepted", bugId: "bug1" });
+  });
+
+  it("releases the active solver claim as resolved in the accept transaction", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({
+      claims: [{ status: "active", releasedAt: null, agentId: "solver-agent", beneficiaryUserId: "ada", agent: { ownerUserId: "ada" } }],
+    }));
+
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({ status: 200, accepted: true });
+    expect(db.issueClaim.updateMany).toHaveBeenCalledWith({
+      where: { bugId: "bug1", status: "active", releasedAt: null },
+      data: { status: "released", releasedAt: expect.any(Date), releaseReason: "resolved" },
+    });
   });
 
   it("pays up to two reviewers, each for the person they acted for", async () => {
@@ -218,5 +256,35 @@ describe("acceptFix: a successful accept (#434)", () => {
     expect(result).toMatchObject({ status: 200, solverUserId: null });
     const awards = db.pointEntry.createMany.mock.calls.map((call) => call[0].data[0]);
     expect(awards.some((a) => a.role === "solver")).toBe(false);
+  });
+
+  it("records a status_changed bug activity matching human resolution when in_progress (#722)", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({ status: "in_progress" }));
+
+    const result = await acceptFix(merger("m1", "mo", "merger"), "bug1");
+    expect(result).toMatchObject({ status: 200, accepted: true });
+    expect(db.bugActivity.create).toHaveBeenCalledWith({
+      data: {
+        bugId: "bug1",
+        actorId: "mo",
+        type: "status_changed",
+        summary: "changed status from In progress to Resolved",
+        metadata: { field: "status", from: "in_progress", to: "resolved" },
+      },
+    });
+  });
+});
+
+describe("acceptFix counts verdicts on the linked pull request only (#526)", () => {
+  it("ignores good-to-merge verdicts on an earlier pull request, or none", async () => {
+    confirmWith("rob", "sam");
+    verdict("r-rob", "rob", "rob", "https://github.com/Zedu-Endor/issue-tracker/pull/41");
+    verdict("r-sam", "sam", "sam", null);
+    const result = await acceptFix(merger("m1", "mo"), "bug1");
+    expect(result).toMatchObject({ status: 409, missing: "verdicts" });
+    expect(db.testVerdict.findMany.mock.calls[0][0].where).toMatchObject({ pullRequestUrl: PR });
   });
 });

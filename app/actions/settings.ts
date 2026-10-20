@@ -7,12 +7,16 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { PREF_FIELD, isNotificationKind } from "@/lib/notification-prefs";
 import { displayNameSchemaFor } from "@/lib/display-name";
+import { walletAddressSchema } from "@/lib/validations/issue";
 import { isAdmin } from "@/lib/roles";
-import { fromZodError, type FieldErrorResult } from "@/lib/form-errors";
+import { fromZodError, fieldError, type FieldErrorResult } from "@/lib/form-errors";
+import { appCookieOptions } from "@/lib/cookie-options";
 
 export type SettingsResult = { error?: string; ok?: boolean; emailNotifications?: boolean };
 
 export type DisplayNameResult = Partial<FieldErrorResult> & { ok?: boolean; name?: string };
+
+export type WalletResult = Partial<FieldErrorResult> & { ok?: boolean; walletAddress?: string | null };
 
 /** Turn the signed-in user's email notifications on or off (#151). */
 export async function setEmailNotificationsAction(enabled: unknown): Promise<SettingsResult> {
@@ -61,12 +65,7 @@ export async function setThemeAction(theme: unknown): Promise<SettingsResult> {
   } catch (err) {
     console.error("[settings] setThemeAction user update failed:", err);
   }
-  (await cookies()).set(THEME_COOKIE, theme, {
-    path: "/",
-    maxAge: THEME_COOKIE_MAX_AGE,
-    sameSite: "lax",
-    httpOnly: true,
-  });
+  (await cookies()).set(THEME_COOKIE, theme, appCookieOptions(THEME_COOKIE_MAX_AGE));
   revalidatePath("/", "layout");
   return { ok: true };
 }
@@ -119,4 +118,28 @@ export async function updateDisplayNameAction(
   // The name is in the header on every page, and on every issue and comment.
   revalidatePath("/", "layout");
   return { ok: true, name: parsed.data };
+}
+
+/**
+ * Save or clear the signed-in person's EVM wallet address (#618).
+ *
+ * Only the caller's own row is ever written: the id comes from the session,
+ * never from the form, so no submitted field can set a wallet for anyone else.
+ * The address is readable only by them and by admins of a workspace they share
+ * (`canViewWallet`), so nothing else in the app displays it.
+ */
+export async function setWalletAddressAction(
+  _prev: WalletResult | undefined,
+  formData: FormData,
+): Promise<WalletResult> {
+  const user = await requireUser();
+  const parsed = walletAddressSchema.safeParse(formData.get("walletAddress") ?? "");
+  if (!parsed.success) {
+    // A bare string schema has no issue path, so the field is named here.
+    return fieldError("walletAddress", parsed.error.issues[0]?.message ?? "Enter a valid EVM address.");
+  }
+  await prisma.user.update({ where: { id: user.id }, data: { walletAddress: parsed.data } });
+  revalidatePath("/settings");
+  revalidatePath(`/users/${user.id}`);
+  return { ok: true, walletAddress: parsed.data };
 }

@@ -33,12 +33,12 @@ function renderForm(props: Parameters<typeof CommentForm>[0] = defaultProps) {
 }
 
 function bodyTextarea() {
-  return screen.getByLabelText("Add a comment") as HTMLTextAreaElement;
+  return screen.getByLabelText("Add to conversation") as HTMLTextAreaElement;
 }
 
 function submitButton() {
   return screen.getByRole("button", {
-    name: /^(Post comment|Posting…|Uploading…)$/,
+    name: /^(Post to conversation|Posting…|Uploading…)$/,
   }) as HTMLButtonElement;
 }
 
@@ -83,7 +83,7 @@ describe("CommentForm optimistic update and rollback", () => {
     await waitFor(() => {
       expect(onSuccess).toHaveBeenCalled();
       expect(textarea.value).toBe("");
-      expect(submitButton().textContent).toBe("Post comment");
+      expect(submitButton().textContent).toBe("Post to conversation");
       expect(screen.queryByRole("alert")).toBeNull();
       // Body was cleared, so the button stays disabled for the empty form.
       expect(submitButton().disabled).toBe(true);
@@ -112,13 +112,44 @@ describe("CommentForm optimistic update and rollback", () => {
       );
       expect(textarea.value).toBe("Hey");
       expect(submitButton().disabled).toBe(false);
-      expect(submitButton().textContent).toBe("Post comment");
+      expect(submitButton().textContent).toBe("Post to conversation");
     });
   });
 
   it("disables the submit button when the body is empty", () => {
     renderForm();
     expect(submitButton().disabled).toBe(true);
+  });
+
+  it("freezes the comment editor while posting and clears only the submitted snapshot (#733)", async () => {
+    mockedAddComment.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releasePendingAction = () => resolve({ ok: true });
+        }),
+    );
+    renderForm(defaultProps);
+
+    const textarea = bodyTextarea();
+    await user.type(textarea, "first comment");
+    await user.click(submitButton());
+
+    await waitFor(() => {
+      expect(submitButton().textContent).toBe("Posting…");
+    });
+    // The editor is frozen for the duration of the submission (#733).
+    expect(textarea.disabled).toBe(true);
+
+    releasePendingAction?.();
+    releasePendingAction = null;
+
+    // Only the submitted snapshot is cleared; the editor is usable again.
+    await waitFor(() => {
+      expect(textarea.value).toBe("");
+      expect(textarea.disabled).toBe(false);
+      expect(submitButton().textContent).toBe("Post to conversation");
+    });
+    expect(mockedAddComment).toHaveBeenCalledTimes(1);
   });
 
   it("renders the reply variant and supports cancelling", async () => {
@@ -180,7 +211,7 @@ describe("CommentForm optimistic update and rollback", () => {
 
       await waitFor(() => {
         expect(submitButton().disabled).toBe(false);
-        expect(submitButton().textContent).toBe("Post comment");
+        expect(submitButton().textContent).toBe("Post to conversation");
       });
 
       // Submit once uploads have settled

@@ -14,19 +14,37 @@ const db = vi.hoisted(() => ({
 }));
 const budget = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
+const notifyLater = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/notify", () => ({ notifyLater }));
 vi.mock("@/lib/agents/rate-budget", async (original) => ({
   ...await original<typeof import("@/lib/agents/rate-budget")>(), consumeAgentBudget: budget,
 }));
 import { GET as list, POST as create } from "@/app/api/v1/issues/route";
 import { GET as read } from "@/app/api/v1/issues/[id]/route";
-import { POST as comment } from "@/app/api/v1/issues/[id]/comments/route";
-import { encodeCursor } from "./create-policy";
+import { POST as comment, GET as comments } from "@/app/api/v1/issues/[id]/comments/route";
+import { POST as claim } from "@/app/api/v1/issues/[id]/claim/route";
+import { encodeCursor, hashCreateRequest } from "./create-policy";
+import { PROJECT_ID_REQUIRED } from "./issues";
 
 afterEach(() => vi.restoreAllMocks());
 
 const issue = { id: "issue-a", title: "A distinct issue", createdAt: new Date("2026-10-19T12:00:00Z"), comments: [] };
 const context = { params: Promise.resolve({ id: issue.id }) };
 const validBody = { projectId: "project-a", title: issue.title, description: "An adequate description of the issue.", acknowledgeSimilar: true };
+
+function createRequestHash(body: typeof validBody, beneficiaryUserId = "owner-a") {
+  return hashCreateRequest({
+    projectId: body.projectId,
+    beneficiaryUserId,
+    title: body.title,
+    description: body.description,
+    categoryId: null,
+    proofLinks: [],
+    typeId: null,
+    severity: null,
+    acknowledgeSimilar: body.acknowledgeSimilar ?? null,
+  });
+}
 
 function request(method = "GET", body?: unknown, query = "?projectId=project-a", key = true) {
   return new NextRequest(`http://localhost/api/v1/issues${query}`, {
@@ -88,7 +106,7 @@ describe("agent issue API authentication", () => {
     expect((await comment(request("POST", { body: "hello" }), context)).status).toBe(403);
     expect(db.bug.create).not.toHaveBeenCalled();
     expect(db.comment.create).not.toHaveBeenCalled();
-    expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "issues.create", payload: { status: 403 } }) }));
+    expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "issues.create", payload: { status: 403, request: true } }) }));
   });
 
   it("uses the shared read/write budgets and preserves Retry-After", async () => {
@@ -100,6 +118,15 @@ describe("agent issue API authentication", () => {
     expect(response.headers.get("retry-after")).toBe("12");
     expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false }, "write");
     expect(db.bug.create).not.toHaveBeenCalled();
+  });
+
+  it("retires direct claims with 410 and without spending the write budget (#554)", async () => {
+    db.project.findFirst.mockResolvedValue({ id: "project-a" });
+    const response = await claim(request("POST", { projectId: "project-a" }), context);
+    expect(response.status).toBe(410);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toContain("/api/v1/issues/{id}/offer");
+    expect(budget).not.toHaveBeenCalled();
   });
 });
 
@@ -124,7 +151,11 @@ describe("agent issue reads", () => {
   });
 
   it("rejects absent/foreign projects, invalid enums, and malformed cursors", async () => {
-    expect((await list(request("GET", undefined, ""))).status).toBe(422);
+    // #563: a missing projectId names the parameter instead of a raw validation dump.
+    const missing = await list(request("GET", undefined, ""));
+    expect(missing.status).toBe(400);
+    expect(await missing.json()).toEqual({ error: PROJECT_ID_REQUIRED });
+    expect((await list(request("GET", undefined, "?projectId="))).status).toBe(400);
     db.project.findFirst.mockResolvedValueOnce(null);
     expect((await list(request())).status).toBe(404);
     expect(db.project.findFirst).toHaveBeenCalledWith({ where: { id: "project-a", tenantId: "tenant-a" }, select: { id: true } });
@@ -138,6 +169,48 @@ describe("agent issue reads", () => {
     expect(db.bug.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: "tenant-a", projectId: "project-a", id: issue.id, isDeleted: false } }));
     db.bug.findFirst.mockResolvedValueOnce(null);
     expect((await read(request(), context)).status).toBe(404);
+  });
+});
+
+describe("agent comment paging (#604)", () => {
+  const comment = { id: "comment-b", body: "older", createdAt: new Date("2026-10-19T10:00:00Z"), authorId: "person-a", parentId: null };
+  const newer = { id: "comment-c", body: "newer", createdAt: new Date("2026-10-19T10:01:00Z"), authorId: "person-b", parentId: comment.id };
+  beforeEach(() => db.comment.findMany.mockResolvedValue([comment]));
+
+  it("returns comments oldest first under the issue's scope, with an author and a cursor", async () => {
+    db.comment.findMany.mockResolvedValueOnce([comment, newer]);
+    const response = await comments(request("GET", undefined, "?projectId=project-a&limit=1"), context);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.items).toEqual([{ ...comment, createdAt: comment.createdAt.toISOString(), author: undefined, agent: undefined }]);
+    expect(body.items.length).toBe(1);
+    expect(body.nextCursor).toBe(encodeCursor(comment));
+    expect(db.comment.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { bugId: issue.id, deletedAt: null },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 2,
+    }));
+  });
+
+  it("returns only comments newer than the `after` cursor", async () => {
+    const cursor = encodeCursor(comment);
+    await comments(request("GET", undefined, `?projectId=project-a&after=${cursor}`), context);
+    const where = db.comment.findMany.mock.lastCall?.[0].where as Record<string, unknown>;
+    expect(where.OR).toEqual([{ createdAt: { gt: comment.createdAt } }, { createdAt: comment.createdAt, id: { gt: comment.id } }]);
+  });
+
+  it("rejects a missing issue, a foreign issue and malformed cursors without querying comments", async () => {
+    db.bug.findFirst.mockResolvedValueOnce(null);
+    expect((await comments(request(), context)).status).toBe(404);
+    expect((await comments(request("GET", undefined, "?projectId=project-a&after=bad"), context)).status).toBe(400);
+    expect(db.comment.findMany).not.toHaveBeenCalled();
+  });
+
+  it("requires a key, shares the read budget, and audits the read", async () => {
+    expect((await comments(request("GET", undefined, "", false), context)).status).toBe(401);
+    expect(db.comment.findMany).not.toHaveBeenCalled();
+    await comments(request(), context);
+    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false }, "read");
+    expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "comments.list" }) }));
   });
 });
 
@@ -183,7 +256,11 @@ describe("agent issue creation via the real shared create policy", () => {
   });
 
   it("returns the policy's replay without inserting again", async () => {
-    db.idempotencyKey.findUnique.mockResolvedValueOnce({ bugId: issue.id, createdAt: new Date() });
+    db.idempotencyKey.findUnique.mockResolvedValueOnce({
+      bugId: issue.id,
+      requestHash: createRequestHash(validBody),
+      createdAt: new Date(),
+    });
     const response = await create(request("POST", validBody));
     expect(response.status).toBe(200);
     expect((await response.json()).replayed).toBe(true);
@@ -192,9 +269,25 @@ describe("agent issue creation via the real shared create policy", () => {
   });
 
   it("does not return a replay from a different project", async () => {
-    db.idempotencyKey.findUnique.mockResolvedValueOnce({ bugId: "foreign-issue", createdAt: new Date() });
+    db.idempotencyKey.findUnique.mockResolvedValueOnce({
+      bugId: "foreign-issue",
+      requestHash: createRequestHash(validBody),
+      createdAt: new Date(),
+    });
     db.bug.findFirst.mockResolvedValueOnce(null);
     expect((await create(request("POST", validBody))).status).toBe(404);
+  });
+
+  it("returns 409 when the same idempotency key is reused with a different body (#531)", async () => {
+    db.idempotencyKey.findUnique.mockResolvedValueOnce({
+      bugId: issue.id,
+      requestHash: "different-hash",
+      createdAt: new Date(),
+    });
+    const response = await create(request("POST", validBody));
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toBe("idempotency_conflict");
+    expect(db.bug.create).not.toHaveBeenCalled();
   });
 
   it("returns the shared similar-issue conflict and accepts an explicit acknowledgement", async () => {
@@ -232,8 +325,8 @@ describe("agent comments", () => {
     }));
     expect(log).toHaveBeenCalledWith("[agent-api] request audit failed", {
       tenantId: "tenant-a", agentId: "agent-a", action: "comments.create",
-      target: issue.id, payload: { status: 201 },
-    }, error);
+      target: issue.id, payload: { status: 201, request: true },
+    }, expect.objectContaining({ message: error.message }));
   });
 
   it("keeps transactional domain audit failures fatal (#755)", async () => {
@@ -245,7 +338,7 @@ describe("agent comments", () => {
     });
     await expect(comment(request("POST", { body: "A helpful comment" }), context)).rejects.toBe(error);
     expect(log).toHaveBeenCalledWith("[agent-api] request audit failed", expect.objectContaining({
-      payload: { status: 500 },
+      payload: { status: 500, request: true },
     }), expect.any(Error));
   });
 
@@ -275,5 +368,50 @@ describe("agent comments", () => {
       id: { in: ["member", "outsider"] }, memberships: { some: { tenantId: "tenant-a" } },
     } }));
     expect(db.comment.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ body: "@[Real name](member) @Other" }) }));
+  });
+});
+
+describe("agent comments and issues notify people (#533)", () => {
+  it("tells watchers, the parent's author and anyone mentioned", async () => {
+    db.bug.findFirst.mockResolvedValue({ ...issue, reporterId: "reporter-a", assigneeId: "assignee-a" });
+    db.comment.findFirst.mockResolvedValue({ id: "cl000000000000000000000001", authorId: "parent-author" });
+    db.comment.findMany.mockResolvedValue([{ id: "cl000000000000000000000001", parentId: null }]);
+    db.user.findMany.mockResolvedValue([{ id: "bob", name: "Bob" }]);
+    db.comment.create.mockResolvedValue({ id: "comment-b", body: "@[Bob](bob) can you retest?", createdAt: new Date() });
+
+    const response = await comment(
+      request("POST", { body: "@[Bob](bob) can you retest?", parentId: "cl000000000000000000000001" }),
+      context,
+    );
+    expect(response.status).toBe(201);
+
+    const events = notifyLater.mock.calls.flat();
+    expect(events).toEqual([
+      expect.objectContaining({ kind: "mentioned", place: "comment", recipientIds: ["bob"], commentId: "comment-b", actorId: "owner-a" }),
+      expect.objectContaining({
+        kind: "comment_added",
+        commentId: "comment-b",
+        parentAuthorId: "parent-author",
+        recipientIds: ["reporter-a", "assignee-a"],
+        excludeIds: ["bob"],
+        bugTitle: issue.title,
+      }),
+    ]);
+    // Named after the agent, so people can tell who wrote it.
+    expect(events[0]?.actorName).toBe("Agent A");
+  });
+
+  it("sends nothing when the comment couldn't be saved", async () => {
+    db.bug.findFirst.mockResolvedValueOnce(null);
+    expect((await comment(request("POST", { body: "hello" }), context)).status).toBe(404);
+    expect(notifyLater).not.toHaveBeenCalled();
+  });
+
+  it("tells people mentioned in an agent's new issue", async () => {
+    db.bug.findFirst.mockResolvedValue({ ...issue, description: "Seen by @[Bob](bob) on Safari" });
+    expect((await create(request("POST", validBody))).status).toBe(201);
+    expect(notifyLater).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "mentioned", place: "description", recipientIds: ["bob"], bugId: issue.id, actorId: "owner-a", actorName: "Agent A",
+    }));
   });
 });
