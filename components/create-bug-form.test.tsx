@@ -5,6 +5,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { createBugAction } from "@/app/actions/issues";
+import { serializeDraft } from "@/lib/form-drafts";
 import { CreateBugForm } from "./create-issue-form";
 
 vi.mock("@/app/actions/issues", () => ({
@@ -195,16 +196,20 @@ describe("CreateBugForm optimistic submission", () => {
   });
 
   it("disables submit button and prevents submission while an attachment is uploading (#734)", async () => {
-    let resolveUpload: (val: unknown) => void = () => {};
+    // The file input lives inside its label. user.upload clicks that input, and
+    // the label can open the dialog again, so more than one request may be in
+    // flight. Resolving only the last one leaves the button disabled.
+    const finishUpload: Array<() => void> = [];
     const originalFetch = global.fetch;
     global.fetch = vi.fn().mockImplementation(
       () =>
         new Promise((resolve) => {
-          resolveUpload = () =>
+          finishUpload.push(() =>
             resolve({
               ok: true,
               json: async () => ({ id: "att-456", size: 4096 }),
-            });
+            }),
+          );
         }),
     );
 
@@ -236,8 +241,8 @@ describe("CreateBugForm optimistic submission", () => {
       form.requestSubmit();
       expect(mockedCreateBug).not.toHaveBeenCalled();
 
-      // Resolve upload
-      resolveUpload(null);
+      // Resolve every upload started by the dialog.
+      finishUpload.splice(0).forEach((finish) => finish());
 
       // Button becomes enabled
       await waitFor(() => {
@@ -249,10 +254,103 @@ describe("CreateBugForm optimistic submission", () => {
       await user.click(submitButton());
       await waitFor(() => expect(mockedCreateBug).toHaveBeenCalledTimes(1));
 
-      expect(capturedFormData?.get("attachmentIds")).toBe("att-456");
+      expect(String(capturedFormData?.get("attachmentIds"))).toContain("att-456");
     } finally {
       global.fetch = originalFetch;
     }
+  });
+
+  it("supports simplified human report intake mode without technical fields (#764)", async () => {
+    mockedCreateBug.mockImplementationOnce((formData) => {
+      capturedFormData = formData;
+      return Promise.resolve({ ok: true });
+    });
+
+    renderForm();
+
+    // Technical fields are visible in detailed mode
+    expect(screen.getByLabelText("Platform")).toBeDefined();
+    expect(screen.getByLabelText("Type")).toBeDefined();
+    expect(screen.getByLabelText("Proof links (GitHub)")).toBeDefined();
+
+    // Switch to Quick report mode
+    await user.click(screen.getByRole("button", { name: "Quick report" }));
+
+    // Technical fields should now be omitted from view
+    expect(screen.queryByLabelText("Platform")).toBeNull();
+    expect(screen.queryByLabelText("Type")).toBeNull();
+    expect(screen.queryByLabelText("Proof links (GitHub)")).toBeNull();
+
+    // Describe the issue in plain words
+    await user.clear(descriptionTextarea());
+    await user.type(
+      descriptionTextarea(),
+      "When clicking on profile settings on mobile, the screen flashes white and logs out.",
+    );
+
+    await user.click(submitButton());
+    await waitFor(() => expect(mockedCreateBug).toHaveBeenCalledTimes(1));
+
+    expect(capturedFormData?.get("isReport")).toBe("true");
+    expect(capturedFormData?.get("description")).toBe(
+      "When clicking on profile settings on mobile, the screen flashes white and logs out.",
+    );
+    expect(capturedFormData?.get("typeId")).toBeFalsy();
+    expect(capturedFormData?.get("categoryId")).toBeFalsy();
+    expect(capturedFormData?.get("proofLinks")).toBeFalsy();
+  });
+});
+
+describe("CreateBugForm project-scoped drafts (#729)", () => {
+  let user: ReturnType<typeof userEvent.setup>;
+  let mockStorage: Record<string, string>;
+
+  beforeEach(() => {
+    mockStorage = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => mockStorage[key] ?? null,
+      setItem: (key: string, value: string) => {
+        mockStorage[key] = value;
+      },
+      removeItem: (key: string) => {
+        delete mockStorage[key];
+      },
+    });
+    mockedCreateBug.mockReset();
+    mockedCreateBug.mockResolvedValue({ ok: true });
+    user = userEvent.setup();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("ignores a draft saved for a different project when projectId is set", async () => {
+    mockStorage["draft:u1:bug:new"] = serializeDraft(
+      { title: "Leaked from another project" },
+      Date.now(),
+    );
+
+    renderForm({ ...defaultProps, currentUserId: "u1", projectId: "project-a" });
+
+    await waitFor(() => {
+      expect(titleInput().value).toBe("");
+    });
+  });
+
+  it("saves the create-issue draft under its project key", async () => {
+    renderForm({ ...defaultProps, currentUserId: "u1", projectId: "project-a" });
+
+    await user.type(titleInput(), "Scoped draft");
+
+    await waitFor(() => {
+      const stored = mockStorage["draft:u1:bug:new:project-a"];
+      const parsed = stored
+        ? (JSON.parse(stored) as { values?: { title?: string } })
+        : null;
+      expect(parsed?.values?.title).toBe("Scoped draft");
+    });
+    expect(mockStorage["draft:u1:bug:new"]).toBeUndefined();
   });
 });
 

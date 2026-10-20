@@ -55,11 +55,17 @@ export async function markDuplicateAction(
 
   // #425: both issues must be in the admin's tenant.
   const tenantId = await currentTenantIdFor(admin.id);
-  const scope = bugInTenant(tenantId);
-  const target = await prisma.bug.findUnique({
-    where: "number" in ref ? { number: ref.number, ...scope } : { id: ref.id, ...scope },
-    select: { id: true },
-  });
+  // #517: a number is only unique within its tenant, so look it up through
+  // the composite key rather than the old site-wide `number` key.
+  const target = tenantId
+    ? await prisma.bug.findUnique({
+        where:
+          "number" in ref
+            ? { tenantId_number: { tenantId, number: ref.number } }
+            : { id: ref.id, tenantId },
+        select: { id: true },
+      })
+    : null;
   if (!target) return { error: "That issue doesn't exist." };
 
   let previous: string | null = null;

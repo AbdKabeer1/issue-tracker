@@ -39,10 +39,10 @@ async function main() {
   // The wipe above also removes the Zedu tenant the migration creates (#423).
   // Put it back with the migration's ids; issues are created inside it.
   const tenant = await prisma.tenant.create({
-    data: { id: "tenant_zedu", slug: "zedu", name: "Zedu" },
+    data: { id: "tenant_zedu", slug: "zedu", name: "Ziki" },
   });
   await prisma.project.create({
-    data: { id: "project_zedu", tenantId: tenant.id, slug: "zedu", name: "Zedu" },
+    data: { id: "project_zedu", tenantId: tenant.id, slug: "zedu", name: "Ziki" },
   });
 
   for (const name of ["Desktop", "Web", "Mobile"]) {

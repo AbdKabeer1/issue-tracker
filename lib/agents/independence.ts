@@ -17,6 +17,8 @@ type AgentOwner = { ownerUserId: string } | null | undefined;
 export type ReviewedBug = {
   /** Who the ticket is for; defaults to the reporter. */
   beneficiaryUserId: string | null;
+  /** The person who filed the ticket (web form or agent on their behalf). */
+  reporterId?: string | null;
   /** The agent that filed it, if an agent did. */
   createdByAgent?: AgentOwner;
   /** Claims on the ticket; only the active one counts. */
@@ -58,7 +60,10 @@ function activeClaimOwner(bug: ReviewedBug): string | null {
 export function reviewerConflict(actor: ReviewingAgent, bug: ReviewedBug): ReviewerConflict | null {
   const owner = actor.ownerUserId;
   if (bug.createdByAgent?.ownerUserId === owner) return "created-by-own-agent";
-  if (bug.beneficiaryUserId === owner) return "own-ticket";
+  // The beneficiary earns the points; the reporter filed the ticket. A human
+  // reporter's own agent reviewing that report is the same conflict even
+  // though a web-filed bug has no beneficiary set (#620).
+  if (bug.beneficiaryUserId === owner || bug.reporterId === owner) return "own-ticket";
   if (activeClaimOwner(bug) === owner) return "claimed-by-own-agent";
   return null;
 }

@@ -60,6 +60,22 @@ export async function selectTenantAction(formData: FormData): Promise<void> {
   await enterTenant(tenant.id);
 }
 
+/**
+ * Switch to the tenant that owns an issue the viewer followed a link to
+ * (#519), then land on that issue. Membership is re-checked here: the hint
+ * on the page is presentation, this is the guard.
+ */
+export async function switchTenantForIssueAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const issueId = String(formData.get("issueId") ?? "");
+  const tenant = await memberTenantById(prisma, user.id, String(formData.get("tenantId") ?? ""));
+  if (!tenant) redirect("/issues");
+  await setActiveTenantCookie(tenant.id);
+  await setActiveProjectCookie("");
+  revalidatePath("/", "layout");
+  redirect(`/issues/${encodeURIComponent(issueId)}`);
+}
+
 /** Create a tenant owned by the person, with its first project, and enter it. */
 export async function createTenantAction(
   _previous: TenantFormResult | undefined,
@@ -115,6 +131,7 @@ export async function createInviteAction(
     delivery = await deliverInvite(prisma, {
       invite: result.invite,
       rawToken: result.rawToken,
+      tenantId: result.tenant.id,
       tenantName: result.tenant.name,
       inviter: { id: user.id, name: user.name || user.email || "Someone" },
     });

@@ -47,7 +47,7 @@ export function agentBudget(agent: BudgetedAgent, kind: AgentBudgetKind): RateLi
 
 /**
  * Charges one request to the agent's read or write budget. Writes are create,
- * comment, claim, offer accept, validate and test verdict; reads are list,
+ * comment, bid, offer accept, validate and test verdict; reads are list,
  * get, feed and the event poll. Webhook delivery is not charged.
  */
 export async function consumeAgentBudget(

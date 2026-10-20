@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// #600: these tests are about the actions themselves; the event is checked separately.
+const publishWebEvent = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("@/lib/agent-api/web-events", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/agent-api/web-events")>()),
+  publishWebEvent,
+}));
+
 // #425: run as a member of the Zedu tenant.
 vi.mock("@/lib/tenant-context", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/tenant-context")>()),
@@ -64,6 +71,7 @@ const SOMEONE = "csomeone0000001";
 let written: Record<string, unknown> | null;
 let activities: string[] = [];
 let awarded: Array<Record<string, unknown>> = [];
+let claimReleases: Array<Record<string, unknown>> = [];
 
 function issue(assigneeId: string | null, extra: Record<string, unknown> = {}) {
   return {
@@ -101,6 +109,7 @@ beforeEach(() => {
   written = null;
   activities = [];
   awarded = [];
+  claimReleases = [];
   db.user.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({ name: where.id }));
   db.issueType.findUnique.mockResolvedValue({ id: "t1", name: "Fix", isActive: true });
   db.category.findFirst.mockResolvedValue({ id: "c1", name: "Web", tenantId: "tenant-zedu" });
@@ -114,6 +123,9 @@ beforeEach(() => {
       },
       // Used once assignees auto-watch issues (#216).
       issueWatch: { createMany: vi.fn() },
+      issueClaim: {
+        updateMany: vi.fn(async (input: Record<string, unknown>) => { claimReleases.push(input); return { count: 1 }; }),
+      },
       // #428: the points ledger.
       pointEntry: {
         createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
@@ -199,6 +211,21 @@ describe("updateBugAction unboosts finished issues (#256)", () => {
     await runBoosted("closed", { status: "closed" });
     expect(written).toEqual({ status: "closed" });
     expect(activities).toEqual([]);
+  });
+});
+
+describe("updateBugAction releases claims on completed issues (#621)", () => {
+  it.each(["resolved", "closed"] as const)("releases active claims as %s when the issue is completed", async (status) => {
+    await run("admin", ME, { status });
+    expect(claimReleases).toEqual([{
+      where: { bugId: "bug1", status: "active", releasedAt: null },
+      data: { status: "released", releasedAt: expect.any(Date), releaseReason: status },
+    }]);
+  });
+
+  it("does not release claims when an issue remains active", async () => {
+    await run("admin", ME, { status: "in_progress" });
+    expect(claimReleases).toEqual([]);
   });
 });
 
@@ -307,5 +334,20 @@ describe("solver points on resolve (#428)", () => {
     db.bug.findUnique.mockResolvedValue(issue(ME, { status: "resolved" }));
     await updateBugAction("bug1", form({ status: "resolved", severity: "high" }));
     expect(awarded).toEqual([]);
+  });
+});
+
+describe("agents hear about triage in the web app (#600)", () => {
+  it("publishes issue.updated with the new status, inside the update", async () => {
+    await run("user", ME, { status: "resolved" });
+    expect(publishWebEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        bugId: "bug1",
+        type: "issue.updated",
+        actorUserId: expect.any(String),
+        payload: expect.objectContaining({ changed: expect.arrayContaining(["status"]), values: expect.objectContaining({ status: "resolved" }) }),
+      }),
+    );
   });
 });

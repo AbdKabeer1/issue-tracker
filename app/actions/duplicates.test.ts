@@ -61,7 +61,7 @@ describe("markDuplicateAction (#285)", () => {
     tx.$queryRaw.mockResolvedValue([row("a", 1), row("b", 2)]);
     expect(await markDuplicateAction("a", "#2")).toEqual({ ok: true });
     expect(findUnique).toHaveBeenCalledWith({
-      where: { number: 2, tenantId: "tenant-zedu" },
+      where: { tenantId_number: { tenantId: "tenant-zedu", number: 2 } },
       select: { id: true },
     });
     expect(tx.bug.update).toHaveBeenCalledWith({ where: { id: "a" }, data: { duplicateOfId: "b" } });

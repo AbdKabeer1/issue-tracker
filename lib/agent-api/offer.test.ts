@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { availableOfferCandidates, isOfferExpired, OFFER_TTL_MS } from "@/lib/agent-api/offer";
 
 describe("ticket offers", () => {
@@ -29,5 +29,59 @@ describe("ticket offers", () => {
       { beneficiaryUserId: "available", agentId: "c", activeClaims: 1, lastOfferedAt: null },
     ];
     expect(availableOfferCandidates(people).map((person) => person.beneficiaryUserId)).toEqual(["available"]);
+  });
+
+  it("sweeps expired offers and calls expireOffer for each (#681)", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { sweepExpiredOffers } = await import("@/lib/agent-api/offer");
+
+    const findManySpy = vi.spyOn(prisma.issueClaim, "findMany").mockResolvedValueOnce([
+      { id: "claim-1" } as never,
+      { id: "claim-2" } as never,
+    ]);
+    const txMock = {
+      issueClaim: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "claim-1",
+          bugId: "bug-1",
+          status: "offered",
+          offeredAt: new Date(Date.now() - 100_000),
+          releasedAt: null,
+          agentId: "agent-1",
+          beneficiaryUserId: "user-1",
+          bug: { tenantId: "tenant-1", id: "bug-1", title: "Bug 1", projectId: "proj-1", assigneeId: null },
+        }),
+        findFirst: vi.fn().mockResolvedValue(null),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      bug: {
+        findFirst: vi.fn(),
+      },
+      membership: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      agentEvent: {
+        create: vi.fn().mockResolvedValue({ id: "e1" }),
+      },
+      webhookSubscription: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "bug-1" }]),
+    };
+    vi.spyOn(prisma, "$transaction").mockImplementation(async (fn: unknown) =>
+      (fn as (tx: unknown) => unknown)(txMock),
+    );
+
+    const result = await sweepExpiredOffers("tenant-1");
+    expect(findManySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: "offered",
+          releasedAt: null,
+          bug: { tenantId: "tenant-1" },
+        }),
+      }),
+    );
+    expect(result.expired).toBe(2);
   });
 });

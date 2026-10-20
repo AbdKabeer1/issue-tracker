@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => {
   const mock = {
-    agent: { create: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn() },
+    agent: { create: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn(), count: vi.fn(async () => 0) },
     agentApiKey: { create: vi.fn(), updateMany: vi.fn() },
     agentAuditEvent: { create: vi.fn() },
     membership: { findMany: vi.fn(), findUnique: vi.fn() },
     project: { findFirst: vi.fn() },
+    issueClaim: { findMany: vi.fn(async () => []) },
+    issueBid: { updateMany: vi.fn(async () => ({ count: 0 })) },
     $transaction: vi.fn(),
   };
   mock.$transaction.mockImplementation((fn: (tx: unknown) => unknown) => fn(mock));
@@ -15,7 +17,9 @@ const db = vi.hoisted(() => {
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 
 import { hashSecret } from "./keys";
+import { openSecret } from "@/lib/secret-box";
 import { createAgent, regenerateKey, revokeAgent, rotateKey, setAgentBurst, setAgentLevel } from "./registry";
+import { MAX_ACTIVE_AGENTS_PER_OWNER } from "./registry-limits";
 
 const ada = { id: "ada", role: "user" as const };
 const zedu = [{ tenantId: "tenant_zedu", role: "member", tenant: { slug: "zedu" } }];
@@ -92,14 +96,14 @@ describe("revokeAgent and setAgentLevel (#427)", () => {
     expect(await revokeAgent(ada, "agent1")).toEqual({ ok: true });
     expect(db.agent.update.mock.calls[0][0].data.revokedAt).toBeInstanceOf(Date);
     expect(db.agentApiKey.updateMany.mock.calls[0][0].where).toEqual({ agentId: "agent1", revokedAt: null });
-    expect(db.agentAuditEvent.create.mock.calls[0][0].data.payload).toEqual({ by: "owner" });
+    expect(db.agentAuditEvent.create.mock.calls[0][0].data.payload).toEqual({ by: "owner", releasedClaims: 0, withdrawnBids: 0 });
   });
 
   it("lets a tenant admin revoke someone else's agent", async () => {
     db.agent.findUnique.mockResolvedValue(agentRow);
     db.membership.findUnique.mockResolvedValue({ role: "admin" });
     expect(await revokeAgent({ id: "lead", role: "user" }, "agent1")).toEqual({ ok: true });
-    expect(db.agentAuditEvent.create.mock.calls[0][0].data.payload).toEqual({ by: "tenant_admin" });
+    expect(db.agentAuditEvent.create.mock.calls[0][0].data.payload).toEqual({ by: "tenant_admin", releasedClaims: 0, withdrawnBids: 0 });
   });
 
   it("refuses anyone else", async () => {
@@ -178,6 +182,14 @@ describe("rotateKey (#427)", () => {
     expect(db.agentApiKey.create.mock.calls[0][0].data.projectId).toBe("project_web");
     expect(key.prefix).toBeTruthy();
   });
+
+  it("seals the replacement when it is the personal key for that project", async () => {
+    process.env.AUTH_SECRET = "test-secret-at-least-16";
+    db.agentApiKey.updateMany.mockResolvedValue({ count: 1 });
+    db.agent.findUnique.mockResolvedValue({ defaultProjectId: "project_web" });
+    const key = await rotateKey({ ...agent, projectId: "project_web" });
+    expect(openSecret(db.agentApiKey.create.mock.calls[0][0].data.sealedKey)).toBe(key.rawKey);
+  });
 });
 
 describe("regenerateKey (#572)", () => {
@@ -213,5 +225,24 @@ describe("regenerateKey (#572)", () => {
     db.project.findFirst.mockResolvedValue(null);
     expect(await regenerateKey(ada, "agent1", "project_other", now)).toMatchObject({ ok: false, field: "projectId" });
     expect(db.agentApiKey.create).not.toHaveBeenCalled();
+  });
+
+  it("seals the new key when it stays on the personal project", async () => {
+    process.env.AUTH_SECRET = "test-secret-at-least-16";
+    db.agent.findUnique.mockResolvedValue({ ...agentRow, defaultProjectId: "project_web" });
+    const result = await regenerateKey(ada, "agent1", "project_web", now);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(openSecret(db.agentApiKey.create.mock.calls[0][0].data.sealedKey)).toBe(result.key.rawKey);
+  });
+});
+
+describe("active-agent cap (#511)", () => {
+  it("refuses a sixth active agent for the same owner, with a clear error", async () => {
+    db.agent.count.mockResolvedValueOnce(MAX_ACTIVE_AGENTS_PER_OWNER);
+    const result = await createAgent(ada, { name: "Sixth agent", projectId: "project_web" });
+    expect(result).toMatchObject({ ok: false });
+    if (!result.ok) expect(result.error).toContain("Revoke one");
+    expect(db.agent.create).not.toHaveBeenCalled();
   });
 });
