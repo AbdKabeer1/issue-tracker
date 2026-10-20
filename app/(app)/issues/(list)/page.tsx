@@ -32,6 +32,7 @@ import { Highlighted, SearchSnippet } from "@/components/search-highlight";
 import { formatIssueNumber, parseIssueNumberQuery } from "@/lib/issue-number";
 import { isDone, resultCountText } from "@/lib/issue-state";
 import { calculatePagination } from "@/lib/pagination";
+import { issueListPaginationParams } from "@/lib/issue-list-pagination";
 import { DUPLICATES_PARAM, SHOW_DUPLICATES, duplicatesWhere, parseShowDuplicates } from "@/lib/duplicates";
 import { PaginationControls } from "@/components/pagination-controls";
 import { fetchVoterSummaries } from "@/lib/voter-summaries";
@@ -885,18 +886,19 @@ export default async function BugsPage({
                 totalCount={totalCount}
                 from={pagination.from}
                 to={pagination.to}
-                queryParams={{
-                  ...(statusParam ? { status: statusParam } : {}),
-                  ...(milestoneParam ? { [MILESTONE_PARAM]: milestoneParam } : {}),
-                  ...(severityParam ? { severity: severityParam } : {}),
-                  ...(mineFilter ? { mine: mineFilter } : {}),
-                  ...(qParam ? { q: qParam } : {}),
-                  ...(tagsParam ? { [TAGS_PARAM]: tagsParam } : {}),
-                  ...(selectedPlatform ? { [PLATFORM_PARAM]: selectedPlatform } : {}),
-                  ...(isDeletedView ? { deleted: "true" } : {}),
-                  ...(showDuplicates ? { [DUPLICATES_PARAM]: SHOW_DUPLICATES } : {}),
+                queryParams={issueListPaginationParams({
+                  status: statusParam,
+                  severity: severityParam,
+                  mine: mineFilter,
+                  q: qParam,
                   sort: sortParam,
-                }}
+                  milestone: milestoneParam,
+                  tags: tagsParam,
+                  platform: selectedPlatform,
+                  area: selectedArea,
+                  deleted: isDeletedView,
+                  showDuplicates,
+                })}
               />
             </>
           )}

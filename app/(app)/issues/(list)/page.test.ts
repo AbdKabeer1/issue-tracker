@@ -95,4 +95,15 @@ describe("issue list fails closed (#506)", () => {
     expect(pageSource).not.toContain("<IssuesSidebar");
     expect(pageSource).not.toContain("<IssuesSidebarDisclosure");
   });
+
+  it("builds the Previous/Next links from the shared filter helper, so area is not dropped (#967)", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const pageSource = fs.readFileSync(path.resolve(__dirname, "page.tsx"), "utf8");
+
+    expect(pageSource).toContain("queryParams={issueListPaginationParams({");
+    expect(pageSource).toMatch(/area: selectedArea,/);
+    // No hand-written parameter list to fall out of step with the filters again.
+    expect(pageSource).not.toContain("queryParams={{");
+  });
 });
