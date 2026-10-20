@@ -17,6 +17,8 @@ import { CopyLinkButton } from "@/components/copy-link-button";
 import { joinedSummary, listShareLinks, shareLinkStatusLabel } from "@/lib/share-invites";
 import { InviteForm } from "./invite-form";
 import { ShareLinkForm } from "./share-link-form";
+import { pendingTenantJoinRequests, TENANT_DESCRIPTION_MAX } from "@/lib/tenant-join-requests";
+import { reviewTenantJoinRequestAction, updateTenantDiscoveryAction } from "../actions";
 
 /* Static on purpose: a title built from the slug could name someone else's tenant. */
 export const metadata = { title: "Tenant" };
@@ -61,11 +63,15 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
 
   const canManage = canInvite(tenant.role);
   const canChangeRoles = tenant.role === "owner" || isSuperAdmin(user.role);
-  const [currentTenantId, counts, managers, invites, members, shareLinks] = await Promise.all([
+  const [currentTenantId, counts, managers, invites, members, shareLinks, joinRequests] = await Promise.all([
     currentTenantIdFor(user.id),
     prisma.tenant.findUnique({
       where: { id: tenant.id },
-      select: { _count: { select: { memberships: true, projects: true } } },
+      select: {
+        description: true,
+        discoverable: true,
+        _count: { select: { memberships: true, projects: true } },
+      },
     }),
     prisma.membership.findMany({
       where: { tenantId: tenant.id, role: { in: ["owner", "admin"] } },
@@ -77,6 +83,7 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
     canManage ? pendingInvites(prisma, tenant.id) : [],
     loadTenantMembers(tenant.id),
     canManage ? listShareLinks(prisma, tenant.id) : [],
+    canManage ? pendingTenantJoinRequests(prisma, tenant.id) : [],
   ]);
   const ownerCount = members.filter((member) => member.role === "owner").length;
   const current = tenant.id === currentTenantId;
@@ -175,6 +182,44 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
 
       {canManage ? (
         <>
+          <section aria-labelledby="workspace-discovery" className={card}>
+            <h2 id="workspace-discovery" className="text-base font-semibold text-slate-900">Workspace discovery</h2>
+            <p className="mt-1 text-sm text-slate-600">When enabled, people without a workspace can find this one and request access. They become members only after an owner or admin approves.</p>
+            <form action={updateTenantDiscoveryAction} className="mt-4 space-y-4">
+              <input type="hidden" name="tenantId" value={tenant.id} />
+              <label className="flex items-start gap-3 text-sm text-slate-800">
+                <input type="checkbox" name="discoverable" defaultChecked={counts?.discoverable ?? false} className="mt-0.5 rounded border-slate-300 text-teal-700 focus:ring-teal-600" />
+                <span><span className="font-medium">Accept join requests</span><span className="mt-0.5 block text-xs text-slate-500">Show this workspace in discovery to users who do not belong to a workspace.</span></span>
+              </label>
+              <label className="block text-sm font-medium text-slate-800" htmlFor="workspace-description">Description <span className="font-normal text-slate-500">(optional, up to {TENANT_DESCRIPTION_MAX} characters)</span></label>
+              <textarea id="workspace-description" name="description" maxLength={TENANT_DESCRIPTION_MAX} rows={3} defaultValue={counts?.description ?? ""} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600" />
+              <Button type="submit">Save discovery settings</Button>
+            </form>
+          </section>
+
+          <section aria-labelledby="join-requests" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <h2 id="join-requests" className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6">Workspace join requests</h2>
+            {joinRequests.length === 0 ? (
+              <p className="px-4 py-4 text-sm text-slate-600 sm:px-6">No pending requests.</p>
+            ) : (
+              <ul className="divide-y divide-slate-200">
+                {joinRequests.map((request) => (
+                  <li key={request.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-slate-900">{request.user.name ?? request.user.email}</p>
+                      <p className="truncate text-xs text-slate-500">{request.user.email} · requested <LocalTime date={request.requestedAt} /></p>
+                    </div>
+                    <form action={reviewTenantJoinRequestAction} className="flex gap-2">
+                      <input type="hidden" name="requestId" value={request.id} />
+                      <Button name="status" value="approved" type="submit">Approve</Button>
+                      <Button name="status" value="rejected" type="submit" variant="danger-secondary">Reject</Button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           <section aria-labelledby="share-link" className={card}>
             <h2 id="share-link" className="text-base font-semibold text-slate-900">
               Invite link

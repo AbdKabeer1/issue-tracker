@@ -122,12 +122,12 @@ describe("promoteEarnedReviewer (#451)", () => {
 });
 
 describe("silenceReleases / demoteFromSilence (#451)", () => {
-  it("counts only silence releases inside the seven-day window", async () => {
+  it("counts silence and missed-deadline releases inside the seven-day window", async () => {
     const now = new Date("2026-10-19T12:00:00.000Z");
     await silenceReleases("a1", undefined, now);
 
     const where = db.issueClaim.count.mock.calls[0][0].where;
-    expect(where.releaseReason).toBe("silence");
+    expect(where.releaseReason).toEqual({ in: ["silence", "deadline"] });
     expect(where.releasedAt.gte).toEqual(new Date("2026-10-12T12:00:00.000Z"));
   });
 
