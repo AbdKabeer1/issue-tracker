@@ -47,6 +47,17 @@ describe("LoginPage OAuth error a11y (#653)", () => {
     expect(alert).toHaveTextContent("Unable to complete Google sign-in. Please try again.");
   });
 
+  it("tells a two-factor account to use email and the code instead of Google", async () => {
+    const element = await LoginPage({
+      searchParams: Promise.resolve({ error: "TwoFactor" }),
+    });
+    render(element);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Sign in with email and password, then enter the code.",
+    );
+  });
+
   it("announces generic authentication error for other error codes", async () => {
     const element = await LoginPage({
       searchParams: Promise.resolve({ error: "CredentialsSignin" }),

@@ -12,6 +12,7 @@ import { isGoogleEmailAllowed, getGoogleAllowlist } from "@/lib/google-allowlist
 import { clientIpFrom, consumeAuthRateLimit } from "@/lib/rate-limit";
 import { TwoFactorInvalidError, TwoFactorRequiredError } from "@/lib/auth-errors";
 import { isTwoFactorEnabled, verifySecondFactor } from "@/lib/two-factor";
+import { googleSignInBlockedByTwoFactor } from "@/lib/google-two-factor";
 
 const googleClientId = cleanEnv(
   process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID,
@@ -136,6 +137,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         );
         return false;
       }
+      // Password accounts with two-factor on must use email, password, and the
+      // code. Google must not open the session by itself (#388).
+      if (email && (await googleSignInBlockedByTwoFactor(email))) {
+        console.warn(`[auth] Google sign-in refused for ${email}: two-factor is on`);
+        return "/login?error=TwoFactor";
+      }
       return true;
     },
     async jwt({ token, user, account, profile }) {
@@ -153,6 +160,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           if (!isGoogleEmailAllowed(email)) {
             throw new Error(
               `Google sign-in denied for ${email}: not on the allowlist`,
+            );
+          }
+          if (await googleSignInBlockedByTwoFactor(email)) {
+            throw new Error(
+              `Google sign-in refused for ${email}: two-factor is enabled`,
             );
           }
           const name =
