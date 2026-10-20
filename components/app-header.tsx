@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { SignOutButton } from "@/components/sign-out-button";
 import { BrandLockup } from "@/components/brand-lockup";
 import { ProjectSwitcher } from "@/components/project-switcher";
+import { AgentKeyCopyButton } from "@/components/agent-key-copy";
 import { RoleSwitcher } from "@/components/role-switcher";
 import type { ProjectChoice } from "@/lib/project-context";
 import {
@@ -213,12 +214,17 @@ export function AppHeader({
           <BrandLockup href="/issues" size="sm" />
         </div>
 
-        {/* #426: the active project, visible wherever projects change what a page shows. */}
-        <ProjectSwitcher
-          projects={projects}
-          activeProjectId={activeProjectId}
-          className="hidden shrink-0 md:block"
-        />
+        {/* #426: the active project and agent key, visible wherever projects change what a page shows. */}
+        <div className="hidden shrink-0 items-center gap-2 md:flex">
+          <ProjectSwitcher
+            projects={projects}
+            activeProjectId={activeProjectId}
+          />
+          <AgentKeyCopyButton
+            projectId={activeProjectId ?? projects[0]?.id}
+            projectName={projects.find((p) => p.id === (activeProjectId ?? projects[0]?.id))?.name}
+          />
+        </div>
 
         {/* Desktop navigation: the active page is underlined on the header's edge. */}
         <nav aria-label="Main" className="hidden h-full items-stretch gap-1 md:flex">
@@ -366,10 +372,15 @@ export function AppHeader({
           className="max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-4 pt-2 md:hidden"
         >
           {projects.length > 0 ? (
-            <div className="border-b border-slate-200 pb-2">
+            <div className="flex flex-col gap-2 border-b border-slate-200 pb-3">
               <ProjectSwitcher
                 projects={projects}
                 activeProjectId={activeProjectId}
+                fullWidth
+              />
+              <AgentKeyCopyButton
+                projectId={activeProjectId ?? projects[0]?.id}
+                projectName={projects.find((p) => p.id === (activeProjectId ?? projects[0]?.id))?.name}
                 fullWidth
               />
             </div>
