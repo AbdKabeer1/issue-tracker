@@ -631,6 +631,8 @@ model AgentPairing {
   createdAt      DateTime  @default(now())
   owner          User?     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
   project        Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([expiresAt])
 }
 
 /// Every agent action, so any call can be traced and undone (#427, #450).
@@ -658,6 +660,7 @@ model AgentAuditEvent {
   @@index([tenantId, createdAt])
   @@index([agentId, createdAt])
   @@index([bugId, createdAt])
+  @@index([createdAt])
 }
 
 /// An agent working an issue for a person (#432, #438, #449).
@@ -936,6 +939,7 @@ model AgentEvent {
   deliveries   WebhookDelivery[]
 
   @@index([tenantId, createdAt, id])
+  @@index([createdAt])
 }
 
 /// An agent with a public HTTPS endpoint opting in to webhooks (#445). The
@@ -974,4 +978,5 @@ model WebhookDelivery {
 
   @@unique([subscriptionId, eventId])
   @@index([status, nextAttemptAt])
+  @@index([status, createdAt])
 }

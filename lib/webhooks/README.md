@@ -45,3 +45,12 @@ constant time (the exported `verify` helper does both). Return a 2xx response
 after accepting the event, and deduplicate by event id: delivery is at least
 once. The webhook JSON uses the same event fields and ids as the poll response.
 Webhook failure never removes events from the poll feed.
+
+Retention (#546): nothing in this table set grows forever. Each scheduler
+tick has a 1-in-50 chance to also run a bounded sweep (`lib/agent-retention.ts`)
+that removes finished webhook deliveries (`delivered`/`dead`) after 30 days,
+events after 7 days (an event's deliveries go with it via the FK cascade, so
+finished deliveries never survive their event by long), expired pairings one
+day after expiry, and agent audit rows after 180 days — recent rows are always
+kept, so plausible undo targets survive. Each table loses at most 500 rows per
+sweep; a failing sweep never blocks delivery and is retried on the next run.
