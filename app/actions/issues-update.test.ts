@@ -64,6 +64,7 @@ const SOMEONE = "csomeone0000001";
 let written: Record<string, unknown> | null;
 let activities: string[] = [];
 let awarded: Array<Record<string, unknown>> = [];
+let claimReleases: Array<Record<string, unknown>> = [];
 
 function issue(assigneeId: string | null, extra: Record<string, unknown> = {}) {
   return {
@@ -101,6 +102,7 @@ beforeEach(() => {
   written = null;
   activities = [];
   awarded = [];
+  claimReleases = [];
   db.user.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({ name: where.id }));
   db.issueType.findUnique.mockResolvedValue({ id: "t1", name: "Fix", isActive: true });
   db.category.findFirst.mockResolvedValue({ id: "c1", name: "Web", tenantId: "tenant-zedu" });
@@ -114,6 +116,9 @@ beforeEach(() => {
       },
       // Used once assignees auto-watch issues (#216).
       issueWatch: { createMany: vi.fn() },
+      issueClaim: {
+        updateMany: vi.fn(async (input: Record<string, unknown>) => { claimReleases.push(input); return { count: 1 }; }),
+      },
       // #428: the points ledger.
       pointEntry: {
         createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
@@ -199,6 +204,21 @@ describe("updateBugAction unboosts finished issues (#256)", () => {
     await runBoosted("closed", { status: "closed" });
     expect(written).toEqual({ status: "closed" });
     expect(activities).toEqual([]);
+  });
+});
+
+describe("updateBugAction releases claims on completed issues (#621)", () => {
+  it.each(["resolved", "closed"] as const)("releases active claims as %s when the issue is completed", async (status) => {
+    await run("admin", ME, { status });
+    expect(claimReleases).toEqual([{
+      where: { bugId: "bug1", status: "active", releasedAt: null },
+      data: { status: "released", releasedAt: expect.any(Date), releaseReason: status },
+    }]);
+  });
+
+  it("does not release claims when an issue remains active", async () => {
+    await run("admin", ME, { status: "in_progress" });
+    expect(claimReleases).toEqual([]);
   });
 });
 

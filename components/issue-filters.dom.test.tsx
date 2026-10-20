@@ -23,6 +23,55 @@ const tagTypes = [
   { id: "t2", name: "Fixes" },
 ];
 
+describe("IssueFilters milestone filters (#728)", () => {
+  const milestones = [
+    { id: "m1", title: "Release 1", isClosed: false },
+    { id: "m2", title: "Release 2", isClosed: true },
+  ];
+
+  beforeEach(() => {
+    nav.params = new URLSearchParams();
+    nav.push.mockReset();
+    nav.replace.mockReset();
+  });
+  afterEach(cleanup);
+
+  it.each([["m1", "Release 1"], ["m2", "Release 2"], ["none", "No milestone"]])(
+    "shows a removable milestone-only filter for %s",
+    (id, label) => {
+      nav.params = new URLSearchParams(`milestone=${id}&page=3`);
+      render(<IssueFilters milestones={milestones} />);
+
+      const remove = screen.getByRole("button", { name: "Remove milestone filter" });
+      expect(remove.parentElement).toHaveTextContent(`Milestone: ${label}`);
+      expect(screen.getByRole("button", { name: "Clear all filters" })).toBeInTheDocument();
+      fireEvent.click(remove);
+      expect(nav.push).toHaveBeenCalledWith("/issues");
+    },
+  );
+
+  it("preserves other filters and resets paging when removing a milestone", () => {
+    nav.params = new URLSearchParams("milestone=m1&status=open&page=3");
+    render(<IssueFilters milestones={milestones} />);
+    fireEvent.click(screen.getByRole("button", { name: "Remove milestone filter" }));
+    expect(nav.push).toHaveBeenCalledWith("/issues?status=open");
+  });
+
+  it("clears the milestone along with other filters", () => {
+    nav.params = new URLSearchParams("milestone=m1&status=open&page=3");
+    render(<IssueFilters milestones={milestones} />);
+    fireEvent.click(screen.getByRole("button", { name: "Clear all filters" }));
+    expect(nav.push).toHaveBeenCalledWith("/issues");
+  });
+
+  it("does not show active controls for an empty milestone", () => {
+    nav.params = new URLSearchParams("milestone=&page=3");
+    render(<IssueFilters milestones={milestones} />);
+    expect(screen.queryByRole("button", { name: "Remove milestone filter" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear all filters" })).not.toBeInTheDocument();
+  });
+});
+
 function typeSearch(value: string) {
   fireEvent.change(screen.getByRole("combobox", { name: "Search" }), {
     target: { value },

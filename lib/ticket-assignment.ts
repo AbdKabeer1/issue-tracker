@@ -41,13 +41,13 @@ export function canAssignTicket({
   targetAssigneeId?: string | null;
   voteCount?: number;
 }): boolean {
+  if (isOrganizationAdmin(membershipRole, actorRole)) {
+    return true;
+  }
+
   // If assigning work to someone (not unassigning), check work readiness threshold if voteCount is specified (#764)
   if (targetAssigneeId && typeof voteCount === "number" && voteCount < WORK_READINESS_VOTE_THRESHOLD) {
     return false;
-  }
-
-  if (isOrganizationAdmin(membershipRole, actorRole)) {
-    return true;
   }
 
   // Self-assigning (only allowed if unassigned or already assigned to actor)

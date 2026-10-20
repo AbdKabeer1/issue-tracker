@@ -100,6 +100,15 @@ describe("submitTestVerdict: who may verdict (#434)", () => {
     expect(state.verdicts).toHaveLength(0);
   });
 
+  it("rejects the human reporter's own agent when the beneficiary is unset (#620)", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ beneficiaryUserId: null, reporterId: "ada" }));
+    expect(await submitTestVerdict(reviewer("r4", "ada"), "bug1", good)).toMatchObject({
+      status: 403,
+      error: "not_independent",
+    });
+    expect(db.bug.findFirst.mock.calls[0][0].select.reporterId).toBe(true);
+  });
+
   it("rejects a reviewer whose owner holds the active claim", async () => {
     db.bug.findFirst.mockResolvedValue(
       bugRow({ claims: [{ status: "active", releasedAt: null, agentId: "w1", agent: { ownerUserId: "rob" } }] }),
