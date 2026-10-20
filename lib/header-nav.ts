@@ -65,6 +65,8 @@ export function headerNavItems(
     );
   }
 
+  items.push({ href: "/docs", label: "API Docs" });
+
   if (isSuperAdmin(role)) {
     items.push({ href: "/admin/users", label: "Admins" });
   }

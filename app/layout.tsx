@@ -36,6 +36,11 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     images: [SHARE_IMAGE.url],
   },
+  alternates: {
+    types: {
+      "text/plain": "/llms.txt",
+    },
+  },
 };
 
 /**
@@ -65,6 +70,7 @@ export default async function RootLayout({
   return (
     <html lang="en" data-theme={themeAttribute(theme)} suppressHydrationWarning>
       <head>
+        <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Integration Documentation" />
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem("theme");if(t&&!document.documentElement.hasAttribute("data-theme")){if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();`,

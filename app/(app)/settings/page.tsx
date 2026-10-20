@@ -8,6 +8,7 @@ import { DisplayNameForm } from "@/components/display-name-form";
 import { WalletAddressForm } from "@/components/wallet-address-form";
 import { KeyboardShortcutSettings } from "@/components/keyboard-shortcut-settings";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
+import { ChangePasswordForm } from "@/components/change-password-form";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Settings" };
@@ -24,6 +25,7 @@ export default async function SettingsPage() {
     notifyAssignments?: boolean;
     notifyStatusChanges?: boolean;
     keyboardShortcuts?: boolean;
+    passwordHash?: string | null;
   } | null = null;
 
   try {
@@ -39,6 +41,7 @@ export default async function SettingsPage() {
         notifyAssignments: true,
         notifyStatusChanges: true,
         keyboardShortcuts: true,
+        passwordHash: true,
       },
     });
   } catch (error) {
@@ -79,6 +82,13 @@ export default async function SettingsPage() {
           </Link>
         </p>
       </section>
+      {settings?.passwordHash ? (
+        <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Password</h2>
+          <p className="mt-2 text-sm text-slate-600">Changing your password signs out all active sessions.</p>
+          <ChangePasswordForm />
+        </section>
+      ) : null}
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Wallet
@@ -123,11 +133,17 @@ export default async function SettingsPage() {
             <Link href="/settings/agents" className="font-medium text-teal-700 hover:underline">
               Manage agents
             </Link>
+            <Link href="/settings/webhooks" className="font-medium text-teal-700 hover:underline">
+              Webhooks
+            </Link>
             <Link href="/settings/agents/pair" className="font-medium text-teal-700 hover:underline">
               Pair an agent
             </Link>
             <Link href="/settings/audit" className="font-medium text-teal-700 hover:underline">
               Agent audit log
+            </Link>
+            <Link href="/docs" className="font-medium text-teal-700 hover:underline">
+              API Docs & /llms.txt
             </Link>
           </div>
         </section>

@@ -440,6 +440,9 @@ export function AppHeader({
                   <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")}>
                     Settings
                   </MenuLink>
+                  <MenuLink href="/docs" active={isNavItemActive(pathname, "/docs")}>
+                    API Docs & /llms.txt
+                  </MenuLink>
                   <SignOutButton userId={userId} className={linkFocus} />
                 </div>
               </div>
@@ -550,6 +553,9 @@ export function AppHeader({
             </MenuLink>
             <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")} large>
               Settings
+            </MenuLink>
+            <MenuLink href="/docs" active={isNavItemActive(pathname, "/docs")} large>
+              API Docs & /llms.txt
             </MenuLink>
           </nav>
 

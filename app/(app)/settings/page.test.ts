@@ -75,6 +75,7 @@ describe("SettingsPage resilience", () => {
     expect(hrefs).toContain("/settings/audit");
     expect(hrefs).toContain("/settings/agents");
     expect(hrefs).toContain("/settings/agents/pair");
+    expect(hrefs).toContain("/settings/webhooks");
     delete process.env.AGENT_PLATFORM;
   });
 
