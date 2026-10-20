@@ -153,11 +153,14 @@ describe("human approval rule", () => {
 });
 
 describe("claim gate and human page", () => {
-  it("blocks pending/rejected redesigns and allows an approved or unlinked issue", async () => {
+  it("blocks pending redesigns and allows rejected, approved, or unlinked issues", async () => {
     db.redesignProposal.count.mockResolvedValueOnce(1);
     await expect(assertRedesignOpen("issue", db as never)).rejects.toThrow("waiting for a person");
     await expect(assertRedesignOpen("issue", db as never)).resolves.toBeUndefined();
-    expect(db.redesignProposal.count).toHaveBeenCalledWith({ where: { bugId: "issue", status: { in: ["proposed", "rejected"] } } });
+    await expect(assertRedesignOpen("issue", db as never)).resolves.toBeUndefined();
+    await expect(assertRedesignOpen("issue", db as never)).resolves.toBeUndefined();
+    expect(db.redesignProposal.count).toHaveBeenCalledTimes(4);
+    expect(db.redesignProposal.count).toHaveBeenCalledWith({ where: { bugId: "issue", status: "proposed" } });
   });
   it("shows the pending state in the active project's tenant-scoped page", async () => {
     const html = renderToStaticMarkup(await RedesignsPage());

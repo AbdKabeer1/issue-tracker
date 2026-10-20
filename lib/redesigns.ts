@@ -83,11 +83,11 @@ export async function decideRedesign(userId: string, tenantId: string, proposalI
 
 /** Claim callers may pass their transaction to keep this check with assignment. */
 export async function hasBlockingRedesign(bugId: string, db: PrismaClient | Prisma.TransactionClient = prisma): Promise<boolean> {
-  const blocked = await db.redesignProposal.count({ where: { bugId, status: { in: ["proposed", "rejected"] } } });
+  const blocked = await db.redesignProposal.count({ where: { bugId, status: "proposed" } });
   return blocked > 0;
 }
 
 export async function assertRedesignOpen(bugId: string, db: PrismaClient | Prisma.TransactionClient = prisma): Promise<void> {
   const blocked = await hasBlockingRedesign(bugId, db);
-  if (blocked) throw new IssueApiError(409, "This redesign is waiting for a person or was rejected.");
+  if (blocked) throw new IssueApiError(409, "This redesign is waiting for a person.");
 }
