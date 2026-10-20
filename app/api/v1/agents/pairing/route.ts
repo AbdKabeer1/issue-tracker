@@ -13,7 +13,7 @@ import { agentPlatformDisabledResponse } from "@/lib/agents/platform-gate";
  * poll `/api/v1/agents/pairing/token` with `device_code` every `interval` seconds.
  */
 export async function POST(req: NextRequest) {
-  const retryAfter = await consumePairingLimit("start", clientRateLimitKey(req.headers));
+  const retryAfter = await consumePairingLimit("start", clientRateLimitKey(req));
   if (retryAfter) {
     return NextResponse.json(
       { error: "rate_limited", message: RATE_LIMIT_MESSAGE },

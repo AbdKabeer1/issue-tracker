@@ -1,45 +1,47 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { formatDate } from "@/lib/format";
+import { formatDate, getDefaultTimeZone } from "@/lib/format";
 
 type LocalTimeProps = {
   date: Date | string;
   className?: string;
 };
 
-const emptySubscribe = () => () => {};
-
-function getClientTimeZone(): string {
+export function getClientTimeZone(): string {
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "Africa/Lagos";
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || getDefaultTimeZone();
   } catch {
-    return "Africa/Lagos";
+    return getDefaultTimeZone();
   }
 }
 
-function getServerTimeZone(): string {
-  return "Africa/Lagos";
+export function getServerTimeZone(): string {
+  return getDefaultTimeZone();
 }
 
+const emptySubscribe = () => () => {};
+
 export function LocalTime({ date, className }: LocalTimeProps) {
-  const timeZone = useSyncExternalStore(
+  const isClient = useSyncExternalStore(
     emptySubscribe,
-    getClientTimeZone,
-    getServerTimeZone,
+    () => true,
+    () => false,
   );
 
+  const timeZone = isClient ? getClientTimeZone() : getServerTimeZone();
   const formatted = formatDate(date, timeZone);
   const iso =
-    date instanceof Date
+    date instanceof Date && !isNaN(date.getTime())
       ? date.toISOString()
       : typeof date === "string"
         ? date
         : "";
 
   return (
-    <time dateTime={iso} className={className} suppressHydrationWarning>
+    <time dateTime={iso} className={className}>
       {formatted}
     </time>
   );
 }
+

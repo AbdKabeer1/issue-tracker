@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
 
     const last = events[events.length - 1];
     const cursor = last
-      ? encodeEventCursor({ createdAt: last.createdAt, id: last.id })
+      ? encodeEventCursor({ txid: last.txid, id: last.id })
       : cursorResult ? encodeEventCursor(cursorResult) : null;
 
     return NextResponse.json({

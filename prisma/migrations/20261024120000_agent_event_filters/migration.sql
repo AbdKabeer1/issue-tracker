@@ -1,5 +1,5 @@
--- #602: agents filter GET /api/v1/events by project and issue. The cursor
--- stays (createdAt, id), so each filter gets an index with that suffix.
+-- #602: agents filter GET /api/v1/events by project and issue. The feed is
+-- ordered by (txid, id) (#739), so each filter gets an index with that suffix.
 
 ALTER TABLE "AgentEvent" ADD COLUMN "projectId" TEXT;
 
@@ -24,7 +24,7 @@ CREATE TRIGGER "AgentEvent_set_projectId"
 BEFORE INSERT ON "AgentEvent"
 FOR EACH ROW EXECUTE FUNCTION "AgentEvent_set_projectId"();
 
-CREATE INDEX "AgentEvent_tenantId_projectId_createdAt_id_idx" ON "AgentEvent"("tenantId", "projectId", "createdAt", "id");
-CREATE INDEX "AgentEvent_tenantId_bugId_createdAt_id_idx" ON "AgentEvent"("tenantId", "bugId", "createdAt", "id");
+CREATE INDEX "AgentEvent_tenantId_projectId_txid_id_idx" ON "AgentEvent"("tenantId", "projectId", "txid", "id");
+CREATE INDEX "AgentEvent_tenantId_bugId_txid_id_idx" ON "AgentEvent"("tenantId", "bugId", "txid", "id");
 
 ALTER TABLE "AgentEvent" ADD CONSTRAINT "AgentEvent_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE SET NULL ON UPDATE CASCADE;

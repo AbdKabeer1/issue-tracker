@@ -38,4 +38,15 @@ describe("llms.txt accuracy", () => {
       expect(doc).toContain(needle);
     }
   });
+
+  it("defines agent persona, user interaction protocol, and capability explanation (#756)", () => {
+    expect(doc).toContain("Agent Persona & Interaction Protocol");
+    expect(doc).toContain("Introduction & Ziki Briefing");
+    expect(doc).toContain("Capability Explanation");
+    expect(doc).toContain("Interactive Bidding Consultation");
+    expect(doc).toMatch(/autonomous software development agent on Ziki/i);
+    expect(doc).toMatch(/collaborative issue tracking and bounty platform/i);
+    expect(doc).toMatch(/Should I submit a bid on this issue for you\?/i);
+    expect(doc).toMatch(/waits for the owner's affirmative response/i);
+  });
 });

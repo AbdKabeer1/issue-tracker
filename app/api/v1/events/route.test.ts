@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const db = vi.hoisted(() => ({
-  agentApiKey: { findUnique: vi.fn() }, agentAuditEvent: { create: vi.fn() }, agentEvent: { findMany: vi.fn() },
+  agentApiKey: { findUnique: vi.fn() }, agentAuditEvent: { create: vi.fn() }, agentEvent: { findMany: vi.fn() }, $queryRaw: vi.fn(),
   webhookSubscription: { findMany: vi.fn(), findFirst: vi.fn(), count: vi.fn(), create: vi.fn(), delete: vi.fn(), update: vi.fn() },
 }));
 const budget = vi.hoisted(() => vi.fn());
@@ -22,7 +22,7 @@ function request(path = "/events", method = "GET", body?: unknown, key = true) {
   });
 }
 const context = { params: Promise.resolve({ id: "subscription-a" }) };
-const event = { id: "event-a", createdAt: new Date("2026-10-19T12:00:00Z"), type: "issue.created", payload: {}, actorAgentId: "agent-a", bugId: "issue-a" };
+const event = { id: "event-a", txid: BigInt("100"), createdAt: new Date("2026-10-19T12:00:00Z"), type: "issue.created", payload: {}, actorAgentId: "agent-a", bugId: "issue-a" };
 function key(level = "contributor") {
   return { id: "key-a", revokedAt: null, agent: { id: "agent-a", name: "Agent", ownerUserId: "owner", tenantId: "tenant-a", level, burst: false, revokedAt: null, owner: { memberships: [{ tenantId: "tenant-a" }] } } };
 }
@@ -32,6 +32,7 @@ beforeEach(() => {
   db.agentApiKey.findUnique.mockResolvedValue(key());
   budget.mockResolvedValue({ allowed: true });
   db.agentEvent.findMany.mockResolvedValue([]);
+  db.$queryRaw.mockResolvedValue([{ xmin: "1000" }]);
   db.webhookSubscription.findMany.mockResolvedValue([]);
   db.webhookSubscription.count.mockResolvedValue(0);
   db.webhookSubscription.findFirst.mockResolvedValue({ id: "subscription-a" });
@@ -55,7 +56,7 @@ describe("events endpoint", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(response.headers.get("content-type")).toContain("application/json");
-    expect(db.agentEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: "tenant-a" } }));
+    expect(db.agentEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: "tenant-a", txid: { lt: BigInt("1000") } } }));
     expect(budget).toHaveBeenCalledWith({ id: "agent-a", burst: false }, "read");
     expect(db.agentAuditEvent.create).toHaveBeenCalled();
     expect(decodeEventCursor((await response.json()).cursor)?.id).toBe(event.id);
@@ -69,7 +70,7 @@ describe("events endpoint", () => {
     const empty = await (await GET(request(`/events?after=${page.cursor}`))).json();
     expect(empty.cursor).toBe(page.cursor);
     expect(db.agentEvent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: {
-      tenantId: "tenant-a", OR: [{ createdAt: { gt: event.createdAt } }, { createdAt: event.createdAt, id: { gt: "event-99" } }],
+      tenantId: "tenant-a", txid: { lt: BigInt("1000") }, OR: [{ txid: { gt: event.txid } }, { txid: event.txid, id: { gt: "event-99" } }],
     } }));
   });
   it("long-polls until an event arrives and returns immediately for wait=0", async () => {
@@ -99,18 +100,18 @@ describe("events endpoint", () => {
   });
 
   it("filters by type, project and issue, combined with the global cursor (#602)", async () => {
-    const cursor = encodeEventCursor({ createdAt: event.createdAt, id: event.id });
+    const cursor = encodeEventCursor({ txid: event.txid, id: event.id });
     db.agentEvent.findMany.mockResolvedValue([{ ...event, id: "event-b" }]);
     const response = await GET(request(`/events?types=comment.created,claim.*&projectId=proj-1&bugId=issue-a&after=${cursor}`));
     expect(response.status).toBe(200);
     expect(db.agentEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {
       tenantId: "tenant-a", projectId: "proj-1", bugId: "issue-a",
       AND: [{ OR: [{ type: { in: ["comment.created"] } }, { type: { startsWith: "claim." } }] }],
-      OR: [{ createdAt: { gt: event.createdAt } }, { createdAt: event.createdAt, id: { gt: event.id } }],
+      txid: { lt: BigInt("1000") }, OR: [{ txid: { gt: event.txid } }, { txid: event.txid, id: { gt: event.id } }],
     } }));
     expect(decodeEventCursor((await response.json()).cursor)?.id).toBe("event-b");
     await GET(request("/events?projectId=proj-1"));
-    expect(db.agentEvent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { tenantId: "tenant-a", projectId: "proj-1" } }));
+    expect(db.agentEvent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { tenantId: "tenant-a", projectId: "proj-1", txid: { lt: BigInt("1000") } } }));
   });
 
   it("returns 400 listing the valid types for an unknown type (#602)", async () => {
