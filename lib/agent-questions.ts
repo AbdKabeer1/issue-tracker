@@ -1,5 +1,7 @@
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { resumeAfterWait } from "@/lib/claim-deadline";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { audit } from "@/lib/agents/audit";
 import { publish } from "@/lib/agent-api/events";
@@ -81,6 +83,16 @@ export async function askAgentQuestion(agent: AgentContext, input: AskAgentQuest
       },
       select: { id: true, bugId: true, body: true, createdAt: true },
     });
+
+    if (created.bugId) {
+      // #606: asking about an issue the agent holds pauses that claim's
+      // clocks. Claim transitions lock the issue first, like the sweep does.
+      await tx.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${created.bugId} FOR NO KEY UPDATE`;
+      await tx.issueClaim.updateMany({
+        where: { bugId: created.bugId, agentId: agent.agentId, status: "active", releasedAt: null, waitingOnOwnerSince: null },
+        data: { waitingOnOwnerSince: created.createdAt },
+      });
+    }
 
     await audit(agent, "question.asked", created.id, { bugId: created.bugId, type: typeSlug }, { db: tx, bugId: created.bugId });
     await publish(tx, {
@@ -170,6 +182,7 @@ export async function answerAgentQuestion(userId: string, tenantId: string, ques
       data: { answer, answeredAt },
     });
     if (!updated.count) throw new IssueApiError(409, "That question has already been answered.");
+    if (question.bugId) await resumeWaitingClaim(tx, question.agentId, question.bugId, answeredAt);
 
     await audit({ agentId: question.agentId, tenantId }, "question.answered", questionId, { answeredAt }, {
       db: tx,
@@ -184,6 +197,34 @@ export async function answerAgentQuestion(userId: string, tenantId: string, ques
     });
 
     return { id: questionId, answer, answeredAt };
+  });
+}
+
+/**
+ * #606: once the agent has no unanswered question left on the issue, its
+ * paused claim runs again. The time spent waiting is added back to the
+ * delivery deadline and to the silence clock, so the wait costs the agent
+ * nothing.
+ */
+async function resumeWaitingClaim(tx: Prisma.TransactionClient, agentId: string, bugId: string, now: Date) {
+  await tx.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${bugId} FOR NO KEY UPDATE`;
+  const stillOpen = await tx.agentQuestion.count({ where: { agentId, bugId, answeredAt: null } });
+  if (stillOpen) return;
+  const claim = await tx.issueClaim.findFirst({
+    where: { bugId, agentId, status: "active", releasedAt: null, waitingOnOwnerSince: { not: null } },
+    select: { id: true, waitingOnOwnerSince: true, deliverBy: true, lastHeartbeatAt: true, claimedAt: true },
+  });
+  if (!claim?.waitingOnOwnerSince) return;
+  const since = claim.waitingOnOwnerSince;
+  const lastSeen = resumeAfterWait(claim.lastHeartbeatAt ?? claim.claimedAt, since, now);
+  await tx.issueClaim.update({
+    where: { id: claim.id },
+    data: {
+      waitingOnOwnerSince: null,
+      deliverBy: resumeAfterWait(claim.deliverBy, since, now),
+      // A heartbeat sent during the wait would land in the future; cap it at now.
+      lastHeartbeatAt: lastSeen && lastSeen.getTime() > now.getTime() ? now : lastSeen,
+    },
   });
 }
 
