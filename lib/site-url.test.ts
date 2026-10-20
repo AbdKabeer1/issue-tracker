@@ -7,6 +7,10 @@ const ORIGINAL_SITE = process.env.NEXT_PUBLIC_SITE_URL;
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 const ORIGINAL_ALLOW = process.env.SITE_URL_ALLOW_LOOPBACK;
 
+function setNodeEnv(value: string | undefined) {
+  (process.env as { NODE_ENV?: string }).NODE_ENV = value;
+}
+
 afterEach(() => {
   if (ORIGINAL_AUTH === undefined) delete process.env.AUTH_URL;
   else process.env.AUTH_URL = ORIGINAL_AUTH;
@@ -16,7 +20,7 @@ afterEach(() => {
   else process.env.NEXT_PUBLIC_SITE_URL = ORIGINAL_SITE;
   if (ORIGINAL_ALLOW === undefined) delete process.env.SITE_URL_ALLOW_LOOPBACK;
   else process.env.SITE_URL_ALLOW_LOOPBACK = ORIGINAL_ALLOW;
-  process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+  setNodeEnv(ORIGINAL_NODE_ENV);
 });
 
 describe("getSiteUrl", () => {
@@ -34,7 +38,7 @@ describe("getSiteUrl", () => {
   });
 
   it("uses ziki.dev in production when the auth URL is localhost", () => {
-    process.env.NODE_ENV = "production";
+    setNodeEnv("production");
     process.env.AUTH_URL = "http://localhost:3000/api/auth";
     delete process.env.NEXTAUTH_URL;
     delete process.env.NEXT_PUBLIC_SITE_URL;
@@ -44,7 +48,7 @@ describe("getSiteUrl", () => {
   });
 
   it("keeps localhost for a production server that opts in", () => {
-    process.env.NODE_ENV = "production";
+    setNodeEnv("production");
     process.env.AUTH_URL = "http://localhost:3000/api/auth";
     process.env.SITE_URL_ALLOW_LOOPBACK = "true";
     expect(getSiteUrl()).toBe("http://localhost:3000");
