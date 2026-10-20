@@ -6,6 +6,8 @@ import { isTenantAdmin } from "@/lib/agents/membership";
 import { prisma } from "@/lib/prisma";
 import { Button } from "@/components/ui/button";
 import { ProjectSettingsForm } from "./settings-form";
+import { ProjectAreasManager } from "./areas-manager";
+import { ProjectApprovalRulesSection } from "./approval-rules";
 
 export const metadata = { title: "Project settings" };
 
@@ -23,9 +25,26 @@ export default async function ProjectSettingsPage({
   const { slug } = await params;
   const project = await prisma.project.findFirst({
     where: { tenantId, slug },
-    select: { id: true, slug: true, name: true, goal: true, repoUrl: true, stagingUrl: true, githubInstallationId: true },
+    select: { id: true, slug: true, name: true, goal: true, repoUrl: true, stagingUrl: true, githubInstallationId: true, rewardConfig: true },
   });
   if (!project) notFound();
+  const areas = await prisma.projectArea.findMany({
+    where: { projectId: project.id },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    select: { id: true, name: true, slug: true, description: true, paths: true },
+  });
+  const [issueTypes, approvalRules] = await Promise.all([
+    prisma.issueType.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.approvalRule.findMany({
+      where: { projectId: project.id },
+      include: { issueType: { select: { id: true, name: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
   const { github } = await searchParams;
 
   return (
@@ -48,6 +67,15 @@ export default async function ProjectSettingsPage({
           </form>
         </div>
       </section>
+      <section className="space-y-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <ProjectApprovalRulesSection
+          projectId={project.id}
+          slug={project.slug}
+          rules={approvalRules}
+          issueTypes={issueTypes}
+        />
+      </section>
+      <ProjectAreasManager projectSlug={project.slug} areas={areas} />
       <Link href="/issues" className="inline-block text-sm text-teal-700 hover:underline">Back to issues</Link>
     </div>
   );

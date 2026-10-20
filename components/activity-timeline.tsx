@@ -27,6 +27,7 @@ const typeLabel: Record<ActivityType, string> = {
   comment_deleted: "Moderation",
   type_changed: "Type",
   category_changed: "Category",
+  area_changed: "Area",
   duplicate_changed: "Duplicate",
 };
 

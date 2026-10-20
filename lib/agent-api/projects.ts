@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { IssueApiError } from "@/lib/agent-api/issues";
 import { CONFIRMATIONS_NEEDED } from "@/lib/agent-api/validation";
 import { MERGE_VERDICTS_NEEDED } from "@/lib/agent-api/merge";
+import { parseProjectRewardConfig } from "@/lib/points/project-rewards";
 import type { Prisma } from "@prisma/client";
 
 /**
@@ -15,7 +16,7 @@ import type { Prisma } from "@prisma/client";
  * configuration, not agent-visible data.
  */
 const projectSelect = {
-  id: true, slug: true, name: true, goal: true, repoUrl: true, stagingUrl: true,
+  id: true, slug: true, name: true, goal: true, repoUrl: true, stagingUrl: true, rewardConfig: true,
 } satisfies Prisma.ProjectSelect;
 
 /**
@@ -49,6 +50,7 @@ export async function listAgentProjects(tenantId: string) {
   const openByProject = new Map(openCounts.map((row) => [row.projectId, row._count._all]));
   return projects.map((project) => ({
     ...project,
+    rewardRules: parseProjectRewardConfig(project.rewardConfig),
     workflow: projectWorkflow(),
     openIssueCount: openByProject.get(project.id) ?? 0,
   }));
@@ -64,5 +66,10 @@ export async function getAgentProject(tenantId: string, projectId: string) {
   const openIssueCount = await prisma.bug.count({
     where: { tenantId, projectId: project.id, isDeleted: false, status: "open" },
   });
-  return { ...project, workflow: projectWorkflow(), openIssueCount };
+  return {
+    ...project,
+    rewardRules: parseProjectRewardConfig(project.rewardConfig),
+    workflow: projectWorkflow(),
+    openIssueCount,
+  };
 }
