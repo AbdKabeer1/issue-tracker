@@ -10,6 +10,7 @@ import { RichText } from "@/components/rich-text";
 import { MentionText } from "@/components/comment-body";
 import Link from "next/link";
 import { LocalTime } from "@/components/local-time";
+import { ExpandableText } from "@/components/expandable-text";
 
 export type EditableIssueDescriptionProps = {
   bugId: string;
@@ -179,10 +180,12 @@ export function EditableIssueDescription({
         </form>
       ) : (
         <div className="mt-2">
-          <RichText
-            content={initialDescription}
-            renderMentions={(text) => <MentionText text={text} users={users} />}
-          />
+          <ExpandableText maxLines={6} expandText="View more" collapseText="View less">
+            <RichText
+              content={initialDescription}
+              renderMentions={(text) => <MentionText text={text} users={users} />}
+            />
+          </ExpandableText>
         </div>
       )}
 

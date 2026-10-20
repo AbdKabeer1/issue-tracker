@@ -1,6 +1,7 @@
 import type { ActivityType } from "@prisma/client";
 import { activityNote } from "@/lib/resolution-note";
 import { LocalTime } from "@/components/local-time";
+import { ExpandableText } from "@/components/expandable-text";
 
 export type ActivityEntry = {
   id: string;
@@ -76,12 +77,16 @@ export function ActivityTimeline({
                 <span className="font-medium text-slate-900">
                   {entry.actor.name}
                 </span>{" "}
-                {entry.summary}
+                <ExpandableText maxLines={2} expandText="View more" collapseText="View less">
+                  {entry.summary}
+                </ExpandableText>
               </p>
               {entry.type === "status_changed" && activityNote(entry.metadata) ? (
-                <blockquote className="mt-1 whitespace-pre-wrap break-words border-l-2 border-emerald-300 pl-3 text-sm text-slate-700">
-                  {activityNote(entry.metadata)}
-                </blockquote>
+                <ExpandableText maxLines={3} expandText="View more" collapseText="View less">
+                  <blockquote className="mt-1 whitespace-pre-wrap break-words border-l-2 border-emerald-300 pl-3 text-sm text-slate-700">
+                    {activityNote(entry.metadata)}
+                  </blockquote>
+                </ExpandableText>
               ) : null}
             </li>
           ))}
