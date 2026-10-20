@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { SignOutButton } from "@/components/sign-out-button";
 import { BrandLockup } from "@/components/brand-lockup";
 import { ProjectSwitcher } from "@/components/project-switcher";
-import { AgentKeyCopyButton } from "@/components/agent-key-copy";
+import { AgentKeyCopyButton, type AgentKeyHint } from "@/components/agent-key-copy";
 import { RoleSwitcher } from "@/components/role-switcher";
 import type { ProjectChoice } from "@/lib/project-context";
 import {
@@ -19,6 +19,7 @@ import {
 import { isAdmin, type AppRole } from "@/lib/roles";
 import { FOCUSABLE, wrapFocusIndex } from "@/lib/focus-trap";
 import { Avatar } from "@/components/avatar";
+import { ThemeToggle, AccountThemeSelector } from "@/components/theme-toggle";
 
 /** Closes a popover on outside click or Escape, returning focus to its trigger. */
 function useDismiss(
@@ -154,9 +155,14 @@ export function AppHeader({
   isRealSuperAdmin,
   isRealAdmin,
   unreadCount = 0,
+  pendingEscalationsCount = 0,
   userId,
   projects = [],
   activeProjectId = null,
+  canManagePlatforms = false,
+  agentKeys = [],
+  apiKey = null,
+  keyPrefix = null,
 }: {
   userName?: string | null;
   /** Their picture, if their sign-in provider gave one (#290). */
@@ -166,10 +172,19 @@ export function AppHeader({
   isRealAdmin?: boolean;
   /** Unread in-app notifications (#216). */
   unreadCount?: number;
+  /** Unresolved escalations from agents (#763). */
+  pendingEscalationsCount?: number;
   userId?: string | null;
   /** The tenant's projects and the one currently active (#426). */
   projects?: ProjectChoice[];
   activeProjectId?: string | null;
+  /** Owner or admin of the organization currently open. */
+  canManagePlatforms?: boolean;
+  /** Prefixes of this person's live agent keys for the active project. */
+  agentKeys?: AgentKeyHint[];
+  /** Personal API key for the active project. Copying it includes the site. */
+  apiKey?: string | null;
+  keyPrefix?: string | null;
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -195,7 +210,10 @@ export function AppHeader({
     setAccountOpen(false);
   }
 
-  const items = headerNavItems(role);
+  const items = headerNavItems(role, {
+    managePlatforms: canManagePlatforms,
+    pendingEscalations: pendingEscalationsCount,
+  });
   const canSwitchRole = Boolean((isRealSuperAdmin || isRealAdmin) && role);
   const realRole = realRoleOf({ isRealSuperAdmin, isRealAdmin });
   const viewingAsOther = canSwitchRole && role !== realRole;
@@ -205,11 +223,14 @@ export function AppHeader({
   const effectiveRole: AppRole = role ?? "user";
 
   return (
-    <header
-      ref={headerRef}
-      className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80"
-    >
-      <div className="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4 sm:gap-6">
+    <header ref={headerRef} className="sticky top-0 z-40">
+      {/* Blur lives on its own layer. backdrop-filter on the header itself
+          clips overflow, which hid the account menu under the bar. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 -z-10 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80"
+      />
+      <div className="relative mx-auto flex h-14 max-w-7xl items-center gap-4 px-4 sm:gap-6">
         <div className="shrink-0">
           <BrandLockup href="/issues" size="sm" />
         </div>
@@ -223,11 +244,17 @@ export function AppHeader({
           <AgentKeyCopyButton
             projectId={activeProjectId ?? projects[0]?.id}
             projectName={projects.find((p) => p.id === (activeProjectId ?? projects[0]?.id))?.name}
+            keys={agentKeys}
+            apiKey={apiKey}
+            keyPrefix={keyPrefix}
           />
         </div>
 
         {/* Desktop navigation: the active page is underlined on the header's edge. */}
-        <nav aria-label="Main" className="hidden h-full items-stretch gap-1 md:flex">
+        <nav
+          aria-label="Main"
+          className="hidden h-full min-w-0 flex-1 items-stretch gap-1 overflow-x-auto md:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           {items.map((item) => {
             const active = isNavItemActive(pathname, item.href);
             return (
@@ -235,19 +262,27 @@ export function AppHeader({
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`relative inline-flex items-center rounded-sm px-2.5 text-sm transition-colors ${linkFocus} ${
+                className={`relative inline-flex items-center gap-1.5 rounded-sm px-2.5 text-sm transition-colors ${linkFocus} ${
                   active
-                    ? "font-medium text-slate-900 after:absolute after:inset-x-2.5 after:-bottom-px after:h-0.5 after:rounded-full after:bg-teal-700"
+                    ? "font-medium text-slate-900 after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-teal-700"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                {item.label}
+                <span>{item.label}</span>
+                {typeof item.badge === "number" && item.badge > 0 ? (
+                  <span
+                    aria-label={`${item.badge} pending`}
+                    className="inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white ring-1 ring-white"
+                  >
+                    {item.badge > 99 ? "99+" : item.badge}
+                  </span>
+                ) : null}
               </Link>
             );
           })}
         </nav>
 
-        <div className="ml-auto flex items-center gap-2 sm:gap-3">
+        <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
           {viewingAsOther ? (
             <button
               type="button"
@@ -263,6 +298,8 @@ export function AppHeader({
             unreadCount={unreadCount}
             active={isNavItemActive(pathname, "/notifications")}
           />
+
+          <ThemeToggle />
 
           <Link
             href="/issues/new"
@@ -305,7 +342,7 @@ export function AppHeader({
             {accountOpen ? (
               <div
                 id="account-menu"
-                className="absolute right-0 top-full mt-2 w-64 origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg ring-1 ring-black/5 motion-safe:animate-[header-pop_120ms_ease-out]"
+                className="absolute right-0 top-full z-50 mt-2 w-64 origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg ring-1 ring-black/5 motion-safe:animate-[header-pop_120ms_ease-out]"
               >
                 <AccountSummary userName={userName} userImage={userImage} role={effectiveRole} realRole={realRole} />
                 {canSwitchRole ? (
@@ -314,6 +351,7 @@ export function AppHeader({
                   </div>
                 ) : null}
                 <div className="border-t border-slate-100 pt-1.5">
+                  <AccountThemeSelector />
                   {isAdmin(effectiveRole) ? (
                     <MenuLink
                       href="/admin/dashboard"
@@ -369,7 +407,7 @@ export function AppHeader({
         <div
           id="mobile-menu"
           ref={menuPanelRef}
-          className="max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-4 pt-2 md:hidden"
+          className="relative max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-4 pt-2 md:hidden"
         >
           {projects.length > 0 ? (
             <div className="flex flex-col gap-2 border-b border-slate-200 pb-3">
@@ -381,6 +419,9 @@ export function AppHeader({
               <AgentKeyCopyButton
                 projectId={activeProjectId ?? projects[0]?.id}
                 projectName={projects.find((p) => p.id === (activeProjectId ?? projects[0]?.id))?.name}
+                keys={agentKeys}
+                apiKey={apiKey}
+                keyPrefix={keyPrefix}
                 fullWidth
               />
             </div>
@@ -391,6 +432,7 @@ export function AppHeader({
                 key={item.href}
                 href={item.href}
                 active={isNavItemActive(pathname, item.href)}
+                badge={item.badge}
                 large
               >
                 {item.label}
@@ -425,6 +467,7 @@ export function AppHeader({
               </div>
             ) : null}
             <div className="border-t border-slate-200 p-2">
+              <AccountThemeSelector />
               <SignOutButton userId={userId} className={linkFocus} />
             </div>
           </div>
@@ -465,24 +508,34 @@ function MenuLink({
   href,
   active,
   large = false,
+  badge,
   children,
 }: {
   href: string;
   active: boolean;
   large?: boolean;
+  badge?: number;
   children: React.ReactNode;
 }) {
   return (
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className={`block rounded-md ${large ? "px-3 py-2.5 text-[15px]" : "px-2 py-1.5 text-sm"} ${linkFocus} ${
+      className={`flex items-center justify-between rounded-md ${large ? "px-3 py-2.5 text-[15px]" : "px-2 py-1.5 text-sm"} ${linkFocus} ${
         active
           ? "bg-teal-50 font-medium text-teal-900"
           : "text-slate-700 hover:bg-slate-50"
       }`}
     >
-      {children}
+      <span>{children}</span>
+      {typeof badge === "number" && badge > 0 ? (
+        <span
+          aria-label={`${badge} pending`}
+          className="inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white ring-1 ring-white"
+        >
+          {badge > 99 ? "99+" : badge}
+        </span>
+      ) : null}
     </Link>
   );
 }

@@ -144,4 +144,58 @@ describe("webhook subscription endpoints", () => {
     vi.stubEnv("WEBHOOK_SECRET_KEY", "invalid");
     expect((await subscribe(request("/webhooks", "POST", { url: "https://receiver.test" }))).status).toBe(503);
   });
+
+  it("rotates the signing secret and shows the raw secret once (#682)", async () => {
+    const response = await PATCH(
+      request("/webhooks/id", "PATCH", { rotateSecret: true }),
+      context,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const rawSecret = body.subscription.signingSecret;
+    expect(rawSecret).toBeTruthy();
+    // The stored copy is encrypted, so the server can keep signing deliveries.
+    const stored = db.webhookSubscription.update.mock.calls[0][0].data.signingSecretEncrypted;
+    expect(stored).not.toBe(rawSecret);
+    expect(decryptSigningSecret(stored)).toBe(rawSecret);
+    // Rotating replaces only the secret: the subscription keeps its state.
+    expect(db.webhookSubscription.update.mock.calls[0][0].data).toEqual({ signingSecretEncrypted: stored });
+  });
+
+  it("re-enables without rotating when no rotation is asked for", async () => {
+    const response = await PATCH(request("/webhooks/id", "PATCH"), context);
+    expect(response.status).toBe(200);
+    expect((await response.json()).subscription.signingSecret).toBeUndefined();
+    expect(db.webhookSubscription.update.mock.calls[0][0].data).toEqual({
+      enabled: true,
+      disabledAt: null,
+      failureCount: 0,
+    });
+  });
+
+  it("rejects a malformed rotation body, and only after the key is accepted", async () => {
+    const response = await PATCH(
+      request("/webhooks/id", "PATCH", { rotateSecret: "yes" }),
+      context,
+    );
+    expect(response.status).toBe(400);
+    expect(db.webhookSubscription.update).not.toHaveBeenCalled();
+
+    // An anonymous caller must not be able to tell a bad body from a good one.
+    const anonymous = await PATCH(
+      request("/webhooks/id", "PATCH", { rotateSecret: "yes" }, false),
+      context,
+    );
+    expect(anonymous.status).toBe(401);
+  });
+
+  it("will not rotate a subscription the agent does not own", async () => {
+    db.webhookSubscription.findFirst.mockResolvedValueOnce(null);
+    const response = await PATCH(
+      request("/webhooks/id", "PATCH", { rotateSecret: true }),
+      context,
+    );
+    expect(response.status).toBe(404);
+    expect(db.webhookSubscription.update).not.toHaveBeenCalled();
+  });
 });

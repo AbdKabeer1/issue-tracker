@@ -1,10 +1,12 @@
 import Link from "next/link";
 import type { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
+import { currentTenantIdFor } from "@/lib/tenant-context";
 import { CreateIssueForm } from "@/components/create-issue-form";
+import { activeProjectIdFor } from "@/lib/project-context";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Report an issue" };
@@ -44,7 +46,7 @@ async function loadMentionUsers(): Promise<MentionUser[]> {
 
 export default async function NewBugPage() {
   const user = await requireUser();
-  const admin = isAdmin(user.role);
+  const admin = (await currentTenantAccess(user.id, user.role)).admin;
   // Every signed-in user is needed for @mentions; admins additionally get
   // the assignee picker. Each lookup fails on its own: the list page already
   // does this, and a throw here is the error page instead of the form.
@@ -53,9 +55,16 @@ export default async function NewBugPage() {
     // Cached (#297). getActivePlatforms also seeds the default platforms,
     // but only when they're actually missing — it used to upsert all three
     // on every render of this form.
-    loadOrEmpty("platforms", () => getActivePlatforms(), []),
+    loadOrEmpty("platforms", async () => getActivePlatforms(await currentTenantIdFor(user.id)), []),
     loadOrEmpty("issue types", () => getActiveIssueTypesCached(), []),
   ]);
+  // The active project scopes the create-issue draft (#729): switching
+  // projects must not surface this form's text in another project.
+  const tenantId = await currentTenantIdFor(user.id);
+  const projectId = await loadOrEmpty("active project", async () => {
+    if (!tenantId) return null;
+    return activeProjectIdFor(prisma, tenantId);
+  }, null);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -76,6 +85,7 @@ export default async function NewBugPage() {
           types={types}
           isAdmin={admin}
           currentUserId={user.id}
+          projectId={projectId}
         />
       </div>
     </div>

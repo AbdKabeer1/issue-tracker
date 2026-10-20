@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { clientIpFrom, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { clientRateLimitKey, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { consumePairingLimit } from "@/lib/agents/rate-limit";
 import { collectPairing } from "@/lib/agents/pairing";
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
+import { agentPlatformDisabledResponse } from "@/lib/agents/platform-gate";
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
@@ -11,7 +13,7 @@ const NO_STORE = { "Cache-Control": "no-store" };
  * answer is `authorization_pending`; after, the key comes back exactly once.
  */
 export async function POST(req: NextRequest) {
-  const retryAfter = await consumePairingLimit("collect", clientIpFrom(req.headers) ?? "unknown");
+  const retryAfter = await consumePairingLimit("collect", clientRateLimitKey(req.headers));
   if (retryAfter) {
     return NextResponse.json(
       { error: "slow_down", message: RATE_LIMIT_MESSAGE },
@@ -19,6 +21,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // #505: switched off means switched off, not just hidden in Settings.
+  if (!isAgentPlatformEnabled()) return agentPlatformDisabledResponse();
   const body = (await req.json().catch(() => null)) as { device_code?: unknown } | null;
   const result = await collectPairing(body?.device_code);
   switch (result.status) {
@@ -28,7 +32,8 @@ export async function POST(req: NextRequest) {
           api_key: result.key.rawKey,
           key_prefix: result.key.prefix,
           agent: { id: result.key.agentId, name: result.key.name },
-          message: "Store this key now. It is not shown again.",
+          project_id: result.projectId,
+          message: "Store this key now. It is your account and it is not shown again. Confirm with GET /api/v1/agents/me.",
         },
         { status: 200, headers: NO_STORE },
       );

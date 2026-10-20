@@ -20,7 +20,6 @@ import {
   type ActivityMetadata,
 } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
-import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import {
   resolveSessionUserId,
@@ -55,6 +54,7 @@ import {
 } from "@/lib/ticket-boosting";
 import { canAssignTicket, TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
 import { canChangeTicketStatus, TICKET_TRIAGE_ERRORS } from "@/lib/ticket-triage";
+import { publish } from "@/lib/agent-api/events";
 import {
   canEditTicket,
   formatEditSummary,
@@ -62,6 +62,7 @@ import {
   TICKET_EDIT_ERRORS,
 } from "@/lib/ticket-editing";
 import { Prisma, type ActivityType } from "@prisma/client";
+import { isBugNumberConflict, repairBugNumberSequence } from "@/lib/bug-number";
 import { notifyLater } from "@/lib/notify";
 import { ensureWatching } from "@/lib/watch";
 import { parseResolutionNote } from "@/lib/resolution-note";
@@ -76,6 +77,7 @@ import {
   defaultProjectIdFor,
   NO_TENANT_MESSAGE,
 } from "@/lib/tenant-context";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { awardSolver } from "@/lib/points/award";
 import {
   checkRateLimit,
@@ -83,6 +85,7 @@ import {
   ACTION_RATE_LIMITS,
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
+import { issueChangePayload, publishWebEvent } from "@/lib/agent-api/web-events";
 
 export type ActionResult = {
   error?: string;
@@ -108,6 +111,39 @@ async function normalizeMentionTags(text: string): Promise<string> {
   return normalizeMentions(text, userMap);
 }
 
+function foreignKeyError(error: unknown): string | null {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+    return getForeignKeyErrorMessage(error.meta as Record<string, unknown> | undefined);
+  }
+  return null;
+}
+
+/** Reads the type, including when the template column has not been migrated yet. */
+async function issueTypeForCreate(typeId: string) {
+  try {
+    return await prisma.issueType.findUnique({
+      where: { id: typeId },
+      select: { id: true, isActive: true, template: true },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const missingTemplate =
+      (typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        (error as { code?: unknown }).code === "P2022" &&
+        "meta" in error &&
+        String((error as { meta?: { column?: unknown } }).meta?.column ?? "").includes("template")) ||
+      /column [`'"]?(?:[\w."]+\.)*template[`'"]?/i.test(message);
+    if (!missingTemplate) throw error;
+    const row = await prisma.issueType.findUnique({
+      where: { id: typeId },
+      select: { id: true, isActive: true },
+    });
+    return row ? { ...row, template: null } : null;
+  }
+}
+
 /** Redirects to login when the JWT is missing or no longer maps to a User row. */
 async function requireUserId() {
   const resolved = await resolveSessionUserId();
@@ -123,7 +159,8 @@ export async function createBugAction(
 ): Promise<ActionResult> {
   const user = await requireUser();
   const userId = user.id;
-  const admin = isAdmin(user.role);
+  const access = await currentTenantAccess(userId, user.role);
+  const admin = access.admin;
 
   const limit = await consumeRateLimit(
     `create-bug:${userId}`,
@@ -146,6 +183,7 @@ export async function createBugAction(
       !canAssignTicket({
         actorId: userId,
         actorRole: user.role,
+        membershipRole: access.membershipRole,
         currentAssigneeId: null,
         targetAssigneeId,
       })
@@ -154,9 +192,23 @@ export async function createBugAction(
     }
   }
 
+  // Auto-generate title from description if omitted or blank (for simplified report intake)
+  const rawTitle = formData.get("title");
+  const rawDesc = formData.get("description");
+  let titleStr = typeof rawTitle === "string" ? rawTitle.trim() : "";
+  const isReport = formData.get("isReport") === "true";
+
+  if (!titleStr && typeof rawDesc === "string" && rawDesc.trim().length >= 3) {
+    const firstLine = rawDesc.trim().split(/\r?\n/)[0]?.trim() || "";
+    titleStr = firstLine.slice(0, 80);
+    if (titleStr.length < 3) {
+      titleStr = rawDesc.trim().slice(0, 80);
+    }
+  }
+
   // Non-admins cannot set severity at creation; assignee validated above.
   const parsed = createBugSchema.safeParse({
-    title: formData.get("title"),
+    title: titleStr,
     description: formData.get("description"),
     severity: admin ? formData.get("severity") || "medium" : "medium",
     typeId: formData.get("typeId") || "",
@@ -190,10 +242,7 @@ export async function createBugAction(
   }
 
   if (typeId) {
-    const issueType = await prisma.issueType.findUnique({
-      where: { id: typeId },
-      select: { id: true, isActive: true, template: true },
-    });
+    const issueType = await issueTypeForCreate(typeId);
     if (!issueType || !issueType.isActive) {
       return fieldError("typeId", "That type no longer exists. Please pick another.");
     }
@@ -210,16 +259,6 @@ export async function createBugAction(
       ? parsed.data.categoryId
       : null;
 
-  if (categoryId) {
-    const category = await prisma.category.findUnique({
-      where: { id: categoryId },
-      select: { id: true, isActive: true },
-    });
-    if (!category || !category.isActive) {
-      return fieldError("categoryId", "Platform not found or inactive");
-    }
-  }
-
   // #425: the issue goes into the reporter's tenant. No membership, no issue.
   const tenantId = await currentTenantIdFor(userId);
   const projectId = tenantId ? await defaultProjectIdFor(prisma, tenantId) : null;
@@ -227,54 +266,75 @@ export async function createBugAction(
     return { error: NO_TENANT_MESSAGE };
   }
 
+  if (categoryId) {
+    const category = await prisma.category.findFirst({
+      where: { id: categoryId, tenantId, isActive: true },
+      select: { id: true },
+    });
+    if (!category) {
+      return fieldError("categoryId", "Platform not found or inactive");
+    }
+  }
+
   // Always open at creation — createBugSchema rejects client status.
+  const issueData = {
+    tenantId,
+    projectId,
+    beneficiaryUserId: userId,
+    title: parsed.data.title,
+    description,
+    severity: admin ? parsed.data.severity : "medium",
+    status: "open" as const,
+    typeId,
+    proofLinks: parsed.data.proofLinks,
+    reporterId: userId,
+    assigneeId,
+    categoryId,
+    // Reporter and assignee watch the issue from the start (#216).
+    watches: {
+      create: [...new Set([userId, assigneeId].filter((id): id is string => Boolean(id)))].map(
+        (watcherId) => ({ userId: watcherId }),
+      ),
+    },
+    activities: {
+      create: {
+        actorId: userId,
+        type: "created" as const,
+        summary: createdSummary(parsed.data.title),
+        metadata: {
+          field: "title",
+          to: parsed.data.title,
+        } as Prisma.InputJsonValue,
+      },
+    },
+  };
+
   let bug;
   try {
-    bug = await prisma.bug.create({
-      data: {
-        tenantId,
-        projectId,
-        beneficiaryUserId: userId,
-        title: parsed.data.title,
-        description,
-        severity: admin ? parsed.data.severity : "medium",
-        status: "open",
-        typeId,
-        proofLinks: parsed.data.proofLinks,
-        reporterId: userId,
-        assigneeId,
-        categoryId,
-        // Reporter and assignee watch the issue from the start (#216).
-        watches: {
-          create: [...new Set([userId, assigneeId].filter((id): id is string => Boolean(id)))].map(
-            (watcherId) => ({ userId: watcherId }),
-          ),
-        },
-        activities: {
-          create: {
-            actorId: userId,
-            type: "created",
-            summary: createdSummary(parsed.data.title),
-            metadata: {
-              field: "title",
-              to: parsed.data.title,
-            } as Prisma.InputJsonValue,
-          },
-        },
-      },
-    });
+    bug = await prisma.bug.create({ data: issueData });
   } catch (error) {
-    if (
+    const foreignKey = foreignKeyError(error);
+    if (foreignKey) return { error: foreignKey };
+    // The issue-number sequence can sit behind MAX(number) and then every
+    // create hits a unique violation, which the form shows as a 500.
+    if (isBugNumberConflict(error)) {
+      try {
+        await repairBugNumberSequence(prisma);
+        bug = await prisma.bug.create({ data: issueData });
+      } catch (retryError) {
+        const retryForeignKey = foreignKeyError(retryError);
+        if (retryForeignKey) return { error: retryForeignKey };
+        console.error("[issues] create failed after repairing the issue number", retryError);
+        return { error: "Could not save the issue. Try again." };
+      }
+    } else if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2003"
+      error.code === "P2002"
     ) {
-      return {
-        error: getForeignKeyErrorMessage(
-          error.meta as Record<string, unknown> | undefined,
-        ),
-      };
+      return { error: "That issue could not be saved because it conflicts with an existing one. Try again." };
+    } else {
+      throw error;
     }
-    throw error;
   }
 
   // Files uploaded while writing the report (#215).
@@ -290,6 +350,19 @@ export async function createBugAction(
     bugId: bug.id,
   });
 
+  // #600: agents hear about issues people file, not only ones agents file.
+  // The issue already exists, so a failed event mustn't fail the report.
+  try {
+    await publishWebEvent(prisma, {
+      bugId: bug.id,
+      type: "issue.created",
+      actorUserId: userId,
+      payload: { reporterId: userId },
+    });
+  } catch (error) {
+    console.error("[issues] issue.created event failed", error);
+  }
+
   const events: NotificationEvent[] = [];
   const actor = { actorId: userId, actorName: user.name ?? "Someone", bugId: bug.id, bugTitle: bug.title };
   const mentioned = extractMentionedUserIds(description);
@@ -300,6 +373,26 @@ export async function createBugAction(
     events.push({ ...actor, kind: "assignee_changed", fromUserId: null, toUserId: assigneeId });
   }
   if (events.length > 0) notifyLater(...events);
+
+  // Notify agent platform on feed (#764)
+  try {
+    if (prisma.agentEvent) {
+      await publish(prisma, {
+        tenantId,
+        type: isReport ? "report.created" : "issue.created",
+        payload: {
+          issueId: bug.id,
+          projectId,
+          beneficiaryUserId: userId,
+          isReport,
+        },
+        bugId: bug.id,
+      });
+    }
+  } catch (err) {
+    // Non-fatal if agent events / webhooks are not configured in test environment
+    console.warn("[createBugAction] could not publish agent event", err);
+  }
 
   revalidatePath("/issues");
   revalidatePath("/bugs");
@@ -313,7 +406,8 @@ export async function updateBugAction(
 ): Promise<ActionResult> {
   const user = await requireUser();
   const userId = user.id;
-  const admin = isAdmin(user.role);
+  const access = await currentTenantAccess(userId, user.role);
+  const admin = access.admin;
 
   const existing = await prisma.bug.findUnique({
     where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
@@ -353,6 +447,7 @@ export async function updateBugAction(
     !canChangeTicketStatus({
       actorId: userId,
       actorRole: user.role,
+      membershipRole: access.membershipRole,
       currentAssigneeId: existing.assigneeId,
     })
   ) {
@@ -361,7 +456,7 @@ export async function updateBugAction(
 
   if (!admin && !isAssignee && !isSelfAssigning) {
     return {
-      error: "Only the assignee or an admin can update this issue",
+      error: "Only the assignee, or an owner or admin of this organization, can update this issue",
     };
   }
 
@@ -370,10 +465,15 @@ export async function updateBugAction(
       !canAssignTicket({
         actorId: userId,
         actorRole: user.role,
+        membershipRole: access.membershipRole,
         currentAssigneeId: existing.assigneeId,
         targetAssigneeId,
+        voteCount: existing.voteCount,
       })
     ) {
+      if (targetAssigneeId && typeof existing.voteCount === "number" && existing.voteCount < 3) {
+        return { error: TICKET_ASSIGN_ERRORS.needsVotes };
+      }
       return { error: TICKET_ASSIGN_ERRORS.unauthorized };
     }
   }
@@ -551,8 +651,8 @@ export async function updateBugAction(
   ) {
     let toName: string | null = null;
     if (data.categoryId) {
-      const cat = await prisma.category.findUnique({
-        where: { id: data.categoryId },
+      const cat = await prisma.category.findFirst({
+        where: { id: data.categoryId, tenantId: existing.tenantId },
         select: { id: true, name: true },
       });
       if (!cat) {
@@ -570,8 +670,8 @@ export async function updateBugAction(
       },
     });
   } else if (data.categoryId) {
-    const cat = await prisma.category.findUnique({
-      where: { id: data.categoryId },
+    const cat = await prisma.category.findFirst({
+      where: { id: data.categoryId, tenantId: existing.tenantId },
       select: { id: true },
     });
     if (!cat) {
@@ -623,6 +723,12 @@ export async function updateBugAction(
           data,
         });
       }
+      if (data.status === "resolved" || data.status === "closed") {
+        await tx.issueClaim.updateMany({
+          where: { bugId, status: "active", releasedAt: null },
+          data: { status: "released", releasedAt: new Date(), releaseReason: data.status },
+        });
+      }
       if (data.assigneeId) {
         // The new assignee starts watching (#216).
         await ensureWatching(tx, bugId, [data.assigneeId]);
@@ -645,6 +751,15 @@ export async function updateBugAction(
               ...entry,
             })),
           ),
+        });
+      }
+      // #600: triage from the web app reaches agents too.
+      if (Object.keys(data).length > 0) {
+        await publishWebEvent(tx, {
+          bugId,
+          type: "issue.updated",
+          actorUserId: userId,
+          payload: issueChangePayload(data as Record<string, unknown>),
         });
       }
     });
@@ -714,6 +829,7 @@ export async function editBugContentAction(
     !canEditTicket({
       actorId: userId,
       actorRole: user.role,
+      membershipRole: (await currentTenantAccess(userId, user.role)).membershipRole,
       reporterId: existing.reporterId,
     })
   ) {
@@ -771,6 +887,16 @@ export async function editBugContentAction(
       ids: attachmentIdsInMarkdown(normalizedDescription),
       uploaderId: userId,
       bugId,
+    });
+    await publishWebEvent(tx, {
+      bugId,
+      type: "issue.updated",
+      actorUserId: userId,
+      payload: issueChangePayload(
+        Object.fromEntries(
+          changedFields.map((field) => [field, field === "title" ? parsed.data.title : normalizedDescription]),
+        ),
+      ),
     });
 
     await tx.bugActivity.create({
@@ -917,6 +1043,13 @@ export async function addCommentAction(
     });
     // Commenting on an issue means you want to hear about replies (#216).
     await ensureWatching(tx, bugId, [userId]);
+    // #600: a person's reply reaches the agents polling /api/v1/events.
+    await publishWebEvent(tx, {
+      bugId,
+      type: "comment.created",
+      actorUserId: userId,
+      payload: { commentId: created.id, parentId: parentId ?? null, authorId: userId },
+    });
     return created.id;
   });
 
@@ -1061,7 +1194,8 @@ export async function toggleVoteAction(
  */
 export async function deleteBugAction(bugId: string): Promise<ActionResult> {
   const user = await requireUser();
-  if (!canDeleteTicket(user.role)) {
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!canDeleteTicket(user.role, access.membershipRole)) {
     return { error: TICKET_DELETION_ERRORS.unauthorized };
   }
 
@@ -1091,6 +1225,7 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
           deletedAt: new Date(),
         },
       });
+      await publishWebEvent(tx, { bugId, type: "issue.deleted", actorUserId: user.id });
 
       await tx.bugActivity.create({
         data: {
@@ -1119,7 +1254,8 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
  */
 export async function restoreBugAction(bugId: string): Promise<ActionResult> {
   const user = await requireUser();
-  if (!canRestoreTicket(user.role)) {
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!canRestoreTicket(user.role, access.membershipRole)) {
     return { error: TICKET_DELETION_ERRORS.unauthorizedRestore };
   }
 
@@ -1149,6 +1285,7 @@ export async function restoreBugAction(bugId: string): Promise<ActionResult> {
           deletedAt: null,
         },
       });
+      await publishWebEvent(tx, { bugId, type: "issue.restored", actorUserId: user.id });
 
       await tx.bugActivity.create({
         data: {
@@ -1179,7 +1316,8 @@ export async function toggleBoostBugAction(
   bugId: string,
 ): Promise<ActionResult & { isBoosted?: boolean }> {
   const user = await requireUser();
-  if (!canBoostTicket(user.role)) {
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!canBoostTicket(user.role, access.membershipRole)) {
     return { error: TICKET_BOOST_ERRORS.unauthorized };
   }
 
@@ -1264,6 +1402,7 @@ export async function selfAssignBugAction(
       title: true,
       assigneeId: true,
       isDeleted: true,
+      voteCount: true,
       assignee: { select: { name: true } },
     },
   });
@@ -1278,10 +1417,15 @@ export async function selfAssignBugAction(
     !canAssignTicket({
       actorId: userId,
       actorRole: user.role,
+      membershipRole: (await currentTenantAccess(userId, user.role)).membershipRole,
       currentAssigneeId: existing.assigneeId,
       targetAssigneeId,
+      voteCount: existing.voteCount,
     })
   ) {
+    if (assign && typeof existing.voteCount === "number" && existing.voteCount < 3) {
+      return { error: TICKET_ASSIGN_ERRORS.needsVotes };
+    }
     return { error: TICKET_ASSIGN_ERRORS.unauthorized };
   }
 
@@ -1315,6 +1459,12 @@ export async function selfAssignBugAction(
             to: targetAssigneeId,
           },
         },
+      });
+      await publishWebEvent(tx, {
+        bugId,
+        type: "issue.updated",
+        actorUserId: userId,
+        payload: issueChangePayload({ assigneeId: targetAssigneeId }),
       });
     });
   } catch (error) {

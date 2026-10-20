@@ -43,6 +43,9 @@ export function CommentForm({
   const bodyId = parentId ? `body-${parentId}` : "body";
   const errorId = `${bodyId}-error`;
   const [bodyInvalid, setBodyInvalid] = useState(false);
+  const [editorUploading, setEditorUploading] = useState(false);
+  const [pickerUploading, setPickerUploading] = useState(false);
+  const isUploading = editorUploading || pickerUploading;
 
   // localStorage only exists on the client, so this cannot be a state
   // initializer without the server and client rendering different markup,
@@ -71,7 +74,13 @@ export function CommentForm({
     <form
       ref={formRef}
       className="space-y-3"
+      onSubmit={(event) => {
+        if (pending || isUploading) {
+          event.preventDefault();
+        }
+      }}
       action={(formData) => {
+        if (pending || isUploading) return;
         setError(null);
         setBodyInvalid(false);
         startTransition(async () => {
@@ -114,11 +123,13 @@ export function CommentForm({
         required
         rows={isReply ? 3 : 4}
         maxLength={2000}
+        disabled={pending}
         value={body}
         onChange={update}
         {...(bodyInvalid ? { "aria-invalid": true, "aria-describedby": errorId } : {})}
         users={users}
         renderMentions={(text) => <MentionText text={text} users={users} />}
+        onUploadingChange={setEditorUploading}
         placeholder={
           isReply
             ? "Write your reply… Type @ to mention someone"
@@ -133,7 +144,11 @@ export function CommentForm({
           ) : null
         }
       />
-      <AttachmentPicker key={pickerKey} disabled={pending} />
+      <AttachmentPicker
+        key={pickerKey}
+        disabled={pending}
+        onUploadingChange={setPickerUploading}
+      />
       {error ? (
         <p id={errorId} className="text-sm text-red-600" role="alert">
           {error}
@@ -152,14 +167,16 @@ export function CommentForm({
         </p>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={pending || !body.trim()}>
+        <Button type="submit" disabled={pending || !body.trim() || isUploading}>
           {pending
             ? isReply
               ? "Replying…"
               : "Posting…"
-            : isReply
-              ? "Post reply"
-              : "Post comment"}
+            : isUploading
+              ? "Uploading…"
+              : isReply
+                ? "Post reply"
+                : "Post comment"}
         </Button>
         {onCancel ? (
           <Button

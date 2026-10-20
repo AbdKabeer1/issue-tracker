@@ -15,6 +15,8 @@ export function LoginForm({
   callbackUrl?: string;
   googleEnabled?: boolean;
 }) {
+  // Only show Google button if OAuth is actually configured
+  const showGoogleButton = googleEnabled;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +111,7 @@ export function LoginForm({
       <Button type="submit" className="w-full" disabled={pending}>
         {pending ? "Signing in…" : "Sign in"}
       </Button>
-      {googleEnabled ? (
+      {showGoogleButton ? (
         <>
           <div className="relative py-1 text-center text-xs text-slate-500">
             <span className="bg-white px-2 relative z-10">or</span>

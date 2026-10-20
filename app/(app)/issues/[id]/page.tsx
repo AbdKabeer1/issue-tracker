@@ -1,9 +1,9 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { viewerBugScope } from "@/lib/tenant-viewer";
@@ -36,6 +36,9 @@ import {
 } from "@/lib/labels";
 import { ActivityTimeline, type ActivityEntry } from "@/components/activity-timeline";
 import { IssueAgentActivity, type AgentDecision } from "@/components/issue-agent-activity";
+import { IssueEscalations, type TicketEscalation } from "@/components/issue-escalations";
+import { listBugEscalations } from "@/lib/agent-questions";
+import { IssueBids } from "@/components/issue-bids";
 import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { WatchButton } from "@/components/watch-button";
@@ -43,12 +46,15 @@ import { isWatchingIssue } from "@/lib/watch";
 import { UpdateIssueForm } from "@/components/update-issue-form";
 import { CommentThread } from "@/components/comment-thread";
 import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
+import { ChooseRedesignButton } from "@/components/choose-redesign-button";
+import { isTenantAdminRole } from "@/lib/agents/membership";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { fetchVoterSummary } from "@/lib/voter-summaries";
 import { createEmptyVoterSummary } from "@/lib/voters";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { MilestoneDue } from "@/components/milestone-due";
 import { dueDateValue } from "@/lib/milestones";
 import { canEditTicket } from "@/lib/ticket-editing";
@@ -60,6 +66,8 @@ import { SelfAssignButton } from "@/components/self-assign-button";
 import { CopyLinkButton } from "@/components/copy-link-button";
 import { EditableIssueDescription } from "@/components/editable-issue-description";
 import { withCurrentOption } from "@/lib/triage-options";
+import { issueTenantHintFor } from "@/lib/issue-tenant-hint";
+import { IssueTenantSwitch } from "@/components/issue-tenant-hint";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
@@ -207,8 +215,9 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   }
 
   const user = await requireUser();
-  const canTriage = isAdmin(user.role);
-  const canDelete = canDeleteTicket(user.role);
+  const access = await currentTenantAccess(user.id, user.role);
+  const canTriage = access.admin;
+  const canDelete = canDeleteTicket(user.role, access.membershipRole);
   // #289: open milestones for the triage panel (admins only). Started here,
   // alongside the issue query, and awaited where the form needs them.
   const milestoneOptionsPromise: Promise<{ id: string; title: string; isClosed: boolean }[]> = canTriage
@@ -299,14 +308,52 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   const bug = loadedBug.bug;
 
   if (!bug) {
-    notFound();
+    // A link into another of the viewer's tenants should not dead-end (#519):
+    // name the tenant and offer the switch. Non-members still get the 404.
+    const hint = await issueTenantHintFor(prisma, {
+      userId,
+      activeTenantId: await currentTenantIdFor(userId),
+      issueId: id,
+    });
+    if (!hint) notFound();
+    return <IssueTenantSwitch issueId={id} tenant={hint} />;
   }
 
   if (bug.isDeleted && !canDelete) {
     notFound();
   }
 
-  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions] =
+  const tenantId = await currentTenantIdFor(userId);
+  // These tables arrived after the issue row. A missing one must not blank the page.
+  const [redesignProposals, membership] = tenantId ? await Promise.all([
+    loadOptional("redesigns", [], () =>
+      prisma.redesignProposal.findMany({
+        where: { tenantId, bugId: bug.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { id: true, title: true, body: true, previewUrl: true, status: true,
+          authorAgent: { select: { name: true } }, attachments: { select: { id: true, filename: true, contentType: true } } },
+      }),
+    ),
+    loadOptional("membership", null, () =>
+      prisma.membership.findUnique({ where: { tenantId_userId: { tenantId, userId } }, select: { role: true } }),
+    ),
+  ]) : [[], null] as const;
+  const canChooseRedesign = isTenantAdminRole(membership?.role, user.role);
+  const openBids = await loadOptional("bids", [], () =>
+    prisma.issueBid.findMany({
+      where: { bugId: bug.id, withdrawnAt: null, awardedAt: null },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        note: true,
+        beneficiaryUserId: true,
+        agent: { select: { name: true } },
+        beneficiary: { select: { name: true } },
+      },
+    }),
+  );
+  const canAwardBid = bug.status === "open" && !bug.isDeleted && (bug.reporterId === user.id || canChooseRedesign);
+
+  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions, escalations] =
     await Promise.all([
       canTriage
         ? loadOptional("users", [], () =>
@@ -316,7 +363,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             }),
           )
         : Promise.resolve([]),
-      loadOptional("platforms", [], () => getActivePlatforms()),
+      loadOptional("platforms", [], () => getActivePlatforms(bug.tenantId)),
       canTriage ? loadOptional("types", [], () => getActiveIssueTypesCached()) : Promise.resolve([]),
       loadOptional("votes", createEmptyVoterSummary(), () => fetchVoterSummary(id)),
       loadOptional("activity", [] as ActivityEntry[], () =>
@@ -444,6 +491,9 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           })),
         ];
       }),
+      loadOptional<TicketEscalation[]>("escalations", [], () =>
+        tenantId ? listBugEscalations(id, tenantId) : Promise.resolve([]),
+      ),
     ]);
   const issueAttachments: AttachmentView[] = attachments.filter((a) => !a.commentId);
   const attachmentsByComment: Record<string, AttachmentView[]> = {};
@@ -458,6 +508,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
     canEditTicket({
       actorId: userId,
       actorRole: user.role,
+      membershipRole: access.membershipRole,
       reporterId: bug.reporterId,
     }) && !bug.isDeleted;
   const canSelfAssign =
@@ -465,8 +516,10 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
     canAssignTicket({
       actorId: userId,
       actorRole: user.role,
+      membershipRole: access.membershipRole,
       currentAssigneeId: bug.assigneeId,
       targetAssigneeId: isAssignee ? null : userId,
+      voteCount: bug.voteCount,
     });
   const userVote =
     Array.isArray(bug.votes) && bug.votes.length > 0
@@ -548,6 +601,32 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
               And {bug._count.duplicates - bug.duplicates.length} more.
             </p>
           ) : null}
+        </section>
+      ) : null}
+
+      {redesignProposals.length ? (
+        <section aria-label="Redesign proposals" className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 sm:p-5">
+          <h2 className="text-lg font-semibold text-slate-900">Compare redesign proposals</h2>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            {redesignProposals.map((proposal) => (
+              <article key={proposal.id} className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="font-semibold">{proposal.title}</h3>
+                  <span className="shrink-0 text-xs capitalize text-slate-600">{proposal.status}</span>
+                </div>
+                <p className="text-xs text-slate-600">By {proposal.authorAgent.name}</p>
+                <p className="whitespace-pre-wrap text-sm text-slate-800">{proposal.body}</p>
+                {proposal.previewUrl ? <a className="text-sm text-indigo-700 underline" href={proposal.previewUrl} target="_blank" rel="noreferrer">Open live preview</a> : null}
+                {proposal.attachments.length ? <div className="grid grid-cols-2 gap-2">
+                  {proposal.attachments.map((file) => <a key={file.id} href={`/api/attachments/${file.id}`} target="_blank" rel="noreferrer" className="space-y-1 text-sm text-indigo-700 underline">
+                    <Image src={`/api/attachments/${file.id}`} alt={file.filename} width={480} height={320} unoptimized className="h-auto max-h-56 w-full rounded border border-slate-200 object-contain" />
+                    <span className="block">{file.filename}</span>
+                  </a>)}
+                </div> : null}
+                {canChooseRedesign && proposal.status === "proposed" ? <ChooseRedesignButton id={proposal.id} /> : null}
+              </article>
+            ))}
+          </div>
         </section>
       ) : null}
 
@@ -847,6 +926,18 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         totalCount={activityCount}
       />
 
+      <IssueBids
+        bids={openBids.map((bid) => ({
+          id: bid.id,
+          agentName: bid.agent.name,
+          personName: bid.beneficiary.name ?? "A member",
+          note: bid.note,
+        }))}
+        canAward={canAwardBid}
+      />
+
+      <IssueEscalations escalations={escalations} />
+
       <IssueAgentActivity decisions={agentDecisions} />
 
       <section
@@ -892,6 +983,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           users={users}
           currentUserId={user.id}
           currentUserRole={user.role}
+          tenantAdmin={access.admin}
           readOnly={bug.isDeleted}
         />
       </section>
@@ -904,7 +996,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 Danger zone
               </h2>
               <p className="text-sm text-slate-600">
-                Delete this issue. It will be hidden from everyone except admins, who can restore it.
+                Delete this issue. It will be hidden from everyone except owners and admins of this organization, who can restore it.
               </p>
             </div>
             <DeleteIssueButton

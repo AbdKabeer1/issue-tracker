@@ -27,6 +27,8 @@ type UserOption = { id: string; name: string };
 type ViewerProps = {
   currentUserId?: string;
   currentUserRole?: AppRole | null;
+  /** Owner, admin, or site super admin of this issue's organization. */
+  tenantAdmin?: boolean;
   /** Deleted issues: show comments but no reply, edit, delete or new comment. */
   readOnly?: boolean;
 };
@@ -41,6 +43,7 @@ function CommentEditForm({
   onDone: () => void;
 }) {
   const [body, setBody] = useState(comment.body);
+  const [editorUploading, setEditorUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const unchanged = body.trim() === comment.body.trim();
@@ -48,7 +51,13 @@ function CommentEditForm({
   return (
     <form
       className="mt-2 space-y-2"
+      onSubmit={(event) => {
+        if (pending || editorUploading) {
+          event.preventDefault();
+        }
+      }}
       action={(formData) => {
+        if (pending || editorUploading) return;
         setError(null);
         startTransition(async () => {
           const result = await updateCommentAction(comment.id, formData);
@@ -65,6 +74,7 @@ function CommentEditForm({
         maxLength={2000}
         value={body}
         onChange={setBody}
+        onUploadingChange={setEditorUploading}
         users={users}
         renderMentions={(text) => <MentionText text={text} users={users} />}
         aria-label="Edit comment"
@@ -75,8 +85,8 @@ function CommentEditForm({
         </p>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={pending || !body.trim() || unchanged}>
-          {pending ? "Saving…" : "Save"}
+        <Button type="submit" disabled={pending || !body.trim() || unchanged || editorUploading}>
+          {pending ? "Saving…" : editorUploading ? "Uploading…" : "Save"}
         </Button>
         <Button type="button" variant="ghost" disabled={pending} onClick={onDone}>
           Cancel
@@ -94,6 +104,7 @@ function CommentItem({
   users,
   currentUserId,
   currentUserRole,
+  tenantAdmin = false,
   attachmentsByComment = {},
   readOnly = false,
 }: {
@@ -116,7 +127,7 @@ function CommentItem({
     !readOnly && comment.depth < MAX_COMMENT_DEPTH && !isDeleted;
   const canEdit = !readOnly && canEditComment(currentUserId, comment);
   const canDelete =
-    !readOnly && canDeleteComment(currentUserId, currentUserRole, comment);
+    !readOnly && canDeleteComment(currentUserId, currentUserRole, comment, tenantAdmin);
 
   const handleDelete = async () => {
     const own = comment.authorId === currentUserId;
@@ -284,6 +295,7 @@ function CommentItem({
               users={users}
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
+              tenantAdmin={tenantAdmin}
               attachmentsByComment={attachmentsByComment}
               readOnly={readOnly}
             />
@@ -302,6 +314,7 @@ export function CommentThread({
   users,
   currentUserId,
   currentUserRole,
+  tenantAdmin = false,
   attachmentsByComment = {},
   readOnly = false,
 }: {
@@ -333,6 +346,7 @@ export function CommentThread({
               users={users}
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
+              tenantAdmin={tenantAdmin}
               attachmentsByComment={attachmentsByComment}
               readOnly={readOnly}
             />

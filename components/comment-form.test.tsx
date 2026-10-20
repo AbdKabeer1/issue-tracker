@@ -38,7 +38,7 @@ function bodyTextarea() {
 
 function submitButton() {
   return screen.getByRole("button", {
-    name: /^(Post comment|Posting…)$/,
+    name: /^(Post comment|Posting…|Uploading…)$/,
   }) as HTMLButtonElement;
 }
 
@@ -121,6 +121,37 @@ describe("CommentForm optimistic update and rollback", () => {
     expect(submitButton().disabled).toBe(true);
   });
 
+  it("freezes the comment editor while posting and clears only the submitted snapshot (#733)", async () => {
+    mockedAddComment.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releasePendingAction = () => resolve({ ok: true });
+        }),
+    );
+    renderForm(defaultProps);
+
+    const textarea = bodyTextarea();
+    await user.type(textarea, "first comment");
+    await user.click(submitButton());
+
+    await waitFor(() => {
+      expect(submitButton().textContent).toBe("Posting…");
+    });
+    // The editor is frozen for the duration of the submission (#733).
+    expect(textarea.disabled).toBe(true);
+
+    releasePendingAction?.();
+    releasePendingAction = null;
+
+    // Only the submitted snapshot is cleared; the editor is usable again.
+    await waitFor(() => {
+      expect(textarea.value).toBe("");
+      expect(textarea.disabled).toBe(false);
+      expect(submitButton().textContent).toBe("Post comment");
+    });
+    expect(mockedAddComment).toHaveBeenCalledTimes(1);
+  });
+
   it("renders the reply variant and supports cancelling", async () => {
     const onCancel = vi.fn();
     renderForm({
@@ -136,4 +167,64 @@ describe("CommentForm optimistic update and rollback", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalled();
   });
+
+  it("disables submit button and prevents submission while an attachment is uploading (#734)", async () => {
+    let resolveUpload: (val: unknown) => void = () => {};
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveUpload = () =>
+            resolve({
+              ok: true,
+              json: async () => ({ id: "att-99", size: 2048 }),
+            });
+        }),
+    );
+
+    try {
+      const { container } = renderForm();
+      const textarea = bodyTextarea();
+      await user.type(textarea, "Comment with attachment");
+
+      const fileInput = container.querySelector(
+        'input[type="file"]',
+      ) as HTMLInputElement;
+      expect(fileInput).toBeTruthy();
+
+      const file = new File(["sample"], "sample.png", { type: "image/png" });
+      await user.upload(fileInput, file);
+
+      // Upload in flight: button disabled and shows Uploading…
+      await waitFor(() => {
+        expect(submitButton().disabled).toBe(true);
+        expect(submitButton().textContent).toBe("Uploading…");
+      });
+
+      // Attempting to submit while uploading does not invoke addCommentAction
+      const form = container.querySelector("form") as HTMLFormElement;
+      form.requestSubmit();
+      expect(mockedAddComment).not.toHaveBeenCalled();
+
+      // Resolve the upload
+      resolveUpload(null);
+
+      await waitFor(() => {
+        expect(submitButton().disabled).toBe(false);
+        expect(submitButton().textContent).toBe("Post comment");
+      });
+
+      // Submit once uploads have settled
+      await user.click(submitButton());
+      await waitFor(() => {
+        expect(mockedAddComment).toHaveBeenCalledTimes(1);
+      });
+
+      const formData = mockedAddComment.mock.calls[0]?.[1] as FormData;
+      expect(formData.get("attachmentIds")).toBe("att-99");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });
+

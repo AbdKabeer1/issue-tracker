@@ -10,6 +10,7 @@ import type { AppRole } from "@/lib/roles";
 import { IssueFilters } from "@/components/issue-filters";
 import { IssueStats } from "@/components/issue-stats";
 import { IssuesSidebar } from "@/components/issues-sidebar";
+import { IssuesSidebarDisclosure } from "@/components/issues-sidebar-disclosure";
 import { Avatar } from "@/components/avatar";
 import { VoteButton } from "@/components/vote-button";
 import { Badge } from "@/components/ui/badge";
@@ -49,9 +50,11 @@ import {
   parseBugSort,
 } from "@/lib/issues-sort";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { DeleteIssueButton } from "@/components/delete-issue-button";
 import { RestoreIssueButton } from "@/components/restore-issue-button";
 import { canBoostTicket } from "@/lib/ticket-boosting";
+import type { OrganizationRole } from "@/lib/organization-role";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { defaultSortFor, mineFilterWhere, parseMineFilter } from "@/lib/mine-filter";
 import { finishedWatchedWhere } from "@/lib/watching";
@@ -124,11 +127,13 @@ export default async function BugsPage({
   const session = await auth();
   let userId: string | undefined;
   let effectiveRole: AppRole | null | undefined;
+  let membershipRole: OrganizationRole | null = null;
 
   if (session?.user) {
     const user = await requireUser();
     userId = user.id;
     effectiveRole = user.role;
+    membershipRole = (await currentTenantAccess(user.id, user.role)).membershipRole;
   }
   // #425: only issues in the viewer's tenant; none without a membership.
   let tenantId: string | null = null;
@@ -140,8 +145,8 @@ export default async function BugsPage({
     console.error("[bugs] tenant/project resolution failed", error);
   }
 
-  const canDelete = canDeleteTicket(effectiveRole);
-  const canBoost = canBoostTicket(effectiveRole);
+  const canDelete = canDeleteTicket(effectiveRole, membershipRole);
+  const canBoost = canBoostTicket(effectiveRole, membershipRole);
   const params = await searchParams;
   const qParam = toSingleQueryParam(params.q);
   const statusParam = toSingleQueryParam(params.status);
@@ -174,7 +179,7 @@ export default async function BugsPage({
     // Every platform, not just active ones: a link filtered on a platform
     // that was since deactivated still has to resolve. BugFilters narrows
     // the dropdown itself.
-    loadOrEmpty("platforms", () => getPlatforms(), []),
+    loadOrEmpty("platforms", () => getPlatforms(tenantId), []),
     // #289: few rows; closed ones too, so an old link still resolves.
     loadOrEmpty(
       "milestones",
@@ -218,41 +223,32 @@ export default async function BugsPage({
   }
 
   let totalCount = 0;
-  // Only a member, and only when the tenant column itself is missing, may see
-  // the pre-migration board. Anyone else keeps an empty scope (#439).
-  let unscopedBoard = false;
   try {
     totalCount = await prisma.bug.count({ where });
   } catch (error) {
     console.error("[bugs] list count failed", error);
     const missingColumn = isMissingTenantColumnError(error);
-    if (missingColumn && tenantId) {
-      unscopedBoard = true;
-      delete where.tenantId;
-      delete where.projectId;
-      try {
-        totalCount = await prisma.bug.count({ where });
-      } catch (retryError) {
-        console.error("[bugs] un-scoped list count failed", retryError);
-        const detail = retryError instanceof Error ? retryError.message : "Could not load issues";
-        return issuesQueryError(detail);
-      }
-    } else if (!tenantId) {
+    if (!tenantId) {
+      // No membership: nothing to show either way (#439).
       totalCount = 0;
       if (missingColumn) {
         delete where.tenantId;
         delete where.projectId;
         where.id = { in: [] };
       }
+    } else if (missingColumn) {
+      // #506: never retry without the tenant filter. That used to show every
+      // tenant's issues to anyone whose query error mentioned the column.
+      return issuesQueryError(
+        "The issue list is unavailable while the database finishes upgrading. Try again in a minute.",
+      );
     } else {
       const detail = error instanceof Error ? error.message : "Could not load issues";
       return issuesQueryError(detail);
     }
   }
 
-  const baseTenantWhere: Prisma.BugWhereInput = unscopedBoard
-    ? { isDeleted: isDeletedView }
-    : { ...bugInTenant(tenantId), isDeleted: isDeletedView };
+  const baseTenantWhere: Prisma.BugWhereInput = { ...bugInTenant(tenantId), isDeleted: isDeletedView };
 
   let statsTotal = 0;
   let statsOpen = 0;
@@ -492,8 +488,7 @@ export default async function BugsPage({
   let isFirstRun = false;
   if (totalCount === 0 && !isDeletedView) {
     try {
-      const scope = unscopedBoard ? {} : bugInTenant(tenantId);
-      isFirstRun = (await prisma.bug.count({ where: { ...scope, isDeleted: false } })) === 0;
+      isFirstRun = (await prisma.bug.count({ where: { ...bugInTenant(tenantId), isDeleted: false } })) === 0;
     } catch {
       isFirstRun = false;
     }
@@ -542,6 +537,20 @@ export default async function BugsPage({
     high: "bg-orange-500",
     medium: "bg-amber-500",
     low: "bg-emerald-500",
+  };
+
+  const sidebarProps = {
+    counts: {
+      all: statsTotal,
+      mine: sidebarMine,
+      assigned: sidebarAssigned,
+      created: sidebarCreated,
+      saved: sidebarSaved,
+      categories: typeCountsMap,
+      platforms: platformCountsMap,
+    },
+    tagTypes,
+    platforms,
   };
 
   const page = (
@@ -613,21 +622,13 @@ export default async function BugsPage({
 
       <div className="flex flex-col lg:flex-row gap-6 items-start">
         {!isFirstRun ? (
-          <aside className="w-full lg:w-60 shrink-0">
-            <IssuesSidebar
-              counts={{
-                all: statsTotal,
-                mine: sidebarMine,
-                assigned: sidebarAssigned,
-                created: sidebarCreated,
-                saved: sidebarSaved,
-                categories: typeCountsMap,
-                platforms: platformCountsMap,
-              }}
-              tagTypes={tagTypes}
-              platforms={platforms}
-            />
-          </aside>
+          <>
+            {/* Phones: one collapsed disclosure so the list starts near the top (#574). */}
+            <IssuesSidebarDisclosure {...sidebarProps} />
+            <aside className="hidden lg:block w-60 shrink-0">
+              <IssuesSidebar {...sidebarProps} />
+            </aside>
+          </>
         ) : null}
 
         <div className="flex-1 min-w-0 space-y-4 w-full">

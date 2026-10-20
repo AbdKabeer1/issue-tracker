@@ -7,19 +7,19 @@ describe("audit log visibility (#447)", () => {
   it("lets a tenant owner, admin or super admin read every row in the tenant", () => {
     const access = auditAccess({ isTenantAdmin: true, tenantId, ownedAgentIds: [] });
     expect(access).toEqual({ kind: "all", tenantId });
-    expect(auditWhere(access)).toEqual({ tenantId });
+    expect(auditWhere(access)).toEqual({ tenantId, NOT: { payload: { path: ["request"], equals: true } } });
   });
 
   it("lets an agent owner read only their own agents' rows", () => {
     const access = auditAccess({ isTenantAdmin: false, tenantId, ownedAgentIds: ["agent-alice"] });
     expect(access.kind).toBe("own-agents");
-    expect(auditWhere(access)).toEqual({ tenantId, agentId: { in: ["agent-alice"] } });
+    expect(auditWhere(access)).toEqual({ tenantId, agentId: { in: ["agent-alice"] }, NOT: { payload: { path: ["request"], equals: true } } });
   });
 
   it("never shows another owner's rows, even when filtering by their agent", () => {
     const access = auditAccess({ isTenantAdmin: false, tenantId, ownedAgentIds: ["agent-alice"] });
-    expect(auditWhere(access, { agentId: "agent-bob" })).toEqual({ tenantId, agentId: { in: [] } });
-    expect(auditWhere(access, { agentId: "agent-alice" })).toEqual({ tenantId, agentId: "agent-alice" });
+    expect(auditWhere(access, { agentId: "agent-bob" })).toEqual({ tenantId, agentId: { in: [] }, NOT: { payload: { path: ["request"], equals: true } } });
+    expect(auditWhere(access, { agentId: "agent-alice" })).toEqual({ tenantId, agentId: "agent-alice", NOT: { payload: { path: ["request"], equals: true } } });
   });
 
   it("forbids an ordinary member with no agents", () => {
@@ -38,7 +38,13 @@ describe("audit log visibility (#447)", () => {
       tenantId,
       agentId: "agent-bob",
       bugId: "bug-1",
+      NOT: { payload: { path: ["request"], equals: true } },
     });
+  });
+
+  it("hides supplementary request rows by default (#575)", () => {
+    const access = auditAccess({ isTenantAdmin: true, tenantId, ownedAgentIds: [] });
+    expect(auditWhere(access, { includeRequests: true })).toEqual({ tenantId });
   });
 
   it("refuses to build a query for a forbidden viewer", () => {

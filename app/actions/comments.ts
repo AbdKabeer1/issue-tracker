@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { commentInTenant, currentTenantIdFor } from "@/lib/tenant-context";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { attachmentIdsInMarkdown, linkAttachments } from "@/lib/attachment-link";
 import { requireUser } from "@/lib/auth-helpers";
 import { commentSchema } from "@/lib/validations/issue";
@@ -28,6 +29,7 @@ import {
   ACTION_RATE_LIMITS,
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
+import { publishWebEvent } from "@/lib/agent-api/web-events";
 
 export type CommentActionResult = { error?: string; ok?: boolean };
 
@@ -85,11 +87,14 @@ export async function updateCommentAction(
     new Map(known.map((u) => [u.id, u.name])),
   );
 
-  await prisma.$transaction(async (tx) => {
-    await tx.comment.update({
-      where: { id: comment.id },
+  const result = await prisma.$transaction(async (tx) => {
+    const updated = await tx.comment.updateMany({
+      where: { id: comment.id, deletedAt: null },
       data: { body, editedAt: new Date() },
     });
+    if (updated.count === 0) {
+      return { error: COMMENT_ERRORS.deleted };
+    }
     // Images pasted while editing (#305).
     await linkAttachments(tx, {
       ids: attachmentIdsInMarkdown(body),
@@ -113,7 +118,20 @@ export async function updateCommentAction(
         } as Prisma.InputJsonValue,
       },
     });
+    // #600: agents following the thread see the edit.
+    await publishWebEvent(tx, {
+      bugId: comment.bugId,
+      type: "comment.edited",
+      actorUserId: user.id,
+      payload: { commentId: comment.id, authorId: comment.authorId },
+    });
+
+    return { ok: true as const };
   });
+
+  if (result.error) {
+    return result;
+  }
 
   const newlyMentioned = newlyMentionedUserIds(comment.body, body);
   if (newlyMentioned.length > 0) {
@@ -148,18 +166,22 @@ export async function deleteCommentAction(
   if (!comment) return { error: COMMENT_ERRORS.notFound };
   if (comment.bug.isDeleted) return { error: COMMENT_ERRORS.issueDeleted };
   if (comment.deletedAt) return { error: COMMENT_ERRORS.deleted };
-  if (!canDeleteComment(user.id, user.role, comment)) {
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!canDeleteComment(user.id, user.role, comment, access.admin)) {
     return { error: COMMENT_ERRORS.cannotDelete };
   }
 
   const isModeration = comment.authorId !== user.id;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      await tx.comment.update({
-        where: { id: comment.id },
+    const result = await prisma.$transaction(async (tx) => {
+      const updated = await tx.comment.updateMany({
+        where: { id: comment.id, deletedAt: null },
         data: { body: "", deletedAt: new Date() },
       });
+      if (updated.count === 0) {
+        return { error: COMMENT_ERRORS.deleted };
+      }
       // A deleted comment's files go too, e.g. a screenshot posted by mistake (#215).
       await tx.attachment.deleteMany({ where: { commentId: comment.id } });
 
@@ -187,7 +209,19 @@ export async function deleteCommentAction(
           },
         });
       }
+      await publishWebEvent(tx, {
+        bugId: comment.bugId,
+        type: "comment.deleted",
+        actorUserId: user.id,
+        payload: { commentId: comment.id, authorId: comment.authorId, moderated: isModeration },
+      });
+
+      return { ok: true as const };
     });
+
+    if ("error" in result) {
+      return result;
+    }
   } catch (error) {
     console.error("Failed to delete comment:", error);
     return { error: COMMENT_ERRORS.failed };

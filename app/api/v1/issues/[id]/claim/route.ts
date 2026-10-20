@@ -15,5 +15,5 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       if (error instanceof IssueApiError) throw error;
       return NextResponse.json({ error: "Claim unavailable; try again." }, { status: 503 });
     }
-  });
+  }, { budget: "none" });
 }
