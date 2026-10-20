@@ -53,7 +53,11 @@ import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { fetchVoterSummary } from "@/lib/voter-summaries";
 import { createEmptyVoterSummary } from "@/lib/voters";
-import { canDeleteTicket } from "@/lib/ticket-deletion";
+import {
+  canDeleteTicket,
+  deletedSummary,
+  deleteSummary,
+} from "@/lib/ticket-deletion";
 import { currentTenantAccess } from "@/lib/tenant-access";
 import { MilestoneDue } from "@/components/milestone-due";
 import { dueDateValue } from "@/lib/milestones";
@@ -538,6 +542,12 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
 
   const resolution = currentResolution(bug.status, latestStatusChange);
 
+  // What a delete keeps, shown the same way in every delete/restore message (#692).
+  const deletionCounts = {
+    comments: comments.visibleCount,
+    votes: voterSummary.likes.count + voterSummary.dislikes.count,
+  };
+
   return (
     <div className="space-y-6">
       {bug.isDeleted ? (
@@ -550,11 +560,16 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                   This issue was deleted
                 </h3>
                 <p className="text-xs text-red-700">
-                  It is currently hidden from regular users. Admins and super admins can restore it at any time.
+                  {deletedSummary(deletionCounts)}
                 </p>
               </div>
             </div>
-            <RestoreIssueButton bugId={bug.id} bugTitle={bug.title} size="sm" />
+            <RestoreIssueButton
+              bugId={bug.id}
+              bugTitle={bug.title}
+              counts={deletionCounts}
+              size="sm"
+            />
           </div>
         </div>
       ) : null}
@@ -944,12 +959,13 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 Danger zone
               </h2>
               <p className="text-sm text-slate-600">
-                Delete this issue. It will be hidden from everyone except owners and admins of this organization, who can restore it.
+                Delete this issue. {deleteSummary(deletionCounts)}
               </p>
             </div>
             <DeleteIssueButton
               bugId={bug.id}
               bugTitle={bug.title}
+              counts={deletionCounts}
               variant="danger"
             />
           </div>
