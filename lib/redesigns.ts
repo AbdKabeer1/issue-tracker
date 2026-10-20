@@ -43,7 +43,14 @@ export async function proposeRedesign(agent: AgentContext, input: z.infer<typeof
       bugId: created.bugId, payload: { proposalId: created.id, projectId: input.projectId, onBehalfOfUserId } });
     return created;
   });
-  notifyApprovalNeeded({ id: proposal.id, title: proposal.title, onBehalfOfUserId, agent: { name: agent.name }, bugId: proposal.bugId });
+  notifyApprovalNeeded({
+    id: proposal.id,
+    title: proposal.title,
+    onBehalfOfUserId,
+    tenantId: agent.tenantId,
+    agent: { name: agent.name },
+    bugId: proposal.bugId,
+  });
   return proposal;
 }
 

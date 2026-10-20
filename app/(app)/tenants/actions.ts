@@ -131,6 +131,7 @@ export async function createInviteAction(
     delivery = await deliverInvite(prisma, {
       invite: result.invite,
       rawToken: result.rawToken,
+      tenantId: result.tenant.id,
       tenantName: result.tenant.name,
       inviter: { id: user.id, name: user.name || user.email || "Someone" },
     });

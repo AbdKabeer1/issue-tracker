@@ -208,6 +208,7 @@ export async function deliverInvite(
   input: {
     invite: { id: string; email: string };
     rawToken: string;
+    tenantId?: string;
     tenantName: string;
     inviter: { id: string; name: string };
   },
@@ -215,7 +216,13 @@ export async function deliverInvite(
   const { invite, rawToken, tenantName, inviter } = input;
   const account = await db.user.findUnique({ where: { email: invite.email }, select: { id: true } });
   if (account) {
-    await notifyTenantInvite({ id: invite.id, tenantName, email: invite.email, invitedBy: inviter });
+    await notifyTenantInvite({
+      id: invite.id,
+      ...(input.tenantId ? { tenantId: input.tenantId } : {}),
+      tenantName,
+      email: invite.email,
+      invitedBy: inviter,
+    });
     return "notified";
   }
   if (!canSendMail()) return "manual";

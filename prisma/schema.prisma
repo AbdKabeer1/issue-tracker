@@ -431,6 +431,7 @@ model IssueWatch {
 model Notification {
   id        String    @id @default(cuid())
   userId    String
+  tenantId  String?
   bugId     String?
   /// Event kind, e.g. "comment_added", "mentioned", "status_changed".
   kind      String
@@ -440,10 +441,12 @@ model Notification {
   readAt    DateTime?
   createdAt DateTime  @default(now())
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant    Tenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   bug       Bug?      @relation(fields: [bugId], references: [id], onDelete: SetNull)
 
   @@index([userId, readAt])
   @@index([userId, createdAt])
+  @@index([userId, tenantId, readAt])
 }
 
 /// Sliding-window rate-limit attempts, shared by every app instance (#296).
@@ -483,6 +486,7 @@ model Tenant {
   shareLinks    TenantShareLink[]
   events        AgentEvent[]
   membershipChanges MembershipChange[]
+  notifications Notification[]
   projectAuditEvents ProjectAuditEvent[]
 }
 
