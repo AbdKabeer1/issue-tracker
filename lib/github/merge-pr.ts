@@ -164,26 +164,43 @@ export function createInstallationClient(
       return { merged: !!body.merged, mergeable: body.mergeable !== false, headSha: body.head?.sha ?? "" };
     },
     async checksGreen(ref, headSha) {
-      const response = await request(`/repos/${ref.owner}/${ref.repo}/commits/${headSha}/check-runs`);
-      if (response.ok) {
+      // Every check run on the head commit has to be read (#491). GitHub
+      // pages check runs 30 at a time by default; a failing run past the
+      // first page used to stay invisible while the gate passed.
+      const runs: { status?: string; conclusion?: string | null }[] = [];
+      for (let page = 1; ; page += 1) {
+        const response = await request(
+          `/repos/${ref.owner}/${ref.repo}/commits/${headSha}/check-runs?per_page=100&page=${page}`,
+        );
+        if (!response.ok) break;
         const body = (await response.json()) as {
           check_runs?: { status?: string; conclusion?: string | null }[];
+          total_count?: number;
         };
-        const runs = body.check_runs ?? [];
-        if (runs.length) {
-          return runs.every(
-            (run) =>
-              run.status === "completed" &&
-              (run.conclusion === "success" || run.conclusion === "neutral" || run.conclusion === "skipped"),
-          );
-        }
+        const batch = body.check_runs ?? [];
+        runs.push(...batch);
+        if (batch.length < 100 || runs.length >= (body.total_count ?? runs.length)) break;
+      }
+      if (runs.length) {
+        // Fail closed (#491): anything still queued or in progress, failed or
+        // cancelled, is not green. Only completed runs with a passing
+        // conclusion pass.
+        return runs.every(
+          (run) =>
+            run.status === "completed" &&
+            (run.conclusion === "success" || run.conclusion === "neutral" || run.conclusion === "skipped"),
+        );
       }
       // No check runs: fall back to commit statuses. No statuses at all means
-      // the repository has no required checks, so the gate holds.
+      // the repository has no required checks, so the gate holds. A "pending"
+      // state while statuses exist means a check is still running — that is
+      // not green (#491).
       const status = await request(`/repos/${ref.owner}/${ref.repo}/commits/${headSha}/status`);
       if (!status.ok) return false;
-      const body = (await status.json()) as { state?: string };
-      return body.state === "success" || body.state === "pending" || body.state === undefined;
+      const body = (await status.json()) as { state?: string; statuses?: unknown[] };
+      const statuses = body.statuses ?? [];
+      if (!statuses.length && (body.state === undefined || body.state === "pending")) return true;
+      return body.state === "success";
     },
     async mergePullRequest(ref) {
       const response = await request(`/repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/merge`, {

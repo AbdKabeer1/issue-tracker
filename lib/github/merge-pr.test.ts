@@ -1,5 +1,5 @@
 import { createVerify, generateKeyPairSync } from "node:crypto";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
   bug: { findFirst: vi.fn(), update: vi.fn() },
@@ -16,6 +16,7 @@ vi.mock("@/lib/agent-notifications", () => ({ notifyMergeFailed: notify.notifyMe
 
 import {
   createAppJwt,
+  createInstallationClient,
   mergeAcceptedFix,
   parseGitHubRepoUrl,
   parsePullRequestUrl,
@@ -210,5 +211,145 @@ describe("mergeAcceptedFix gates (#452)", () => {
       ...db.agentEvent.create.mock.calls,
     ];
     expect(JSON.stringify(writes)).not.toMatch(/token|ghs_|bearer/i);
+  });
+});
+
+describe("checksGreen against the GitHub API (#491)", () => {
+  const ref = { owner: "zedu", repo: "web", number: 7 };
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const env = {
+    GITHUB_APP_ID: "123456",
+    GITHUB_APP_PRIVATE_KEY: privateKey.export({ type: "pkcs1", format: "pem" }).toString(),
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function jsonResponse(data: unknown, ok = true): Response {
+    return {
+      ok,
+      status: ok ? 200 : 500,
+      json: async () => data,
+      headers: new Headers(),
+    } as unknown as Response;
+  }
+
+  /** Route GitHub's endpoints to canned responses; anything else throws. */
+  function stubFetch(handler: (url: string, init?: RequestInit) => Response): ReturnType<typeof vi.fn> {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+      handler(String(input), init),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  const tokenRoute = (url: string) =>
+    url.endsWith("/access_tokens") ? jsonResponse({ token: "ghs_test" }) : null;
+
+  function checkRun(conclusion = "success") {
+    return { status: "completed", conclusion };
+  }
+
+  it("treats a pending combined status with running checks as not green", async () => {
+    stubFetch((url) =>
+      tokenRoute(url) ??
+      (url.includes("/check-runs")
+        ? jsonResponse({ check_runs: [], total_count: 0 })
+        : url.endsWith("/status")
+          ? jsonResponse({ state: "pending", statuses: [{ context: "ci/build" }] })
+          : jsonResponse({}, false)),
+    );
+
+    await expect(createInstallationClient("123", env).checksGreen(ref, "sha1")).resolves.toBe(false);
+  });
+
+  it("holds when the repository has no check runs and no statuses at all", async () => {
+    stubFetch((url) =>
+      tokenRoute(url) ??
+      (url.includes("/check-runs")
+        ? jsonResponse({ check_runs: [], total_count: 0 })
+        : url.endsWith("/status")
+          ? jsonResponse({ state: "pending", statuses: [] })
+          : jsonResponse({}, false)),
+    );
+
+    await expect(createInstallationClient("123", env).checksGreen(ref, "sha1")).resolves.toBe(true);
+  });
+
+  it("passes on a success combined status", async () => {
+    stubFetch((url) =>
+      tokenRoute(url) ??
+      (url.includes("/check-runs")
+        ? jsonResponse({ check_runs: [], total_count: 0 })
+        : url.endsWith("/status")
+          ? jsonResponse({ state: "success", statuses: [{ context: "ci/build" }] })
+          : jsonResponse({}, false)),
+    );
+
+    await expect(createInstallationClient("123", env).checksGreen(ref, "sha1")).resolves.toBe(true);
+  });
+
+  it("fails on a failure combined status", async () => {
+    stubFetch((url) =>
+      tokenRoute(url) ??
+      (url.includes("/check-runs")
+        ? jsonResponse({ check_runs: [], total_count: 0 })
+        : url.endsWith("/status")
+          ? jsonResponse({ state: "failure", statuses: [{ context: "ci/build" }] })
+          : jsonResponse({}, false)),
+    );
+
+    await expect(createInstallationClient("123", env).checksGreen(ref, "sha1")).resolves.toBe(false);
+  });
+
+  it("reads past the first 30 check runs: a failure on page two blocks the merge", async () => {
+    const fetchMock = stubFetch((url) => {
+      const token = tokenRoute(url);
+      if (token) return token;
+      if (url.includes("/check-runs")) {
+        const page = Number(new URL(url).searchParams.get("page"));
+        const runs = page === 1 ? Array.from({ length: 100 }, () => checkRun()) : [checkRun("failure")];
+        return jsonResponse({ check_runs: runs, total_count: 101 });
+      }
+      return jsonResponse({}, false);
+    });
+
+    await expect(createInstallationClient("123", env).checksGreen(ref, "sha1")).resolves.toBe(false);
+
+    const runUrls = fetchMock.mock.calls.map((call) => String(call[0])).filter((url) => url.includes("/check-runs"));
+    expect(runUrls[0]).toContain("per_page=100");
+    expect(runUrls).toHaveLength(2);
+    expect(runUrls[1]).toContain("page=2");
+  });
+
+  it("is green when every run across all pages has completed successfully", async () => {
+    stubFetch((url) => {
+      const token = tokenRoute(url);
+      if (token) return token;
+      if (url.includes("/check-runs")) {
+        const page = Number(new URL(url).searchParams.get("page"));
+        const runs = page === 1 ? Array.from({ length: 100 }, () => checkRun()) : [checkRun()];
+        return jsonResponse({ check_runs: runs, total_count: 101 });
+      }
+      return jsonResponse({}, false);
+    });
+
+    await expect(createInstallationClient("123", env).checksGreen(ref, "sha1")).resolves.toBe(true);
+  });
+
+  it("is not green while any run across pages is still in progress", async () => {
+    stubFetch((url) => {
+      const token = tokenRoute(url);
+      if (token) return token;
+      if (url.includes("/check-runs")) {
+        const page = Number(new URL(url).searchParams.get("page"));
+        const runs = page === 1 ? Array.from({ length: 100 }, () => checkRun()) : [{ status: "in_progress", conclusion: null }];
+        return jsonResponse({ check_runs: runs, total_count: 101 });
+      }
+      return jsonResponse({}, false);
+    });
+
+    await expect(createInstallationClient("123", env).checksGreen(ref, "sha1")).resolves.toBe(false);
   });
 });
