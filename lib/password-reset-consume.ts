@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 
-type ResetTx = Pick<Prisma.TransactionClient, "passwordResetToken" | "user">;
+type ResetTx = Pick<Prisma.TransactionClient, "passwordResetToken" | "user" | "agentApiKey">;
 
 /**
  * Atomically claims a password-reset token and applies the new password (#209).
@@ -31,6 +31,12 @@ export async function consumeResetToken(
     where: { id: userId },
     // Bumping the version signs out every existing session for this user (#208).
     data: { passwordHash, sessionVersion: { increment: 1 } },
+  });
+  // A reset password must not leave live agent keys behind (#513). The agent
+  // rows stay, so the owner can regenerate a key from settings.
+  await tx.agentApiKey.updateMany({
+    where: { revokedAt: null, agent: { ownerUserId: userId } },
+    data: { revokedAt: now },
   });
   await tx.passwordResetToken.deleteMany({
     where: { userId, id: { not: tokenId } },

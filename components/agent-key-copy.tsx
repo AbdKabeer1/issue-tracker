@@ -5,16 +5,25 @@ import Link from "next/link";
 import { copyText } from "@/lib/clipboard";
 import { useToast } from "@/components/ui/toast";
 
+/** A live key's prefix. The secret itself is never stored, so this is all the header can show. */
+export type AgentKeyHint = {
+  prefix: string;
+  projectName: string | null;
+};
+
 export type AgentKeyCopyButtonProps = {
   projectId?: string | null;
   projectName?: string | null;
   fullWidth?: boolean;
+  /** Prefixes of live keys for the active project, including legacy tenant-wide keys. */
+  keys?: AgentKeyHint[];
 };
 
 export function AgentKeyCopyButton({
   projectId,
   projectName,
   fullWidth = false,
+  keys = [],
 }: AgentKeyCopyButtonProps) {
   const toast = useToast();
   const [copied, setCopied] = useState(false);
@@ -148,8 +157,25 @@ export function AgentKeyCopyButton({
             </div>
 
             <div>
+              <span className="text-slate-500 block text-[11px]">API key prefixes</span>
+              {keys.length > 0 ? (
+                <ul className="mt-1 space-y-1">
+                  {keys.map((key) => (
+                    <li key={`${key.prefix}-${key.projectName ?? "all"}`} className="font-mono text-[11px] text-slate-800">
+                      {key.prefix}…{key.projectName ? ` · ${key.projectName}` : " · every project"}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-slate-600">
+                  No live key for this project. Register or regenerate one in settings. The full secret is shown only once.
+                </p>
+              )}
+            </div>
+
+            <div>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-slate-500 text-[11px]">Project Key (for API queries)</span>
+                <span className="text-slate-500 text-[11px]">Project id (for API queries)</span>
                 <button
                   type="button"
                   onClick={handleCopyKey}

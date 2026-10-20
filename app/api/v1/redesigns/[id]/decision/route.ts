@@ -21,6 +21,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     return NextResponse.json({ proposal: await decideRedesign(session.userId, tenantId, id, parsed.data.decision) }, { headers });
   } catch (error) {
     if (error instanceof IssueApiError) return NextResponse.json({ error: error.message }, { status: error.status, headers });
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "P2034") {
+      return NextResponse.json({ error: "Another design decision was saved first. Reload and try again." }, { status: 409, headers });
+    }
     return NextResponse.json({ error: "Proposal decision unavailable." }, { status: 503, headers });
   }
 }

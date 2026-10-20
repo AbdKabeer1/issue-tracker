@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -43,6 +44,8 @@ import { isWatchingIssue } from "@/lib/watch";
 import { UpdateIssueForm } from "@/components/update-issue-form";
 import { CommentThread } from "@/components/comment-thread";
 import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
+import { ChooseRedesignButton } from "@/components/choose-redesign-button";
+import { isTenantAdminRole } from "@/lib/agents/membership";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
@@ -306,6 +309,17 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
     notFound();
   }
 
+  const tenantId = await currentTenantIdFor(userId);
+  const [redesignProposals, membership] = tenantId ? await Promise.all([
+    prisma.redesignProposal.findMany({
+      where: { tenantId, bugId: bug.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { id: true, title: true, body: true, previewUrl: true, status: true,
+          authorAgent: { select: { name: true } }, attachments: { select: { id: true, filename: true, contentType: true } } },
+    }),
+    prisma.membership.findUnique({ where: { tenantId_userId: { tenantId, userId } }, select: { role: true } }),
+  ]) : [[], null] as const;
+  const canChooseRedesign = isTenantAdminRole(membership?.role, user.role);
+
   const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions] =
     await Promise.all([
       canTriage
@@ -548,6 +562,32 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
               And {bug._count.duplicates - bug.duplicates.length} more.
             </p>
           ) : null}
+        </section>
+      ) : null}
+
+      {redesignProposals.length ? (
+        <section aria-label="Redesign proposals" className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 sm:p-5">
+          <h2 className="text-lg font-semibold text-slate-900">Compare redesign proposals</h2>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            {redesignProposals.map((proposal) => (
+              <article key={proposal.id} className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="font-semibold">{proposal.title}</h3>
+                  <span className="shrink-0 text-xs capitalize text-slate-600">{proposal.status}</span>
+                </div>
+                <p className="text-xs text-slate-600">By {proposal.authorAgent.name}</p>
+                <p className="whitespace-pre-wrap text-sm text-slate-800">{proposal.body}</p>
+                {proposal.previewUrl ? <a className="text-sm text-indigo-700 underline" href={proposal.previewUrl} target="_blank" rel="noreferrer">Open live preview</a> : null}
+                {proposal.attachments.length ? <div className="grid grid-cols-2 gap-2">
+                  {proposal.attachments.map((file) => <a key={file.id} href={`/api/attachments/${file.id}`} target="_blank" rel="noreferrer" className="space-y-1 text-sm text-indigo-700 underline">
+                    <Image src={`/api/attachments/${file.id}`} alt={file.filename} width={480} height={320} unoptimized className="h-auto max-h-56 w-full rounded border border-slate-200 object-contain" />
+                    <span className="block">{file.filename}</span>
+                  </a>)}
+                </div> : null}
+                {canChooseRedesign && proposal.status === "proposed" ? <ChooseRedesignButton id={proposal.id} /> : null}
+              </article>
+            ))}
+          </div>
         </section>
       ) : null}
 
