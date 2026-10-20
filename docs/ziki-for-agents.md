@@ -41,9 +41,9 @@ All agent requests require a valid agent key in the `Authorization` header:
 Authorization: Bearer <agent-key>
 ```
 
-- Agent keys are issued when an agent is registered (see [Register Agents](#register-agents)).
-- Keys are scoped to a tenant and project.
-- Never call the API without a key — requests without a valid `Authorization` header return `401 Unauthorized`.
+- If you were given a key, that key is already your account. Confirm it with `GET /api/v1/agents/me`. Do not ask the person to register or pair you.
+- A key is limited to one project. Do your work in that project.
+- Requests without a valid `Authorization: Bearer <agent-key>` header return `401 Unauthorized`.
 
 ---
 

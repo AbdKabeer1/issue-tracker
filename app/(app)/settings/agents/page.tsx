@@ -6,7 +6,11 @@ import { LocalTime } from "@/components/local-time";
 import { RelativeTime } from "@/components/relative-time";
 import { AGENT_LEVEL_DESCRIPTIONS, AGENT_LEVEL_LABELS, AGENT_LEVELS, settableLevels } from "@/lib/agents/levels";
 import { isTenantAdminRole, tenantForOwner } from "@/lib/agents/membership";
-import { projectsForTenant } from "@/lib/project-context";
+import { projectContextFor, projectsForTenant } from "@/lib/project-context";
+import { currentTenantIdFor } from "@/lib/tenant-context";
+import { AgentKeyCopyButton } from "@/components/agent-key-copy";
+import { ensureDefaultProjectKey } from "@/lib/agents/default-key";
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 import { CreateAgentForm } from "./create-agent-form";
 import { AgentControls } from "./agent-controls";
 
@@ -18,8 +22,6 @@ const levelBadge = "bg-slate-100 text-slate-700";
  * A person's agents and the team's (#427). Agents work issues for the person
  * who owns them; each has a level that says what it may do.
  */
-import { isAgentPlatformEnabled } from "@/lib/feature-flags";
-
 export default async function AgentsSettingsPage() {
   if (!isAgentPlatformEnabled()) {
     // Feature not enabled: show a safe message instead of the agents UI.
@@ -38,6 +40,26 @@ export default async function AgentsSettingsPage() {
   const isAdmin = isTenantAdminRole(tenant?.role, user.role);
 
   const projects = tenant ? await projectsForTenant(prisma, tenant.tenantId) : [];
+  const currentTenantId = await currentTenantIdFor(user.id);
+  let personalKey: Awaited<ReturnType<typeof ensureDefaultProjectKey>> = null;
+  let personalProjectName: string | null = null;
+  // The header copies the key for the organization the person is in now.
+  // This page prefers one membership, so only issue the key when they match.
+  if (tenant && currentTenantId === tenant.tenantId) {
+    const context = await projectContextFor(prisma, tenant.tenantId);
+    if (context.activeProjectId) {
+      try {
+        personalKey = await ensureDefaultProjectKey({
+          userId: user.id,
+          tenantId: tenant.tenantId,
+          projectId: context.activeProjectId,
+        });
+        personalProjectName = context.projects.find((project) => project.id === context.activeProjectId)?.name ?? null;
+      } catch (error) {
+        console.error("[agents] default agent key failed", error);
+      }
+    }
+  }
   const [mine, members] = tenant
     ? await Promise.all([
         prisma.agent.findMany({
@@ -51,6 +73,7 @@ export default async function AgentsSettingsPage() {
             burst: true,
             createdAt: true,
             revokedAt: true,
+            defaultProjectId: true,
             apiKeys: {
               where: { revokedAt: null },
               select: { id: true, prefix: true, lastUsedAt: true, project: { select: { id: true, name: true } } },
@@ -97,9 +120,11 @@ export default async function AgentsSettingsPage() {
           </Link>
         </div>
         <p className="text-sm text-slate-600">
-          Agents work issues for you. Each one acts as itself and in your name, and any points it
-          earns go to you. A key works in one project. Resetting your password signs you out and
-          revokes every agent key you own; the agents stay, and you can regenerate a key here.
+          You already have a personal agent for the project you are in. Copy Agent Key and paste it
+          into Claude, Antigravity, or another agent. The copy includes this site and the key, so
+          that agent can start work without you registering one. A key works in one project.
+          Resetting your password signs you out and revokes every agent key you own; the agents stay,
+          and a new personal key is ready the next time you open the app.
         </p>
       </div>
 
@@ -119,12 +144,32 @@ export default async function AgentsSettingsPage() {
         </div>
       ) : (
         <>
+          {personalKey ? (
+            <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="personal-key-heading">
+              <h2 id="personal-key-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Your agent key
+              </h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Paste this into your agent. It already has an account{personalProjectName ? ` on ${personalProjectName}` : ""}.
+              </p>
+              <div className="mt-3">
+                <AgentKeyCopyButton
+                  projectId={personalKey.projectId}
+                  projectName={personalProjectName}
+                  apiKey={personalKey.rawKey}
+                  keyPrefix={personalKey.prefix}
+                  keys={[{ prefix: personalKey.prefix, projectName: personalProjectName }]}
+                />
+              </div>
+            </section>
+          ) : null}
+
           <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="register-heading">
             <h2 id="register-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Register an agent
+              Another agent
             </h2>
             <p className="mt-2 text-sm text-slate-600">
-              Or let the agent ask to pair, then{" "}
+              Optional. Register an extra agent here, or let one ask to pair and{" "}
               <Link href="/settings/agents/pair" className="text-teal-700 hover:underline">
                 enter the code it shows you
               </Link>
@@ -138,7 +183,9 @@ export default async function AgentsSettingsPage() {
               Your agents
             </h2>
             {mine.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-600">You haven&apos;t registered any agents yet.</p>
+              <p className="mt-3 text-sm text-slate-600">
+                Your personal agent is created when you open a project. Copy Agent Key in the header to send it.
+              </p>
             ) : (
               <ul className="mt-3 divide-y divide-slate-100">
                 {mine.map((agent) => (
@@ -146,6 +193,7 @@ export default async function AgentsSettingsPage() {
                     <div className="min-w-0">
                       <p className="break-words font-medium text-slate-900">
                         {agent.name}
+                        {agent.defaultProjectId ? <span className="font-normal text-slate-500"> · personal</span> : null}
                         {agent.model ? <span className="font-normal text-slate-500"> · {agent.model}</span> : null}
                       </p>
                       <p className="mt-0.5 text-xs text-slate-500">

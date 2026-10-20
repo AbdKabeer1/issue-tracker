@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { copyText } from "@/lib/clipboard";
 import { useToast } from "@/components/ui/toast";
+import { agentBootstrapMessage } from "@/lib/agents/bootstrap-message";
 
-/** A live key's prefix. The secret itself is never stored, so this is all the header can show. */
+/** A live key's prefix. The header shows this, not the secret. */
 export type AgentKeyHint = {
   prefix: string;
   projectName: string | null;
@@ -17,6 +18,9 @@ export type AgentKeyCopyButtonProps = {
   fullWidth?: boolean;
   /** Prefixes of live keys for the active project, including legacy tenant-wide keys. */
   keys?: AgentKeyHint[];
+  /** The person's personal API key for this project, when one has been issued. */
+  apiKey?: string | null;
+  keyPrefix?: string | null;
 };
 
 export function AgentKeyCopyButton({
@@ -24,6 +28,8 @@ export function AgentKeyCopyButton({
   projectName,
   fullWidth = false,
   keys = [],
+  apiKey = null,
+  keyPrefix = null,
 }: AgentKeyCopyButtonProps) {
   const toast = useToast();
   const [copied, setCopied] = useState(false);
@@ -53,14 +59,25 @@ export function AgentKeyCopyButton({
 
   async function handleCopyKey(e?: React.MouseEvent) {
     e?.stopPropagation();
-    const ok = await copyText(projectId!);
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://ziki.dev";
+    const value = apiKey
+      ? agentBootstrapMessage({ origin, apiKey, projectName })
+      : projectId!;
+    const ok = await copyText(value);
     if (ok) {
-      toast("Agent project key copied to clipboard.");
+      toast(apiKey ? "Agent setup copied. Paste it into your agent." : "Agent project key copied to clipboard.");
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } else {
-      toast(`Could not copy. Key: ${projectId}`, "error");
+      toast(apiKey ? "Couldn't copy the agent setup." : `Could not copy. Key: ${projectId}`, "error");
     }
+  }
+
+  async function handleCopyProjectId(e?: React.MouseEvent) {
+    e?.stopPropagation();
+    const ok = await copyText(projectId!);
+    if (ok) toast("Project id copied.");
+    else toast(`Could not copy. Key: ${projectId}`, "error");
   }
 
   async function handleCopyEndpoint(e?: React.MouseEvent) {
@@ -73,7 +90,8 @@ export function AgentKeyCopyButton({
     }
   }
 
-  const shortKey = projectId.length > 8 ? `${projectId.slice(0, 6)}…` : projectId;
+  const shown = keyPrefix || projectId;
+  const shortKey = shown.length > 12 ? `${shown.slice(0, 10)}…` : shown;
 
   return (
     <div
@@ -106,7 +124,7 @@ export function AgentKeyCopyButton({
         <button
           type="button"
           onClick={handleCopyKey}
-          title={`Copy key to clipboard: ${projectId}`}
+          title={apiKey ? "Copy your agent key and this site" : `Copy key to clipboard: ${projectId}`}
           aria-label="Copy key to agent"
           className="inline-flex h-full items-center border-l border-slate-200 px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 rounded-r-lg transition"
         >
@@ -155,6 +173,12 @@ export function AgentKeyCopyButton({
               <span className="font-medium text-slate-800">{projectName ?? "Current Project"}</span>
             </div>
 
+            {apiKey ? (
+              <p className="text-slate-600">
+                Copy sends your API key and this site to an agent. It can start work without you registering one.
+              </p>
+            ) : null}
+
             <div>
               <span className="text-slate-500 block text-[11px]">API key prefixes</span>
               {keys.length > 0 ? (
@@ -165,9 +189,13 @@ export function AgentKeyCopyButton({
                     </li>
                   ))}
                 </ul>
+              ) : apiKey ? (
+                <p className="mt-1 text-slate-600">
+                  Your personal key is ready. Copy sends it with this site, and the agent can start without you registering one.
+                </p>
               ) : (
                 <p className="mt-1 text-slate-600">
-                  No live key for this project. Register or regenerate one in settings. The full secret is shown only once.
+                  No live key for this project. Open the app again, or register one in settings. The full secret is shown only once.
                 </p>
               )}
             </div>
@@ -177,10 +205,10 @@ export function AgentKeyCopyButton({
                 <span className="text-slate-500 text-[11px]">Project id (for API queries)</span>
                 <button
                   type="button"
-                  onClick={handleCopyKey}
+                  onClick={handleCopyProjectId}
                   className="text-teal-700 hover:text-teal-900 font-medium hover:underline text-[11px]"
                 >
-                  Copy Key
+                  Copy id
                 </button>
               </div>
               <code className="block rounded bg-slate-50 px-2 py-1 font-mono text-[11px] text-slate-800 select-all border border-slate-200 break-all">
