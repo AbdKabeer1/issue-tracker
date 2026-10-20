@@ -241,16 +241,22 @@ model PasswordResetToken {
 }
 
 model IssueType {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  description String?
+  id            String         @id @default(cuid())
+  tenantId      String
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
   /// Markdown that pre-fills the report form's description (#307). Null: none.
-  template    String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  bugs        Bug[]
+  template      String?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  bugs          Bug[]
   approvalRules ApprovalRule[]
+
+  @@unique([tenantId, name])
+  @@unique([id, tenantId])
+  @@index([tenantId])
 }
 
 model Bug {
@@ -368,7 +374,9 @@ model Category {
 /// A release or sprint grouping issues (#289).
 model Milestone {
   id          String    @id @default(cuid())
-  title       String    @unique
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title       String
   description String?
   /// A calendar day; no time of day.
   dueDate     DateTime? @db.Date
@@ -379,6 +387,9 @@ model Milestone {
   updatedAt   DateTime  @updatedAt
   bugs        Bug[]
 
+  @@unique([tenantId, title])
+  @@unique([id, tenantId])
+  @@index([tenantId])
   @@index([isClosed, dueDate])
 }
 
@@ -552,6 +563,8 @@ model Tenant {
   updatedAt     DateTime           @updatedAt
   projects      Project[]
   categories    Category[]
+  issueTypes    IssueType[]
+  milestones    Milestone[]
   memberships   Membership[]
   agents        Agent[]
   bugs          Bug[]

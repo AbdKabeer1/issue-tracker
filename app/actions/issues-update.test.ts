@@ -305,6 +305,21 @@ describe("milestones in triage (#289)", () => {
     expect(written).toBeNull();
   });
 
+  it("refuses a milestone that belongs to another organization", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "admin" });
+    db.bug.findUnique.mockResolvedValue(withMilestone(null));
+    db.milestone.findUnique.mockResolvedValue(null);
+    const result = await updateBugAction("bug1", form({ milestoneId: "other-tenant-milestone" }));
+    expect(result.error).toMatch(/no longer exists/);
+    expect(db.milestone.findUnique).toHaveBeenCalledWith({
+      where: {
+        id_tenantId: { id: "other-tenant-milestone", tenantId: "tenant-zedu" },
+      },
+      select: { title: true, isClosed: true },
+    });
+    expect(written).toBeNull();
+  });
+
   it("ignores the field from a non-admin", async () => {
     mockUser.mockResolvedValue({ id: ME, name: "Me", role: "user" });
     db.bug.findUnique.mockResolvedValue(issue(ME));

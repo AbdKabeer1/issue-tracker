@@ -192,7 +192,7 @@ export default async function BugsPage({
   // and the admin path below then queried them again outside this catch.
   const [tagTypes, platforms, milestones, areas, userPrefs] = await Promise.all([
     // Cached, expired by the admin actions that change them (#297).
-    loadOrEmpty("issue types", () => getIssueTypes(), []),
+    loadOrEmpty("issue types", () => getIssueTypes(tenantId), []),
     // Every platform, not just active ones: a link filtered on a platform
     // that was since deactivated still has to resolve. BugFilters narrows
     // the dropdown itself.
@@ -201,10 +201,13 @@ export default async function BugsPage({
     loadOrEmpty(
       "milestones",
       () =>
-        prisma.milestone.findMany({
-          select: { id: true, title: true, isClosed: true },
-          orderBy: [{ isClosed: "asc" }, { dueDate: { sort: "asc", nulls: "last" } }, { title: "asc" }],
-        }),
+        tenantId
+          ? prisma.milestone.findMany({
+              where: { tenantId },
+              select: { id: true, title: true, isClosed: true },
+              orderBy: [{ isClosed: "asc" }, { dueDate: { sort: "asc", nulls: "last" } }, { title: "asc" }],
+            })
+          : Promise.resolve([]),
       [],
     ),
     loadOrEmpty(
@@ -427,7 +430,10 @@ export default async function BugsPage({
   let milestoneSummary: Awaited<ReturnType<typeof loadMilestoneSummaries>>[number] | null = null;
   if (selectedMilestone && selectedMilestone !== "none") {
     try {
-      [milestoneSummary] = await loadMilestoneSummaries({ id: selectedMilestone.id });
+      [milestoneSummary] = await loadMilestoneSummaries({
+        id: selectedMilestone.id,
+        tenantId: tenantId ?? undefined,
+      });
     } catch (error) {
       console.error("[bugs] milestone summary failed", error);
     }

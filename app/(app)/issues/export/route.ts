@@ -61,11 +61,13 @@ export async function GET(request: NextRequest) {
   const tenantId = await currentTenantIdFor(user.id);
   const projectId = await activeProjectIdFor(prisma, tenantId);
   const [tagTypes, platforms, milestones, areas] = await Promise.all([
-    getIssueTypes(),
+    getIssueTypes(tenantId),
     // Every platform in this organization, active or not: a filter on a
     // platform that was since deactivated still has to resolve.
     getPlatforms(tenantId),
-    prisma.milestone.findMany({ select: { id: true } }),
+    tenantId
+      ? prisma.milestone.findMany({ where: { tenantId }, select: { id: true } })
+      : Promise.resolve([]),
     params.area && projectId
       ? prisma.projectArea.findMany({ where: { projectId }, select: { id: true, name: true } })
       : Promise.resolve([]),
