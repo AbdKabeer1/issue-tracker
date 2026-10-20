@@ -20,6 +20,7 @@ vi.mock("@/lib/agents/rate-budget", async (original) => ({
 import { GET as list, POST as create } from "@/app/api/v1/issues/route";
 import { GET as read } from "@/app/api/v1/issues/[id]/route";
 import { POST as comment } from "@/app/api/v1/issues/[id]/comments/route";
+import { POST as claim } from "@/app/api/v1/issues/[id]/claim/route";
 import { encodeCursor } from "./create-policy";
 
 afterEach(() => vi.restoreAllMocks());
@@ -100,6 +101,15 @@ describe("agent issue API authentication", () => {
     expect(response.headers.get("retry-after")).toBe("12");
     expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false }, "write");
     expect(db.bug.create).not.toHaveBeenCalled();
+  });
+
+  it("retires direct claims with 410 and without spending the write budget (#554)", async () => {
+    db.project.findFirst.mockResolvedValue({ id: "project-a" });
+    const response = await claim(request("POST", { projectId: "project-a" }), context);
+    expect(response.status).toBe(410);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toContain("/api/v1/issues/{id}/offer");
+    expect(budget).not.toHaveBeenCalled();
   });
 });
 
