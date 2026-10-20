@@ -109,6 +109,13 @@ export const editBugContentSchema = z
   })
   .strict();
 
+/** Replace an issue's proof links after it was filed (#737). Empty clears them. */
+export const editProofLinksSchema = z
+  .object({
+    proofLinks: proofLinksInputSchema,
+  })
+  .strict();
+
 export const categorySchema = z.object({
   name: z
     .string()
