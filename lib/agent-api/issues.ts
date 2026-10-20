@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import type { AgentLevel, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { agentErrorResponse, requireAgent, type AgentContext } from "@/lib/agents/require-agent";
+import { agentErrorResponse, assertKeyProject, requireAgent, type AgentContext } from "@/lib/agents/require-agent";
 import { requireLevel } from "@/lib/agents/levels";
 import { audit } from "@/lib/agents/audit";
 import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/rate-budget";
@@ -61,6 +61,8 @@ export async function issueProject(agent: AgentContext, params: URLSearchParams,
   const projectId = idSchema.parse(queryId ?? bodyProjectId);
   const project = await prisma.project.findFirst({ where: { id: projectId, tenantId: agent.tenantId }, select: { id: true } });
   if (!project) throw new IssueApiError(404, "Project not found.");
+  // A key issued for one project cannot read or change another (#742).
+  assertKeyProject(agent, project.id);
   return { tenantId: agent.tenantId, projectId: project.id };
 }
 

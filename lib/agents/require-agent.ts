@@ -22,6 +22,13 @@ export type AgentContext = {
   burst: boolean;
   /** The key used for this call, so rotation can revoke exactly it. */
   keyId: string;
+  /**
+   * The only project this key may act in (#742). Null or omitted means a
+   * legacy key that still works in every project of the tenant.
+   */
+  projectId?: string | null;
+  /** Slug of that project, for the error shown when the key is used elsewhere. */
+  projectSlug?: string | null;
 };
 
 export type AgentAuthFailure = "missing_key" | "invalid_key" | "revoked";
@@ -31,6 +38,30 @@ const MESSAGES: Record<AgentAuthFailure, string> = {
   invalid_key: "That agent key is not valid.",
   revoked: "That agent key has been revoked.",
 };
+
+/** A project-scoped key was used against a different project (#742). */
+export class AgentProjectError extends Error {
+  readonly code = "project_forbidden" as const;
+
+  constructor(projectSlug: string | null | undefined) {
+    super(
+      projectSlug
+        ? `This agent key is restricted to project ${projectSlug}.`
+        : "This agent key is restricted to another project.",
+    );
+    this.name = "AgentProjectError";
+  }
+}
+
+/** Rejects the call when the key is limited to a different project. */
+export function assertKeyProject(
+  agent: Pick<AgentContext, "projectId" | "projectSlug">,
+  projectId: string,
+): void {
+  if (agent.projectId && agent.projectId !== projectId) {
+    throw new AgentProjectError(agent.projectSlug);
+  }
+}
 
 export class AgentAuthError extends Error {
   readonly code: AgentAuthFailure;
@@ -56,6 +87,8 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
       id: true,
       lastUsedAt: true,
       revokedAt: true,
+      projectId: true,
+      project: { select: { slug: true } },
       agent: {
         select: {
           id: true,
@@ -103,6 +136,8 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
     level: agent.level,
     burst: agent.burst,
     keyId: key.id,
+    projectId: key.projectId,
+    projectSlug: key.project?.slug ?? null,
   };
 }
 
@@ -116,6 +151,9 @@ export function agentErrorResponse(error: unknown): NextResponse {
       { error: error.code, message: error.message },
       { status: 401, headers: { "WWW-Authenticate": 'Bearer realm="ziki"' } },
     );
+  }
+  if (error instanceof AgentProjectError) {
+    return NextResponse.json({ error: error.code, message: error.message }, { status: 403 });
   }
   if (error instanceof AgentLevelError) {
     return NextResponse.json(
