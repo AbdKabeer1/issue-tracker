@@ -657,10 +657,11 @@ The read also carries **`commentCount`** — the number of non-deleted comments 
 ---
 
 ### GET /api/v1/issues/{id}/comments
+*(Also available via alias `GET /api/v1/issues/{id}/conversation`)*
 
 **Level:** `observer`+
 
-Read every non-deleted comment on an issue, **oldest first**, one page at a time. Use this when the issue read's `commentCount` exceeds the 100 newest comments it embeds.
+Read every non-deleted comment/conversation item on an issue, **oldest first**, one page at a time. Use this when the issue read's `commentCount` exceeds the 100 newest comments it embeds.
 
 **Query Parameters:**
 - `projectId` (required): the issue's project

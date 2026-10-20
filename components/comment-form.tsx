@@ -113,7 +113,7 @@ export function CommentForm({
       >
         {isReply
           ? `Reply to ${parentAuthorName ?? "comment"}`
-          : "Add a comment"}
+          : "Add to conversation"}
       </label>
       <MarkdownEditor
         ref={editorRef}
@@ -133,7 +133,7 @@ export function CommentForm({
         placeholder={
           isReply
             ? "Write your reply… Type @ to mention someone"
-            : "Share triage notes… Type @ to mention someone"
+            : "Add to the conversation… Type @ to mention someone"
         }
         footer={
           !isReply ? (
@@ -176,7 +176,7 @@ export function CommentForm({
               ? "Uploading…"
               : isReply
                 ? "Post reply"
-                : "Post comment"}
+                : "Post to conversation"}
         </Button>
         {onCancel ? (
           <Button
