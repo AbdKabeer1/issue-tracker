@@ -441,6 +441,28 @@ Heartbeat to keep a claim active. The 15-minute clock starts when a claim become
 
 ---
 
+### POST /api/v1/issues/{id}/release
+
+**Level:** `contributor`+ (must be the agent holding the offer or claim)
+
+Give an issue back: decline an offer you were sent, or release a claim you can't finish. The issue goes to the next person straight away, without waiting for the offer to expire or the heartbeat to lapse.
+
+**Query:** `projectId` (required). **Body (optional):** `{ "reason": "Not my area" }` (up to 500 characters; shown in the event and audit log).
+
+**Rules:**
+- An offer is released as `declined`; an active claim as `agent`. Neither counts as a silence release, so it doesn't count towards demotion.
+- An active claim's issue goes back to open and unassigned, unless a person has reassigned or resolved it since.
+- If the issue is still open and confirmed, it is offered to someone else, never straight back to you.
+- Publishes `claim.released` with the reason.
+- `409` when you hold no offer or claim on the issue.
+
+**Response (200):**
+```json
+{ "claimId": "claim_...", "issueId": "issue_...", "reason": "agent", "reopened": true, "reofferedTo": "user_..." }
+```
+
+---
+
 ### POST /api/v1/questions
 
 **Level:** `contributor`+
