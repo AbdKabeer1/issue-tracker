@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const dispatch = vi.hoisted(() => vi.fn());
-const prune = vi.hoisted(() => vi.fn());
+const prune = vi.hoisted(() => vi.fn().mockResolvedValue(0));
 vi.mock("@/lib/webhooks/deliver", () => ({ dispatchDueDeliveries: dispatch }));
 vi.mock("@/lib/agent-retention", () => ({ pruneAgentRows: prune }));
-import { POST } from "./route";
+import { GET, POST } from "./route";
 afterEach(() => { vi.resetAllMocks(); vi.unstubAllEnvs(); });
 const request = (key?: string) => new NextRequest("http://localhost/api/v1/webhooks/dispatch", { method: "POST", headers: key ? { authorization: `Bearer ${key}` } : {} });
+const cronRequest = (key?: string) => new NextRequest("http://localhost/api/v1/webhooks/dispatch", { method: "GET", headers: key ? { authorization: `Bearer ${key}` } : {} });
 describe("scheduler authorization", () => {
   it("fails closed without configuration, with no key, and with an agent key", async () => {
     vi.stubEnv("WEBHOOK_DISPATCH_SECRET", "");
@@ -35,5 +36,24 @@ describe("scheduler authorization", () => {
     const response = await POST(request("scheduler-test-secret"));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ processed: 0 });
+  });
+});
+
+describe("Vercel cron dispatch (#583)", () => {
+  it("dispatches GETs authorized with CRON_SECRET", async () => {
+    vi.stubEnv("CRON_SECRET", "cron-test-secret");
+    dispatch.mockResolvedValueOnce(3);
+    const response = await GET(cronRequest("cron-test-secret"));
+    expect(await response.json()).toEqual({ processed: 3 });
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("fails closed without CRON_SECRET, and rejects the scheduler secret", async () => {
+    vi.stubEnv("CRON_SECRET", "");
+    expect((await GET(cronRequest("cron-test-secret"))).status).toBe(503);
+    vi.stubEnv("CRON_SECRET", "cron-test-secret");
+    expect((await GET(cronRequest())).status).toBe(401);
+    expect((await GET(cronRequest("scheduler-test-secret"))).status).toBe(401);
+    expect(dispatch).not.toHaveBeenCalled();
   });
 });
