@@ -105,7 +105,12 @@ beforeEach(() => {
         }
         return true;
       })
-      .map((v) => ({ id: v.id, agentId: v.agentId, agent: state.agents[v.agentId] })),
+      .map((v) => ({
+        id: v.id,
+        agentId: v.agentId,
+        onBehalfOfUserId: v.onBehalfOfUserId,
+        agent: state.agents[v.agentId],
+      })),
   );
   db.issueValidation.count.mockImplementation(async ({ where }: { where: Record<string, string> }) =>
     state.validations.filter((v) => v.bugId === where.bugId && v.kind === where.kind && v.verdict === where.verdict).length,
@@ -351,20 +356,38 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
     expect(second).toMatchObject({ status: 201, confirmed: true, newlyConfirmed: true });
     expect(await isConfirmed("bug1")).toBe(true);
     expect(db.$queryRaw).toHaveBeenCalled();
-    expect(db.pointEntry.createMany).toHaveBeenCalledTimes(1);
-    expect(db.pointEntry.createMany.mock.calls[0][0].data[0]).toEqual({
-      tenantId: "tenant_zedu",
-      userId: "ada",
-      bugId: "bug1",
-      role: "reporter",
-      points: 5,
-      sourceKey: "reporter:bug1:ada",
-    });
+    const awards = db.pointEntry.createMany.mock.calls.map((call) => call[0].data[0]);
+    expect(awards).toEqual([
+      {
+        tenantId: "tenant_zedu",
+        userId: "ada",
+        bugId: "bug1",
+        role: "reporter",
+        points: 5,
+        sourceKey: "reporter:bug1:ada",
+      },
+      {
+        tenantId: "tenant_zedu",
+        userId: "rob",
+        bugId: "bug1",
+        role: "reviewer",
+        points: 5,
+        sourceKey: "reviewer-confirm:bug1:rob",
+      },
+      {
+        tenantId: "tenant_zedu",
+        userId: "sam",
+        bugId: "bug1",
+        role: "reviewer",
+        points: 5,
+        sourceKey: "reviewer-confirm:bug1:sam",
+      },
+    ]);
 
     // A third accept keeps it confirmed and pays nobody again.
     const third = await submitValidation(reviewer("r3", "tia"), "bug1", acceptReal);
     expect(third).toMatchObject({ confirmed: true, newlyConfirmed: false });
-    expect(db.pointEntry.createMany).toHaveBeenCalledTimes(1);
+    expect(db.pointEntry.createMany).toHaveBeenCalledTimes(3);
   });
 
   it("two agents of the same owner count once", async () => {

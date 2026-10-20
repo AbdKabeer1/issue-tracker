@@ -4,8 +4,12 @@ import {
   deliveryWindowMinutes,
   extendDeadline,
   isDeliveryOverdue,
+  isOwnerWaitOver,
+  ownerWaitCapMinutes,
   remainingLabel,
+  resumeAfterWait,
   DEFAULT_DELIVERY_WINDOW_MINUTES,
+  DEFAULT_OWNER_WAIT_CAP_MINUTES,
   HIGH_PRIORITY_DELIVERY_WINDOW_MINUTES,
 } from "./claim-deadline";
 
@@ -57,5 +61,27 @@ describe("claim delivery deadline (#593)", () => {
     expect(remainingLabel(new Date("2026-10-19T13:00:00.000Z"), now)).toBe("1h left");
     expect(remainingLabel(new Date("2026-10-19T11:59:00.000Z"), now)).toBe("Overdue");
     expect(remainingLabel(null, now)).toBeNull();
+  });
+});
+
+describe("owner waits (#606)", () => {
+  const minutesAgo = (minutes: number) => new Date(now.getTime() - minutes * 60_000);
+
+  it("defaults the cap to four hours and takes a positive project value", () => {
+    expect(ownerWaitCapMinutes()).toBe(DEFAULT_OWNER_WAIT_CAP_MINUTES);
+    expect(DEFAULT_OWNER_WAIT_CAP_MINUTES).toBe(240);
+    expect(ownerWaitCapMinutes(90)).toBe(90);
+    expect(ownerWaitCapMinutes(0)).toBe(240);
+    expect(ownerWaitCapMinutes(Number.NaN)).toBe(240);
+  });
+
+  it("ends the wait at the cap, not before", () => {
+    expect(isOwnerWaitOver(minutesAgo(239), now, 240)).toBe(false);
+    expect(isOwnerWaitOver(minutesAgo(240), now, 240)).toBe(true);
+  });
+
+  it("shifts a clock forward by the time spent waiting", () => {
+    expect(resumeAfterWait(minutesAgo(5), minutesAgo(60), now)).toEqual(new Date(now.getTime() + 55 * 60_000));
+    expect(resumeAfterWait(null, minutesAgo(60), now)).toBeNull();
   });
 });

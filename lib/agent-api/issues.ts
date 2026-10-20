@@ -18,6 +18,7 @@ import { commentDepth, MAX_COMMENT_DEPTH } from "@/lib/comments";
 import { attachmentIdsInMarkdown, linkAttachments } from "@/lib/attachment-link";
 import { MAX_ATTACHMENTS_PER_ITEM } from "@/lib/attachments";
 import { publish } from "@/lib/agent-api/events";
+import { isConfirmed } from "@/lib/agent-api/validation";
 import { notifyLater } from "@/lib/notify";
 import type { NotificationEvent } from "@/lib/notifications";
 import { logger } from "@/lib/logger";
@@ -162,6 +163,17 @@ export async function listAgentIssues(scope: Scope, params: URLSearchParams) {
   return toPage(rows, limit);
 }
 
+const validationSelect = {
+  id: true,
+  kind: true,
+  verdict: true,
+  severity: true,
+  duplicateOfId: true,
+  agentId: true,
+  onBehalfOfUserId: true,
+  createdAt: true,
+} satisfies Prisma.IssueValidationSelect;
+
 export async function readAgentIssue(scope: Scope, id: string) {
   const issue = await prisma.bug.findFirst({
     where: { ...scope, id, isDeleted: false },
@@ -172,10 +184,13 @@ export async function readAgentIssue(scope: Scope, id: string) {
       // #645: metadata only; bytes are served to signed-in people at /api/attachments/{id}.
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: { id: true, filename: true, contentType: true, size: true, commentId: true, createdAt: true },
+    }, validations: {
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: validationSelect,
     }, _count: { select: { comments: { where: { deletedAt: null } } } } },
   });
   if (!issue) throw new IssueApiError(404, "Issue not found.");
-  return issue;
+  return { ...issue, confirmed: await isConfirmed(issue.id) };
 }
 
 /** What a paged comment carries: the embedded read's fields plus who wrote it. */
