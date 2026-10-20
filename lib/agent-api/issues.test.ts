@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const db = vi.hoisted(() => ({
-  agentApiKey: { findUnique: vi.fn() }, agentAuditEvent: { create: vi.fn() },
+  agentApiKey: { findUnique: vi.fn() }, agentAuditEvent: { create: vi.fn(), findMany: vi.fn() },
   agentEvent: { create: vi.fn() },
   webhookSubscription: { findMany: vi.fn() }, webhookDelivery: { createMany: vi.fn() },
   project: { findFirst: vi.fn() }, category: { findMany: vi.fn(), findFirst: vi.fn() },
@@ -13,6 +13,8 @@ const db = vi.hoisted(() => ({
   idempotencyKey: { findUnique: vi.fn(), deleteMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   issueType: { findUnique: vi.fn() }, user: { findMany: vi.fn() }, $queryRaw: vi.fn(), $transaction: vi.fn(),
   attachment: { updateMany: vi.fn() },
+  bugRevision: { findMany: vi.fn() },
+  issueValidation: { findMany: vi.fn() },
 }));
 const budget = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
@@ -70,6 +72,9 @@ beforeEach(() => {
   db.projectArea.findMany.mockResolvedValue([{ id: "area-ui", name: "Frontend" }]);
   db.projectArea.findFirst.mockResolvedValue({ id: "area-ui" });
   db.bug.findMany.mockResolvedValue([issue]);
+  db.bugRevision.findMany.mockResolvedValue([]);
+  db.issueValidation.findMany.mockResolvedValue([]);
+  db.agentAuditEvent.findMany.mockResolvedValue([]);
   db.bug.findFirst.mockResolvedValue(issue);
   db.bug.create.mockResolvedValue({ id: issue.id });
   db.membership.findUnique.mockResolvedValue({ userId: "beneficiary-a" });
@@ -186,6 +191,63 @@ describe("agent issue reads", () => {
     expect(db.bug.findMany.mock.lastCall?.[0].where).not.toHaveProperty("categoryId");
   });
 
+  it("keeps only open issues in the requested intake stage, then pages them", async () => {
+    const open = {
+      id: "issue-a",
+      status: "open",
+      voteCount: 0,
+      beneficiaryUserId: "other",
+      reporterId: "other",
+      createdByAgentId: null,
+      createdByAgent: null,
+      claims: [],
+    };
+    db.bug.findMany.mockResolvedValueOnce([open]).mockResolvedValueOnce([issue]);
+    const response = await list(request("GET", undefined, "?projectId=project-a&stage=reported&limit=1"));
+    expect(response.status).toBe(200);
+    expect(db.bug.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ status: "open", id: { in: ["issue-a"] } }),
+      take: 2,
+    }));
+
+    db.bug.findMany.mockClear();
+    db.bug.findMany.mockResolvedValueOnce([{ ...open, voteCount: 1 }]);
+    const confirmed = await list(request("GET", undefined, "?projectId=project-a&stage=confirmed"));
+    expect(confirmed.status).toBe(200);
+    expect(await confirmed.json()).toEqual({ items: [], nextCursor: null });
+    expect(db.bug.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a confirmed issue with three upvotes as ready", async () => {
+    const open = {
+      id: "issue-a",
+      status: "open",
+      voteCount: 3,
+      beneficiaryUserId: "other",
+      reporterId: "other",
+      createdByAgentId: null,
+      createdByAgent: null,
+      claims: [],
+    };
+    db.bug.findMany.mockResolvedValueOnce([open]).mockResolvedValueOnce([issue]);
+    db.issueValidation.findMany.mockResolvedValueOnce([
+      { id: "v1", bugId: "issue-a", createdAt: new Date("2026-10-20T00:00:00Z"), agentId: "r1", agent: { ownerUserId: "rev-1" } },
+      { id: "v2", bugId: "issue-a", createdAt: new Date("2026-10-20T00:00:00Z"), agentId: "r2", agent: { ownerUserId: "rev-2" } },
+    ]);
+    const response = await list(request("GET", undefined, "?projectId=project-a&stage=ready"));
+    expect(response.status).toBe(200);
+    expect(db.bug.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: { in: ["issue-a"] } }),
+    }));
+  });
+
+  it("returns an empty page when stage is combined with a status that is not open", async () => {
+    const response = await list(request("GET", undefined, "?projectId=project-a&status=closed&stage=reported"));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ items: [], nextCursor: null });
+    expect(db.bug.findMany).not.toHaveBeenCalled();
+  });
+
   it("filters only by areas belonging to the requested project", async () => {
     await list(request("GET", undefined, "?projectId=project-a&area=area-ui"));
     expect(db.projectArea.findMany).toHaveBeenCalledWith({
@@ -207,6 +269,7 @@ describe("agent issue reads", () => {
     expect((await list(request())).status).toBe(404);
     expect(db.project.findFirst).toHaveBeenCalledWith({ where: { id: "project-a", tenantId: "tenant-a" }, select: { id: true } });
     expect((await list(request("GET", undefined, "?projectId=project-a&status=unknown"))).status).toBe(422);
+    expect((await list(request("GET", undefined, "?projectId=project-a&stage=queued"))).status).toBe(422);
     expect((await list(request("GET", undefined, "?projectId=project-a&cursor=bad"))).status).toBe(400);
     expect(db.bug.findMany).not.toHaveBeenCalled();
   });
