@@ -10,6 +10,20 @@ import { pointSourceKey, REPORTER_POINTS } from "@/lib/points/rules";
 import { severities } from "@/lib/validations/issue";
 import { publish } from "@/lib/agent-api/events";
 
+/** Severity order for the reviewer agreement rule (#528). */
+const SEVERITY_RANK: Record<(typeof severities)[number], number> = {
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4,
+};
+
+function severityRank(severity: string | null): number {
+  return severity && severity in SEVERITY_RANK
+    ? SEVERITY_RANK[severity as keyof typeof SEVERITY_RANK]
+    : 0;
+}
+
 /**
  * Reviewer agents validating issues (#433). A validation says whether an
  * issue is a real bug, whether its report is well formed, whether it is a
@@ -253,6 +267,12 @@ export async function submitValidation(
   }
 
   const setsSeverity = body.kind === "real" && body.verdict === "accept" ? body.severity! : null;
+  // Reviewers who disagree only ever raise severity: a second reviewer cannot
+  // quietly downgrade an issue someone else called critical (#528).
+  const escalatesSeverity =
+    setsSeverity !== null && severityRank(setsSeverity) > severityRank(bug.severity);
+  const severityDisagreement =
+    setsSeverity !== null && !escalatesSeverity && setsSeverity !== bug.severity;
 
   try {
     return await prisma.$transaction(async (tx) => {
@@ -275,8 +295,8 @@ export async function submitValidation(
         },
         select: { id: true, kind: true, verdict: true, severity: true, duplicateOfId: true, onBehalfOfUserId: true },
       });
-      if (setsSeverity && setsSeverity !== bug.severity) {
-        await tx.bug.update({ where: { id: bug.id }, data: { severity: setsSeverity } });
+      if (escalatesSeverity) {
+        await tx.bug.update({ where: { id: bug.id }, data: { severity: setsSeverity! } });
       }
 
       const confirmed = (await countedConfirmations(tx, bug)) >= CONFIRMATIONS_NEEDED;
@@ -304,7 +324,8 @@ export async function submitValidation(
           kind: body.kind,
           verdict: body.verdict,
           onBehalfOfUserId,
-          ...(setsSeverity ? { severity: setsSeverity, previousSeverity: bug.severity } : {}),
+          ...(setsSeverity ? { severity: setsSeverity, previousSeverity: bug.severity, effectiveSeverity: escalatesSeverity ? setsSeverity : bug.severity } : {}),
+          ...(severityDisagreement ? { severityDisagreement: true } : {}),
           ...(body.duplicateOfId ? { duplicateOfId: body.duplicateOfId } : {}),
           ...(newlyConfirmed ? { confirmed: true } : {}),
         },
@@ -322,7 +343,8 @@ export async function submitValidation(
           kind: body.kind,
           verdict: body.verdict,
           onBehalfOfUserId,
-          ...(setsSeverity ? { severity: setsSeverity, previousSeverity: bug.severity } : {}),
+          ...(setsSeverity ? { severity: setsSeverity, previousSeverity: bug.severity, effectiveSeverity: escalatesSeverity ? setsSeverity : bug.severity } : {}),
+          ...(severityDisagreement ? { severityDisagreement: true } : {}),
           ...(body.duplicateOfId ? { duplicateOfId: body.duplicateOfId } : {}),
           ...(newlyConfirmed ? { confirmed: true } : {}),
         },
