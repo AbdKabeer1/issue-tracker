@@ -1,6 +1,7 @@
 "use server";
 
 import { fromZodError } from "@/lib/form-errors";
+import { logger } from "@/lib/logger";
 
 /** An error, and the field it is about when there is one (#309). */
 type FieldAwareResult = {
@@ -97,7 +98,7 @@ export async function loginAction(
     if (error instanceof AuthError) {
       return { error: "Invalid email or password", field: "email" };
     }
-    console.error("[loginAction] signIn error:", error);
+    logger.error("[loginAction] signIn error:", error);
     return { error: "Invalid email or password", field: "email" };
   }
 
@@ -158,7 +159,7 @@ export async function signupAction(
         error: "Account created, but sign-in failed. Try logging in.",
       };
     }
-    console.error("[signupAction] signIn error after user creation:", error);
+    logger.error("[signupAction] signIn error after user creation:", error);
     return {
       error: "Account created! Please sign in with your email and password.",
     };
@@ -318,7 +319,7 @@ export async function forgotPasswordAction(
       });
     }
   } catch (error) {
-    console.error("[forgot-password]", error);
+    logger.error("[forgot-password]", error);
     // Still return the generic message — do not leak failure mode.
   }
 

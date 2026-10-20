@@ -40,6 +40,7 @@ vi.mock("@/lib/prisma", () => ({
     user: { findUnique: vi.fn(), findFirst: vi.fn() },
     issueType: { findUnique: vi.fn() },
     category: { findUnique: vi.fn(), findFirst: vi.fn() },
+    projectArea: { findFirst: vi.fn() },
     milestone: { findUnique: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -58,6 +59,7 @@ const db = prisma as unknown as {
   user: { findUnique: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
   issueType: { findUnique: ReturnType<typeof vi.fn> };
   category: { findUnique: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
+  projectArea: { findFirst: ReturnType<typeof vi.fn> };
   milestone: { findUnique: ReturnType<typeof vi.fn> };
   $transaction: ReturnType<typeof vi.fn>;
 };
@@ -77,6 +79,8 @@ function issue(assigneeId: string | null, extra: Record<string, unknown> = {}) {
   return {
     id: "bug1",
     tenantId: "tenant-zedu",
+    projectId: "project-zedu",
+    areaId: null,
     title: "A bug",
     status: "open",
     severity: "medium",
@@ -87,6 +91,7 @@ function issue(assigneeId: string | null, extra: Record<string, unknown> = {}) {
     isDeleted: false,
     assignee: assigneeId ? { id: assigneeId, name: assigneeId } : null,
     category: null,
+    area: null,
     type: null,
     ...extra,
   };
@@ -114,6 +119,7 @@ beforeEach(() => {
   db.user.findFirst.mockImplementation(async ({ where }: { where: { id: string } }) => ({ name: where.id }));
   db.issueType.findUnique.mockResolvedValue({ id: "t1", name: "Fix", isActive: true });
   db.category.findFirst.mockResolvedValue({ id: "c1", name: "Web", tenantId: "tenant-zedu" });
+  db.projectArea.findFirst.mockResolvedValue({ id: "area-web", name: "Frontend" });
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
     fn({
       bug: { update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => (written = data)) },
@@ -127,6 +133,7 @@ beforeEach(() => {
       issueClaim: {
         updateMany: vi.fn(async (input: Record<string, unknown>) => { claimReleases.push(input); return { count: 1 }; }),
       },
+      projectArea: { findFirst: db.projectArea.findFirst },
       // #428: the points ledger.
       pointEntry: {
         createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
@@ -205,6 +212,16 @@ describe("updateBugAction authorization (#218)", () => {
     vi.clearAllMocks();
     await run("admin", null, { status: "open" });
     expect(notifyLater).not.toHaveBeenCalled();
+  });
+
+  it("lets admins assign an area from the issue's project and logs it", async () => {
+    await expect(run("admin", null, { areaId: "area-web" })).resolves.toEqual({ ok: true });
+    expect(db.projectArea.findFirst).toHaveBeenCalledWith({
+      where: { id: "area-web", projectId: "project-zedu" },
+      select: { id: true, name: true },
+    });
+    expect(written).toEqual({ areaId: "area-web" });
+    expect(activities).toContain("area_changed");
   });
 });
 

@@ -6,11 +6,17 @@ import { deleteBugAction } from "@/app/actions/issues";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
+import {
+  deleteSummary,
+  type TicketDeletionCounts,
+} from "@/lib/ticket-deletion";
 import { isRedirectError } from "@/lib/toast-store";
 
 type DeleteBugButtonProps = {
   bugId: string;
   bugTitle: string;
+  /** Shown in the confirm text so it matches the page. */
+  counts?: TicketDeletionCounts;
   variant?: "danger" | "danger-secondary" | "ghost";
   size?: "sm" | "md";
   label?: string;
@@ -20,6 +26,7 @@ type DeleteBugButtonProps = {
 export function DeleteIssueButton({
   bugId,
   bugTitle,
+  counts,
   variant = "danger-secondary",
   size = "md",
   label = "Delete issue",
@@ -45,7 +52,7 @@ export function DeleteIssueButton({
           event.stopPropagation();
           const confirmed = await confirm({
             title: `Delete "${bugTitle}"?`,
-            body: "The issue will be hidden from regular users, but admins can restore it if needed.",
+            body: deleteSummary(counts),
             confirmLabel: "Delete issue",
             tone: "danger",
           });

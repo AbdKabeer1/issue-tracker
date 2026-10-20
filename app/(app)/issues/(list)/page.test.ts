@@ -68,4 +68,31 @@ describe("issue list fails closed (#506)", () => {
       expect(scoped).toBe(true);
     }
   });
+
+  it("declutters issues list view according to #758", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const pageSource = fs.readFileSync(
+      path.resolve(__dirname, "page.tsx"),
+      "utf8",
+    );
+
+    // Export CSV removed
+    expect(pageSource).not.toContain("Export CSV");
+
+    // Boosted badges and BoostTicketButton removed from issues list
+    expect(pageSource).not.toContain("<BoostTicketButton");
+    expect(pageSource).not.toContain("⚡</span> Boosted");
+
+    // Inline DeleteIssueButton removed from list items
+    expect(pageSource).not.toContain("<DeleteIssueButton");
+
+    // Verbose person attribution removed
+    expect(pageSource).not.toContain("<span>Reported by</span>");
+    expect(pageSource).not.toContain("<span>Assigned to</span>");
+
+    // IssuesSidebar and IssuesSidebarDisclosure removed
+    expect(pageSource).not.toContain("<IssuesSidebar");
+    expect(pageSource).not.toContain("<IssuesSidebarDisclosure");
+  });
 });

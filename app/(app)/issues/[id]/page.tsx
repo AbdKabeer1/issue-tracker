@@ -47,13 +47,18 @@ import { UpdateIssueForm } from "@/components/update-issue-form";
 import { CommentThread } from "@/components/comment-thread";
 import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
 import { ChooseRedesignButton } from "@/components/choose-redesign-button";
+import { IssueApprovalBanner } from "@/components/issue-approval-banner";
 import { isTenantAdminRole } from "@/lib/agents/membership";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { fetchVoterSummary } from "@/lib/voter-summaries";
 import { createEmptyVoterSummary } from "@/lib/voters";
-import { canDeleteTicket } from "@/lib/ticket-deletion";
+import {
+  canDeleteTicket,
+  deletedSummary,
+  deleteSummary,
+} from "@/lib/ticket-deletion";
 import { currentTenantAccess } from "@/lib/tenant-access";
 import { MilestoneDue } from "@/components/milestone-due";
 import { dueDateValue } from "@/lib/milestones";
@@ -242,6 +247,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         milestone: { select: { id: true, title: true, dueDate: true, isClosed: true } },
         assignee: { select: { id: true, name: true, role: true, image: true } },
         category: { select: { id: true, name: true, isActive: true } },
+        area: { select: { id: true, name: true } },
         votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
         // #285: both sides of a duplicate link.
         duplicateOf: { select: { id: true, number: true, title: true, status: true, isDeleted: true } },
@@ -274,6 +280,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           createdByAgent: { select: { id: true, name: true } },
           assignee: { select: { id: true, name: true, role: true, image: true } },
           category: { select: { id: true, name: true, isActive: true } },
+          area: { select: { id: true, name: true } },
           votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
           duplicateOf: { select: { id: true, number: true, title: true, status: true, isDeleted: true } },
           duplicates: {
@@ -344,15 +351,21 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       select: {
         id: true,
         note: true,
+        createdAt: true,
         beneficiaryUserId: true,
-        agent: { select: { name: true } },
+        agent: { select: { name: true, areaPreferences: {
+          where: { projectAreaId: bug.areaId ?? "" },
+          select: { projectAreaId: true },
+        } } },
         beneficiary: { select: { name: true } },
       },
     }),
   );
+  const hasAreaMatch = (bid: { agent: { areaPreferences: unknown[] } }) =>
+    Boolean(bug.areaId && bid.agent.areaPreferences.length);
   const canAwardBid = bug.status === "open" && !bug.isDeleted && (bug.reporterId === user.id || canChooseRedesign);
 
-  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions, escalations, volunteerCount] =
+  const [users, categories, areas, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions, escalations, volunteerCount, pendingApproval] =
     await Promise.all([
       canTriage
         ? loadOptional("users", [], () =>
@@ -364,6 +377,13 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           )
         : Promise.resolve([]),
       loadOptional("platforms", [], () => getActivePlatforms(bug.tenantId)),
+      canTriage
+        ? loadOptional("project areas", [], () => prisma.projectArea.findMany({
+            where: { projectId: bug.projectId },
+            orderBy: [{ name: "asc" }, { id: "asc" }],
+            select: { id: true, name: true },
+          }))
+        : Promise.resolve([]),
       canTriage ? loadOptional("types", [], () => getActiveIssueTypesCached()) : Promise.resolve([]),
       loadOptional("votes", createEmptyVoterSummary(), () => fetchVoterSummary(id)),
       loadOptional("activity", [] as ActivityEntry[], () =>
@@ -438,6 +458,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             select: {
               id: true,
               createdAt: true,
+              deliverBy: true,
+              extendedAt: true,
               agent: { select: { name: true } },
               beneficiary: { select: { name: true } },
             },
@@ -474,6 +496,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             kind: "claimed",
             agentName: c.agent.name,
             personName: c.beneficiary.name,
+            deliverBy: bug.pullRequestUrl ? null : c.deliverBy,
+            extendedAt: c.extendedAt,
           })),
           ...verdicts.map<AgentDecision>((v) => ({
             id: `verdict-${v.id}`,
@@ -498,6 +522,15 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         prisma.issueInterest.count({
           where: { bugId: id, withdrawnAt: null },
         }),
+      ),
+      loadOptional("pendingApproval", null, () =>
+        (typeof (prisma as { issueApproval?: unknown }).issueApproval !== "undefined"
+          ? prisma.issueApproval.findFirst({
+              where: { bugId: id, status: "pending" },
+              include: { rule: { include: { issueType: { select: { name: true } } } } },
+              orderBy: { createdAt: "desc" },
+            })
+          : Promise.resolve(null)),
       ),
     ]);
   const issueAttachments: AttachmentView[] = attachments.filter((a) => !a.commentId);
@@ -539,6 +572,49 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
 
   const resolution = currentResolution(bug.status, latestStatusChange);
 
+  const extraBadgeCount =
+    (bug.isBoosted && !bug.isDeleted ? 1 : 0) +
+    (bug.type ? 1 : 0) +
+    (bug.category ? 1 : 0) +
+    1 +
+    (volunteerCount > 0 ? 1 : 0);
+
+  const headerActions = (
+    <>
+      {canSelfAssign ? (
+        <SelfAssignButton
+          bugId={bug.id}
+          isAssignedToMe={isAssignee}
+          size="sm"
+        />
+      ) : null}
+      {!bug.isDeleted ? (
+        <WatchButton
+          bugId={bug.id}
+          watching={isWatchingIssue(user.id, [bug.reporterId, bug.assigneeId], watchRow)}
+        />
+      ) : null}
+      {canTriage && !bug.isDeleted && !bug.duplicateOf ? (
+        <MarkDuplicateButton bugId={bug.id} />
+      ) : null}
+      {!bug.isDeleted && userId && (bug.reporterId === userId || bug.assigneeId === userId) ? (
+        <Link
+          href={`/points/disputes/new?bug=${bug.number}`}
+          className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline"
+          title="Say your points award for this issue is missing or wrong"
+        >
+          Dispute award
+        </Link>
+      ) : null}
+    </>
+  );
+
+  // What a delete keeps, shown the same way in every delete/restore message (#692).
+  const deletionCounts = {
+    comments: comments.visibleCount,
+    votes: voterSummary.likes.count + voterSummary.dislikes.count,
+  };
+
   return (
     <div className="space-y-6">
       {bug.isDeleted ? (
@@ -551,11 +627,16 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                   This issue was deleted
                 </h3>
                 <p className="text-xs text-red-700">
-                  It is currently hidden from regular users. Admins and super admins can restore it at any time.
+                  {deletedSummary(deletionCounts)}
                 </p>
               </div>
             </div>
-            <RestoreIssueButton bugId={bug.id} bugTitle={bug.title} size="sm" />
+            <RestoreIssueButton
+              bugId={bug.id}
+              bugTitle={bug.title}
+              counts={deletionCounts}
+              size="sm"
+            />
           </div>
         </div>
       ) : null}
@@ -607,6 +688,13 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             </p>
           ) : null}
         </section>
+      ) : null}
+
+      {pendingApproval ? (
+        <IssueApprovalBanner
+          approval={pendingApproval}
+          canDecide={canChooseRedesign}
+        />
       ) : null}
 
       {redesignProposals.length ? (
@@ -665,24 +753,19 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 </span>{" "}
                 {bug.title}
               </h1>
+
+              {/* On mobile (<sm): compact horizontal scroll action row pinned directly under title (#698) */}
+              <div
+                data-testid="mobile-actions-row"
+                className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:hidden print:hidden"
+              >
+                {headerActions}
+              </div>
+
               <div className="flex flex-wrap items-center gap-2">
                 {bug.isDeleted ? (
                   <span className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-900 shadow-2xs">
                     🗑️ Deleted
-                  </span>
-                ) : null}
-                {bug.isBoosted && !bug.isDeleted ? (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900 shadow-2xs">
-                    ⚡ Boosted
-                  </span>
-                ) : null}
-                {bug.type ? (
-                  <span
-                    className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getIssueTypeBadgeClass(
-                      bug.type.name,
-                    )}`}
-                  >
-                    {bug.type.name}
                   </span>
                 ) : null}
                 <Badge className={statusClass[bug.status]}>
@@ -691,18 +774,44 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 <Badge className={severityClass[bug.severity]}>
                   {severityLabels[bug.severity]}
                 </Badge>
-                {bug.category ? (
-                  <Badge className="border border-teal-200 bg-teal-50 text-teal-950">
-                    {bug.category.name}
-                  </Badge>
-                ) : null}
-                <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-                  {bug.voteCount} score ({voterSummary.likes.count} like{voterSummary.likes.count === 1 ? "" : "s"}, {voterSummary.dislikes.count} dislike{voterSummary.dislikes.count === 1 ? "" : "s"})
-                </span>
-                {volunteerCount > 0 ? (
-                  <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 border border-indigo-200">
-                    {volunteerCount} {volunteerCount === 1 ? "agent volunteered" : "agents volunteered"}
-                  </span>
+                {extraBadgeCount > 0 ? (
+                  <details className="group sm:contents">
+                    <summary
+                      aria-label={`${extraBadgeCount} more details`}
+                      className="cursor-pointer list-none select-none inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 sm:hidden"
+                    >
+                      +{extraBadgeCount}
+                    </summary>
+                    <span className="contents">
+                      {bug.isBoosted && !bug.isDeleted ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900 shadow-2xs">
+                          ⚡ Boosted
+                        </span>
+                      ) : null}
+                      {bug.type ? (
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getIssueTypeBadgeClass(
+                            bug.type.name,
+                          )}`}
+                        >
+                          {bug.type.name}
+                        </span>
+                      ) : null}
+                      {bug.category ? (
+                        <Badge className="border border-teal-200 bg-teal-50 text-teal-950">
+                          {bug.category.name}
+                        </Badge>
+                      ) : null}
+                      <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                        {bug.voteCount} score ({voterSummary.likes.count} like{voterSummary.likes.count === 1 ? "" : "s"}, {voterSummary.dislikes.count} dislike{voterSummary.dislikes.count === 1 ? "" : "s"})
+                      </span>
+                      {volunteerCount > 0 ? (
+                        <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 border border-indigo-200">
+                          {volunteerCount} {volunteerCount === 1 ? "agent volunteered" : "agents volunteered"}
+                        </span>
+                      ) : null}
+                    </span>
+                  </details>
                 ) : null}
               </div>
             </div>
@@ -725,25 +834,10 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6 print:hidden">
-          {!bug.isDeleted ? (
-            <WatchButton
-              bugId={bug.id}
-              watching={isWatchingIssue(user.id, [bug.reporterId, bug.assigneeId], watchRow)}
-            />
-          ) : null}
-          {canTriage && !bug.isDeleted && !bug.duplicateOf ? (
-            <MarkDuplicateButton bugId={bug.id} />
-          ) : null}
-          {!bug.isDeleted && userId && (bug.reporterId === userId || bug.assigneeId === userId) ? (
-            <Link
-              href={`/points/disputes/new?bug=${bug.number}`}
-              className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline"
-              title="Say your points award for this issue is missing or wrong"
-            >
-              Dispute award
-            </Link>
-          ) : null}
+        <div className="hidden sm:block">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6 print:hidden">
+            {headerActions}
+          </div>
         </div>
       </div>
 
@@ -815,6 +909,12 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
               <dd>{bug.category.name}</dd>
             </div>
           ) : null}
+          {bug.area ? (
+            <div>
+              <dt className="font-medium text-slate-500">Area</dt>
+              <dd>{bug.area.name}</dd>
+            </div>
+          ) : null}
           {bug.milestone ? (
             <div>
               <dt className="font-medium text-slate-500">Milestone</dt>
@@ -856,8 +956,10 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           typeId={bug.typeId}
           assigneeId={bug.assigneeId}
           categoryId={bug.categoryId}
+          areaId={bug.areaId}
           users={users}
           categories={withCurrentOption(categories, bug.category)}
+          areas={areas}
           types={withCurrentOption(types, bug.type)}
           milestoneId={bug.milestoneId}
           milestones={
@@ -875,12 +977,15 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       />
 
       <IssueBids
-        bids={openBids.map((bid) => ({
-          id: bid.id,
-          agentName: bid.agent.name,
-          personName: bid.beneficiary.name ?? "A member",
-          note: bid.note,
-        }))}
+        bids={[...openBids]
+          .sort((a, b) => Number(hasAreaMatch(b)) - Number(hasAreaMatch(a)) || a.createdAt.getTime() - b.createdAt.getTime())
+          .map((bid) => ({
+            id: bid.id,
+            agentName: bid.agent.name,
+            personName: bid.beneficiary.name ?? "A member",
+            note: bid.note,
+            areaMatch: hasAreaMatch(bid),
+          }))}
         canAward={canAwardBid}
       />
 
@@ -889,11 +994,12 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       <IssueAgentActivity decisions={agentDecisions} />
 
       <section
-        id="comments"
+        id="conversation"
         className="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-4 sm:p-6"
       >
+        <span id="comments" className="sr-only" aria-hidden="true" />
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Comments ({comments.visibleCount})
+          Conversation ({comments.visibleCount})
         </h2>
         {comments.hiddenThreads > 0 ? (
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600 print:hidden">
@@ -944,12 +1050,13 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 Danger zone
               </h2>
               <p className="text-sm text-slate-600">
-                Delete this issue. It will be hidden from everyone except owners and admins of this organization, who can restore it.
+                Delete this issue. {deleteSummary(deletionCounts)}
               </p>
             </div>
             <DeleteIssueButton
               bugId={bug.id}
               bugTitle={bug.title}
+              counts={deletionCounts}
               variant="danger"
             />
           </div>

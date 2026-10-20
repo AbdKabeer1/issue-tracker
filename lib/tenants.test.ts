@@ -9,11 +9,14 @@ vi.mock("next/headers", () => ({ cookies: cookiesFn }));
 import {
   ACTIVE_TENANT_COOKIE,
   createTenant,
+  deleteTenant,
   homePathFor,
   landingPath,
   memberTenantById,
   memberTenantBySlug,
   promoteFirstZeduOwner,
+  renameTenant,
+  setTenantArchived,
   tenantMembersFrom,
   readActiveTenantCookie,
   setActiveTenantCookie,
@@ -100,6 +103,17 @@ describe("where a signed-in person lands (#444)", () => {
     await expect(homePathFor(db as never, "ada")).resolves.toBe("/tenants");
     await expect(homePathFor(db as never, "zed")).resolves.toBe("/issues");
     await expect(homePathFor(db as never, "new-account")).resolves.toBe("/tenants");
+  });
+
+  it("doesn't auto-select an archived tenant (#573)", async () => {
+    const db = {
+      membership: {
+        findMany: vi.fn().mockResolvedValue([
+          { tenantId: "tenant-acme", tenant: { archivedAt: new Date("2026-10-01") } },
+        ]),
+      },
+    } as never;
+    await expect(homePathFor(db, "ada")).resolves.toBe("/tenants");
   });
 });
 
@@ -370,5 +384,118 @@ describe("Zedu's first owner (#444)", () => {
       ok: false,
       field: "email",
     });
+  });
+});
+
+describe("tenant lifecycle (#573)", () => {
+  function lifecycleDb({
+    role = "owner" as "owner" | "admin" | "member",
+    archivedAt = null as Date | null,
+    memberships = 1,
+    bugs = 0,
+    agents = 0,
+  } = {}) {
+    const update = vi.fn().mockResolvedValue({});
+    const remove = vi.fn().mockResolvedValue({});
+    return {
+      membership: {
+        findUnique: vi.fn().mockResolvedValue({ role, tenant: { ...ACME, archivedAt } }),
+      },
+      tenant: {
+        update,
+        delete: remove,
+        findUnique: vi.fn().mockResolvedValue({
+          _count: { memberships, bugs, agents },
+        }),
+      },
+      update,
+      remove,
+    };
+  }
+
+  it("renames a tenant for its owner, keeping the slug", async () => {
+    const db = lifecycleDb();
+    expect(await renameTenant(db as never, "ada", ACME.id, "  Acme   Corp ")).toMatchObject({
+      ok: true,
+      tenant: { id: ACME.id, slug: "acme", name: "Acme Corp" },
+    });
+    expect(db.update).toHaveBeenCalledWith({
+      where: { id: ACME.id },
+      data: { name: "Acme Corp" },
+    });
+  });
+
+  it("doesn't rename for a non-owner, an archived tenant or an invalid name", async () => {
+    const nonOwner = lifecycleDb({ role: "member" });
+    expect(await renameTenant(nonOwner as never, "ada", ACME.id, "Acme")).toMatchObject({
+      ok: false,
+    });
+    expect(nonOwner.update).not.toHaveBeenCalled();
+
+    const archived = lifecycleDb({ archivedAt: new Date("2026-10-01") });
+    expect(await renameTenant(archived as never, "ada", ACME.id, "Acme")).toMatchObject({
+      ok: false,
+    });
+    expect(archived.update).not.toHaveBeenCalled();
+
+    const invalid = lifecycleDb();
+    expect(await renameTenant(invalid as never, "ada", ACME.id, "A")).toMatchObject({
+      ok: false,
+      error: "Tenant name must be at least 2 characters.",
+    });
+    expect(invalid.update).not.toHaveBeenCalled();
+  });
+
+  it("archives and restores a tenant only for its owner", async () => {
+    const db = lifecycleDb();
+    expect(await setTenantArchived(db as never, "ada", ACME.id, true)).toMatchObject({
+      ok: true,
+      tenant: { archivedAt: expect.any(Date) },
+    });
+    expect(db.update).toHaveBeenCalledWith({
+      where: { id: ACME.id },
+      data: { archivedAt: expect.any(Date) },
+    });
+
+    const restored = lifecycleDb({ archivedAt: new Date("2026-10-01") });
+    expect(await setTenantArchived(restored as never, "ada", ACME.id, false)).toMatchObject({
+      ok: true,
+      tenant: { archivedAt: null },
+    });
+    expect(restored.update).toHaveBeenCalledWith({
+      where: { id: ACME.id },
+      data: { archivedAt: null },
+    });
+
+    const nonOwner = lifecycleDb({ role: "admin" });
+    expect(await setTenantArchived(nonOwner as never, "ada", ACME.id, true)).toMatchObject({
+      ok: false,
+    });
+    expect(nonOwner.update).not.toHaveBeenCalled();
+  });
+
+  it("deletes an empty tenant only after its owner types the name", async () => {
+    const db = lifecycleDb();
+    expect(await deleteTenant(db as never, "ada", ACME.id, ACME.name)).toMatchObject({
+      ok: true,
+      tenant: { id: ACME.id },
+    });
+    expect(db.remove).toHaveBeenCalledWith({ where: { id: ACME.id } });
+
+    const wrongName = lifecycleDb();
+    expect(await deleteTenant(wrongName as never, "ada", ACME.id, "wrong")).toMatchObject({
+      ok: false,
+    });
+    expect(wrongName.remove).not.toHaveBeenCalled();
+  });
+
+  it("refuses to delete a tenant with issues, agents or other members", async () => {
+    for (const counts of [{ bugs: 1 }, { agents: 1 }, { memberships: 2 }]) {
+      const db = lifecycleDb(counts);
+      expect(await deleteTenant(db as never, "ada", ACME.id, ACME.name)).toMatchObject({
+        ok: false,
+      });
+      expect(db.remove).not.toHaveBeenCalled();
+    }
   });
 });

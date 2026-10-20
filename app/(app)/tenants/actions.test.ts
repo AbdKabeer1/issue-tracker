@@ -20,12 +20,18 @@ const mocks = vi.hoisted(() => ({
   deliverInvite: vi.fn(),
   acceptInvite: vi.fn(),
   revokeInvite: vi.fn(),
+  renameTenant: vi.fn(),
+  setTenantArchived: vi.fn(),
+  deleteTenant: vi.fn(),
 }));
 
 vi.mock("@/lib/auth-helpers", () => ({ requireUser: mocks.requireUser }));
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
-vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
+vi.mock("next/cache", () => ({
+  revalidatePath: mocks.revalidatePath,
+  unstable_cache: vi.fn((fn) => fn),
+}));
 vi.mock("@/lib/project-context", () => ({ setActiveProjectCookie: mocks.setActiveProjectCookie }));
 vi.mock("@/lib/rate-limit", () => ({
   RATE_LIMIT_MESSAGE: "You're doing that too fast. Please wait a moment.",
@@ -38,6 +44,9 @@ vi.mock("@/lib/tenants", async (importOriginal) => ({
   createTenant: mocks.createTenant,
   setActiveTenantCookie: mocks.setActiveTenantCookie,
   promoteFirstZeduOwner: mocks.promoteFirstZeduOwner,
+  renameTenant: mocks.renameTenant,
+  setTenantArchived: mocks.setTenantArchived,
+  deleteTenant: mocks.deleteTenant,
 }));
 vi.mock("@/lib/invites", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/invites")>()),
@@ -54,10 +63,13 @@ import {
   acceptInviteAction,
   createInviteAction,
   createTenantAction,
+  deleteTenantAction,
   openInviteLinkAction,
   promoteZeduOwnerAction,
+  renameTenantAction,
   revokeInviteAction,
   selectTenantAction,
+  setTenantArchivedAction,
 } from "./actions";
 
 const ADA = { id: "ada", name: "Ada", email: "ada@acme.dev", role: "user" as const };
@@ -102,6 +114,82 @@ describe("selectTenantAction (#444)", () => {
     mocks.memberTenantById.mockResolvedValue(null);
     expect(await redirectedTo(() => selectTenantAction(form({ tenantId: "tenant-zedu" })))).toBe("/tenants");
     expect(mocks.setActiveTenantCookie).not.toHaveBeenCalled();
+  });
+
+  it("doesn't open an archived tenant (#573)", async () => {
+    mocks.memberTenantById.mockResolvedValue({
+      ...ACME,
+      role: "member",
+      archivedAt: new Date("2026-10-01"),
+    });
+    const path = await redirectedTo(() =>
+      selectTenantAction(form({ tenantId: ACME.id })),
+    );
+    expect(path).toContain("/tenants?error=");
+    expect(mocks.setActiveTenantCookie).not.toHaveBeenCalled();
+  });
+});
+
+describe("tenant lifecycle actions (#573)", () => {
+  const OWNER = { ...ACME, role: "owner" as const, archivedAt: null };
+
+  beforeEach(() => {
+    mocks.memberTenantById.mockResolvedValue(OWNER);
+  });
+
+  it("renames a tenant and returns to its page", async () => {
+    mocks.renameTenant.mockResolvedValue({ ok: true, tenant: OWNER });
+    const path = await redirectedTo(() =>
+      renameTenantAction(form({ tenantId: ACME.id, name: "Acme Corp" })),
+    );
+
+    expect(path).toBe("/tenants/acme?notice=Tenant%20renamed.");
+    expect(mocks.renameTenant).toHaveBeenCalledWith({}, "ada", ACME.id, "Acme Corp");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/tenants/acme");
+  });
+
+  it("shows a rename refusal on the tenant page", async () => {
+    mocks.renameTenant.mockResolvedValue({ ok: false, error: "Only the tenant's owner can rename it." });
+    const path = await redirectedTo(() =>
+      renameTenantAction(form({ tenantId: ACME.id, name: "Acme Corp" })),
+    );
+
+    expect(path).toContain("/tenants/acme?error=");
+    expect(decodeURIComponent(path)).toContain("Only the tenant's owner can rename it.");
+  });
+
+  it("archives and restores a tenant", async () => {
+    mocks.setTenantArchived.mockResolvedValue({ ok: true, tenant: OWNER });
+
+    expect(
+      await redirectedTo(() =>
+        setTenantArchivedAction(form({ tenantId: ACME.id, archived: "true" })),
+      ),
+    ).toBe("/tenants?notice=Tenant%20archived.");
+    expect(mocks.setTenantArchived).toHaveBeenCalledWith({}, "ada", ACME.id, true);
+
+    expect(
+      await redirectedTo(() =>
+        setTenantArchivedAction(form({ tenantId: ACME.id, archived: "false" })),
+      ),
+    ).toBe("/tenants?notice=Tenant%20restored.");
+    expect(mocks.setTenantArchived).toHaveBeenLastCalledWith({}, "ada", ACME.id, false);
+  });
+
+  it("deletes a tenant after the confirmation, and reports a refusal", async () => {
+    mocks.deleteTenant.mockResolvedValue({ ok: true, tenant: OWNER });
+    expect(
+      await redirectedTo(() =>
+        deleteTenantAction(form({ tenantId: ACME.id, confirmName: ACME.name })),
+      ),
+    ).toBe("/tenants?notice=Tenant%20deleted.");
+    expect(mocks.deleteTenant).toHaveBeenCalledWith({}, "ada", ACME.id, ACME.name);
+
+    mocks.deleteTenant.mockResolvedValue({ ok: false, error: "This tenant still has issues." });
+    const path = await redirectedTo(() =>
+      deleteTenantAction(form({ tenantId: ACME.id, confirmName: ACME.name })),
+    );
+    expect(path).toContain("/tenants/acme?error=");
   });
 });
 

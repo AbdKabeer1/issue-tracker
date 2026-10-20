@@ -2,8 +2,59 @@ import { describe, expect, it } from "vitest";
 import {
   canDeleteTicket,
   canRestoreTicket,
+  deletedSummary,
+  deleteSummary,
+  restoreSummary,
+  retainedSummary,
   TICKET_DELETION_ERRORS,
 } from "./ticket-deletion";
+
+describe("delete and restore copy (#692)", () => {
+  const counts = { comments: 3, votes: 5 };
+
+  it("says what is kept, with counts when known", () => {
+    expect(retainedSummary(counts)).toBe(
+      "Its 3 comments, 5 votes and history are kept.",
+    );
+    expect(retainedSummary()).toBe("Its comments, votes and history are kept.");
+  });
+
+  it("uses singular nouns for a count of one", () => {
+    expect(retainedSummary({ comments: 1, votes: 1 })).toContain(
+      "1 comment, 1 vote and",
+    );
+    expect(retainedSummary({ comments: 0, votes: 0 })).toContain(
+      "0 comments, 0 votes",
+    );
+  });
+
+  it("repeats the same retained sentence in every message", () => {
+    const kept = retainedSummary(counts);
+    expect(deleteSummary(counts)).toContain(kept);
+    expect(deletedSummary(counts)).toContain(kept);
+  });
+
+  it("says the issue is hidden, not erased, and how to get it back", () => {
+    expect(deleteSummary(counts)).toContain("hidden from regular users");
+    expect(deleteSummary(counts)).toContain("View deleted issues");
+    expect(deletedSummary(counts)).toContain("can restore it");
+  });
+
+  it("mirrors the delete message when restoring", () => {
+    expect(restoreSummary(counts)).toContain("3 comments, 5 votes and history");
+    expect(restoreSummary()).toContain("comments, votes and history");
+  });
+
+  it("never claims a permanent delete", () => {
+    for (const text of [
+      deleteSummary(counts),
+      deletedSummary(counts),
+      restoreSummary(counts),
+    ]) {
+      expect(text.toLowerCase()).not.toContain("permanent");
+    }
+  });
+});
 
 describe("canDeleteTicket", () => {
   it("allows the site super admin and an owner or admin of the organization", () => {
@@ -58,7 +109,9 @@ describe("TICKET_DELETION_ERRORS", () => {
     );
     expect(TICKET_DELETION_ERRORS.invalidId).toBe("Invalid issue ID");
     expect(TICKET_DELETION_ERRORS.notFound).toBe("Issue not found");
-    expect(TICKET_DELETION_ERRORS.alreadyDeleted).toBe("Issue is already deleted");
+    expect(TICKET_DELETION_ERRORS.alreadyDeleted).toBe(
+      "Issue is already deleted",
+    );
     expect(TICKET_DELETION_ERRORS.notDeleted).toBe("Issue is not deleted");
     expect(TICKET_DELETION_ERRORS.failed).toBe(
       "Could not delete issue. Please try again.",

@@ -9,8 +9,6 @@ import { requireUser } from "@/lib/auth-helpers";
 import type { AppRole } from "@/lib/roles";
 import { IssueFilters } from "@/components/issue-filters";
 import { IssueStats } from "@/components/issue-stats";
-import { IssuesSidebar } from "@/components/issues-sidebar";
-import { IssuesSidebarDisclosure } from "@/components/issues-sidebar-disclosure";
 import { Avatar } from "@/components/avatar";
 import { VoteButton } from "@/components/vote-button";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +19,6 @@ import {
 } from "@/lib/labels";
 import { LocalTime } from "@/components/local-time";
 import { severities, statuses } from "@/lib/validations/issue";
-import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
 import {
@@ -51,11 +48,7 @@ import {
 } from "@/lib/issues-sort";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
 import { currentTenantAccess } from "@/lib/tenant-access";
-import { DeleteIssueButton } from "@/components/delete-issue-button";
-import { RestoreIssueButton } from "@/components/restore-issue-button";
-import { canBoostTicket } from "@/lib/ticket-boosting";
 import type { OrganizationRole } from "@/lib/organization-role";
-import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { defaultSortFor, mineFilterWhere, parseMineFilter } from "@/lib/mine-filter";
 import { finishedWatchedWhere } from "@/lib/watching";
 import { UnwatchButton, UnwatchFinishedButton } from "@/components/unwatch-button";
@@ -68,11 +61,15 @@ import { bugInTenant, currentTenantIdFor, isMissingTenantColumnError } from "@/l
 import { activeProjectIdFor } from "@/lib/project-context";
 import { RichText } from "@/components/rich-text";
 import { isOrganizationAdmin } from "@/lib/organization-role";
+import { cookies } from "next/headers";
+import { GettingStarted } from "@/components/getting-started";
+import { GETTING_STARTED_COOKIE, gettingStartedFor, parseDismissed, type GettingStartedStep } from "@/lib/onboarding";
 import {
   PLATFORM_PARAM,
   parsePlatformFilter,
   platformFilterWhere,
 } from "@/lib/platform-filter";
+import { AREA_PARAM, parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Issues" };
@@ -82,6 +79,7 @@ type SearchParams = Promise<{
   status?: string | string[];
   severity?: string | string[];
   platform?: string | string[];
+  area?: string | string[];
   sort?: string | string[];
   page?: string | string[];
   deleted?: string | string[];
@@ -150,8 +148,25 @@ export default async function BugsPage({
     ? await prisma.project.findFirst({ where: { id: projectId, tenantId }, select: { slug: true, name: true, goal: true } }).catch(() => null)
     : null;
 
+  // #641: a short checklist for a new workspace's owner or admin, until it's
+  // done or dismissed on this device.
+  let gettingStarted: { tenantId: string; workspaceName: string; steps: GettingStartedStep[] } | null = null;
+  if (tenantId && userId && membershipRole && isOrganizationAdmin(membershipRole, effectiveRole)) {
+    try {
+      const dismissed = parseDismissed((await cookies()).get(GETTING_STARTED_COOKIE)?.value);
+      if (!dismissed.includes(tenantId)) {
+        const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true } });
+        if (tenant) {
+          const checklist = await gettingStartedFor(prisma, tenantId, { tenantSlug: tenant.slug });
+          if (!checklist.complete) gettingStarted = { tenantId, workspaceName: tenant.name, steps: checklist.steps };
+        }
+      }
+    } catch (error) {
+      console.error("[bugs] getting-started checklist failed", error);
+    }
+  }
+
   const canDelete = canDeleteTicket(effectiveRole, membershipRole);
-  const canBoost = canBoostTicket(effectiveRole, membershipRole);
   const params = await searchParams;
   const qParam = toSingleQueryParam(params.q);
   const statusParam = toSingleQueryParam(params.status);
@@ -178,7 +193,7 @@ export default async function BugsPage({
   // These lookups are filters only. Each one fails on its own: Promise.all
   // used to throw away the ones that succeeded when Milestone was missing,
   // and the admin path below then queried them again outside this catch.
-  const [tagTypes, platforms, milestones] = await Promise.all([
+  const [tagTypes, platforms, milestones, areas] = await Promise.all([
     // Cached, expired by the admin actions that change them (#297).
     loadOrEmpty("issue types", () => getIssueTypes(), []),
     // Every platform, not just active ones: a link filtered on a platform
@@ -193,6 +208,13 @@ export default async function BugsPage({
           select: { id: true, title: true, isClosed: true },
           orderBy: [{ isClosed: "asc" }, { dueDate: { sort: "asc", nulls: "last" } }, { title: "asc" }],
         }),
+      [],
+    ),
+    loadOrEmpty(
+      "project areas",
+      () => projectId
+        ? prisma.projectArea.findMany({ where: { projectId }, select: { id: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }] })
+        : Promise.resolve([]),
       [],
     ),
   ]);
@@ -213,6 +235,8 @@ export default async function BugsPage({
   // Platform filter: one category, or the issues with none set.
   const selectedPlatform = parsePlatformFilter(params.platform, platforms);
   Object.assign(where, platformFilterWhere(selectedPlatform));
+  const selectedArea = parseProjectAreaFilter(params[AREA_PARAM], areas);
+  Object.assign(where, projectAreaFilterWhere(selectedArea));
   Object.assign(where, milestoneWhere(selectedMilestone));
   if (qParam?.trim()) {
     const q = escapeSearchQuery(qParam.trim());
@@ -263,12 +287,6 @@ export default async function BugsPage({
   let statsOpen = 0;
   let statsInProgress = 0;
   let statsClosed = 0;
-  let sidebarMine = 0;
-  let sidebarAssigned = 0;
-  let sidebarCreated = 0;
-  let sidebarSaved = 0;
-  const typeCountsMap: Record<string, number> = {};
-  const platformCountsMap: Record<string, number> = {};
 
   try {
     const [
@@ -276,12 +294,6 @@ export default async function BugsPage({
       openCount,
       inProgressCount,
       closedCount,
-      mineCount,
-      assignedCount,
-      createdCount,
-      savedCount,
-      typeGroups,
-      catGroups,
     ] = await Promise.all([
       prisma.bug.count({ where: baseTenantWhere }),
       prisma.bug.count({ where: { ...baseTenantWhere, status: "open" } }),
@@ -289,66 +301,12 @@ export default async function BugsPage({
       prisma.bug.count({
         where: { ...baseTenantWhere, status: { in: ["closed", "resolved"] } },
       }),
-      userId
-        ? prisma.bug.count({
-            where: {
-              ...baseTenantWhere,
-              OR: [{ reporterId: userId }, { assigneeId: userId }],
-            },
-          })
-        : 0,
-      userId
-        ? prisma.bug.count({
-            where: { ...baseTenantWhere, assigneeId: userId },
-          })
-        : 0,
-      userId
-        ? prisma.bug.count({
-            where: { ...baseTenantWhere, reporterId: userId },
-          })
-        : 0,
-      userId
-        ? prisma.issueWatch.count({
-            where: { userId },
-          })
-        : 0,
-      prisma.bug.groupBy({
-        by: ["typeId"],
-        where: baseTenantWhere,
-        _count: { id: true },
-      }),
-      prisma.bug.groupBy({
-        by: ["categoryId"],
-        where: baseTenantWhere,
-        _count: { id: true },
-      }),
     ]);
 
     statsTotal = totalCountAll;
     statsOpen = openCount;
     statsInProgress = inProgressCount;
     statsClosed = closedCount;
-    sidebarMine = mineCount;
-    sidebarAssigned = assignedCount;
-    sidebarCreated = createdCount;
-    sidebarSaved = savedCount;
-
-    for (const g of typeGroups) {
-      if (g.typeId) {
-        const t = tagTypes.find((item) => item.id === g.typeId);
-        if (t) typeCountsMap[t.name] = g._count.id;
-      }
-    }
-
-    for (const g of catGroups) {
-      if (g.categoryId) {
-        const p = platforms.find((item) => item.id === g.categoryId);
-        if (p) {
-          platformCountsMap[p.id] = g._count.id;
-          platformCountsMap[p.name] = g._count.id;
-        }
-      }
-    }
   } catch (error) {
     console.error("[bugs] dashboard stats/counts failed", error);
   }
@@ -402,6 +360,7 @@ export default async function BugsPage({
         reporter: { select: { name: true, role: true, image: true } },
         assignee: { select: { name: true, role: true, image: true } },
         category: { select: { id: true, name: true } },
+        area: { select: { id: true, name: true } },
         votes: userId
           ? { where: { userId }, select: { id: true, value: true }, take: 1 }
           : false,
@@ -454,29 +413,6 @@ export default async function BugsPage({
       }
     }
   }
-
-  // The export must return exactly what is on screen, so it is handed the
-  // same filters — by name, rather than forwarding whatever else is in the
-  // URL. `page` is left out deliberately: the export is the whole result,
-  // not the page being looked at.
-  const exportParams = new URLSearchParams();
-  for (const [key, value] of [
-    ["q", qParam],
-    ["status", statusParam],
-    ["severity", severityParam],
-    ["sort", sortParam],
-    ["mine", mineFilter],
-    [MILESTONE_PARAM, milestoneParam],
-    [TAGS_PARAM, tagsParam],
-    // Set by the platform filter once that lands; inert until then.
-    ["platform", toSingleQueryParam(params.platform)],
-    ["deleted", isDeletedView ? "true" : undefined],
-    [DUPLICATES_PARAM, showDuplicates ? SHOW_DUPLICATES : undefined],
-  ] as const) {
-    if (value) exportParams.set(key, value);
-  }
-  const exportQuery = exportParams.toString();
-  const exportHref = exportQuery ? `/issues/export?${exportQuery}` : "/issues/export";
 
   const bugIds = bugs.map((bug) => bug.id);
 
@@ -548,22 +484,9 @@ export default async function BugsPage({
     low: "bg-emerald-500",
   };
 
-  const sidebarProps = {
-    counts: {
-      all: statsTotal,
-      mine: sidebarMine,
-      assigned: sidebarAssigned,
-      created: sidebarCreated,
-      saved: sidebarSaved,
-      categories: typeCountsMap,
-      platforms: platformCountsMap,
-    },
-    tagTypes,
-    platforms,
-  };
-
   const page = (
     <div className="space-y-6">
+      {gettingStarted ? <GettingStarted {...gettingStarted} /> : null}
       {activeProject?.goal ? (
         <section aria-labelledby="project-goal-heading" className="rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -611,15 +534,6 @@ export default async function BugsPage({
             </Link>
           ) : null}
           {finishedWatched > 0 ? <UnwatchFinishedButton count={finishedWatched} /> : null}
-          {totalCount > 0 ? (
-            <a
-              href={exportHref}
-              download
-              className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-xs transition hover:bg-slate-50"
-            >
-              Export CSV
-            </a>
-          ) : null}
           {!isDeletedView ? (
             <Link
               href="/issues/new"
@@ -640,29 +554,19 @@ export default async function BugsPage({
         />
       ) : null}
 
-      <div className="flex flex-col lg:flex-row gap-6 items-start">
-        {!isFirstRun ? (
-          <>
-            {/* Phones: one collapsed disclosure so the list starts near the top (#574). */}
-            <IssuesSidebarDisclosure {...sidebarProps} />
-            <aside className="hidden lg:block w-60 shrink-0">
-              <IssuesSidebar {...sidebarProps} />
-            </aside>
-          </>
-        ) : null}
-
-        <div className="flex-1 min-w-0 space-y-4 w-full">
-          {isFirstRun ? null : (
-            <Suspense
-              fallback={<div className="h-12 animate-pulse rounded-lg bg-slate-100" />}
-            >
-              <IssueFilters
-                tagTypes={tagTypes}
-                platforms={platforms}
-                milestones={milestones}
-              />
-            </Suspense>
-          )}
+      <div className="space-y-4">
+        {isFirstRun ? null : (
+          <Suspense
+            fallback={<div className="h-12 animate-pulse rounded-lg bg-slate-100" />}
+          >
+            <IssueFilters
+              tagTypes={tagTypes}
+              platforms={platforms}
+              milestones={milestones}
+              areas={areas}
+            />
+          </Suspense>
+        )}
 
           <div className="flex items-center justify-between text-xs text-slate-500">
             <p>
@@ -798,11 +702,6 @@ export default async function BugsPage({
                                   Duplicate of {formatIssueNumber(bug.duplicateOf.number)}
                                 </span>
                               ) : null}
-                              {bug.isBoosted && !bug.isDeleted ? (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-950">
-                                  <span aria-hidden="true">⚡</span> Boosted
-                                </span>
-                              ) : null}
                               {bug.type ? (
                                 <span
                                   className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getIssueTypeBadgeClass(
@@ -815,6 +714,11 @@ export default async function BugsPage({
                               {bug.category ? (
                                 <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
                                   {bug.category.name}
+                                </span>
+                              ) : null}
+                              {bug.area ? (
+                                <span className="inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-900">
+                                  {bug.area.name}
                                 </span>
                               ) : null}
                               <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-medium text-slate-700">
@@ -845,24 +749,6 @@ export default async function BugsPage({
                             </div>
 
                             <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-slate-500 pt-1">
-                              <span>Reported by</span>
-                              <UserNameWithBadges
-                                name={bug.reporter.name}
-                                role={bug.reporter.role}
-                              />
-                              <span>·</span>
-                              {bug.assignee ? (
-                                <>
-                                  <span>Assigned to</span>
-                                  <UserNameWithBadges
-                                    name={bug.assignee.name}
-                                    role={bug.assignee.role}
-                                  />
-                                </>
-                              ) : (
-                                <span className="text-slate-600">Unassigned</span>
-                              )}
-                              <span>·</span>
                               {currentSort === "newest" ? (
                                 <span>
                                   opened <LocalTime date={bug.createdAt} />
@@ -914,7 +800,7 @@ export default async function BugsPage({
                           {(bug._count?.comments ?? 0) > 0 ? (
                             <span
                               className="inline-flex items-center gap-1 text-slate-600 font-medium"
-                              title={`${bug._count?.comments} comments`}
+                              title={`Conversation: ${bug._count?.comments} item${bug._count?.comments === 1 ? "" : "s"}`}
                             >
                               <svg
                                 className="h-4 w-4 text-slate-500"
@@ -968,42 +854,13 @@ export default async function BugsPage({
                           ) : null}
                         </div>
 
-                        {canBoost || canDelete || isWatchingView ? (
+                        {isWatchingView ? (
                           <div className="flex items-center gap-1">
                             {isWatchingView && !bug.isDeleted ? (
                               <UnwatchButton
                                 bugId={bug.id}
                                 label={`${formatIssueNumber(bug.number)} ${bug.title}`}
                               />
-                            ) : null}
-                            {canBoost && !bug.isDeleted ? (
-                              <BoostTicketButton
-                                bugId={bug.id}
-                                isBoosted={bug.isBoosted}
-                                variant="ghost"
-                                size="sm"
-                              />
-                            ) : null}
-                            {canDelete ? (
-                              bug.isDeleted ? (
-                                <RestoreIssueButton
-                                  bugId={bug.id}
-                                  bugTitle={bug.title}
-                                  variant="ghost"
-                                  size="sm"
-                                  label="Restore"
-                                  className="text-teal-700 hover:text-teal-900 hover:bg-teal-50"
-                                />
-                              ) : (
-                                <DeleteIssueButton
-                                  bugId={bug.id}
-                                  bugTitle={bug.title}
-                                  variant="ghost"
-                                  size="sm"
-                                  label="Delete"
-                                  className="text-slate-500 hover:text-red-600 hover:bg-red-50"
-                                />
-                              )
                             ) : null}
                           </div>
                         ) : null}
@@ -1033,7 +890,6 @@ export default async function BugsPage({
               />
             </>
           )}
-        </div>
       </div>
     </div>
   );
@@ -1098,7 +954,11 @@ function FirstRunWelcome({
       </div>
       {isAdmin ? (
         <p className="mx-auto mt-6 max-w-md text-sm text-slate-600">
-          Before people start reporting, you may want to set up the{" "}
+          Before people start reporting, you may want to set up your{" "}
+          <Link href="/projects" className="font-medium text-teal-700 underline">
+            projects
+          </Link>
+          , and the{" "}
           <Link href="/admin/categories" className="font-medium text-teal-700 underline">
             platforms
           </Link>{" "}

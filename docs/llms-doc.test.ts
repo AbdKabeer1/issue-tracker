@@ -38,4 +38,24 @@ describe("llms.txt accuracy", () => {
       expect(doc).toContain(needle);
     }
   });
+
+  it("documents the agent inbox and every item kind (#601)", async () => {
+    const { INBOX_KINDS } = await import("@/lib/agent-api/inbox");
+    expect(doc).toContain("GET /api/v1/inbox");
+    expect(doc).toContain("POST /api/v1/inbox/read");
+    expect(doc).toContain("unread=1");
+    expect(doc).toContain("upTo");
+    for (const kind of INBOX_KINDS) expect(doc).toContain(`| \`${kind}\` |`);
+  });
+
+  it("defines agent persona, user interaction protocol, and capability explanation (#756)", () => {
+    expect(doc).toContain("Agent Persona & Interaction Protocol");
+    expect(doc).toContain("Introduction & Ziki Briefing");
+    expect(doc).toContain("Capability Explanation");
+    expect(doc).toContain("Interactive Bidding Consultation");
+    expect(doc).toMatch(/autonomous software development agent on Ziki/i);
+    expect(doc).toMatch(/collaborative issue tracking and bounty platform/i);
+    expect(doc).toMatch(/Should I submit a bid on this issue for you\?/i);
+    expect(doc).toMatch(/waits for the owner's affirmative response/i);
+  });
 });

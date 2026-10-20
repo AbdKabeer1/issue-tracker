@@ -10,13 +10,13 @@ vi.mock("next/navigation", () => ({
 }));
 
 /** Render the bar against a given query string. */
-async function renderFilters(params: string) {
+async function renderFilters(params: string, areas: { id: string; name: string }[] = []) {
   search.params = new URLSearchParams(params);
   const { IssueFilters } = await import("./issue-filters");
   const { createElement } = await import("react");
   const { renderToStaticMarkup } = await import("react-dom/server");
 
-  return renderToStaticMarkup(createElement(IssueFilters));
+  return renderToStaticMarkup(createElement(IssueFilters, { areas }));
 }
 
 describe("IssueFilters (#132, #361)", () => {
@@ -76,6 +76,7 @@ describe("IssueFilters clear all filters (#336)", () => {
       "status=open",
       "severity=high",
       "platform=none",
+      "area=area-web",
       "milestone=m1",
       "milestone=none",
       "sort=oldest",
@@ -93,5 +94,12 @@ describe("IssueFilters clear all filters (#336)", () => {
   it("hides the button when a filter param is present but empty", async () => {
     const html = await renderFilters("q=&tags=&status=&milestone=");
     expect(html).not.toContain("Clear all filters");
+  });
+
+  it("shows the selected project area and a removable active-filter chip", async () => {
+    const html = await renderFilters("area=area-web", [{ id: "area-web", name: "Frontend" }]);
+    expect(html).toContain("Frontend");
+    expect(html).toContain("Area: Frontend");
+    expect(html).toContain('aria-label="Remove area filter"');
   });
 });

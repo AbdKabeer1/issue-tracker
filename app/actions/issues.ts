@@ -5,6 +5,7 @@ import { fieldError, fromZodError } from "@/lib/form-errors";
 import { redirect } from "next/navigation";
 import {
   activityCreateData,
+  areaChangedSummary,
   assigneeChangedSummary,
   boostedSummary,
   categoryChangedSummary,
@@ -82,6 +83,9 @@ import {
 } from "@/lib/tenant-context";
 import { currentTenantAccess } from "@/lib/tenant-access";
 import { awardSolver } from "@/lib/points/award";
+import { isConfirmed } from "@/lib/agent-api/validation";
+import { correct } from "@/lib/points/correct";
+import { pointSourceKey } from "@/lib/points/rules";
 import {
   checkRateLimit,
   consumeRateLimit,
@@ -217,6 +221,7 @@ export async function createBugAction(
     typeId: formData.get("typeId") || "",
     assigneeId: targetAssigneeId || "",
     categoryId: formData.get("categoryId") || "",
+    areaId: formData.get("areaId") || "",
     proofLinks: formData.get("proofLinks") || "",
   });
 
@@ -268,6 +273,9 @@ export async function createBugAction(
     parsed.data.categoryId && parsed.data.categoryId.length > 0
       ? parsed.data.categoryId
       : null;
+  const areaId = parsed.data.areaId && parsed.data.areaId.length > 0
+    ? parsed.data.areaId
+    : null;
 
   if (categoryId) {
     const category = await prisma.category.findFirst({
@@ -277,6 +285,14 @@ export async function createBugAction(
     if (!category) {
       return fieldError("categoryId", "Platform not found or inactive");
     }
+  }
+
+  if (areaId) {
+    const area = await prisma.projectArea.findFirst({
+      where: { id: areaId, projectId },
+      select: { id: true },
+    });
+    if (!area) return fieldError("areaId", "Area not found in this project.");
   }
 
   // Always open at creation — createBugSchema rejects client status.
@@ -294,6 +310,7 @@ export async function createBugAction(
     reporterId: userId,
     assigneeId,
     categoryId,
+    areaId,
     // Reporter and assignee watch the issue from the start (#216).
     watches: {
       create: [...new Set([userId, assigneeId].filter((id): id is string => Boolean(id)))].map(
@@ -419,6 +436,7 @@ export async function updateBugAction(
     include: {
       assignee: { select: { id: true, name: true } },
       category: { select: { id: true, name: true } },
+      area: { select: { id: true, name: true } },
       type: { select: { id: true, name: true } },
       milestone: { select: { id: true, title: true } },
     },
@@ -484,6 +502,7 @@ export async function updateBugAction(
   }
 
   const categoryRaw = formData.get("categoryId");
+  const areaRaw = formData.get("areaId");
   const typeRaw = formData.get("typeId");
   const parsed = updateBugSchema.safeParse({
     status: requestedStatus,
@@ -498,6 +517,11 @@ export async function updateBugAction(
       ? categoryRaw === "" || categoryRaw === "none"
         ? null
         : categoryRaw || undefined
+      : undefined,
+    areaId: admin
+      ? areaRaw === "" || areaRaw === "none"
+        ? null
+        : areaRaw || undefined
       : undefined,
   });
 
@@ -531,6 +555,7 @@ export async function updateBugAction(
     typeId?: string | null;
     assigneeId?: string | null;
     categoryId?: string | null;
+    areaId?: string | null;
     milestoneId?: string | null;
     isBoosted?: boolean;
     boostedAt?: Date | null;
@@ -545,6 +570,9 @@ export async function updateBugAction(
     if (parsed.data.categoryId !== undefined) {
       data.categoryId =
         parsed.data.categoryId === "" ? null : parsed.data.categoryId;
+    }
+    if (parsed.data.areaId !== undefined) {
+      data.areaId = parsed.data.areaId === "" ? null : parsed.data.areaId;
     }
   }
   if (parsed.data.assigneeId !== undefined) {
@@ -681,6 +709,25 @@ export async function updateBugAction(
     });
     if (!cat) {
       return { error: "Platform not found" };
+    }
+  }
+
+  if (data.areaId !== undefined) {
+    let toName: string | null = null;
+    if (data.areaId) {
+      const area = await prisma.projectArea.findFirst({
+        where: { id: data.areaId, projectId: existing.projectId },
+        select: { id: true, name: true },
+      });
+      if (!area) return { error: "Area not found in this project." };
+      toName = area.name;
+    }
+    if (data.areaId !== existing.areaId) {
+      pending.push({
+        type: "area_changed",
+        summary: areaChangedSummary(existing.area?.name ?? null, toName),
+        metadata: { field: "area", from: existing.area?.name ?? null, to: toName },
+      });
     }
   }
 
@@ -827,6 +874,8 @@ export async function editBugContentAction(
       title: true,
       description: true,
       reporterId: true,
+      beneficiaryUserId: true,
+      tenantId: true,
       isDeleted: true,
     },
   });
@@ -881,6 +930,51 @@ export async function editBugContentAction(
         editedById: userId,
       },
     });
+
+    // #713: Editing an issue invalidates confirmations and previous validations,
+    // and reverses any reporter points awarded for the replaced report.
+    type OptionalTxExtensions = {
+      pointEntry?: {
+        findFirst?: (args: unknown) => Promise<{ id: string; tenantId: string; userId: string; bugId: string | null; role: "solver" | "reporter" | "reviewer"; points: number } | null>;
+        update?: (args: unknown) => Promise<unknown>;
+      };
+      issueValidation?: {
+        deleteMany?: (args: unknown) => Promise<unknown>;
+      };
+    };
+    const txExtensions = tx as unknown as OptionalTxExtensions;
+
+    const wasConfirmed = await isConfirmed(bugId, tx);
+    if (wasConfirmed) {
+      const recipientId = existing.beneficiaryUserId ?? existing.reporterId;
+      const tenantId = existing.tenantId ?? (await currentTenantIdFor(userId));
+      if (recipientId && typeof txExtensions.pointEntry?.findFirst === "function") {
+        const entry = await txExtensions.pointEntry.findFirst({
+          where: {
+            tenantId,
+            sourceKey: pointSourceKey("reporter", bugId, recipientId),
+          },
+          select: { id: true, tenantId: true, userId: true, bugId: true, role: true, points: true },
+        });
+        if (entry) {
+          await correct(tx, { entry });
+          if (typeof txExtensions.pointEntry?.update === "function") {
+            await txExtensions.pointEntry.update({
+              where: { id: entry.id },
+              data: {
+                sourceKey: `${pointSourceKey("reporter", bugId, recipientId)}:invalidated:${entry.id}`,
+              },
+            });
+          }
+        }
+      }
+    }
+
+    if (typeof txExtensions.issueValidation?.deleteMany === "function") {
+      await txExtensions.issueValidation.deleteMany({
+        where: { bugId },
+      });
+    }
 
     await tx.bug.update({
       where: { id: bugId },
@@ -1053,9 +1147,21 @@ export async function addCommentAction(
     return { error: RATE_LIMIT_MESSAGE };
   }
 
+  let metadata: Record<string, unknown> | undefined;
+  const metadataRaw = formData.get("metadata");
+  if (typeof metadataRaw === "string" && metadataRaw.trim()) {
+    try {
+      metadata = JSON.parse(metadataRaw);
+    } catch {
+      // ignore invalid json metadata
+    }
+  }
+
   const parsed = commentSchema.safeParse({
     body: formData.get("body"),
     parentId: formData.get("parentId") || undefined,
+    type: formData.get("type") || undefined,
+    metadata,
   });
 
   if (!parsed.success) {
@@ -1112,6 +1218,8 @@ export async function addCommentAction(
         authorId: userId,
         body: normalizedBody,
         parentId: parentId ?? null,
+        type: parsed.data.type ?? "comment",
+        metadata: parsed.data.metadata ? (parsed.data.metadata as Prisma.InputJsonValue) : undefined,
       },
       select: { id: true },
     });
@@ -1333,6 +1441,9 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
           deletedAt: new Date(),
         },
       });
+      // Delete attachments associated with the issue to prevent storage bloat (#658)
+      await tx.attachment.deleteMany({ where: { bugId } });
+
       await publishWebEvent(tx, { bugId, type: "issue.deleted", actorUserId: user.id });
 
       await tx.bugActivity.create({
