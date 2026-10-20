@@ -92,6 +92,66 @@ describe("backfill points (#435)", () => {
     it("invents no reviewer points", () => {
       expect(backfillEntries(bug({})).some((e) => e.role === "reviewer")).toBe(false);
     });
+
+    it("gives an unconfirmed modern agent issue no reporter points (#715)", () => {
+      expect(
+        backfillEntries(
+          bug({ createdByAgentId: "agent-1", isConfirmed: false, status: "open", assigneeId: null }),
+        ),
+      ).toEqual([]);
+    });
+
+    it("gives a confirmed modern agent issue reporter points to the beneficiary (#715)", () => {
+      expect(
+        backfillEntries(
+          bug({
+            createdByAgentId: "agent-1",
+            beneficiaryUserId: "user-bene",
+            reporterId: "user-agent-owner",
+            isConfirmed: true,
+            status: "open",
+            assigneeId: null,
+          }),
+        ),
+      ).toEqual([
+        {
+          tenantId: "tenant-zedu",
+          userId: "user-bene",
+          bugId: "bug-1",
+          role: "reporter",
+          points: 5,
+          sourceKey: "reporter:bug-1:user-bene",
+        },
+      ]);
+    });
+
+    it("requires confirmation for issues created on or after the cutoff date (#715)", () => {
+      const cutoff = new Date("2026-10-21T00:00:00Z");
+      const unconfirmed = bug({
+        createdAt: new Date("2026-10-21T12:00:00Z"),
+        isConfirmed: false,
+        assigneeId: null,
+      });
+      expect(backfillEntries(unconfirmed, { cutoffDate: cutoff })).toEqual([]);
+
+      const confirmed = bug({
+        createdAt: new Date("2026-10-21T12:00:00Z"),
+        isConfirmed: true,
+        assigneeId: null,
+      });
+      expect(backfillEntries(confirmed, { cutoffDate: cutoff })).toMatchObject([
+        { role: "reporter", points: 5 },
+      ]);
+
+      const prePlatform = bug({
+        createdAt: new Date("2026-10-20T12:00:00Z"),
+        isConfirmed: false,
+        assigneeId: null,
+      });
+      expect(backfillEntries(prePlatform, { cutoffDate: cutoff })).toMatchObject([
+        { role: "reporter", points: 5 },
+      ]);
+    });
   });
 
   it("lists one solver and one reporter line in a dry run, and writes nothing", async () => {

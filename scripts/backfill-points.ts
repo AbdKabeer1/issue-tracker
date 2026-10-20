@@ -19,6 +19,14 @@ function describe(line: BackfillLine): string {
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   const verbose = dryRun || process.argv.includes("--verbose");
+  const cutoffArg = process.argv.find((a) => a.startsWith("--cutoff="));
+  const cutoffIdx = process.argv.indexOf("--cutoff");
+  const cutoffStr = cutoffArg
+    ? cutoffArg.split("=")[1]
+    : cutoffIdx !== -1 && process.argv[cutoffIdx + 1] && !process.argv[cutoffIdx + 1].startsWith("-")
+      ? process.argv[cutoffIdx + 1]
+      : undefined;
+  const cutoffDate = cutoffStr ? new Date(cutoffStr) : undefined;
   const url = cleanEnv(process.env.DATABASE_URL);
   const prisma = new PrismaClient(url ? { datasources: { db: { url } } } : undefined);
 
@@ -26,6 +34,7 @@ async function main() {
     console.log(dryRun ? "Dry run: nothing will be written.\n" : "Backfilling points.\n");
     const result = await backfillPoints(prisma, {
       dryRun,
+      cutoffDate,
       onLine: verbose ? (line) => console.log(describe(line)) : undefined,
     });
     console.log(
