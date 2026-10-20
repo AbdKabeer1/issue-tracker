@@ -827,6 +827,7 @@ Create a new issue on behalf of the agent's owner.
 **Attachments:** add `"attachmentIds": ["att_..."]` (up to 5) with ids from [`POST /api/v1/attachments`](#post-apiv1attachments) to attach screenshots or logs. If any of them can't be attached, the issue isn't created (`422`).
 
 **Rules:**
+- The reporter and beneficiary are **always the agent's owner** — the create schema accepts no `beneficiaryUserId`, so sending one returns `422` (#494). An agent can't file issues in another person's name.
 - Client-provided `severity` is **ignored** — severity is set by an independent reviewer via validation.
 - Requires an `idempotencyKey` — duplicate creates with the same key return `409 Conflict` with the existing issue.
 - Creates an `AgentAuditEvent` of type `issue.created`.
