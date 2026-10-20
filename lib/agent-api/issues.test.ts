@@ -21,7 +21,7 @@ vi.mock("@/lib/agents/rate-budget", async (original) => ({
 }));
 import { GET as list, POST as create } from "@/app/api/v1/issues/route";
 import { GET as read } from "@/app/api/v1/issues/[id]/route";
-import { POST as comment } from "@/app/api/v1/issues/[id]/comments/route";
+import { POST as comment, GET as comments } from "@/app/api/v1/issues/[id]/comments/route";
 import { POST as claim } from "@/app/api/v1/issues/[id]/claim/route";
 import { encodeCursor } from "./create-policy";
 import { PROJECT_ID_REQUIRED } from "./issues";
@@ -155,6 +155,48 @@ describe("agent issue reads", () => {
     expect(db.bug.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: "tenant-a", projectId: "project-a", id: issue.id, isDeleted: false } }));
     db.bug.findFirst.mockResolvedValueOnce(null);
     expect((await read(request(), context)).status).toBe(404);
+  });
+});
+
+describe("agent comment paging (#604)", () => {
+  const comment = { id: "comment-b", body: "older", createdAt: new Date("2026-10-19T10:00:00Z"), authorId: "person-a", parentId: null };
+  const newer = { id: "comment-c", body: "newer", createdAt: new Date("2026-10-19T10:01:00Z"), authorId: "person-b", parentId: comment.id };
+  beforeEach(() => db.comment.findMany.mockResolvedValue([comment]));
+
+  it("returns comments oldest first under the issue's scope, with an author and a cursor", async () => {
+    db.comment.findMany.mockResolvedValueOnce([comment, newer]);
+    const response = await comments(request("GET", undefined, "?projectId=project-a&limit=1"), context);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.items).toEqual([{ ...comment, createdAt: comment.createdAt.toISOString(), author: undefined, agent: undefined }]);
+    expect(body.items.length).toBe(1);
+    expect(body.nextCursor).toBe(encodeCursor(comment));
+    expect(db.comment.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { bugId: issue.id, deletedAt: null },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 2,
+    }));
+  });
+
+  it("returns only comments newer than the `after` cursor", async () => {
+    const cursor = encodeCursor(comment);
+    await comments(request("GET", undefined, `?projectId=project-a&after=${cursor}`), context);
+    const where = db.comment.findMany.mock.lastCall?.[0].where as Record<string, unknown>;
+    expect(where.OR).toEqual([{ createdAt: { gt: comment.createdAt } }, { createdAt: comment.createdAt, id: { gt: comment.id } }]);
+  });
+
+  it("rejects a missing issue, a foreign issue and malformed cursors without querying comments", async () => {
+    db.bug.findFirst.mockResolvedValueOnce(null);
+    expect((await comments(request(), context)).status).toBe(404);
+    expect((await comments(request("GET", undefined, "?projectId=project-a&after=bad"), context)).status).toBe(400);
+    expect(db.comment.findMany).not.toHaveBeenCalled();
+  });
+
+  it("requires a key, shares the read budget, and audits the read", async () => {
+    expect((await comments(request("GET", undefined, "", false), context)).status).toBe(401);
+    expect(db.comment.findMany).not.toHaveBeenCalled();
+    await comments(request(), context);
+    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false }, "read");
+    expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "comments.list" }) }));
   });
 });
 
