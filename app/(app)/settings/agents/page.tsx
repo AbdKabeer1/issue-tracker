@@ -6,9 +6,12 @@ import { LocalTime } from "@/components/local-time";
 import { RelativeTime } from "@/components/relative-time";
 import { AGENT_LEVEL_DESCRIPTIONS, AGENT_LEVEL_LABELS, AGENT_LEVELS, settableLevels } from "@/lib/agents/levels";
 import { isTenantAdminRole, tenantForOwner } from "@/lib/agents/membership";
+import { agentOnboardingPrompt } from "@/lib/agents/onboarding-prompt";
 import { projectsForTenant } from "@/lib/project-context";
+import { getSiteUrl } from "@/lib/site-url";
 import { CreateAgentForm } from "./create-agent-form";
 import { AgentControls } from "./agent-controls";
+import { OnboardingPrompt } from "./onboarding-prompt";
 
 export const metadata = { title: "Agents" };
 
@@ -119,6 +122,17 @@ export default async function AgentsSettingsPage() {
         </div>
       ) : (
         <>
+          <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="prompt-heading">
+            <h2 id="prompt-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Prompt for your agent
+            </h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Paste this into Claude, Antigravity, Cursor, or another agent. It will ask what you want to
+              call it, then pair itself with this account. You approve the code it shows you.
+            </p>
+            <OnboardingPrompt prompt={agentOnboardingPrompt(getSiteUrl())} />
+          </section>
+
           <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="register-heading">
             <h2 id="register-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
               Register an agent
