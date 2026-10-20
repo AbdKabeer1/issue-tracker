@@ -51,15 +51,13 @@ function bugRow(overrides: Record<string, unknown> = {}) {
     beneficiaryUserId: "ada",
     createdByAgentId: null,
     createdByAgent: null,
-    claims: [
-      {
-        status: "active",
-        releasedAt: null,
-        agentId: "solver-agent",
-        beneficiaryUserId: "ada",
-        agent: { ownerUserId: "ada" },
-      },
-    ],
+    claims: [{
+      status: "active",
+      releasedAt: null,
+      agentId: "solver-agent",
+      beneficiaryUserId: "ada",
+      agent: { ownerUserId: "ada" },
+    }],
     ...overrides,
   };
 }
@@ -195,6 +193,26 @@ describe("acceptFix: the gate (#434)", () => {
       status: 409,
       missing: "already_accepted",
     });
+  });
+
+  it("names the missing condition: no active claim", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ claims: [] }));
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({
+      status: 409,
+      missing: "claim",
+    });
+    expect(db.testVerdict.findMany).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it("names the missing condition: no linked pull request", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ pullRequestUrl: null }));
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({
+      status: 409,
+      missing: "pull_request",
+    });
+    expect(db.testVerdict.findMany).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
   });
 
   it("names the missing condition: a redesign is waiting for a person", async () => {
@@ -342,50 +360,20 @@ describe("acceptFix: a successful accept (#434)", () => {
     expect(awards).toContainEqual(expect.objectContaining({ role: "solver", userId: "zoe", sourceKey: "solver:bug1:zoe" }));
   });
 
-  it("refuses to accept when nobody has claimed the issue (#496)", async () => {
+  it("accepts with no solver when nobody is assigned but an active claim has no beneficiary", async () => {
     confirmWith("rob", "sam");
     verdict("r1", "rob");
     verdict("r2", "sam");
-    db.bug.findFirst.mockResolvedValue(bugRow({ claims: [] }));
-
-    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({
-      status: 409,
-      missing: "claim",
-    });
-    expect(db.bug.update).not.toHaveBeenCalled();
-  });
-
-  it("refuses to accept when no pull request is linked (#496)", async () => {
-    confirmWith("rob", "sam");
-    verdict("r1", "rob");
-    verdict("r2", "sam");
-    db.bug.findFirst.mockResolvedValue(bugRow({ pullRequestUrl: null }));
-
-    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({
-      status: 409,
-      missing: "pull_request",
-    });
-    expect(db.bug.update).not.toHaveBeenCalled();
-  });
-
-  it("accepts with no solver when the claim names nobody and the issue is unassigned", async () => {
-    confirmWith("rob", "sam");
-    verdict("r1", "rob");
-    verdict("r2", "sam");
-    db.bug.findFirst.mockResolvedValue(
-      bugRow({
-        assigneeId: null,
-        claims: [
-          {
-            status: "active",
-            releasedAt: null,
-            agentId: "solver-agent",
-            beneficiaryUserId: null,
-            agent: { ownerUserId: "zoe" },
-          },
-        ],
-      }),
-    );
+    db.bug.findFirst.mockResolvedValue(bugRow({
+      assigneeId: null,
+      claims: [{
+        status: "active",
+        releasedAt: null,
+        agentId: "solver-agent",
+        beneficiaryUserId: null,
+        agent: { ownerUserId: "ada" },
+      }],
+    }));
 
     const result = await acceptFix(merger("m1", "mo", "merger"), "bug1");
     expect(result).toMatchObject({ status: 200, solverUserId: null });
