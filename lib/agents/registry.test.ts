@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => {
   const mock = {
-    agent: { create: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn() },
+    agent: { create: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn(), count: vi.fn(async () => 0) },
     agentApiKey: { create: vi.fn(), updateMany: vi.fn() },
     agentAuditEvent: { create: vi.fn() },
     membership: { findMany: vi.fn(), findUnique: vi.fn() },
@@ -19,6 +19,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: db }));
 import { hashSecret } from "./keys";
 import { openSecret } from "@/lib/secret-box";
 import { createAgent, regenerateKey, revokeAgent, rotateKey, setAgentBurst, setAgentLevel } from "./registry";
+import { MAX_ACTIVE_AGENTS_PER_OWNER } from "./registry-limits";
 
 const ada = { id: "ada", role: "user" as const };
 const zedu = [{ tenantId: "tenant_zedu", role: "member", tenant: { slug: "zedu" } }];
@@ -233,5 +234,15 @@ describe("regenerateKey (#572)", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(openSecret(db.agentApiKey.create.mock.calls[0][0].data.sealedKey)).toBe(result.key.rawKey);
+  });
+});
+
+describe("active-agent cap (#511)", () => {
+  it("refuses a sixth active agent for the same owner, with a clear error", async () => {
+    db.agent.count.mockResolvedValueOnce(MAX_ACTIVE_AGENTS_PER_OWNER);
+    const result = await createAgent(ada, { name: "Sixth agent", projectId: "project_web" });
+    expect(result).toMatchObject({ ok: false });
+    if (!result.ok) expect(result.error).toContain("Revoke one");
+    expect(db.agent.create).not.toHaveBeenCalled();
   });
 });

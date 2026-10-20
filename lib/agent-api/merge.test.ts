@@ -5,6 +5,7 @@ type VerdictRow = {
   bugId: string;
   goodToMerge: boolean;
   onBehalfOfUserId: string;
+  pullRequestUrl: string | null;
   createdAt: Date;
   agent: { id: string; ownerUserId: string };
 };
@@ -34,10 +35,13 @@ vi.mock("@/lib/redesigns", () => ({ assertRedesignOpen: redesign.assertRedesignO
 import { IssueApiError } from "@/lib/agent-api/issues";
 import { acceptFix } from "./merge";
 
+const PR = "https://github.com/Zedu-Endor/issue-tracker/pull/42";
+
 function bugRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "bug1",
     tenantId: "tenant_zedu",
+    pullRequestUrl: PR,
     severity: "medium",
     status: "open",
     assigneeId: "ada",
@@ -61,11 +65,12 @@ function confirmWith(ownerA: string, ownerB: string) {
   ];
 }
 
-function verdict(agentId: string, ownerId: string, onBehalfOfUserId = ownerId) {
+function verdict(agentId: string, ownerId: string, onBehalfOfUserId = ownerId, pullRequestUrl: string | null = PR) {
   state.verdicts.push({
     id: `v-${agentId}`,
     bugId: "bug1",
     goodToMerge: true,
+    pullRequestUrl,
     onBehalfOfUserId,
     createdAt: new Date(),
     agent: { id: agentId, ownerUserId: ownerId },
@@ -85,8 +90,10 @@ beforeEach(() => {
   db.webhookSubscription.findMany.mockResolvedValue([]);
   db.agentAuditEvent.findMany.mockResolvedValue([]);
   redesign.assertRedesignOpen.mockResolvedValue(undefined);
-  db.testVerdict.findMany.mockImplementation(async () =>
-    state.verdicts.filter((v) => v.bugId === "bug1" && v.goodToMerge),
+  db.testVerdict.findMany.mockImplementation(async ({ where }: { where: { pullRequestUrl?: string } }) =>
+    state.verdicts.filter(
+      (v) => v.bugId === "bug1" && v.goodToMerge && (where.pullRequestUrl === undefined || v.pullRequestUrl === where.pullRequestUrl),
+    ),
   );
   db.issueValidation.findMany.mockImplementation(async () => state.confirmations);
 });
@@ -238,5 +245,16 @@ describe("acceptFix: a successful accept (#434)", () => {
     expect(result).toMatchObject({ status: 200, solverUserId: null });
     const awards = db.pointEntry.createMany.mock.calls.map((call) => call[0].data[0]);
     expect(awards.some((a) => a.role === "solver")).toBe(false);
+  });
+});
+
+describe("acceptFix counts verdicts on the linked pull request only (#526)", () => {
+  it("ignores good-to-merge verdicts on an earlier pull request, or none", async () => {
+    confirmWith("rob", "sam");
+    verdict("r-rob", "rob", "rob", "https://github.com/Zedu-Endor/issue-tracker/pull/41");
+    verdict("r-sam", "sam", "sam", null);
+    const result = await acceptFix(merger("m1", "mo"), "bug1");
+    expect(result).toMatchObject({ status: 409, missing: "verdicts" });
+    expect(db.testVerdict.findMany.mock.calls[0][0].where).toMatchObject({ pullRequestUrl: PR });
   });
 });

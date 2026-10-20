@@ -19,6 +19,7 @@ import {
 import { isAdmin, type AppRole } from "@/lib/roles";
 import { FOCUSABLE, wrapFocusIndex } from "@/lib/focus-trap";
 import { Avatar } from "@/components/avatar";
+import { ThemeToggle, AccountThemeSelector } from "@/components/theme-toggle";
 
 /** Closes a popover on outside click or Escape, returning focus to its trigger. */
 function useDismiss(
@@ -154,6 +155,7 @@ export function AppHeader({
   isRealSuperAdmin,
   isRealAdmin,
   unreadCount = 0,
+  pendingEscalationsCount = 0,
   userId,
   projects = [],
   activeProjectId = null,
@@ -170,6 +172,8 @@ export function AppHeader({
   isRealAdmin?: boolean;
   /** Unread in-app notifications (#216). */
   unreadCount?: number;
+  /** Unresolved escalations from agents (#763). */
+  pendingEscalationsCount?: number;
   userId?: string | null;
   /** The tenant's projects and the one currently active (#426). */
   projects?: ProjectChoice[];
@@ -206,7 +210,10 @@ export function AppHeader({
     setAccountOpen(false);
   }
 
-  const items = headerNavItems(role, { managePlatforms: canManagePlatforms });
+  const items = headerNavItems(role, {
+    managePlatforms: canManagePlatforms,
+    pendingEscalations: pendingEscalationsCount,
+  });
   const canSwitchRole = Boolean((isRealSuperAdmin || isRealAdmin) && role);
   const realRole = realRoleOf({ isRealSuperAdmin, isRealAdmin });
   const viewingAsOther = canSwitchRole && role !== realRole;
@@ -255,13 +262,21 @@ export function AppHeader({
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`relative inline-flex items-center rounded-sm px-2.5 text-sm transition-colors ${linkFocus} ${
+                className={`relative inline-flex items-center gap-1.5 rounded-sm px-2.5 text-sm transition-colors ${linkFocus} ${
                   active
                     ? "font-medium text-slate-900 after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-teal-700"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                {item.label}
+                <span>{item.label}</span>
+                {typeof item.badge === "number" && item.badge > 0 ? (
+                  <span
+                    aria-label={`${item.badge} pending`}
+                    className="inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white ring-1 ring-white"
+                  >
+                    {item.badge > 99 ? "99+" : item.badge}
+                  </span>
+                ) : null}
               </Link>
             );
           })}
@@ -283,6 +298,8 @@ export function AppHeader({
             unreadCount={unreadCount}
             active={isNavItemActive(pathname, "/notifications")}
           />
+
+          <ThemeToggle />
 
           <Link
             href="/issues/new"
@@ -334,6 +351,7 @@ export function AppHeader({
                   </div>
                 ) : null}
                 <div className="border-t border-slate-100 pt-1.5">
+                  <AccountThemeSelector />
                   {isAdmin(effectiveRole) ? (
                     <MenuLink
                       href="/admin/dashboard"
@@ -414,6 +432,7 @@ export function AppHeader({
                 key={item.href}
                 href={item.href}
                 active={isNavItemActive(pathname, item.href)}
+                badge={item.badge}
                 large
               >
                 {item.label}
@@ -448,6 +467,7 @@ export function AppHeader({
               </div>
             ) : null}
             <div className="border-t border-slate-200 p-2">
+              <AccountThemeSelector />
               <SignOutButton userId={userId} className={linkFocus} />
             </div>
           </div>
@@ -488,24 +508,34 @@ function MenuLink({
   href,
   active,
   large = false,
+  badge,
   children,
 }: {
   href: string;
   active: boolean;
   large?: boolean;
+  badge?: number;
   children: React.ReactNode;
 }) {
   return (
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className={`block rounded-md ${large ? "px-3 py-2.5 text-[15px]" : "px-2 py-1.5 text-sm"} ${linkFocus} ${
+      className={`flex items-center justify-between rounded-md ${large ? "px-3 py-2.5 text-[15px]" : "px-2 py-1.5 text-sm"} ${linkFocus} ${
         active
           ? "bg-teal-50 font-medium text-teal-900"
           : "text-slate-700 hover:bg-slate-50"
       }`}
     >
-      {children}
+      <span>{children}</span>
+      {typeof badge === "number" && badge > 0 ? (
+        <span
+          aria-label={`${badge} pending`}
+          className="inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white ring-1 ring-white"
+        >
+          {badge > 99 ? "99+" : badge}
+        </span>
+      ) : null}
     </Link>
   );
 }

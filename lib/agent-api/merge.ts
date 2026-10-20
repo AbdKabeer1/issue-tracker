@@ -33,6 +33,7 @@ export const MERGE_VERDICTS_NEEDED = 2;
 const mergeBugSelect = {
   id: true,
   tenantId: true,
+  pullRequestUrl: true,
   severity: true,
   status: true,
   assigneeId: true,
@@ -122,7 +123,9 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
     }
 
     const verdicts = await tx.testVerdict.findMany({
-      where: { bugId: bug.id, goodToMerge: true },
+      // #526: only verdicts on the pull request linked now count; one on an
+      // earlier PR, or with none, says nothing about this code.
+      where: { bugId: bug.id, goodToMerge: true, pullRequestUrl: bug.pullRequestUrl ?? "" },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: { id: true, onBehalfOfUserId: true, agent: { select: { id: true, ownerUserId: true } } },
     });

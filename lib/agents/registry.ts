@@ -9,7 +9,7 @@ import { CREATION_LEVELS, DEFAULT_AGENT_LEVEL, canSetLevel } from "@/lib/agents/
 import { isTenantAdmin } from "@/lib/agents/membership";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import type { AgentContext } from "@/lib/agents/require-agent";
-import { AGENT_MODEL_MAX, AGENT_NAME_MAX } from "@/lib/agents/registry-limits";
+import { AGENT_LIMIT_MESSAGE, AGENT_MODEL_MAX, AGENT_NAME_MAX, MAX_ACTIVE_AGENTS_PER_OWNER } from "@/lib/agents/registry-limits";
 import { releaseWorkOfRevokedAgent } from "@/lib/agent-api/revoke-release";
 
 /**
@@ -91,6 +91,11 @@ export async function createAgent(owner: Actor, input: unknown): Promise<CreateA
   if (!project) return { ok: false, error: "Choose a project in this workspace.", field: "projectId" };
 
   const key = await prisma.$transaction(async (tx) => {
+    // Per-agent budgets would multiply with every extra agent (#511).
+    const active = await tx.agent.count({
+      where: { tenantId, ownerUserId: owner.id, revokedAt: null },
+    });
+    if (active >= MAX_ACTIVE_AGENTS_PER_OWNER) return null;
     const issued = await insertAgentWithKey(tx, {
       tenantId,
       ownerUserId: owner.id,
@@ -108,6 +113,7 @@ export async function createAgent(owner: Actor, input: unknown): Promise<CreateA
     );
     return issued;
   });
+  if (!key) return { ok: false, error: AGENT_LIMIT_MESSAGE };
   return { ok: true, key };
 }
 

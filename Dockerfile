@@ -35,5 +35,7 @@ LABEL "traefik.http.services.ziki.loadbalancer.server.port"="3000"
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
 
-# Apply pending Prisma migrations, then start the server
-CMD ["sh", "-c", "node scripts/migrate.mjs || true; pnpm run start"]
+# Apply pending Prisma migrations, then start the server - only if they applied
+# (#580). A failed migration exits non-zero, this container never becomes
+# healthy, and Coolify keeps the previous one serving.
+CMD ["sh", "-c", "node scripts/migrate.mjs && pnpm run start"]

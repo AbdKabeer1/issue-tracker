@@ -21,6 +21,7 @@ import { ensureWatching } from "@/lib/watch";
 import { notifyLater } from "@/lib/notify";
 import type { NotificationEvent } from "@/lib/notifications";
 import type { Severity, Status } from "@prisma/client";
+import { issueChangePayload, publishWebEvent } from "@/lib/agent-api/web-events";
 
 export type BulkResult = {
   error?: string;
@@ -53,12 +54,14 @@ export async function bulkUpdateBugsAction(
 
   // Referenced rows are checked once for the whole batch rather than once
   // per issue, and before the transaction opens.
+  let inactiveTypeId: string | undefined;
   if (typeof change.typeId === "string") {
     const type = await prisma.issueType.findUnique({
       where: { id: change.typeId },
-      select: { id: true },
+      select: { id: true, isActive: true },
     });
     if (!type) return { error: "Issue type not found" };
+    if (!type.isActive) inactiveTypeId = type.id;
   }
   const tenantId = await currentTenantIdFor(user.id);
   if (typeof change.categoryId === "string") {
@@ -123,6 +126,10 @@ export async function bulkUpdateBugsAction(
     return { error: "None of the selected issues can be changed.", skipped };
   }
 
+  if (inactiveTypeId && changing.some((bug) => bug.typeId !== inactiveTypeId)) {
+    return { error: "Issue type is inactive. Please pick another." };
+  }
+
   // Names for whatever the fields are being set to, looked up once.
   const toNames = await resolveNames(change, tenantId);
 
@@ -174,6 +181,10 @@ export async function bulkUpdateBugsAction(
         }
         const target = solverAwardForBulkChange(bug, change);
         if (target) await awardSolver(tx, target);
+      }
+      // #600: one issue.updated per changed issue, as a single edit would publish.
+      for (const id of changedIds) {
+        await publishWebEvent(tx, { bugId: id, type: "issue.updated", actorUserId: user.id, payload: issueChangePayload(change) });
       }
     });
   } catch (error) {
