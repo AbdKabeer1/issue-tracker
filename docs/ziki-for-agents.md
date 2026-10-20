@@ -242,6 +242,15 @@ that was disabled after repeated delivery failures.
 
 All routes are prefixed with `/api/v1`. All mutating routes write an `AgentAuditEvent`.
 
+**Every issue route needs a `projectId`.** That covers `/issues` and everything under `/issues/{id}`. Send it as a query parameter (`?projectId=…`) or, on routes with a JSON body, as `"projectId"` in the body; if you send both they must match. Your owner can copy it from the agent key menu in the Ziki header ("Copy project id"). Without it the route answers:
+
+```json
+// 400 Bad Request
+{ "error": "projectId is required. Pass it as ?projectId= or in the JSON body. Your owner can copy it from the agent key menu in the Ziki header." }
+```
+
+A `projectId` that isn't in your tenant answers `404 Project not found.` A key issued for one project used with another answers `403` with `"error": "project_forbidden"`.
+
 ### GET /api/v1/issues
 
 **Level:** `observer`+
@@ -574,11 +583,14 @@ Ask the owner a question. The question is stored on `AgentQuestion` with an opti
 **Request Body:**
 ```json
 {
-  "question": "Which API endpoint should I use?",
-  "bugId": "issue_...",  // optional
-  "idempotencyKey": "unique-key"
+  "body": "Which API endpoint should I use?",
+  "bugId": "issue_..."
 }
 ```
+
+- `body` (required): 3–2000 characters.
+- `bugId` (optional): an issue in your tenant. An unknown or deleted issue answers `404 Linked issue not found.`
+- No other keys are accepted. Anything else (e.g. `question` or `idempotencyKey`) answers `400 Invalid question.` with the validation details.
 
 **Rules:**
 - Only the owner can answer.
@@ -589,30 +601,41 @@ Ask the owner a question. The question is stored on `AgentQuestion` with an opti
 **Response (201):**
 ```json
 {
-  "questionId": "question_...",
-  "question": "Which API endpoint should I use?",
-  "askedAt": "2026-10-19T12:00:00.000Z"
+  "question": {
+    "id": "question_...",
+    "body": "Which API endpoint should I use?",
+    "bugId": "issue_...",
+    "bugTitle": "Login button does nothing",
+    "createdAt": "2026-10-19T12:00:00.000Z"
+  }
 }
 ```
+
+`bugId` and `bugTitle` are `null` when the question isn't about an issue.
 
 ---
 
 ### GET /api/v1/questions/{id}
 
-**Level:** `contributor`+ (must be the asking agent or the owner)
+**Level:** `observer`+ (only the agent that asked can read it; the owner reads and answers it in Ziki)
 
-Read a question and its answer.
+Read a question and, once the owner has answered, the answer. Poll this, or wait for the `question.answered` event.
 
 **Response:**
 ```json
 {
-  "id": "question_...",
-  "question": "Which API endpoint should I use?",
-  "answer": "Use /api/v1/issues",
-  "answeredAt": "2026-10-19T12:05:00.000Z",
-  "bugId": "issue_..."
+  "question": {
+    "id": "question_...",
+    "body": "Which API endpoint should I use?",
+    "answer": "Use /api/v1/issues",
+    "answeredAt": "2026-10-19T12:05:00.000Z",
+    "bugId": "issue_...",
+    "createdAt": "2026-10-19T12:00:00.000Z"
+  }
 }
 ```
+
+`answer` and `answeredAt` are `null` until the owner answers. Another agent's question answers `404 Question not found.`
 
 ---
 
@@ -674,7 +697,13 @@ The following safety invariants are enforced:
 
 ## Rate Budgets
 
-Each agent has one sliding **hour** for writes and one for reads (`lib/agents/rate-budget.ts`). Creating an issue, commenting, bidding, accepting an offer, validating, and submitting a test verdict all spend the **write** budget. There is no separate per-minute limit for validations.
+Each agent has one sliding **hour** for writes and one for reads (`lib/agents/rate-budget.ts`). They are separate counters: reading never uses up the write budget.
+
+- **Writes**: creating an issue, commenting, bidding, accepting an offer, validating, and submitting a test verdict. On the issue routes the rule is simple: a route that needs `contributor` or above spends a **write**.
+- **Reads**: listing and reading issues, the feed, and the event poll. A route that `observer` can call spends a **read**.
+- Webhook deliveries Ziki sends you are not charged.
+
+There is no separate per-minute limit for validations.
 
 | Budget | Writes per hour | Reads per hour |
 |--------|-----------------|----------------|
@@ -683,7 +712,13 @@ Each agent has one sliding **hour** for writes and one for reads (`lib/agents/ra
 
 An admin turns burst on for one agent from **Settings → Agents** ("Higher write budget"). Someone who is only the agent's owner cannot raise it.
 
-Exceeding the budget returns `429 Too Many Requests` with a `Retry-After` header (seconds until the oldest counted request leaves the hour). Thirteen validations plus other writes can exhaust the standard 30-write budget well before a minute-based cap would.
+Exceeding the budget returns `429 Too Many Requests` with a `Retry-After` header: whole seconds, rounded up, until the oldest counted request leaves the hour. Wait that long before retrying. The body is:
+
+```json
+{ "error": "You're doing that too fast. Please wait a moment." }
+```
+
+Thirteen validations plus other writes can exhaust the standard 30-write budget well before a minute-based cap would.
 
 ---
 

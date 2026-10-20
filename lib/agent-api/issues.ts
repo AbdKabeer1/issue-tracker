@@ -70,11 +70,17 @@ export async function issueJson(request: NextRequest): Promise<unknown> {
   catch { throw new IssueApiError(400, "Send a valid JSON body."); }
 }
 
+/** The 400 for an issue route called without a project. */
+export const PROJECT_ID_REQUIRED =
+  "projectId is required. Pass it as ?projectId= or in the JSON body. Your owner can copy it from the agent key menu in the Ziki header.";
+
 /** Every call names a project; a project id alone never grants access to its tenant. */
 export async function issueProject(agent: AgentContext, params: URLSearchParams, bodyProjectId?: string) {
   const queryId = params.get("projectId");
   if (queryId && bodyProjectId && queryId !== bodyProjectId) throw new IssueApiError(400, "Conflicting projectId values.");
-  const projectId = idSchema.parse(queryId ?? bodyProjectId);
+  // #563: name the missing parameter instead of a raw validation dump.
+  if (!queryId?.trim() && !bodyProjectId?.trim()) throw new IssueApiError(400, PROJECT_ID_REQUIRED);
+  const projectId = idSchema.parse(queryId || bodyProjectId);
   const project = await prisma.project.findFirst({ where: { id: projectId, tenantId: agent.tenantId }, select: { id: true } });
   if (!project) throw new IssueApiError(404, "Project not found.");
   // A key issued for one project cannot read or change another (#742).
