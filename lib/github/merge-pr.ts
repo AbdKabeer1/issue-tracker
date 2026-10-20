@@ -5,6 +5,7 @@ import { audit } from "@/lib/agents/audit";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { publish } from "@/lib/agent-api/events";
 import { notifyMergeFailed } from "@/lib/agent-notifications";
+import { checkApprovalOpen } from "@/lib/approvals";
 
 /**
  * Merging the linked pull request after the tracker accepts a fix (#452).
@@ -82,6 +83,7 @@ export interface GitHubClient {
   getPullRequest(ref: PullRequestRef): Promise<PullRequest>;
   checksGreen(ref: PullRequestRef, headSha: string): Promise<boolean>;
   mergePullRequest(ref: PullRequestRef): Promise<{ merged: boolean; sha?: string; forbidden?: boolean }>;
+  getPullRequestFiles?(ref: PullRequestRef): Promise<string[]>;
 }
 
 export class GitHubError extends Error {}
@@ -218,17 +220,19 @@ export type MergeFailureReason =
   | "repo_mismatch"
   | "checks_failed"
   | "no_permission"
-  | "merge_failed";
+  | "merge_failed"
+  | "waiting_for_human";
 
 export type MergeResult =
   | { status: 200; merged: true; mergeCommitSha: string; pullRequestUrl: string }
-  | { status: 403 | 404 | 409 | 422; merged: false; reason: MergeFailureReason; message: string };
+  | { status: 403 | 404 | 409 | 422; merged: false; reason: MergeFailureReason; message: string; approvalId?: string };
 
 export type MergeDeps = {
   /** Injected in tests; the real client is built from the project's installation. */
   client?: GitHubClient;
   db?: PrismaClient;
   env?: NodeJS.ProcessEnv;
+  files?: string[];
 };
 
 const mergeBugSelect = {
@@ -332,6 +336,29 @@ export async function mergeAcceptedFix(
   }
 
   const client = deps.client ?? clientFor(bug.project?.githubInstallationId, deps.env);
+  let prFiles = deps.files ?? [];
+  if (!prFiles.length && client?.getPullRequestFiles) {
+    try {
+      prFiles = await client.getPullRequestFiles(ref);
+    } catch {
+      // Non-fatal if files cannot be read
+    }
+  }
+
+  const approvalCheck = await checkApprovalOpen(bug.id, "before_merge", {
+    db: db as never,
+    files: prFiles,
+    agent,
+  });
+  if (!approvalCheck.allowed) {
+    return {
+      status: 409,
+      merged: false,
+      reason: "waiting_for_human",
+      approvalId: approvalCheck.approvalId,
+      message: "Human approval required before merge.",
+    };
+  }
   if (!client) {
     await recordMergeFailure(agent, bug, "The app is not installed on this repository.", db);
     return fail(403, "no_permission", "The app is not allowed to merge this repository.");

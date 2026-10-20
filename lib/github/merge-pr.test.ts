@@ -211,4 +211,29 @@ describe("mergeAcceptedFix gates (#452)", () => {
     ];
     expect(JSON.stringify(writes)).not.toMatch(/token|ghs_|bearer/i);
   });
+  it("does not merge and returns waiting_for_human when approval is pending (#598)", async () => {
+    (db as Record<string, unknown>).approvalRule = {
+      findMany: vi.fn(async () => [
+        { id: "rule-1", stage: "before_merge", issueTypeId: null, severity: null, fileGlob: null },
+      ]),
+    };
+    (db as Record<string, unknown>).issueApproval = {
+      findFirst: vi.fn(async () => null),
+      create: vi.fn(async () => ({ id: "appr-wait", status: "pending" })),
+    };
+    (db as Record<string, unknown>).membership = {
+      findMany: vi.fn(async () => []),
+    };
+
+    const client = fakeClient();
+    const result = await mergeAcceptedFix(agent, "bug1", { client, db: db as never });
+
+    expect(result).toMatchObject({
+      status: 409,
+      merged: false,
+      reason: "waiting_for_human",
+      approvalId: "appr-wait",
+    });
+    expect(client.mergePullRequest).not.toHaveBeenCalled();
+  });
 });
