@@ -159,6 +159,7 @@ describe("createInviteAction (#444)", () => {
     expect(mocks.deliverInvite).toHaveBeenCalledWith({}, {
       invite: created.invite,
       rawToken: TOKEN,
+      tenantId: ACME.id,
       tenantName: "Acme",
       inviter: { id: "ada", name: "Ada" },
     });

@@ -11,18 +11,25 @@ export const metadata = { title: "Notifications" };
 const PAGE_SIZE = 50;
 
 /** In-app notification feed (#216). */
-export default async function NotificationsPage() {
+export default async function NotificationsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ scope?: string | string[] }>;
+} = {}) {
   const user = await requireUser();
-  // #425: notifications about another tenant's issues stay out of this one.
-  const scope = notificationInTenant(await currentTenantIdFor(user.id));
-  const [notifications, unread] = await Promise.all([
+  const params = await searchParams;
+  const allWorkspaces = params?.scope === "all";
+  const tenantId = await currentTenantIdFor(user.id);
+  const scope = notificationInTenant(tenantId, allWorkspaces);
+  const [notifications, unread, workspaceCount] = await Promise.all([
     prisma.notification.findMany({
       where: { userId: user.id, ...scope },
       orderBy: { createdAt: "desc" },
       take: PAGE_SIZE,
-      select: { id: true, title: true, readAt: true, createdAt: true },
+      select: { id: true, title: true, tenant: { select: { name: true } }, readAt: true, createdAt: true },
     }),
     prisma.notification.count({ where: { userId: user.id, readAt: null, ...scope } }),
+    prisma.membership.count({ where: { userId: user.id } }),
   ]);
 
   return (
@@ -34,8 +41,27 @@ export default async function NotificationsPage() {
             {unread === 0 ? "You're all caught up." : `${unread} unread`}
           </p>
         </div>
-        {unread > 0 ? <MarkAllReadButton /> : null}
+        {unread > 0 ? <MarkAllReadButton allWorkspaces={allWorkspaces} /> : null}
       </div>
+
+      {workspaceCount > 1 ? (
+        <nav className="flex gap-2" aria-label="Notification workspaces">
+          <Link
+            href="/notifications"
+            aria-current={!allWorkspaces ? "page" : undefined}
+            className={`rounded-md px-3 py-1.5 text-sm ${!allWorkspaces ? "bg-teal-100 font-medium text-teal-900" : "text-slate-600 hover:bg-slate-100"}`}
+          >
+            This workspace
+          </Link>
+          <Link
+            href="/notifications?scope=all"
+            aria-current={allWorkspaces ? "page" : undefined}
+            className={`rounded-md px-3 py-1.5 text-sm ${allWorkspaces ? "bg-teal-100 font-medium text-teal-900" : "text-slate-600 hover:bg-slate-100"}`}
+          >
+            All workspaces
+          </Link>
+        </nav>
+      ) : null}
 
       {notifications.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
@@ -73,6 +99,9 @@ export default async function NotificationsPage() {
                     <span className="mt-0.5 block text-xs text-slate-500">
                       <LocalTime date={n.createdAt} />
                     </span>
+                    {workspaceCount > 1 && n.tenant ? (
+                      <span className="mt-1 block text-xs text-slate-500">{n.tenant.name}</span>
+                    ) : null}
                   </span>
                 </a>
               </li>

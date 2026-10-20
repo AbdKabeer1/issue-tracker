@@ -70,6 +70,7 @@ export async function askAgentQuestion(agent: AgentContext, input: AskAgentQuest
   notifyAgentQuestion({
     id: question.id,
     body: question.body,
+    tenantId: agent.tenantId,
     ownerUserId: agent.ownerId,
     agent: { name: agent.name },
     bugId: question.bugId,
