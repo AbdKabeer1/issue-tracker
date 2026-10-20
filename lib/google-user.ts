@@ -39,6 +39,7 @@ export async function upsertGoogleUser(input: {
     });
   } catch (error) {
     console.error("[auth] Google account pre-read failed:", error);
+    throw error;
   }
   if (existing?.passwordHash) {
     if (input.emailVerified === false) {
@@ -81,7 +82,9 @@ export async function upsertGoogleUser(input: {
     const user = await prisma.user.upsert({
       where: { email },
       create: { email, name },
-      update: {},
+      update: {
+        ...(neutralizePassword ? { passwordHash: null } : {}),
+      },
       select: { id: true, name: true, sessionVersion: true },
     });
     return { id: user.id, name: user.name, role, sessionVersion: user.sessionVersion ?? 0 };
