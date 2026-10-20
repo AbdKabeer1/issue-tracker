@@ -144,8 +144,8 @@ describe("changePasswordAction (#570)", () => {
 
   it("updates only the signed-in user's password and invalidates every session", async () => {
     findUnique.mockResolvedValue({ email: "ada@example.com", passwordHash: "old-hash" });
-    vi.mocked(compare).mockResolvedValue(true as any);
-    vi.mocked(hash).mockResolvedValue("new-hash" as any);
+    vi.mocked(compare).mockResolvedValue(true as never);
+    vi.mocked(hash).mockResolvedValue("new-hash" as never);
 
     await expect(changePasswordAction(undefined, passwordForm())).resolves.toEqual({ ok: true });
 
@@ -179,8 +179,8 @@ describe("changePasswordAction (#570)", () => {
 
   it("sends a security notice when mail is available, without delaying the password change", async () => {
     findUnique.mockResolvedValue({ email: "ada@example.com", passwordHash: "old-hash" });
-    vi.mocked(compare).mockResolvedValue(true as any);
-    vi.mocked(hash).mockResolvedValue("new-hash" as any);
+    vi.mocked(compare).mockResolvedValue(true as never);
+    vi.mocked(hash).mockResolvedValue("new-hash" as never);
     vi.mocked(smtpConfigured).mockReturnValue(true);
     vi.mocked(sendMail).mockResolvedValue(undefined);
 
@@ -191,4 +191,5 @@ describe("changePasswordAction (#570)", () => {
     }));
   });
 });
+
 
