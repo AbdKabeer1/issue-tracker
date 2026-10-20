@@ -153,6 +153,21 @@ describe("the tenant picked on this device (#444)", () => {
     );
   });
 
+  it("is Secure in production (#514)", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_URL", "https://ziki.dev/api/auth");
+    try {
+      await setActiveTenantCookie("tenant-acme");
+      expect(cookieSet).toHaveBeenLastCalledWith(
+        ACTIVE_TENANT_COOKIE,
+        "tenant-acme",
+        expect.objectContaining({ secure: true, httpOnly: true }),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("is read back, and is nothing without a cookie jar", async () => {
     cookieGet.mockReturnValue({ value: "tenant-acme" });
     await expect(readActiveTenantCookie()).resolves.toBe("tenant-acme");
