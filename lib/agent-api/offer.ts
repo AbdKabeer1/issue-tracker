@@ -72,7 +72,17 @@ async function offerNext(db: Db, caller: { agentId?: string; tenantId: string },
   const lastOffered = new Map<string, Date>();
   for (const row of offers) if (row.offeredAt && !lastOffered.has(row.beneficiaryUserId)) lastOffered.set(row.beneficiaryUserId, row.offeredAt);
 
-  const pending = await db.issueClaim.findMany({ where: { beneficiaryUserId: { in: people.map((p) => p.beneficiaryUserId) }, status: "offered", releasedAt: null, bug: { tenantId: caller.tenantId } }, select: { beneficiaryUserId: true } });
+  const pendingCutoff = new Date(Date.now() - OFFER_TTL_MS);
+  const pending = await db.issueClaim.findMany({
+    where: {
+      beneficiaryUserId: { in: people.map((p) => p.beneficiaryUserId) },
+      status: "offered",
+      releasedAt: null,
+      offeredAt: { gt: pendingCutoff },
+      bug: { tenantId: caller.tenantId },
+    },
+    select: { beneficiaryUserId: true },
+  });
   const pendingPeople = new Set(pending.map((row) => row.beneficiaryUserId));
   const candidates: OfferCandidate[] = people.map((p) => ({
     ...p, activeClaims: counts.get(p.beneficiaryUserId) ?? 0,
@@ -116,7 +126,7 @@ export async function offerIssue(agent: AgentContext, projectId: string, bugId: 
 }
 
 /** Durable expiry state is checked here and again on acceptance after restarts. */
-async function expireOffer(claimId: string): Promise<void> {
+export async function expireOffer(claimId: string): Promise<void> {
   const result = await prisma.$transaction(async (tx) => {
     const claim = await tx.issueClaim.findUnique({ where: { id: claimId }, select: { id: true, bugId: true, status: true, offeredAt: true, releasedAt: true, agentId: true, beneficiaryUserId: true, bug: { select: { tenantId: true, id: true, title: true, projectId: true, assigneeId: true } } } });
     if (!claim || claim.status !== "offered" || claim.releasedAt || !isOfferExpired(claim.offeredAt)) return null;
@@ -133,6 +143,29 @@ async function expireOffer(claimId: string): Promise<void> {
     notifyClaimOffered({ id: result.claim.id, bugId: result.claim.bugId, bugTitle: result.bugTitle, beneficiaryUserId: result.beneficiaryUserId });
     scheduleOfferExpiry(result.claim.id);
   }
+}
+
+/**
+ * Sweeps and expires all pending offers whose TTL has elapsed (#681).
+ * Durable across process restarts; safe to run from a cron or interval.
+ */
+export async function sweepExpiredOffers(tenantId?: string): Promise<{ expired: number }> {
+  const cutoff = new Date(Date.now() - OFFER_TTL_MS);
+  const candidates = await prisma.issueClaim.findMany({
+    where: {
+      status: "offered",
+      releasedAt: null,
+      offeredAt: { lte: cutoff },
+      ...(tenantId ? { bug: { tenantId } } : {}),
+    },
+    select: { id: true },
+  });
+  let expired = 0;
+  for (const c of candidates) {
+    await expireOffer(c.id);
+    expired++;
+  }
+  return { expired };
 }
 
 export async function acceptOffer(agent: AgentContext, claimId: string) {
