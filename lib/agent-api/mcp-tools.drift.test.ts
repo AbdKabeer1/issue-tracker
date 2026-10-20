@@ -27,6 +27,12 @@ const ROUTE_SCHEMAS: Record<string, z.ZodType> = {
 // The agent routes extend the shared issue and comment schemas with attachmentIds (lib/agent-api/issues.ts).
 const AGENT_LAYER_FIELDS = new Set(["attachmentIds"]);
 
+// Fields on the shared schema that the agent route deliberately does not take (it picks only some of
+// them, and severity is set by reviewers), so a tool must not offer them.
+const NOT_OFFERED_TO_AGENTS: Record<string, readonly string[]> = {
+  ziki_create_issue: ["severity", "typeId", "assigneeId"],
+};
+
 // Fields the route doesn't take from the body: the tool puts them in the path or query.
 const NOT_BODY = new Set(["projectId", "id"]);
 
@@ -50,6 +56,16 @@ describe("MCP tools match the route body schemas", () => {
         expect(tool.body ?? [], `${name} never sends required ${key}`).toContain(key);
         expect(isRequired(tool.input[key] as z.ZodType), `${name} must require ${key}`).toBe(true);
       }
+    });
+  }
+
+  for (const [name, schema] of Object.entries(ROUTE_SCHEMAS)) {
+    it(`${name} offers every field the route accepts, optional ones too (#969)`, () => {
+      const tool = TOOLS.find((candidate) => candidate.name === name)!;
+      const left = Object.keys(shapeOf(schema)).filter(
+        (key) => !NOT_BODY.has(key) && !(NOT_OFFERED_TO_AGENTS[name] ?? []).includes(key) && !(tool.body ?? []).includes(key),
+      );
+      expect(left, `${name} cannot send ${left.join(", ")}`).toEqual([]);
     });
   }
 

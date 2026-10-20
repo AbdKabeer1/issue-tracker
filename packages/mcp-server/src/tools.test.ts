@@ -87,6 +87,16 @@ describe("buildRequest", () => {
     expect(buildRequest(tool("ziki_withdraw_bid"), { id: "i" }, { projectId: null }).body).toBeUndefined();
   });
 
+  it("sends the tested commit with a test result, and rejects a malformed one before calling the API", () => {
+    const withSha = buildRequest(tool("ziki_submit_test_result"), { id: "i", goodToMerge: true, headSha: "a1b2c3d4e5f6" }, { projectId: "p" });
+    expect(withSha.body).toEqual({ goodToMerge: true, headSha: "a1b2c3d4e5f6" });
+    const without = buildRequest(tool("ziki_submit_test_result"), { id: "i", goodToMerge: true }, { projectId: "p" });
+    expect(without.body).toEqual({ goodToMerge: true });
+    for (const bad of ["not-a-sha", "abc12", "g1b2c3d4e5f6", "a".repeat(65)]) {
+      expect(() => buildRequest(tool("ziki_submit_test_result"), { id: "i", goodToMerge: true, headSha: bad }, { projectId: "p" })).toThrow();
+    }
+  });
+
   it("rejects input the route would reject", () => {
     expect(() => buildRequest(tool("ziki_comment"), { id: "i", body: "x".repeat(2001) }, { projectId: null })).toThrow();
     expect(() => buildRequest(tool("ziki_ask_owner"), { body: "hi" }, { projectId: null })).toThrow();
