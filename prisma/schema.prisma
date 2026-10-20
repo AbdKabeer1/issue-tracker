@@ -1150,6 +1150,7 @@ model PointEntry {
 
   @@index([tenantId, userId])
   @@index([bugId])
+  @@index([tenantId, role, correctedAt])
 }
 
 /// A member saying an award is missing or wrong (#436).
