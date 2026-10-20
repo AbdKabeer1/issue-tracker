@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Severity } from "@prisma/client";
 import {
+  ALREADY_CORRECTED,
   ALREADY_RESOLVED,
+  DISPUTE_ALREADY_OPEN,
   NO_ENTRY_ON_THIS_DISPUTE,
   NOBODY_TO_AWARD,
   NOT_IN_WORKSPACE,
@@ -36,7 +38,8 @@ function fakeLedger() {
         return { count };
       }),
       update: vi.fn(async (): Promise<Record<string, unknown>> => ({})),
-      findFirst: vi.fn(async (): Promise<{ id: string } | null> => null),
+      findFirst: vi.fn(async (): Promise<{ id: string; correctedAt?: Date | null } | null> => null),
+      findUnique: vi.fn(async (): Promise<{ id: string; correctedAt?: Date | null } | null> => null),
       findMany: vi.fn(async (): Promise<unknown[]> => []),
     },
     pointDispute: {
@@ -45,6 +48,7 @@ function fakeLedger() {
         ...data,
       })),
       update: vi.fn(async (): Promise<Record<string, unknown>> => ({})),
+      findFirst: vi.fn(async (): Promise<{ id: string } | null> => null),
       findMany: vi.fn(async (): Promise<unknown[]> => []),
     },
     bug: {
@@ -177,6 +181,31 @@ describe("openDispute", () => {
     });
     expect(result).toEqual({ ok: false, error: NOT_YOUR_ENTRY });
   });
+
+  it("rejects disputing an already corrected points entry (#622)", async () => {
+    const { db, raw } = fakeLedger();
+    raw.bug.findFirst.mockResolvedValue({ id: "bug-1" });
+    raw.pointEntry.findFirst.mockResolvedValue({ id: "entry-1", correctedAt: new Date() });
+    const result = await openDispute(db, {
+      tenantId: TENANT,
+      userId: ME,
+      input: { bugNumber: 42, kind: "wrong", pointEntryId: "entry-1", reason: "Wrong severity." },
+    });
+    expect(result).toEqual({ ok: false, error: ALREADY_CORRECTED });
+  });
+
+  it("rejects disputing an entry when an open dispute is already pending (#622)", async () => {
+    const { db, raw } = fakeLedger();
+    raw.bug.findFirst.mockResolvedValue({ id: "bug-1" });
+    raw.pointEntry.findFirst.mockResolvedValue({ id: "entry-1", correctedAt: null });
+    raw.pointDispute.findFirst.mockResolvedValue({ id: "dispute-existing" });
+    const result = await openDispute(db, {
+      tenantId: TENANT,
+      userId: ME,
+      input: { bugNumber: 42, kind: "wrong", pointEntryId: "entry-1", reason: "Wrong severity." },
+    });
+    expect(result).toEqual({ ok: false, error: DISPUTE_ALREADY_OPEN });
+  });
 });
 
 describe("grantMissingAward", () => {
@@ -287,7 +316,7 @@ describe("correctEntry", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       points: -25,
-      sourceKey: correctionSourceKey("dispute-1"),
+      sourceKey: correctionSourceKey("entry-1"),
     });
     expect(raw.pointEntry.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -324,6 +353,49 @@ describe("correctEntry", () => {
       resolvedById: ADMIN,
     });
     expect(result).toEqual({ ok: false, error: ALREADY_RESOLVED });
+  });
+
+  it("refuses to correct an entry that is already marked corrected (#622)", async () => {
+    const { db, rows } = fakeLedger();
+    const result = await correctEntry(db, {
+      dispute: openDisputeRow({ pointEntryId: "entry-1" }),
+      entry: { ...entry, correctedAt: new Date() },
+      resolvedById: ADMIN,
+    });
+    expect(result).toEqual({ ok: false, error: ALREADY_CORRECTED });
+    expect(rows).toHaveLength(0);
+  });
+
+  it("refuses to correct an entry when db record is already corrected (#622)", async () => {
+    const { db, raw, rows } = fakeLedger();
+    raw.pointEntry.findUnique.mockResolvedValue({ id: "entry-1", correctedAt: new Date() });
+    const result = await correctEntry(db, {
+      dispute: openDisputeRow({ pointEntryId: "entry-1" }),
+      entry,
+      resolvedById: ADMIN,
+    });
+    expect(result).toEqual({ ok: false, error: ALREADY_CORRECTED });
+    expect(rows).toHaveLength(0);
+  });
+
+  it("multiple calls to correct the same entry are idempotent and never double-deduct (#622)", async () => {
+    const { db, rows } = fakeLedger();
+    const first = await correctEntry(db, {
+      dispute: openDisputeRow({ id: "dispute-1", pointEntryId: "entry-1" }),
+      entry,
+      resolvedById: ADMIN,
+    });
+    expect(first).toEqual({ ok: true, awarded: true });
+
+    // A concurrent second dispute resolution on the same entry:
+    const second = await correctEntry(db, {
+      dispute: openDisputeRow({ id: "dispute-2", pointEntryId: "entry-1" }),
+      entry,
+      resolvedById: ADMIN,
+    });
+    expect(second).toEqual({ ok: true, awarded: false });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ points: -25, sourceKey: "undo:entry-1" });
   });
 });
 
