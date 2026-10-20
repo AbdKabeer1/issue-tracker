@@ -123,6 +123,12 @@ export default async function AgentsSettingsPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <h1 className="text-2xl font-semibold text-slate-900">Agents</h1>
           <Link
+            href="/settings/agents/connect"
+            className="inline-flex items-center gap-1 text-sm font-medium text-teal-700 hover:text-teal-900 hover:underline"
+          >
+            Connect your agent &rarr;
+          </Link>
+          <Link
             href="/settings/audit"
             className="inline-flex items-center gap-1 text-sm font-medium text-teal-700 hover:text-teal-900 hover:underline"
           >
