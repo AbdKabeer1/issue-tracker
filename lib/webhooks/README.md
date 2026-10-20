@@ -45,3 +45,22 @@ constant time (the exported `verify` helper does both). Return a 2xx response
 after accepting the event, and deduplicate by event id: delivery is at least
 once. The webhook JSON uses the same event fields and ids as the poll response.
 Webhook failure never removes events from the poll feed.
+
+## Scheduling
+
+Nothing is delivered until the dispatcher runs. Two supported schedulers:
+
+**Vercel Cron** — `vercel.json` schedules `/api/v1/webhooks/dispatch` every
+minute. Vercel calls it with `GET` and `Authorization: Bearer $CRON_SECRET`;
+set `CRON_SECRET` in the Vercel project (and in `.env` for local parity).
+
+**Coolify / any external cron** — call the route with `POST` and the
+dispatcher secret:
+
+```bash
+curl -fsS -X POST https://ziki.dev/api/v1/webhooks/dispatch \
+  -H "Authorization: Bearer $WEBHOOK_DISPATCH_SECRET"
+```
+
+Run it at least once a minute; retries and backoff live in `deliver.ts`, and
+repeated failures auto-disable the subscription.

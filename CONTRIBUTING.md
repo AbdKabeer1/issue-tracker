@@ -154,3 +154,11 @@ Demo accounts and more detail: see [README.md](./README.md).
 - Match existing TypeScript / Next.js App Router patterns in this repo
 - Do not commit `.env`, `.pem`, or credential files
 - Do not force-push to any branch shared with the team
+
+## Scheduled jobs
+
+Webhook deliveries are pulled by a scheduler, not pushed inline. Vercel Cron
+(`vercel.json`) calls `/api/v1/webhooks/dispatch` every minute with
+`Authorization: Bearer $CRON_SECRET`. On Coolify, add a scheduled command with
+the same URL and `Authorization: Bearer $WEBHOOK_DISPATCH_SECRET`. See
+`lib/webhooks/README.md` (#583).
