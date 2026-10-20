@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { z } from "zod";
 import { requireUser } from "@/lib/auth-helpers";
 import { fieldError } from "@/lib/form-errors";
 import {
@@ -17,6 +18,14 @@ import {
 } from "@/lib/invites";
 import { acceptShareLink, createShareLink, revokeShareLink } from "@/lib/share-invites";
 import { prisma } from "@/lib/prisma";
+import { notifyLater } from "@/lib/notify";
+import { isTenantAdminRole } from "@/lib/agents/membership";
+import {
+  TENANT_DESCRIPTION_MAX,
+  TENANT_JOIN_REQUEST_RATE_LIMIT,
+  requestTenantMembership,
+  reviewTenantMembershipRequest,
+} from "@/lib/tenant-join-requests";
 import { setActiveProjectCookie } from "@/lib/project-context";
 import { RATE_LIMIT_MESSAGE, consumeRateLimit } from "@/lib/rate-limit";
 import {
@@ -41,6 +50,10 @@ export type TenantFormResult = {
   fieldErrors?: Record<string, string>;
 };
 
+const discoverySettingsSchema = z.object({
+  description: z.string().trim().max(TENANT_DESCRIPTION_MAX, `Description must be ${TENANT_DESCRIPTION_MAX} characters or fewer.`),
+});
+
 /** Work in this tenant on this device, and go to its issues. */
 async function enterTenant(tenantId: string, projectId?: string): Promise<never> {
   await setActiveTenantCookie(tenantId);
@@ -58,6 +71,97 @@ export async function selectTenantAction(formData: FormData): Promise<void> {
   const tenant = await memberTenantById(prisma, user.id, String(formData.get("tenantId") ?? ""));
   if (!tenant) redirect("/tenants");
   await enterTenant(tenant.id);
+}
+
+/** An owner or admin controls whether this tenant appears in discovery. */
+export async function updateTenantDiscoveryAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const tenantId = String(formData.get("tenantId") ?? "");
+  const parsed = discoverySettingsSchema.safeParse({ description: String(formData.get("description") ?? "") });
+  if (!tenantId || !parsed.success) return;
+  const membership = await prisma.membership.findUnique({
+    where: { tenantId_userId: { tenantId, userId: user.id } },
+    select: { role: true, tenant: { select: { slug: true } } },
+  });
+  if (!membership || !isTenantAdminRole(membership.role, user.role)) return;
+  await prisma.tenant.update({
+    where: { id: tenantId },
+    data: {
+      discoverable: formData.get("discoverable") === "on",
+      description: parsed.data.description || null,
+    },
+  });
+  revalidatePath(`/tenants/${membership.tenant.slug}`);
+  revalidatePath("/tenants");
+}
+
+export type JoinTenantActionResult = { pending?: boolean; error?: string };
+
+/** Request a place without creating a membership; only an admin can approve it. */
+export async function requestTenantJoinAction(
+  _previous: JoinTenantActionResult | undefined,
+  formData: FormData,
+): Promise<JoinTenantActionResult> {
+  const user = await requireUser();
+  if (!(await consumeRateLimit(`tenant-join-request:${user.id}`, TENANT_JOIN_REQUEST_RATE_LIMIT)).allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
+  const result = await requestTenantMembership(prisma, user.id, String(formData.get("tenantId") ?? ""));
+  if (!result.ok) return { error: result.error };
+
+  if (result.created) {
+    const managers = await prisma.membership.findMany({
+      where: { tenantId: result.tenantId, role: { in: ["owner", "admin"] } },
+      select: { userId: true },
+    });
+    for (const manager of managers) {
+      notifyLater({
+        kind: "tenant_join_request",
+        actorId: null,
+        actorName: user.name || user.email,
+        recipientId: manager.userId,
+        requestId: result.requestId,
+        tenantId: result.tenantId,
+        tenantName: result.tenantName,
+        tenantSlug: result.slug,
+      });
+    }
+  }
+  revalidatePath("/tenants");
+  return { pending: true };
+}
+
+/** Review a pending request. Approval adds a member inside the same transaction. */
+export async function reviewTenantJoinRequestAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const requestId = String(formData.get("requestId") ?? "");
+  const status = formData.get("status");
+  if (!requestId || (status !== "approved" && status !== "rejected")) return;
+  const request = await prisma.tenantJoinRequest.findUnique({
+    where: { id: requestId },
+    select: { tenantId: true },
+  });
+  if (!request) return;
+  const membership = await prisma.membership.findUnique({
+    where: { tenantId_userId: { tenantId: request.tenantId, userId: user.id } },
+    select: { role: true },
+  });
+  if (!isTenantAdminRole(membership?.role, user.role)) return;
+
+  const result = await reviewTenantMembershipRequest(prisma, { requestId, reviewerId: user.id, status });
+  if (!result.ok) return;
+  notifyLater({
+    kind: "tenant_join_request_result",
+    actorId: user.id,
+    actorName: user.name || user.email,
+    recipientId: result.userId,
+    tenantId: result.tenantId,
+    tenantName: result.tenantName,
+    tenantSlug: result.slug,
+    status: result.status,
+  });
+  revalidatePath(`/tenants/${result.slug}`);
+  revalidatePath("/tenants");
 }
 
 /** Create a tenant owned by the person, with its first project, and enter it. */
