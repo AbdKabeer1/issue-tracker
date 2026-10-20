@@ -16,12 +16,22 @@ import { MAX_ACTIVE_AGENTS_PER_OWNER } from "@/lib/agents/registry-limits";
 import { isTenantAdminRole } from "@/lib/agents/membership";
 import { projectContextFor } from "@/lib/project-context";
 import { currentTenantIdFor } from "@/lib/tenant-context";
-import { AgentKeyCopyButton } from "@/components/agent-key-copy";
+import { openSecret } from "@/lib/secret-box";
 import { ensureDefaultProjectKey } from "@/lib/agents/default-key";
 import { materializeApprovedPairings } from "@/lib/agents/pairing";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 import { CreateAgentForm } from "./create-agent-form";
 import { AgentControls } from "./agent-controls";
+import { AgentRowKey } from "./agent-row-key";
+
+function revealAgentKey(sealed: string | null): string | null {
+  if (!sealed) return null;
+  try {
+    return openSecret(sealed);
+  } catch {
+    return null;
+  }
+}
 
 export const metadata = { title: "Agents" };
 
@@ -60,16 +70,13 @@ export default async function AgentsSettingsPage() {
   // row and expired in another because the page rendered across the boundary.
   const now = new Date();
 
-  let personalKey: Awaited<ReturnType<typeof ensureDefaultProjectKey>> = null;
-  let personalProjectName: string | null = null;
   if (tenantId && context.activeProjectId) {
     try {
-      personalKey = await ensureDefaultProjectKey({
+      await ensureDefaultProjectKey({
         userId: user.id,
         tenantId,
         projectId: context.activeProjectId,
       });
-      personalProjectName = projects.find((project) => project.id === context.activeProjectId)?.name ?? null;
     } catch (error) {
       console.error("[agents] default agent key failed", error);
     }
@@ -98,7 +105,13 @@ export default async function AgentsSettingsPage() {
             defaultProjectId: true,
             apiKeys: {
               where: { revokedAt: null },
-              select: { id: true, prefix: true, lastUsedAt: true, project: { select: { id: true, name: true } } },
+              select: {
+                id: true,
+                prefix: true,
+                sealedKey: true,
+                lastUsedAt: true,
+                project: { select: { id: true, name: true } },
+              },
             },
             areaPreferences: { select: { projectAreaId: true, projectArea: { select: { projectId: true } } } },
           },
@@ -225,27 +238,6 @@ export default async function AgentsSettingsPage() {
         </div>
       ) : (
         <>
-          {personalKey ? (
-            <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="personal-key-heading">
-              <h2 id="personal-key-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Your agent key
-              </h2>
-              <p className="mt-2 text-sm text-slate-600">
-                Copy sends the key and this site{personalProjectName ? ` for ${personalProjectName}` : ""}. Open the
-                details and choose Copy site if the agent should request access instead.
-              </p>
-              <div className="mt-3">
-                <AgentKeyCopyButton
-                  projectId={personalKey.projectId}
-                  projectName={personalProjectName}
-                  apiKey={personalKey.rawKey}
-                  keyPrefix={personalKey.prefix}
-                  keys={[{ prefix: personalKey.prefix, projectName: personalProjectName }]}
-                />
-              </div>
-            </section>
-          ) : null}
-
           <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="register-heading">
             <h2 id="register-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
               Add an agent
@@ -264,6 +256,9 @@ export default async function AgentsSettingsPage() {
             <h2 id="mine-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
               Your agents
             </h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Each agent has its own key. Copy sends that key and this site to that agent only.
+            </p>
             {mine.length === 0 ? (
               <p className="mt-3 text-sm text-slate-600">
                 Your personal agent is created when you open a project. Copy Agent Key to send it, or copy the site and approve the agent&apos;s request.
@@ -271,7 +266,8 @@ export default async function AgentsSettingsPage() {
             ) : (
               <ul className="mt-3 divide-y divide-slate-100">
                 {mine.map((agent) => (
-                  <li key={agent.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <li key={agent.id} className="flex flex-col gap-2 py-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <p className="break-words font-medium text-slate-900">
                         {agent.name}
@@ -283,27 +279,34 @@ export default async function AgentsSettingsPage() {
                           <>
                             Revoked <LocalTime date={agent.revokedAt} />
                           </>
+                        ) : agent.apiKeys.length === 0 ? (
+                          <span>No key · added <LocalTime date={agent.createdAt} /></span>
                         ) : (
-                          <>
-                            {agent.apiKeys.length === 0 ? (
-                              <span>No key · added <LocalTime date={agent.createdAt} /></span>
+                          <span>
+                            {agent.apiKeys.some((key) => key.lastUsedAt) ? (
+                              <>
+                                Last used <RelativeTime date={agent.apiKeys.find((key) => key.lastUsedAt)!.lastUsedAt!} />
+                              </>
                             ) : (
-                              agent.apiKeys.map((k) => (
-                                <span key={k.id}>
-                                  Key {k.prefix}…
-                                  {k.project?.name ? <> · {k.project.name}</> : <> · every project</>}
-                                  {k.lastUsedAt ? (
-                                    <> · Last used <RelativeTime date={k.lastUsedAt} /></>
-                                  ) : (
-                                    <> · Never used</>
-                                  )}
-                                  {" "}· added <LocalTime date={agent.createdAt} />
-                                </span>
-                              ))
+                              <>Never used</>
                             )}
-                          </>
+                            {" "}· added <LocalTime date={agent.createdAt} />
+                          </span>
                         )}
                       </p>
+                      {agent.revokedAt ? null : (
+                        <div className="mt-2 space-y-1.5">
+                          {agent.apiKeys.map((key) => (
+                            <AgentRowKey
+                              key={key.id}
+                              apiKey={revealAgentKey(key.sealedKey)}
+                              prefix={key.prefix}
+                              projectId={key.project?.id ?? null}
+                              projectName={key.project?.name ?? null}
+                            />
+                          ))}
+                        </div>
+                      )}
                     </div>
                     {agent.revokedAt ? (
                       <Badge className="bg-red-50 text-red-700">Revoked</Badge>
@@ -323,6 +326,7 @@ export default async function AgentsSettingsPage() {
                         areaPreferences={agent.areaPreferences.map((preference) => ({ projectId: preference.projectArea.projectId, projectAreaId: preference.projectAreaId }))}
                       />
                     )}
+                    </div>
                   </li>
                 ))}
               </ul>

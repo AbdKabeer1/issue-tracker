@@ -97,7 +97,7 @@ export function AgentControls({
     const projectName = projects.find((project) => project.id === projectId)?.name ?? "the chosen project";
     const ok = await confirm({
       title: `Regenerate the key for ${agentName}?`,
-      body: `The current key stops working immediately. The new key is shown once and only works in ${projectName}.`,
+      body: `The current key stops working immediately. The new key only works in ${projectName}, and it stays on this agent's row.`,
       confirmLabel: "Regenerate key",
       tone: "danger",
     });
@@ -348,7 +348,7 @@ export function AgentControls({
       {issued ? (
         <div className="w-full space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 sm:max-w-md" role="status">
           <p className="text-sm font-medium text-slate-900">
-            New key for {agentName} ({issued.prefix}…). Copy it now. It won&apos;t be shown again.
+            New key for {agentName} ({issued.prefix}…). Copy it now. It stays on this agent&apos;s row.
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input
