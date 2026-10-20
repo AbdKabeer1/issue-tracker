@@ -64,6 +64,8 @@ import { SelfAssignButton } from "@/components/self-assign-button";
 import { CopyLinkButton } from "@/components/copy-link-button";
 import { EditableIssueDescription } from "@/components/editable-issue-description";
 import { withCurrentOption } from "@/lib/triage-options";
+import { issueTenantHintFor } from "@/lib/issue-tenant-hint";
+import { IssueTenantSwitch } from "@/components/issue-tenant-hint";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
@@ -304,7 +306,15 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   const bug = loadedBug.bug;
 
   if (!bug) {
-    notFound();
+    // A link into another of the viewer's tenants should not dead-end (#519):
+    // name the tenant and offer the switch. Non-members still get the 404.
+    const hint = await issueTenantHintFor(prisma, {
+      userId,
+      activeTenantId: await currentTenantIdFor(userId),
+      issueId: id,
+    });
+    if (!hint) notFound();
+    return <IssueTenantSwitch issueId={id} tenant={hint} />;
   }
 
   if (bug.isDeleted && !canDelete) {
