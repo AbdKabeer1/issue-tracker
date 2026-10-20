@@ -3,7 +3,6 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { normalizePasswordForBcrypt } from "@/lib/password";
 import { loginSchema } from "@/lib/validations/issue";
 import authConfig from "@/auth.config";
 import { cleanEnv } from "@/lib/env-clean";
@@ -89,9 +88,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         const valid = await compare(
-          // bcrypt sees only the first 72 bytes; canonicalize explicitly for
-          // accounts created before the validation cap (#735).
-          normalizePasswordForBcrypt(parsed.data.password),
+          parsed.data.password,
           user.passwordHash,
         );
         if (!valid) {
