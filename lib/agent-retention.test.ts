@@ -122,7 +122,7 @@ describe("agent data retention (#546)", () => {
     });
     expect(db.rateLimitHit.deleteMany).toHaveBeenCalledWith({
       where: {
-        id: { in: [1n, 2n] },
+        id: { in: [BigInt(1), BigInt(2)] },
         at: { lt: BigInt(now.getTime() - RATE_LIMIT_RETENTION_MS) },
       },
     });
