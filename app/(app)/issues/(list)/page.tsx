@@ -938,7 +938,7 @@ export default async function BugsPage({
 
                       <div className="flex w-full basis-full shrink-0 items-center justify-end gap-3 self-center border-t border-slate-100 pt-2 md:basis-auto md:w-auto md:border-0 md:pt-0 md:pl-2">
                         {isWatchingView ? (
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-2">
                             {isWatchingView && !bug.isDeleted ? (
                               <UnwatchButton
                                 bugId={bug.id}
