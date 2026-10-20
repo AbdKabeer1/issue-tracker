@@ -636,7 +636,6 @@ export default async function BugsPage({
               fallback={<div className="h-12 animate-pulse rounded-lg bg-slate-100" />}
             >
               <IssueFilters
-                key={qParam ?? ""}
                 tagTypes={tagTypes}
                 platforms={platforms}
                 milestones={milestones}
