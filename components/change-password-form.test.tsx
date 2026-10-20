@@ -13,9 +13,9 @@ describe("ChangePasswordForm (#570)", () => {
     expect(html).toContain('id="currentPassword"');
     expect(html).toContain('id="newPassword"');
     expect(html).toContain('id="confirmPassword"');
-    // React emits the camelCased attribute name into the static markup.
-    expect(html).toContain('autoComplete="current-password"');
-    expect(html).toContain('autoComplete="new-password"');
+    // The server renderer may keep React's `autoComplete` casing; match either.
+    expect(html).toMatch(/autocomplete="current-password"/i);
+    expect(html).toMatch(/autocomplete="new-password"/i);
     expect(html).toContain("Change password");
   });
 });

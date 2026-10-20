@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { paginatedTenantLeaderboard, DEFAULT_LEADERBOARD_LIMIT } from "@/lib/points/leaderboard";
-import { TARGET_POINTS, TARGET_SOLVED_TASKS } from "@/lib/points/rules";
+import { TARGET_POINTS } from "@/lib/points/rules";
 import { Avatar } from "@/components/avatar";
 
 export const metadata = { title: "Leaderboard" };
@@ -33,8 +33,7 @@ export default async function LeaderboardPage({
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Leaderboard</h1>
           <p className="text-sm text-slate-600">
-            Points for solving, reporting and reviewing issues. The goal is {TARGET_POINTS} points
-            and {TARGET_SOLVED_TASKS} solved tasks.
+            Points for solving, reporting and reviewing issues. The goal is {TARGET_POINTS} points.
           </p>
         </div>
         <Link href="/points/disputes" className="text-sm font-medium text-teal-700 hover:underline">
