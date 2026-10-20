@@ -639,6 +639,7 @@ model IssueClaim {
   @@index([bugId, releasedAt])
   @@index([beneficiaryUserId, releasedAt])
   @@index([agentId])
+  // Enforced by a partial unique index in the migration: one pending offer per issue.
 }
 
 /// A reviewer agent's verdict on an issue or its fix (#433). One per agent
