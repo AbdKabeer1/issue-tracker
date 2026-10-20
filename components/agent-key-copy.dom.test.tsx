@@ -48,7 +48,7 @@ describe("AgentKeyCopyButton", () => {
 
   it("opens details popover on clicking key label and displays project key info", () => {
     render(<AgentKeyCopyButton projectId="cly-test-project-123" projectName="Zedu Core" />);
-    const detailsButton = screen.getByRole("button", { name: "Agent Key details" });
+    const detailsButton = screen.getByRole("button", { name: /Agent Key:/ });
     fireEvent.click(detailsButton);
 
     expect(screen.getByRole("dialog", { name: "Agent Key Information" })).toBeDefined();
@@ -64,7 +64,7 @@ describe("AgentKeyCopyButton", () => {
         keys={[{ prefix: "ziki_Ab3dE6", projectName: "Zedu Core" }]}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Agent Key details" }));
+    fireEvent.click(screen.getByRole("button", { name: /Agent Key:/ }));
     expect(screen.getByText("ziki_Ab3dE6… · Zedu Core")).toBeDefined();
     expect(screen.queryByText(/ziki_Ab3dE6[A-Za-z0-9_-]/)).toBeNull();
   });
