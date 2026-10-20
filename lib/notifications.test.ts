@@ -22,6 +22,20 @@ describe("planNotifications (#151)", () => {
     expect(planned[0]?.text).toContain("https://ziki.dev/settings");
   });
 
+  it("links directly to the comment when commentId is provided for a mention (#720)", () => {
+    const event: NotificationEvent = {
+      ...base,
+      kind: "mentioned",
+      place: "comment",
+      commentId: "c9",
+      recipientIds: ["bob"],
+      excerpt: "@Bob check this comment",
+    };
+    const planned = planNotifications(event, SITE);
+    expect(planned[0]?.url).toBe("/issues/b1?comment=c9#comment-c9");
+    expect(planned[0]?.text).toContain("https://ziki.dev/issues/b1?comment=c9#comment-c9");
+  });
+
   it("tells the new and the previous assignee", () => {
     const planned = planNotifications(
       { ...base, kind: "assignee_changed", fromUserId: "cara", toUserId: "bob" },

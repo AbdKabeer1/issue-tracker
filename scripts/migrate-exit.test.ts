@@ -73,7 +73,7 @@ describe("scripts/migrate.mjs exit code (#580)", () => {
 
   it("the Dockerfile only starts the server when the script succeeds", () => {
     const dockerfile = readFileSync("Dockerfile", "utf8");
-    expect(dockerfile).toContain('CMD ["sh", "-c", "node scripts/migrate.mjs && pnpm run start"]');
+    expect(dockerfile).toMatch(/node scripts\/migrate\.mjs && (pnpm run start|node server\.js)/);
     expect(dockerfile).not.toContain("migrate.mjs || true");
   });
 });

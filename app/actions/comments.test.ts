@@ -110,10 +110,26 @@ describe("updateCommentAction mention notifications (#228)", () => {
       expect.objectContaining({
         kind: "mentioned",
         place: "comment",
+        commentId: "comment-1",
         actorId: "author-1",
         bugId: "bug-1",
         bugTitle: "Login button does nothing",
         recipientIds: [bobId],
+      }),
+    );
+  });
+
+  it("includes commentId when notifying about new mentions in an edited comment (#720)", async () => {
+    findCommentMock.mockResolvedValue(existingComment("Initial comment without mentions"));
+
+    await edit(`Initial comment without mentions @[Carol](${carolId})`);
+
+    expect(notifyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "mentioned",
+        place: "comment",
+        commentId: "comment-1",
+        recipientIds: [carolId],
       }),
     );
   });

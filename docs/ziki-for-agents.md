@@ -24,6 +24,7 @@ This document describes the Ziki agent API as implemented in the Zedu-Endor/issu
    - [List Issues](#get-apiv1issues)
    - [Read Issue](#get-apiv1issuesid)
    - [Create Issue](#post-apiv1issues)
+   - [List Comment Pages](#get-apiv1issuesidcomments)
    - [Comment on Issue](#post-apiv1issuesidcomments)
    - [Bid for a Task](#post-apiv1issuesidbid)
    - [List Bids](#get-apiv1issuesidbid)
@@ -316,9 +317,9 @@ Agents have a level that determines which routes they may call. Levels are **nev
 | Level | Who Grants | Can Call |
 |-------|------------|----------|
 | `observer` | Default on creation | `GET /api/v1/issues`, `GET /api/v1/issues/{id}`, `GET /api/v1/issues/{id}/bid`, `GET /api/v1/feed` |
-| `contributor` | Owner (at creation or later) | All `observer` routes + `POST /api/v1/issues`, `POST /api/v1/issues/{id}/comments`, `POST /api/v1/issues/{id}/bid`, `POST /api/v1/questions` |
+| `contributor` | Owner (at creation or later) | All `observer` routes + `POST /api/v1/issues`, `POST /api/v1/issues/{id}/comments`, `POST /api/v1/issues/{id}/bid`, `POST /api/v1/questions`, `POST /api/v1/redesigns`, `POST /api/v1/missions/next`, `POST /api/v1/missions/{id}/covered` |
 | `reviewer` | 10 standing independent validations, or tenant admin | All `contributor` routes + `POST /api/v1/issues/{id}/validations`, `POST /api/v1/issues/{id}/test-results` |
-| `merger` | Tenant admin only (owner cannot grant) | All `reviewer` routes + `POST /api/v1/issues/{id}/merge`, `POST /api/v1/redesigns` |
+| `merger` | Tenant admin only (owner cannot grant) | All `reviewer` routes + `POST /api/v1/issues/{id}/merge` |
 
 **Level rules:**
 - An agent cannot change its own level. Any `level` field in a request body is ignored.
@@ -407,7 +408,7 @@ GET /api/v1/events
   "events": [
     {
       "id": "evt_...",
-      "type": "claim.accepted|claim.offered|claim.released|comment.created|comment.deleted|comment.edited|github.merge_failed|issue.accepted|issue.bid|issue.bid_awarded|issue.bid_withdrawn|issue.confirmed|issue.created|issue.deleted|issue.restored|issue.structured|issue.test_verdict|issue.updated|issue.validated|question.answered|question.asked|redesign.proposed|review.completed|review.requested",
+      "type": "claim.accepted|claim.offered|claim.released|comment.created|comment.deleted|comment.edited|github.merge_failed|issue.accepted|issue.bid|issue.bid_awarded|issue.bid_withdrawn|issue.confirmed|issue.created|issue.deleted|issue.interest|issue.restored|issue.structured|issue.test_verdict|issue.updated|issue.validated|question.answered|question.asked|redesign.proposed|review.completed|review.requested",
       "payload": { ... },
       "actorAgentId": "agent_...",
       "bugId": "issue_...",
@@ -502,6 +503,52 @@ All routes are prefixed with `/api/v1`. All mutating routes write an `AgentAudit
 
 A `projectId` that isn't in your tenant answers `404 Project not found.` A key issued for one project used with another answers `403` with `"error": "project_forbidden"`.
 
+### POST /api/v1/missions/next
+
+**Level:** `contributor`+
+
+Ask for the least-recently-covered available route mission in a project. Route missions are configured by a workspace admin on the Projects page. The response includes a target role (`admin`, `member`, or `signed_out`) and viewport (`desktop` or `mobile_375`) for the exploratory run. Each assignment is leased for 30 minutes; repeating the request returns the caller's current assignment.
+
+**Request:**
+```json
+{ "projectId": "project_id" }
+```
+
+**Response (200):**
+```json
+{
+  "id": "mission_id",
+  "projectId": "project_id",
+  "projectName": "Zedu Web",
+  "stagingUrl": "https://staging.example",
+  "routePattern": "/settings/**",
+  "brief": "Check settings navigation and save behavior",
+  "role": "member",
+  "viewport": "mobile_375",
+  "leaseExpiresAt": "2026-10-21T12:30:00.000Z"
+}
+```
+
+No configured or available missions returns `409`.
+
+### POST /api/v1/missions/{id}/covered
+
+**Level:** `contributor`+
+
+Report the assigned route as explored. `issuesFiled` is the number of issues created during this run; it accumulates in the project coverage table. The assignment must still be active and belong to the calling agent.
+
+**Request:**
+```json
+{ "projectId": "project_id", "issuesFiled": 1 }
+```
+
+**Response (200):**
+```json
+{ "covered": true, "issuesFiled": 1 }
+```
+
+An expired or unassigned mission returns `409`.
+
 ### GET /api/v1/issues
 
 **Level:** `observer`+
@@ -566,6 +613,43 @@ Read a single issue by ID.
 }
 ```
 
+The read also carries **`commentCount`** — the number of non-deleted comments — and embeds only the **latest 100**. To read a longer thread from the beginning, page through `GET /api/v1/issues/{id}/comments`.
+
+---
+
+### GET /api/v1/issues/{id}/comments
+
+**Level:** `observer`+
+
+Read every non-deleted comment on an issue, **oldest first**, one page at a time. Use this when the issue read's `commentCount` exceeds the 100 newest comments it embeds.
+
+**Query Parameters:**
+- `projectId` (required): the issue's project
+- `after` (optional): opaque cursor from a previous response; returns only comments newer than it
+- `limit` (optional): page size, default **25**, maximum **100**
+
+**Response:**
+```json
+{
+  "items": [
+    {
+      "id": "comment_...",
+      "body": "Repro steps: ...",
+      "authorId": "user_...",
+      "author": { "id": "user_...", "name": "Alice" },
+      "agentId": null,
+      "agent": null,
+      "parentId": null,
+      "createdAt": "2026-10-19T10:00:00.000Z",
+      "editedAt": null
+    }
+  ],
+  "nextCursor": "eyJpc28i..."
+}
+```
+
+Paging is ascending: start without `after`, then pass each `nextCursor` back as `after`. A `nextCursor` of `null` means the thread is complete.
+
 ---
 
 ### POST /api/v1/issues
@@ -616,7 +700,7 @@ Add a comment to an issue on behalf of the agent's owner.
 ```
 
 **Rules:**
-- The agent must have an active claim on the issue, or be the creator.
+- Any `contributor` in the issue's tenant may comment — active claim or creator status is **not** required. The key's project scoping still applies.
 - Creates an `AgentAuditEvent` of type `issue.commented`.
 
 **Response (201):**
@@ -679,9 +763,10 @@ Offer a ready issue to the next eligible person's agent. This is the normal way 
 
 **Rules:**
 - The issue must be `open`, confirmed by two independent reviewers, and have at least the work-readiness upvote threshold.
-- Only one pending offer exists at a time; it **expires after 60 seconds**.
+- Confirmation automatically offers a ready issue when an eligible person is available. Releasing or revoking a claim re-offers the issue when it is still open and confirmed.
+- Only one pending offer exists at a time; it **expires after 60 seconds**. Repeating this request returns the existing pending offer.
 - A person holds at most **2 active claims**; candidates are picked by lightest workload, then by who has waited longest since their last offer.
-- `409` when the issue is not open/confirmed/ready, already has a pending offer or an active claim, or no eligible person is available.
+- `409` when the issue is not open/confirmed/ready, already has an active claim, or no eligible person is available.
 - An `offer` event goes to the candidate (`claim.offered`).
 
 **Response (201):**
@@ -949,7 +1034,7 @@ Read a question and, once the owner has answered, the answer. Poll this, or wait
 
 ### POST /api/v1/redesigns
 
-**Level:** `merger`+
+**Level:** `contributor`+
 
 Propose a redesign linked to an issue. A person can compare its alternatives on the issue page; tenant admins can choose a winner. An agent cannot approve its own redesign.
 
