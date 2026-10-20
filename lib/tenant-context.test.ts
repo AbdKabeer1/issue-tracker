@@ -61,7 +61,11 @@ describe("tenant context (#425)", () => {
       const findMany = vi.fn().mockResolvedValue([zedu]);
       const db = { membership: { findMany } } as never;
       expect(await tenantIdForUser(db, "user-1")).toBe("tenant-zedu");
-      expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: "user-1" } }));
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: "user-1", tenant: { archivedAt: null } },
+        }),
+      );
     });
 
     it("has no tenant without a signed-in person, and doesn't query", async () => {
@@ -104,11 +108,12 @@ describe("tenant context (#425)", () => {
       expect(commentInTenant("tenant-zedu")).toEqual({ bug: { tenantId: "tenant-zedu" } });
     });
 
-    it("keeps personal notifications, and only this tenant's issue notifications", () => {
+    it("keeps personal notifications in the active tenant and supports all workspaces", () => {
       expect(notificationInTenant("tenant-zedu")).toEqual({
-        OR: [{ bugId: null }, { bug: { tenantId: "tenant-zedu" } }],
+        OR: [{ tenantId: null }, { tenantId: "tenant-zedu" }],
       });
-      expect(notificationInTenant(null)).toEqual({ bugId: null });
+      expect(notificationInTenant(null)).toEqual({ tenantId: null });
+      expect(notificationInTenant("tenant-zedu", true)).toEqual({});
     });
   });
 

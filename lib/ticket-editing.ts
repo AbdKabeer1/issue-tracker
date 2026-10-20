@@ -1,7 +1,9 @@
-import { isAdmin, type AppRole } from "@/lib/roles";
+import type { MembershipRole } from "@prisma/client";
+import { isOrganizationAdmin } from "@/lib/organization-role";
+import type { AppRole } from "@/lib/roles";
 
 export const TICKET_EDIT_ERRORS = {
-  unauthorized: "Only the reporter or an admin can edit this issue",
+  unauthorized: "Only the reporter, or an owner or admin of this organization, can edit this issue",
   notFound: "Issue not found",
   invalidTitle: "Title must be between 3 and 200 characters",
   invalidDescription: "Description must be between 10 and 5000 characters",
@@ -11,20 +13,23 @@ export const TICKET_EDIT_ERRORS = {
 export type CanEditTicketParams = {
   actorId?: string | null;
   actorRole?: AppRole | null;
+  membershipRole?: MembershipRole | null;
   reporterId?: string | null;
 };
 
 /**
  * Checks whether a user can edit an issue's title and description.
- * Allowed: The reporter of the issue or an admin / super_admin.
+ * Allowed: the reporter, or an owner / admin of the organization. A site-wide
+ * admin who is only a member cannot edit someone else's issue.
  */
 export function canEditTicket({
   actorId,
   actorRole,
+  membershipRole,
   reporterId,
 }: CanEditTicketParams): boolean {
   if (!actorId) return false;
-  if (isAdmin(actorRole)) return true;
+  if (isOrganizationAdmin(membershipRole, actorRole)) return true;
   return Boolean(reporterId && actorId === reporterId);
 }
 
@@ -43,6 +48,31 @@ export function getChangedEditFields(
     fields.push("description");
   }
   return fields;
+}
+
+export type ProofLinkChanges = {
+  added: string[];
+  removed: string[];
+};
+
+/** The proof links an edit adds and removes (#737). Order is ignored. */
+export function getProofLinkChanges(existing: string[], updated: string[]): ProofLinkChanges {
+  const before = new Set(existing);
+  const after = new Set(updated);
+  return {
+    added: updated.filter((url) => !before.has(url)),
+    removed: existing.filter((url) => !after.has(url)),
+  };
+}
+
+/** e.g. "added 2 proof links", "removed a proof link", "added a proof link and removed a proof link". */
+export function formatProofLinkSummary({ added, removed }: ProofLinkChanges): string {
+  const count = (n: number) => (n === 1 ? "a proof link" : `${n} proof links`);
+  const parts: string[] = [];
+  if (added.length > 0) parts.push(`added ${count(added.length)}`);
+  if (removed.length > 0) parts.push(`removed ${count(removed.length)}`);
+  if (parts.length === 0) return "edited the proof links";
+  return parts.join(" and ");
 }
 
 /**

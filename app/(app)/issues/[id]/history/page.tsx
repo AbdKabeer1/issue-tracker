@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { formatIssueNumber } from "@/lib/issue-number";
 import { buildVersions } from "@/lib/issue-revisions";
 import { LocalTime } from "@/components/local-time";
@@ -22,6 +23,7 @@ export const metadata = { title: "Edit history" };
 export default async function IssueHistoryPage({ params }: Props) {
   const { id } = await params;
   const user = await requireUser();
+  const access = await currentTenantAccess(user.id, user.role);
 
   const bug = await prisma.bug.findUnique({
     where: { id, ...bugInTenant(await currentTenantIdFor(user.id)) },
@@ -45,7 +47,7 @@ export default async function IssueHistoryPage({ params }: Props) {
       },
     },
   });
-  if (!bug || (bug.isDeleted && !canDeleteTicket(user.role))) notFound();
+  if (!bug || (bug.isDeleted && !canDeleteTicket(user.role, access.membershipRole))) notFound();
 
   const versions = buildVersions(
     {

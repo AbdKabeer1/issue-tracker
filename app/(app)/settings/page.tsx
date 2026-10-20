@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { NotificationSettings } from "@/components/notification-settings";
 import { DisplayNameForm } from "@/components/display-name-form";
+import { WalletAddressForm } from "@/components/wallet-address-form";
 import { KeyboardShortcutSettings } from "@/components/keyboard-shortcut-settings";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 
@@ -17,6 +18,7 @@ export default async function SettingsPage() {
     name?: string | null;
     email?: string | null;
     theme?: string | null;
+    walletAddress?: string | null;
     emailNotifications?: boolean;
     notifyMentions?: boolean;
     notifyAssignments?: boolean;
@@ -31,6 +33,7 @@ export default async function SettingsPage() {
         name: true,
         email: true,
         theme: true,
+        walletAddress: true,
         emailNotifications: true,
         notifyMentions: true,
         notifyAssignments: true,
@@ -78,6 +81,25 @@ export default async function SettingsPage() {
       </section>
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Wallet
+        </h2>
+        <WalletAddressForm initialAddress={settings?.walletAddress ?? ""} />
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Security
+        </h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Protect your account with a second step at sign-in.
+        </p>
+        <p className="mt-3 text-sm">
+          <Link href="/settings/security" className="font-medium text-teal-700 hover:underline">
+            Two-factor sign-in
+          </Link>
+        </p>
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Appearance
         </h2>
         <ThemeSettings initialTheme={parseTheme(settings?.theme)} />
@@ -108,8 +130,14 @@ export default async function SettingsPage() {
             Register the AI agents that work issues for you, and see your team&apos;s.
           </p>
           <div className="mt-3 flex flex-wrap gap-4 text-sm">
+            <Link href="/settings/agents/connect" className="font-medium text-teal-700 hover:underline">
+              Connect your agent
+            </Link>
             <Link href="/settings/agents" className="font-medium text-teal-700 hover:underline">
               Manage agents
+            </Link>
+            <Link href="/settings/agents/pair" className="font-medium text-teal-700 hover:underline">
+              Pair an agent
             </Link>
             <Link href="/settings/audit" className="font-medium text-teal-700 hover:underline">
               Agent audit log

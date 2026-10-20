@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { displayNameSchema } from "@/lib/display-name";
+import { BCRYPT_MAX_PASSWORD_BYTES } from "@/lib/password";
 import { isGitHubUrl, splitProofLinkLines } from "@/lib/proof-links";
 import { stripGitHubMarkup } from "@/lib/github-paste";
 
@@ -47,7 +48,7 @@ export const proofLinksInputSchema = z
     if (links.length > MAX_PROOF_LINKS || rawLinks.length > MAX_PROOF_LINKS) {
       ctx.addIssue({
         code: "custom",
-        message: `You entered ${count} links. At most ${MAX_PROOF_LINKS} proof links are allowed.`,
+        message: `You entered ${count} links. At most ${MAX_PROOF_LINKS} GitHub PR links are allowed.`,
       });
       return z.NEVER;
     }
@@ -76,6 +77,7 @@ export const createBugSchema = z
     typeId: z.string().optional().nullable().or(z.literal("")),
     assigneeId: userIdSchema.optional().or(z.literal("")),
     categoryId: z.string().optional().or(z.literal("")),
+    areaId: z.string().optional().or(z.literal("")),
     proofLinks: proofLinksInputSchema,
   })
   .strict();
@@ -86,6 +88,7 @@ export const updateBugSchema = z.object({
   assigneeId: userIdSchema.nullable().optional().or(z.literal("")),
   severity: severitySchema.optional(),
   categoryId: z.string().nullable().optional().or(z.literal("")),
+  areaId: z.string().nullable().optional().or(z.literal("")),
 });
 
 export const editBugContentSchema = z
@@ -108,6 +111,13 @@ export const editBugContentSchema = z
   })
   .strict();
 
+/** Replace an issue's proof links after it was filed (#737). Empty clears them. */
+export const editProofLinksSchema = z
+  .object({
+    proofLinks: proofLinksInputSchema,
+  })
+  .strict();
+
 export const categorySchema = z.object({
   name: z
     .string()
@@ -118,6 +128,18 @@ export const categorySchema = z.object({
 
 /** Alias for categorySchema matching the user-facing Platform domain terminology (#355). */
 export const platformSchema = categorySchema;
+
+export const commentTypeValues = [
+  "comment",
+  "bid",
+  "review",
+  "delivery",
+  "request_to_merge",
+] as const;
+
+export type CommentType = (typeof commentTypeValues)[number];
+
+export const commentTypeSchema = z.enum(commentTypeValues);
 
 export const commentSchema = z.object({
   body: z
@@ -136,6 +158,8 @@ export const commentSchema = z.object({
     .optional()
     .or(z.literal(""))
     .transform((value) => (value && value.length > 0 ? value : undefined)),
+  type: commentTypeSchema.optional().default("comment"),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const loginSchema = z.object({
@@ -146,7 +170,15 @@ export const loginSchema = z.object({
 const passwordField = z
   .string()
   .min(8, "Password must be at least 8 characters")
-  .max(128);
+  .max(128)
+  .refine(
+    (password) =>
+      new TextEncoder().encode(password).length <= BCRYPT_MAX_PASSWORD_BYTES,
+    {
+      message:
+        "Password is too long: bcrypt keeps only the first 72 bytes, so choose something shorter.",
+    },
+  );
 
 export const signupSchema = z
   .object({
@@ -182,3 +214,17 @@ export const resetPasswordSchema = z
     message: "Passwords do not match",
     path: ["confirmPassword"],
   });
+
+/**
+ * An EVM wallet address (#618): `0x` followed by 40 hex characters. Shape
+ * only — no checksum validation — because the person is the one who chooses
+ * where their points would go. Blank clears the address, which is why "" is
+ * accepted here and comes out of the transform as `null`.
+ */
+export const walletAddressSchema = z
+  .string()
+  .trim()
+  .refine((value) => value === "" || /^0x[0-9a-fA-F]{40}$/.test(value), {
+    message: "Enter a valid EVM address: 0x followed by 40 hex characters.",
+  })
+  .transform((value) => (value === "" ? null : value));

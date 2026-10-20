@@ -31,12 +31,21 @@ export function auditAccess(viewer: AuditViewer): AuditAccess {
   return { kind: "forbidden" };
 }
 
-export type AuditFilters = { agentId?: string | null; issueId?: string | null };
+export type AuditFilters = {
+  agentId?: string | null;
+  issueId?: string | null;
+  /** Include the supplementary per-request rows (hidden by default, #575). */
+  includeRequests?: boolean;
+};
 
 /**
  * The `where` for the rows `access` may read, narrowed by the page's agent and
  * issue filters. Visibility is applied in the query, so rows a viewer may not
  * see never leave the database. Throws for `forbidden`: check that first.
+ *
+ * Every write also logs a supplementary request row (`payload.request`), so
+ * the domain row and the request row would read as the same action twice
+ * (#575). Those request rows are excluded unless asked for.
  */
 export function auditWhere(access: AuditAccess, filters: AuditFilters = {}): Prisma.AgentAuditEventWhereInput {
   if (access.kind === "forbidden") throw new Error("auditWhere called without access");
@@ -52,5 +61,8 @@ export function auditWhere(access: AuditAccess, filters: AuditFilters = {}): Pri
     where.agentId = { in: [...allowedAgents] };
   }
   if (filters.issueId) where.bugId = filters.issueId;
+  if (!filters.includeRequests) {
+    where.NOT = { payload: { path: ["request"], equals: true } };
+  }
   return where;
 }

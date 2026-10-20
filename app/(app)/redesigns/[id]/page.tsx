@@ -22,7 +22,7 @@ export default async function RedesignPage({ params }: { params: Promise<{ id: s
     <p className="font-medium">{proposal.status === "proposed" ? "waiting for a person" : proposal.status}</p>
     <div className="whitespace-pre-wrap rounded border border-slate-200 bg-white p-5">{proposal.body}</div>
     {proposal.bugId && <Link href={`/issues/${proposal.bugId}`} className="block text-indigo-700 underline">View linked issue</Link>}
-    {proposal.status === "proposed" && <DecisionButtons id={proposal.id} />}
+    {proposal.status === "proposed" && !proposal.bugId && <DecisionButtons id={proposal.id} />}
     {proposal.approvedAt && <p className="text-sm text-slate-600">Approved by {proposal.approver?.name ?? "a workspace member"} at <time dateTime={proposal.approvedAt.toISOString()}>{proposal.approvedAt.toISOString()}</time>.</p>}
   </article>;
 }

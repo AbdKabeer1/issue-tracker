@@ -16,14 +16,16 @@ type MockRequest = {
 
 function createMockReq({
   pathname,
+  search = "",
   isLoggedIn = false,
   userAgent = "Mozilla/5.0",
 }: {
   pathname: string;
+  search?: string;
   isLoggedIn?: boolean;
   userAgent?: string;
 }): MockRequest {
-  const url = new URL(`https://ziki.dev${pathname}`);
+  const url = new URL(`https://ziki.dev${pathname}${search}`);
   return {
     nextUrl: url,
     auth: isLoggedIn ? { user: { id: "u1", email: "user@test.com" } } : null,
@@ -38,9 +40,19 @@ const runMiddleware = (req: MockRequest): Response => {
 };
 
 describe("isPublicPath (#348)", () => {
+  it("treats root path / as public", () => {
+    expect(isPublicPath("/")).toBe(true);
+  });
+
   it("treats /session-expired as public", () => {
     expect(isPublicPath("/session-expired")).toBe(true);
     expect(isPublicPath("/session-expired/")).toBe(true);
+  });
+
+  it("treats the root homepage and /llms.txt as public (#487)", () => {
+    expect(isPublicPath("/")).toBe(true);
+    expect(isPublicPath("")).toBe(true);
+    expect(isPublicPath("/llms.txt")).toBe(true);
   });
 
   it("treats auth and password reset pages as public", () => {
@@ -66,6 +78,13 @@ describe("isPublicPath (#348)", () => {
     expect(isPublicPath("/api/attachments/a1")).toBe(false);
   });
 
+  it("lets guests open a shareable invite link without signing in first", () => {
+    expect(isPublicPath("/join")).toBe(true);
+    expect(isPublicPath("/join/abc")).toBe(true);
+    expect(isPublicPath("/joining")).toBe(false);
+    expect(isPublicPath("/tenants/invite/abc")).toBe(false);
+  });
+
   it("treats application routes as non-public", () => {
     expect(isPublicPath("/issues")).toBe(false);
     expect(isPublicPath("/issues/new")).toBe(false);
@@ -75,6 +94,14 @@ describe("isPublicPath (#348)", () => {
 });
 
 describe("middleware routing (#348)", () => {
+  it("allows unauthenticated requests to / without redirecting to /login (#487)", () => {
+    const req = createMockReq({ pathname: "/", isLoggedIn: false });
+    const res = runMiddleware(req);
+
+    expect(res.status).not.toBe(307);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
   it("allows unauthenticated requests to /session-expired without redirecting to /login", () => {
     const req = createMockReq({ pathname: "/session-expired", isLoggedIn: false });
     const res = runMiddleware(req);
@@ -92,6 +119,14 @@ describe("middleware routing (#348)", () => {
     expect(res.headers.get("location")).toBe("https://ziki.dev/issues");
   });
 
+  it("lets a guest open a shareable invite link", () => {
+    const req = createMockReq({ pathname: "/join/abc", isLoggedIn: false });
+    const res = runMiddleware(req);
+
+    expect(res.status).not.toBe(307);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
   it("redirects unauthenticated requests to protected pages to /login with callbackUrl", () => {
     const req = createMockReq({ pathname: "/issues", isLoggedIn: false });
     const res = runMiddleware(req);
@@ -100,6 +135,18 @@ describe("middleware routing (#348)", () => {
     const location = res.headers.get("location");
     expect(location).toContain("/login");
     expect(location).toContain("callbackUrl=%2Fissues");
+  });
+
+  it("keeps the agent approval code across the sign-in redirect", () => {
+    const req = createMockReq({
+      pathname: "/settings/agents/pair",
+      search: "?code=KX7P-2MQD",
+      isLoggedIn: false,
+    });
+    const res = runMiddleware(req);
+    const location = res.headers.get("location") ?? "";
+    expect(location).toContain("/login");
+    expect(location).toContain(encodeURIComponent("/settings/agents/pair?code=KX7P-2MQD"));
   });
 
   it("redirects logged-in users visiting /login to /issues", () => {

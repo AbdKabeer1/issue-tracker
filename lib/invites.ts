@@ -59,6 +59,13 @@ export function inviteUrl(rawToken: string): string {
   return absoluteUrl(invitePath(rawToken));
 }
 
+/** Where a pasted invite should open. Share links live at /join, email invites at /tenants/invite. */
+export function destinationForInviteInput(raw: string): string | null {
+  const token = parseInviteLink(raw);
+  if (!token) return null;
+  return /\/join\//.test(raw) ? `/join/${token}` : invitePath(token);
+}
+
 /**
  * The token in a pasted invite link, or in a bare token. Null for anything
  * else, so junk never reaches the database.
@@ -66,7 +73,7 @@ export function inviteUrl(rawToken: string): string {
 export function parseInviteLink(input: string): string | null {
   const value = input.trim();
   if (isInviteToken(value)) return value;
-  const match = /\/tenants\/invite\/([^/?#\s]+)/.exec(value);
+  const match = /\/(?:tenants\/invite|join)\/([^/?#\s]+)/.exec(value);
   const token = match?.[1];
   return token && isInviteToken(token) ? token : null;
 }
@@ -201,6 +208,7 @@ export async function deliverInvite(
   input: {
     invite: { id: string; email: string };
     rawToken: string;
+    tenantId?: string;
     tenantName: string;
     inviter: { id: string; name: string };
   },
@@ -208,7 +216,13 @@ export async function deliverInvite(
   const { invite, rawToken, tenantName, inviter } = input;
   const account = await db.user.findUnique({ where: { email: invite.email }, select: { id: true } });
   if (account) {
-    await notifyTenantInvite({ id: invite.id, tenantName, email: invite.email, invitedBy: inviter });
+    await notifyTenantInvite({
+      id: invite.id,
+      ...(input.tenantId ? { tenantId: input.tenantId } : {}),
+      tenantName,
+      email: invite.email,
+      invitedBy: inviter,
+    });
     return "notified";
   }
   if (!canSendMail()) return "manual";

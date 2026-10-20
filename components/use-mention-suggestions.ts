@@ -15,7 +15,8 @@ import {
 } from "@/lib/mentions";
 import { applyTextChange } from "@/lib/editor-dom";
 
-export type MentionUser = { id: string; name: string };
+/** `agentOwner` marks an agent option (`id` is `agent:<id>`) and names its owner (#603). */
+export type MentionUser = { id: string; name: string; agentOwner?: string };
 
 /**
  * Shared @mention autocomplete state so every editor (bug description,
@@ -92,7 +93,11 @@ export function useMentionSuggestions({
   /** Returns true when the key was consumed by the suggestion list. */
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
-      if (!showSuggestions) return false;
+      if (
+        !showSuggestions ||
+        event.nativeEvent.isComposing ||
+        event.nativeEvent.keyCode === 229
+      ) return false;
 
       if (event.key === "ArrowDown") {
         event.preventDefault();

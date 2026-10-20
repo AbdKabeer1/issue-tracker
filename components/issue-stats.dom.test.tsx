@@ -1,26 +1,24 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import React from "react";
-import { render, screen, cleanup } from "@testing-library/react";
-import { vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
 import { IssueStats } from "./issue-stats";
 
-// The tile links are plain anchors in this harness; the component only needs
-// useSearchParams to build hrefs.
 vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams(window.location.search),
 }));
 
+afterEach(cleanup);
+
 function renderStats() {
   return render(
-    <IssueStats total={128} open={64} inProgress={21} closed={43} />
+    <IssueStats total={128} open={64} inProgress={21} closed={43} />,
   );
 }
 
 describe("IssueStats tiles (#685)", () => {
   beforeEach(() => {
-    cleanup();
     window.history.replaceState(null, "", "/issues");
   });
 
@@ -37,28 +35,26 @@ describe("IssueStats tiles (#685)", () => {
     renderStats();
     expect(screen.getByRole("link", { name: /total issues/i })).toHaveAttribute(
       "href",
-      "/issues"
+      "/issues",
     );
     expect(screen.getByRole("link", { name: /^64\s*open$/i })).toHaveAttribute(
       "href",
-      "/issues?status=open"
+      "/issues?status=open",
     );
     expect(
-      screen.getByRole("link", { name: /in progress/i })
+      screen.getByRole("link", { name: /in progress/i }),
     ).toHaveAttribute("href", "/issues?status=in_progress");
   });
 
   it("links Closed to the same resolved + closed aggregate it counts", () => {
     renderStats();
     const closed = screen.getByRole("link", { name: /closed/i });
-    // Count and destination describe the same set: resolved + closed.
     expect(closed).toHaveAttribute("href", "/issues?status=finished");
     expect(closed).toHaveAttribute("title", "Resolved and closed issues");
   });
 
   it("drops the meaningless decorative progress bars", () => {
     const { container } = renderStats();
-    // The old tiles drew an h-1 bar repeating the count with no scale labels.
     expect(container.querySelector(".h-1")).toBeNull();
   });
 
@@ -67,7 +63,28 @@ describe("IssueStats tiles (#685)", () => {
     renderStats();
     expect(screen.getByRole("link", { name: /closed/i })).toHaveAttribute(
       "aria-current",
-      "page"
+      "page",
     );
+  });
+});
+
+const stats = { total: 10, open: 4, inProgress: 2, closed: 4 };
+
+describe("IssueStats mobile chrome (#574)", () => {
+  it("renders one compact, horizontally scrollable line on phones", () => {
+    const { container } = render(<IssueStats {...stats} />);
+    const grid = container.querySelector("section > div");
+    expect(grid).not.toBeNull();
+    expect(grid).toHaveClass("overflow-x-auto");
+    expect(grid).toHaveClass("lg:grid");
+  });
+
+  it("hides the large icons below sm so the row stays short", () => {
+    const { container } = render(<IssueStats {...stats} />);
+    const iconBoxes = container.querySelectorAll("a > div:first-child");
+    expect(iconBoxes.length).toBe(4);
+    iconBoxes.forEach((box) => {
+      expect(box).toHaveClass("hidden", "sm:flex");
+    });
   });
 });

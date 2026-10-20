@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { ZEDU_SLUG } from "@/lib/tenant";
+import { appCookieOptions } from "@/lib/cookie-options";
 
 /**
  * The project the person is currently working in (#426).
@@ -44,7 +45,7 @@ export async function projectsForTenant(
 ): Promise<ProjectChoice[]> {
   try {
     return await db.project.findMany({
-      where: { tenantId },
+      where: { tenantId, archivedAt: null },
       select: { id: true, name: true, slug: true },
       orderBy: { createdAt: "asc" },
     });
@@ -90,10 +91,5 @@ export async function activeProjectIdFor(
 
 /** Remember the project on this device; server actions validate it first. */
 export async function setActiveProjectCookie(projectId: string): Promise<void> {
-  (await cookies()).set(ACTIVE_PROJECT_COOKIE, projectId, {
-    path: "/",
-    maxAge: ACTIVE_PROJECT_COOKIE_MAX_AGE,
-    sameSite: "lax",
-    httpOnly: true,
-  });
+  (await cookies()).set(ACTIVE_PROJECT_COOKIE, projectId, appCookieOptions(ACTIVE_PROJECT_COOKIE_MAX_AGE));
 }

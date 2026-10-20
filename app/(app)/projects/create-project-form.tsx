@@ -5,6 +5,7 @@ import { createProjectAction, type ProjectActionResult } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PROJECT_NAME_MAX } from "./validation";
+import { ProjectRewardRulesSection } from "@/components/project-reward-rules-section";
 
 export function CreateProjectForm() {
   const [result, action, pending] = useActionState<
@@ -14,7 +15,7 @@ export function CreateProjectForm() {
   const error = result?.error;
 
   return (
-    <form action={action} className="mt-4 space-y-3" noValidate>
+    <form action={action} className="mt-4 space-y-4" noValidate>
       <div>
         <label
           htmlFor="project-name"
@@ -23,14 +24,13 @@ export function CreateProjectForm() {
           Project name
         </label>
         <p className="mt-0.5 text-xs text-slate-500">
-          A product or area inside your workspace, such as Zedu Web or Zedu
-          Desktop.
+          A product or area inside your workspace, such as a web app or iOS app.
         </p>
         <div className="mt-2 flex flex-col gap-2 sm:flex-row">
           <Input
             id="project-name"
             name="name"
-            placeholder="Zedu Web"
+            placeholder="Web app"
             required
             maxLength={PROJECT_NAME_MAX + 20}
             disabled={pending}
@@ -43,6 +43,9 @@ export function CreateProjectForm() {
           </Button>
         </div>
       </div>
+
+      <ProjectRewardRulesSection disabled={pending} />
+
       {error ? (
         <p id="project-name-error" role="alert" className="text-sm text-red-700">
           {error}

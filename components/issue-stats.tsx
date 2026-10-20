@@ -132,7 +132,7 @@ export function IssueStats({
 
   return (
     <section aria-label="Issue statistics" className="w-full">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-xs">
+      <div className="flex gap-2 overflow-x-auto pb-1 rounded-xl border border-slate-200 bg-white p-2.5 sm:gap-4 sm:p-4 shadow-xs lg:grid lg:grid-cols-4">
         {stats.map((item) => {
           const isActive =
             item.statusKey === ""
@@ -143,16 +143,16 @@ export function IssueStats({
             <Link
               key={item.id}
               href={getStatusHref(item.statusKey)}
-              title={item.hint}
+              title={"hint" in item ? item.hint : undefined}
               aria-current={isActive ? "page" : undefined}
-              className={`group flex items-center gap-3.5 rounded-lg p-2.5 sm:p-3 transition-all ${
+              className={`group flex min-w-[8.5rem] shrink-0 items-center gap-2 rounded-lg p-2 transition-all sm:gap-3.5 sm:p-3 lg:min-w-0 ${
                 isActive
                   ? "bg-slate-50 ring-1 ring-slate-200/80"
                   : "hover:bg-slate-50/70"
               }`}
             >
               <div
-                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-xs transition-transform group-hover:scale-105 ${item.iconBg}`}
+                className={`hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-xs transition-transform group-hover:scale-105 sm:flex ${item.iconBg}`}
               >
                 {item.icon}
               </div>

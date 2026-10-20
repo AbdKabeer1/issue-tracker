@@ -42,23 +42,27 @@ const FIELD_LABELS: Record<string, string> = {
   typeId: "Type",
   categoryId: "Platform",
   description: "Description",
-  proofLinks: "Proof links",
+  proofLinks: "GitHub PR",
   severity: "Severity",
   assigneeId: "Assignee",
 };
 
 export function CreateIssueForm({
   users,
+  assigneeUsers = users,
   categories = [],
   types = [],
   isAdmin,
   currentUserId,
+  projectId,
 }: {
   users: UserOption[];
+  assigneeUsers?: UserOption[];
   categories?: CategoryOption[];
   types?: TypeOption[];
   isAdmin: boolean;
   currentUserId?: string;
+  projectId?: string | null;
 }) {
   const defaultTypeId =
     types.find((t) => t.name.toLowerCase() === "fix")?.id ?? types[0]?.id ?? "";
@@ -89,6 +93,7 @@ export function CreateIssueForm({
   const draftKey = buildDraftKey({
     userId: currentUserId,
     formType: "create-bug",
+    projectId,
   });
 
   const { values, setValue, isRestored, clearDraft, discardDraft } = useFormDraft(
@@ -105,6 +110,10 @@ export function CreateIssueForm({
     },
   );
   const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
+  const [mode, setMode] = useState<"report" | "detailed">("detailed");
+  const [editorUploading, setEditorUploading] = useState(false);
+  const [pickerUploading, setPickerUploading] = useState(false);
+  const isUploading = editorUploading || pickerUploading;
   const [error, setError] = useState<string | null>(null);
   // True when the request itself failed (network / server error), so the
   // person can simply retry; validation errors from the server aren't retryable.
@@ -120,16 +129,20 @@ export function CreateIssueForm({
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
+        if (pending || isUploading) return;
         setError(null);
         setCanRetry(false);
         errs.clear();
         const formData = new FormData();
         formData.set("title", values.title);
-        formData.set("typeId", values.typeId);
         formData.set("description", values.description);
-        formData.set("categoryId", values.categoryId);
-        formData.set("proofLinks", values.proofLinks);
         formData.set("attachmentIds", attachmentIds.join(","));
+        formData.set("isReport", mode === "report" ? "true" : "false");
+        if (mode === "detailed") {
+          formData.set("typeId", values.typeId);
+          formData.set("categoryId", values.categoryId);
+          formData.set("proofLinks", values.proofLinks);
+        }
         if (isAdmin) {
           formData.set("severity", values.severity);
           formData.set("assigneeId", values.assigneeId);
@@ -163,140 +176,199 @@ export function CreateIssueForm({
         />
       ) : null}
 
+      <div className="flex border-b border-slate-200">
+        <button
+          type="button"
+          onClick={() => setMode("report")}
+          className={`border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
+            mode === "report"
+              ? "border-teal-600 text-teal-700"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          Quick report
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("detailed")}
+          className={`border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
+            mode === "detailed"
+              ? "border-teal-600 text-teal-700"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          Detailed issue
+        </button>
+      </div>
+
+      {mode === "report" ? (
+        <div className="rounded-lg border border-teal-200 bg-teal-50/60 p-3 text-xs text-teal-900">
+          <p className="font-semibold">✨ Lightweight human report intake</p>
+          <p className="mt-0.5 text-teal-700">
+            Describe what happened in plain language and upload media. Autonomous agents will analyze, deduplicate, infer platform/type, and structure your report.
+          </p>
+        </div>
+      ) : null}
+
       <ErrorSummary errors={errs.fieldErrors} labels={FIELD_LABELS} />
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <label htmlFor="title" className="text-sm font-medium text-slate-700">
-            Title
-          </label>
-          <Input
-            id="title"
-            name="title"
-            required
-            minLength={3}
-            maxLength={TITLE_MAX_LENGTH}
-            placeholder="Short summary of the issue"
-            value={values.title}
-            onChange={(event) => setValue("title", event.target.value)}
-            {...errs.attrs("title")}
-          />
-          <CharacterCounter
-            length={values.title.length}
-            max={TITLE_MAX_LENGTH}
-            className="text-right"
-          />
-          <FieldError formId={errs.formId} field="title" errors={errs.fieldErrors} />
-          <SimilarIssues title={values.title} />
-        </div>
-        {types.length > 0 ? (
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <label htmlFor="typeId" className="text-sm font-medium text-slate-700">
-              Type
+            <label htmlFor="title" className="text-sm font-medium text-slate-700">
+              Title
+            </label>
+            <Input
+              id="title"
+              name="title"
+              required={mode === "detailed"}
+              minLength={mode === "detailed" ? 3 : undefined}
+              maxLength={TITLE_MAX_LENGTH}
+              placeholder={
+                mode === "report"
+                  ? "Short summary (optional — auto-generated from description if empty)"
+                  : "Short summary of the issue"
+              }
+              value={values.title}
+              onChange={(event) => setValue("title", event.target.value)}
+              {...errs.attrs("title")}
+            />
+            <CharacterCounter
+              length={values.title.length}
+              max={TITLE_MAX_LENGTH}
+              className="text-right"
+            />
+            <FieldError formId={errs.formId} field="title" errors={errs.fieldErrors} />
+            <SimilarIssues title={values.title} />
+          </div>
+
+          {mode === "detailed" && types.length > 0 ? (
+            <div className="space-y-1.5">
+              <label htmlFor="typeId" className="text-sm font-medium text-slate-700">
+                Type
+              </label>
+              <Select
+                id="typeId"
+                name="typeId"
+                value={values.typeId}
+                onChange={(event) => void changeType(event.target.value)}
+                {...errs.attrs("typeId")}
+              >
+                {types.map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                  </option>
+                ))}
+              </Select>
+              <FieldError formId={errs.formId} field="typeId" errors={errs.fieldErrors} />
+            </div>
+          ) : null}
+        </div>
+
+        {mode === "detailed" ? (
+          <div className="space-y-1.5">
+            <label
+              htmlFor="categoryId"
+              className="text-sm font-medium text-slate-700"
+            >
+              Platform
             </label>
             <Select
-              id="typeId"
-              name="typeId"
-              value={values.typeId}
-              onChange={(event) => void changeType(event.target.value)}
-              {...errs.attrs("typeId")}
+              id="categoryId"
+              name="categoryId"
+              value={values.categoryId}
+              onChange={(event) => setValue("categoryId", event.target.value)}
+              {...errs.attrs("categoryId")}
             >
-              {types.map((type) => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
+              <option value="">Select a platform</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
                 </option>
               ))}
             </Select>
-            <FieldError formId={errs.formId} field="typeId" errors={errs.fieldErrors} />
+            <FieldError formId={errs.formId} field="categoryId" errors={errs.fieldErrors} />
           </div>
         ) : null}
-      </div>
-      <div className="space-y-1.5">
-        <label
-          htmlFor="categoryId"
-          className="text-sm font-medium text-slate-700"
-        >
-          Platform
-        </label>
-        <Select
-          id="categoryId"
-          name="categoryId"
-          value={values.categoryId}
-          onChange={(event) => setValue("categoryId", event.target.value)}
-          {...errs.attrs("categoryId")}
-        >
-          <option value="">Select a platform</option>
-          {categories.map((cat) => (
-            <option key={cat.id} value={cat.id}>
-              {cat.name}
-            </option>
-          ))}
-        </Select>
-        <FieldError formId={errs.formId} field="categoryId" errors={errs.fieldErrors} />
-      </div>
-      <div className="space-y-1.5">
-        <label
-          id="description-label"
-          htmlFor="description"
-          className="text-sm font-medium text-slate-700"
-        >
-          Description
-        </label>
-        <MarkdownEditor
-          id="description"
-          labelId="description-label"
-          name="description"
-          required
-          minLength={10}
-          maxLength={5000}
-          rows={6}
-          placeholder="Steps to reproduce, expected vs actual, environment…"
-          value={values.description}
-          onChange={(val) => setValue("description", val)}
-          users={mentionUsers}
-          {...errs.attrs("description")}
-          footer={
+        <div className="space-y-1.5">
+          <label
+            id="description-label"
+            htmlFor="description"
+            className="text-sm font-medium text-slate-700"
+          >
+            Description
+          </label>
+          <MarkdownEditor
+            id="description"
+            labelId="description-label"
+            name="description"
+            required
+            minLength={10}
+            maxLength={5000}
+            rows={6}
+            placeholder={
+              mode === "report"
+                ? "Describe what happened in your own words. What were you doing, and what went wrong?"
+                : "Steps to reproduce, expected vs actual, environment…"
+            }
+            value={values.description}
+            onChange={(val) => setValue("description", val)}
+            onUploadingChange={setEditorUploading}
+            users={mentionUsers}
+            {...errs.attrs("description")}
+            footer={
+              <p className="text-xs text-slate-500">
+                {mode === "report"
+                  ? "Markdown is supported. Plain language is welcome; our agents will structure the report."
+                  : "Markdown is supported. Be specific: what should happen, what actually happens, and how to reproduce it."}
+              </p>
+            }
+          />
+          <FieldError formId={errs.formId} field="description" errors={errs.fieldErrors} />
+        </div>
+
+        {mode === "detailed" ? (
+          <div className="space-y-1.5">
+            <label
+              htmlFor="proofLinks"
+              className="text-sm font-medium text-slate-700"
+            >
+              GitHub PR
+            </label>
+            <Textarea
+              id="proofLinks"
+              name="proofLinks"
+              rows={3}
+              placeholder={
+                "https://github.com/organization/repo/pull/123"
+              }
+              value={values.proofLinks}
+              onChange={(event) => setValue("proofLinks", event.target.value)}
+              {...errs.attrs("proofLinks")}
+            />
+            <FieldError formId={errs.formId} field="proofLinks" errors={errs.fieldErrors} />
             <p className="text-xs text-slate-500">
-              Markdown is supported. Be specific: what should happen, what
-              actually happens, and how to reproduce it.
+              Optional. One GitHub link per line (e.g. https://github.com/organization/repo/pull/123).
             </p>
-          }
-        />
-        <FieldError formId={errs.formId} field="description" errors={errs.fieldErrors} />
+          </div>
+        ) : null}
+
+        <fieldset className="space-y-1.5">
+          <legend className="text-sm font-medium text-slate-700">
+            Screenshots and files
+          </legend>
+          <p className="text-xs text-slate-500">
+            Optional. No GitHub account needed: attach a screenshot, console log
+            or recording export straight to the report.
+          </p>
+          <AttachmentPicker
+            name="attachmentIdsPicker"
+            onChange={setAttachmentIds}
+            onUploadingChange={setPickerUploading}
+            disabled={pending}
+          />
+        </fieldset>
       </div>
-      <div className="space-y-1.5">
-        <label
-          htmlFor="proofLinks"
-          className="text-sm font-medium text-slate-700"
-        >
-          Proof links (GitHub)
-        </label>
-        <Textarea
-          id="proofLinks"
-          name="proofLinks"
-          rows={3}
-          placeholder={
-            "https://github.com/organization/repo/issues/123\nhttps://github.com/organization/repo/pull/456"
-          }
-          value={values.proofLinks}
-          onChange={(event) => setValue("proofLinks", event.target.value)}
-          {...errs.attrs("proofLinks")}
-        />
-        <FieldError formId={errs.formId} field="proofLinks" errors={errs.fieldErrors} />
-        <p className="text-xs text-slate-500">
-          Optional. One GitHub link per line (e.g. https://github.com/org/repo/issues/123). You need to have created the issue on GitHub first or gotten it from GitHub before adding the link here.
-        </p>
-      </div>
-      <fieldset className="space-y-1.5">
-        <legend className="text-sm font-medium text-slate-700">
-          Screenshots and files
-        </legend>
-        <p className="text-xs text-slate-500">
-          Optional. No GitHub account needed: attach a screenshot, console log
-          or recording export straight to the report.
-        </p>
-        <AttachmentPicker name="attachmentIdsPicker" onChange={setAttachmentIds} />
-      </fieldset>
       {isAdmin ? (
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
@@ -332,7 +404,7 @@ export function CreateIssueForm({
             <AssigneeCombobox
               id="assigneeId"
               name="assigneeId"
-              people={users}
+              people={assigneeUsers}
               value={values.assigneeId}
               onChange={(val) => setValue("assigneeId", val)}
             />
@@ -362,7 +434,7 @@ export function CreateIssueForm({
           {canRetry ? (
             <button
               type="button"
-              disabled={pending}
+              disabled={pending || isUploading}
               onClick={() => formRef.current?.requestSubmit()}
               className="text-sm font-medium text-teal-700 underline-offset-2 hover:underline disabled:opacity-50"
             >
@@ -371,8 +443,8 @@ export function CreateIssueForm({
           ) : null}
         </div>
       ) : null}
-      <Button type="submit" disabled={pending}>
-        {pending ? "Creating…" : "Create issue"}
+      <Button type="submit" disabled={pending || isUploading}>
+        {pending ? "Creating…" : isUploading ? "Uploading…" : "Create issue"}
       </Button>
     </form>
   );

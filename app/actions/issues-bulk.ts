@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireUser } from "@/lib/auth-helpers";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import {
   activityCreateData,
   assigneeChangedSummary,
@@ -13,7 +15,14 @@ import {
   typeChangedSummary,
 } from "@/lib/activity-log";
 import { validateBulk } from "@/lib/bulk-actions";
+import { awardSolver } from "@/lib/points/award";
+import { solverAwardForBulkChange } from "@/lib/points/bulk-award";
+import { ensureWatching } from "@/lib/watch";
+import { notifyLater } from "@/lib/notify";
+import type { NotificationEvent } from "@/lib/notifications";
 import type { Severity, Status } from "@prisma/client";
+import { publish } from "@/lib/agent-api/events";
+import { issueChangePayload, publishWebEvent } from "@/lib/agent-api/web-events";
 
 export type BulkResult = {
   error?: string;
@@ -36,7 +45,9 @@ export async function bulkUpdateBugsAction(
   rawIds: unknown,
   rawChange: unknown,
 ): Promise<BulkResult> {
-  const user = await requireAdmin();
+  const user = await requireUser();
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!access.admin) redirect("/issues");
 
   const parsed = validateBulk(rawIds, rawChange);
   if (!parsed.ok) return { error: parsed.error };
@@ -44,18 +55,23 @@ export async function bulkUpdateBugsAction(
 
   // Referenced rows are checked once for the whole batch rather than once
   // per issue, and before the transaction opens.
+  let inactiveTypeId: string | undefined;
   if (typeof change.typeId === "string") {
     const type = await prisma.issueType.findUnique({
       where: { id: change.typeId },
-      select: { id: true },
+      select: { id: true, isActive: true },
     });
     if (!type) return { error: "Issue type not found" };
+    if (!type.isActive) inactiveTypeId = type.id;
   }
+  const tenantId = await currentTenantIdFor(user.id);
   if (typeof change.categoryId === "string") {
-    const category = await prisma.category.findUnique({
-      where: { id: change.categoryId },
-      select: { id: true },
-    });
+    const category = tenantId
+      ? await prisma.category.findFirst({
+          where: { id: change.categoryId, tenantId },
+          select: { id: true },
+        })
+      : null;
     if (!category) return { error: "Platform not found" };
   }
   if (typeof change.assigneeId === "string") {
@@ -70,9 +86,12 @@ export async function bulkUpdateBugsAction(
   // what actually changed on it — the same entries a single edit produces,
   // rather than an opaque "bulk update" line nobody can read later.
   const found = await prisma.bug.findMany({
-    where: { id: { in: ids }, ...bugInTenant(await currentTenantIdFor(user.id)) },
+    where: { id: { in: ids }, ...bugInTenant(tenantId) },
     select: {
       id: true,
+      tenantId: true,
+      title: true,
+      reporterId: true,
       isDeleted: true,
       status: true,
       severity: true,
@@ -108,8 +127,12 @@ export async function bulkUpdateBugsAction(
     return { error: "None of the selected issues can be changed.", skipped };
   }
 
+  if (inactiveTypeId && changing.some((bug) => bug.typeId !== inactiveTypeId)) {
+    return { error: "Issue type is inactive. Please pick another." };
+  }
+
   // Names for whatever the fields are being set to, looked up once.
-  const toNames = await resolveNames(change);
+  const toNames = await resolveNames(change, tenantId);
 
   const entries = changing.flatMap((bug) => buildEntries(bug, change, toNames, user.id));
 
@@ -138,7 +161,49 @@ export async function bulkUpdateBugsAction(
         // back rather than logging activity for rows that were not updated.
         throw new BulkRaceError(result.count, changedIds.length);
       }
+      for (const terminalStatus of ["resolved", "closed"] as const) {
+        const terminalIds = changing
+          .filter((bug) => changedIds.includes(bug.id) && change.status === terminalStatus && bug.status !== terminalStatus)
+          .map((bug) => bug.id);
+        if (terminalIds.length > 0) {
+          const activeClaims = typeof tx.issueClaim?.findMany === "function"
+            ? await tx.issueClaim.findMany({
+                where: { bugId: { in: terminalIds }, status: "active", releasedAt: null },
+                select: { id: true, agentId: true, beneficiaryUserId: true, bugId: true },
+              })
+            : [];
+          await tx.issueClaim.updateMany({
+            where: { bugId: { in: terminalIds }, status: "active", releasedAt: null },
+            data: { status: "released", releasedAt: new Date(), releaseReason: terminalStatus },
+          });
+          for (const claim of activeClaims) {
+            const claimTenantId = byId.get(claim.bugId)?.tenantId ?? tenantId;
+            if (!claimTenantId) continue;
+            await publish(tx, {
+              tenantId: claimTenantId,
+              type: "claim.released",
+              actorAgentId: claim.agentId,
+              bugId: claim.bugId,
+              payload: { claimId: claim.id, issueId: claim.bugId, beneficiaryUserId: claim.beneficiaryUserId, reason: terminalStatus },
+            });
+          }
+        }
+      }
       await tx.bugActivity.createMany({ data: activityCreateData(entries) });
+      // #428: marking issues resolved earns the assignee solver points, once.
+      // A bulk status change used to skip the award the single-issue edit writes.
+      for (const bug of changing) {
+        if (!changedIds.includes(bug.id)) continue;
+        if (change.assigneeId && change.assigneeId !== bug.assigneeId) {
+          await ensureWatching(tx, bug.id, [change.assigneeId]);
+        }
+        const target = solverAwardForBulkChange(bug, change);
+        if (target) await awardSolver(tx, target);
+      }
+      // #600: one issue.updated per changed issue, as a single edit would publish.
+      for (const id of changedIds) {
+        await publishWebEvent(tx, { bugId: id, type: "issue.updated", actorUserId: user.id, payload: issueChangePayload(change) });
+      }
     });
   } catch (error) {
     if (error instanceof BulkRaceError) {
@@ -153,6 +218,18 @@ export async function bulkUpdateBugsAction(
     // rather than leaving the caller to guess what landed.
     return { error: "Could not apply the change. Nothing was modified." };
   }
+
+  const events: NotificationEvent[] = [];
+  for (const bug of changing) {
+    const actor = { actorId: user.id, actorName: user.name ?? "Someone", bugId: bug.id, bugTitle: bug.title };
+    if (change.assigneeId !== undefined && change.assigneeId !== bug.assigneeId) {
+      events.push({ ...actor, kind: "assignee_changed", fromUserId: bug.assigneeId, toUserId: change.assigneeId });
+    }
+    if (change.status && change.status !== bug.status) {
+      events.push({ ...actor, kind: "status_changed", reporterId: bug.reporterId, from: bug.status, to: change.status as Status });
+    }
+  }
+  if (events.length > 0) notifyLater(...events);
 
   revalidatePath("/issues");
   revalidatePath("/bugs");
@@ -175,13 +252,19 @@ class BulkRaceError extends Error {
 type ToNames = { typeId?: string | null; categoryId?: string | null; assigneeId?: string | null };
 
 /** Display names for the ids being assigned, so summaries read properly. */
-async function resolveNames(change: Record<string, string | null>): Promise<ToNames> {
+async function resolveNames(
+  change: Record<string, string | null>,
+  tenantId: string | null,
+): Promise<ToNames> {
   const [type, category, assignee] = await Promise.all([
     typeof change.typeId === "string"
       ? prisma.issueType.findUnique({ where: { id: change.typeId }, select: { name: true } })
       : null,
-    typeof change.categoryId === "string"
-      ? prisma.category.findUnique({ where: { id: change.categoryId }, select: { name: true } })
+    typeof change.categoryId === "string" && tenantId
+      ? prisma.category.findFirst({
+          where: { id: change.categoryId, tenantId },
+          select: { name: true },
+        })
       : null,
     typeof change.assigneeId === "string"
       ? prisma.user.findUnique({ where: { id: change.assigneeId }, select: { name: true } })
@@ -196,6 +279,7 @@ async function resolveNames(change: Record<string, string | null>): Promise<ToNa
 
 type BugRow = {
   id: string;
+  tenantId: string;
   status: Status;
   severity: Severity;
   typeId: string | null;

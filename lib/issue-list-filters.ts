@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { severities } from "@/lib/validations/issue";
 import { statusFilterWhere } from "@/lib/issue-state";
-import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
+import { boundSearchTerm, escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
 import { MILESTONE_PARAM, milestoneWhere, parseMilestoneFilter } from "@/lib/milestones";
 import {
   defaultSortFor,
@@ -12,6 +12,7 @@ import {
 import { parseTagFilter, tagTypeIds } from "@/lib/tag-filter";
 import { parseBugSort, type BugSortOption } from "@/lib/issues-sort";
 import { DUPLICATES_PARAM, duplicatesWhere, parseShowDuplicates } from "@/lib/duplicates";
+import { parseProjectAreaFilter, projectAreaFilterWhere, type ProjectAreaOption } from "@/lib/project-area-filter";
 
 export type RawParams = Record<string, string | string[] | undefined>;
 
@@ -43,6 +44,7 @@ export function parseBugListFilters({
   canSeeDeleted,
   tagTypes = [],
   platforms = [],
+  areas = [],
   milestones = [],
 }: {
   params: RawParams;
@@ -52,6 +54,8 @@ export function parseBugListFilters({
   tagTypes?: readonly TagType[];
   /** Known platforms, so an id that no longer exists falls back to no filter. */
   platforms?: readonly PlatformLike[];
+  /** Areas belonging to the active project, so stale/foreign ids mean no filter. */
+  areas?: readonly ProjectAreaOption[];
   /** Known milestones (#289); an unknown id means no filter, like platforms. */
   milestones?: readonly { id: string }[];
 }): ParsedBugFilters {
@@ -96,10 +100,12 @@ export function parseBugListFilters({
     where.categoryId = platform;
   }
 
+  Object.assign(where, projectAreaFilterWhere(parseProjectAreaFilter(params.area, areas)));
+
   Object.assign(where, milestoneWhere(parseMilestoneFilter(params[MILESTONE_PARAM], milestones)));
 
   if (q?.trim()) {
-    const escaped = escapeSearchQuery(q.trim());
+    const escaped = escapeSearchQuery(boundSearchTerm(q));
     where.OR = [
       { title: { contains: escaped, mode: "insensitive" } },
       { description: { contains: escaped, mode: "insensitive" } },

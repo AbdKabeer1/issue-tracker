@@ -29,7 +29,7 @@ describe("feed authentication and scope", () => {
     expect((await GET(request("?projectId=project", true))).status).toBe(200);
     expect(mocks.budget).toHaveBeenCalledWith({ id: "agent", burst: false }, "read");
     expect(mocks.audit).toHaveBeenCalled();
-    expect(mocks.read).toHaveBeenCalledWith("tenant", "project", null);
+    expect(mocks.read).toHaveBeenCalledWith("tenant", "project", null, null);
     expect(mocks.session).not.toHaveBeenCalled();
   });
   it("allows a current session", async () => {
@@ -48,6 +48,21 @@ describe("feed authentication and scope", () => {
     expect((await GET(request("", true))).status).toBe(401);
     expect(mocks.session).not.toHaveBeenCalled();
   });
+  it("rejects a key limited to another project (#742)", async () => {
+    mocks.requireAgent.mockResolvedValue({
+      agentId: "agent",
+      tenantId: "tenant",
+      level: "observer",
+      burst: false,
+      projectId: "other",
+      projectSlug: "web",
+    });
+    const response = await GET(request("?projectId=project", true));
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: "project_forbidden" });
+    expect(mocks.read).not.toHaveBeenCalled();
+  });
+
   it("rejects missing membership, foreign projects, bad cursors, and exhausted budgets", async () => {
     mocks.tenant.mockResolvedValueOnce(null);
     expect((await GET(request())).status).toBe(403);

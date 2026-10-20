@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 const db = vi.hoisted(() => ({
   project: { findFirst: vi.fn() }, membership: { findUnique: vi.fn() }, bug: { findFirst: vi.fn() },
   redesignProposal: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
+  attachment: { updateMany: vi.fn() },
   agentApiKey: { findUnique: vi.fn() }, agentAuditEvent: { create: vi.fn() }, $transaction: vi.fn(),
 }));
 const mocks = vi.hoisted(() => ({ publish: vi.fn(), notify: vi.fn(), session: vi.fn(), tenant: vi.fn(), budget: vi.fn() }));
@@ -14,7 +15,7 @@ vi.mock("@/lib/session-user", () => ({ resolveSessionUserId: mocks.session }));
 vi.mock("@/lib/auth-helpers", () => ({ requireUser: async () => ({ id: "human" }) }));
 vi.mock("@/lib/tenant-context", () => ({ currentTenantIdFor: mocks.tenant, defaultProjectIdFor: async () => "project" }));
 vi.mock("@/lib/agents/rate-budget", async (original) => ({ ...await original<typeof import("@/lib/agents/rate-budget")>(), consumeAgentBudget: mocks.budget }));
-import { assertRedesignOpen } from "./redesigns";
+import { assertRedesignOpen, decideRedesign, redesignSchema } from "./redesigns";
 import { POST as propose } from "@/app/api/v1/redesigns/route";
 import { POST as decide } from "@/app/api/v1/redesigns/[id]/decision/route";
 import RedesignsPage from "@/app/(app)/redesigns/page";
@@ -37,6 +38,7 @@ beforeEach(() => {
   db.redesignProposal.findMany.mockResolvedValue([proposal]);
   db.redesignProposal.updateMany.mockResolvedValue({ count: 1 });
   db.redesignProposal.count.mockResolvedValue(0);
+  db.attachment.updateMany.mockResolvedValue({ count: 0 });
   db.agentApiKey.findUnique.mockResolvedValue({ id: "key", revokedAt: null, agent: {
     id: "agent", name: "Helper", ownerUserId: "owner", tenantId: "tenant", level: "contributor", burst: false, revokedAt: null, owner: { memberships: [{ tenantId: "tenant" }] },
   } });
@@ -52,6 +54,14 @@ describe("redesign proposal creation", () => {
     expect(db.redesignProposal.create).toHaveBeenCalledWith({ data: expect.objectContaining({ authorAgentId: "agent", onBehalfOfUserId: "beneficiary", tenantId: "tenant", status: "proposed" }) });
     expect(mocks.publish).toHaveBeenCalledWith(db, expect.objectContaining({ type: "redesign.proposed", tenantId: "tenant" }));
     expect(mocks.notify).toHaveBeenCalledWith(expect.objectContaining({ onBehalfOfUserId: "beneficiary", agent: { name: "Helper" } }));
+  });
+  it("links up to five beneficiary-owned image uploads to the proposal", async () => {
+    db.attachment.updateMany.mockResolvedValueOnce({ count: 1 });
+    expect((await propose(request({ ...input, attachmentIds: ["mockup"] }, true))).status).toBe(201);
+    expect(db.attachment.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["mockup"] }, uploaderId: "beneficiary", bugId: null, commentId: null, redesignProposalId: null, contentType: { startsWith: "image/" } },
+      data: { redesignProposalId: "proposal" },
+    });
   });
   it("requires a contributor key and valid input", async () => {
     expect((await propose(request(input))).status).toBe(401);
@@ -70,6 +80,11 @@ describe("redesign proposal creation", () => {
     expect((await propose(request(input, true))).status).toBe(404);
     expect(db.bug.findFirst).toHaveBeenCalledWith({ where: { id: "issue", tenantId: "tenant", projectId: "project", isDeleted: false }, select: { id: true } });
     expect(db.redesignProposal.create).not.toHaveBeenCalled();
+  });
+  it("accepts HTTPS previews and up to five image attachment ids only", () => {
+    expect(redesignSchema.safeParse({ ...input, previewUrl: "https://figma.com/file/example", attachmentIds: ["file1", "file2"] }).success).toBe(true);
+    expect(redesignSchema.safeParse({ ...input, previewUrl: "http://figma.com/file/example" }).success).toBe(false);
+    expect(redesignSchema.safeParse({ ...input, attachmentIds: ["1", "2", "3", "4", "5", "6"] }).success).toBe(false);
   });
 });
 
@@ -91,6 +106,12 @@ describe("human approval rule", () => {
     expect(db.redesignProposal.updateMany).not.toHaveBeenCalled();
   });
   it("records the approver/time, audit and event atomically", async () => {
+    db.membership.findUnique.mockResolvedValue({ userId: "human", role: "admin" });
+    db.redesignProposal.findFirst.mockResolvedValueOnce({
+      ...proposal,
+      bugId: null,
+      authorAgent: { ownerUserId: "owner" },
+    });
     const response = await decide(request({ decision: "approved" }), context);
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toContain("no-store");
@@ -98,19 +119,65 @@ describe("human approval rule", () => {
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: "redesign.approved", actorUserId: "human", agentId: "agent" }) });
     expect(mocks.publish).toHaveBeenCalledWith(db, expect.objectContaining({ type: "redesign.approved", payload: expect.objectContaining({ actorUserId: "human" }) }));
   });
-  it("lets a person reject without recording approval", async () => {
+  it("lets a tenant admin choose a linked design and supersedes its alternatives", async () => {
+    db.membership.findUnique.mockResolvedValue({ userId: "human", role: "admin" });
+    db.redesignProposal.findFirst.mockResolvedValue({
+      ...proposal,
+      bugId: "issue",
+      authorAgent: { ownerUserId: "owner" },
+    });
+    db.redesignProposal.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 2 });
+    const result = await decideRedesign("human", "tenant", "proposal", "chosen");
+    expect(result).toMatchObject({ id: "proposal", status: "approved", supersededCount: 2 });
+    expect(db.redesignProposal.updateMany).toHaveBeenNthCalledWith(1, expect.objectContaining({ where: { id: "proposal", tenantId: "tenant", status: "proposed" }, data: expect.objectContaining({ status: "approved", approverId: "human" }) }));
+    expect(db.redesignProposal.updateMany).toHaveBeenNthCalledWith(2, { where: { tenantId: "tenant", bugId: "issue", id: { not: "proposal" }, status: "proposed" }, data: { status: "superseded" } });
+    expect(mocks.publish).toHaveBeenCalledWith(db, expect.objectContaining({ type: "redesign.chosen", payload: expect.objectContaining({ winningProposalId: "proposal", supersededCount: 2 }) }));
+  });
+  it("requires linked proposals to be chosen from the issue comparison", async () => {
+    db.membership.findUnique.mockResolvedValue({ userId: "human", role: "admin" });
+    db.redesignProposal.findFirst.mockResolvedValue({ ...proposal, authorAgent: { ownerUserId: "owner" } });
+    await expect(decideRedesign("human", "tenant", "proposal", "approved")).rejects.toThrow("Choose an issue-linked design");
+    expect(db.redesignProposal.updateMany).not.toHaveBeenCalled();
+  });
+  it("requires a tenant admin to choose a proposal", async () => {
+    expect((await decide(request({ decision: "chosen" }), context)).status).toBe(403);
+    expect(db.redesignProposal.updateMany).not.toHaveBeenCalled();
+  });
+  it("lets a workspace admin reject without recording approval", async () => {
+    db.membership.findUnique.mockResolvedValue({ userId: "human", role: "admin" });
+    db.redesignProposal.findFirst.mockResolvedValue({ ...proposal, authorAgent: { ownerUserId: "owner" } });
     expect((await decide(request({ decision: "rejected" }), context)).status).toBe(200);
     expect(db.redesignProposal.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { status: "rejected", approverId: null, approvedAt: null } }));
   });
   it("hides other tenants and prevents conflicting decisions", async () => {
+    db.membership.findUnique.mockResolvedValue({ userId: "human", role: "admin" });
     db.redesignProposal.findFirst.mockResolvedValueOnce(null);
     expect((await decide(request({ decision: "approved" }), context)).status).toBe(404);
+    db.redesignProposal.findFirst.mockResolvedValueOnce({
+      ...proposal,
+      bugId: null,
+      authorAgent: { ownerUserId: "owner" },
+    });
     db.redesignProposal.updateMany.mockResolvedValueOnce({ count: 0 });
     expect((await decide(request({ decision: "approved" }), context)).status).toBe(409);
     expect(mocks.publish).not.toHaveBeenCalled();
-    expect(db.redesignProposal.findFirst).toHaveBeenCalledWith({ where: { id: "proposal", tenantId: "tenant" } });
+    expect(db.redesignProposal.findFirst).toHaveBeenCalledWith({
+      where: { id: "proposal", tenantId: "tenant" },
+      include: { authorAgent: { select: { ownerUserId: true } } },
+    });
+  });
+  it("refuses the proposing agent's owner", async () => {
+    db.membership.findUnique.mockResolvedValue({ userId: "human", role: "admin" });
+    db.redesignProposal.findFirst.mockResolvedValue({
+      ...proposal,
+      bugId: null,
+      authorAgent: { ownerUserId: "human" },
+    });
+    expect((await decide(request({ decision: "approved" }), context)).status).toBe(403);
+    expect(db.redesignProposal.updateMany).not.toHaveBeenCalled();
   });
   it("returns a storage failure without a successful decision", async () => {
+    db.membership.findUnique.mockResolvedValue({ userId: "human", role: "admin" });
     db.redesignProposal.findFirst.mockRejectedValueOnce(new Error("DB"));
     expect((await decide(request({ decision: "approved" }), context)).status).toBe(503);
     expect(mocks.publish).not.toHaveBeenCalled();
@@ -118,11 +185,14 @@ describe("human approval rule", () => {
 });
 
 describe("claim gate and human page", () => {
-  it("blocks pending/rejected redesigns and allows an approved or unlinked issue", async () => {
+  it("blocks pending redesigns and allows rejected, approved, or unlinked issues", async () => {
     db.redesignProposal.count.mockResolvedValueOnce(1);
     await expect(assertRedesignOpen("issue", db as never)).rejects.toThrow("waiting for a person");
     await expect(assertRedesignOpen("issue", db as never)).resolves.toBeUndefined();
-    expect(db.redesignProposal.count).toHaveBeenCalledWith({ where: { bugId: "issue", status: { not: "approved" } } });
+    await expect(assertRedesignOpen("issue", db as never)).resolves.toBeUndefined();
+    await expect(assertRedesignOpen("issue", db as never)).resolves.toBeUndefined();
+    expect(db.redesignProposal.count).toHaveBeenCalledTimes(4);
+    expect(db.redesignProposal.count).toHaveBeenCalledWith({ where: { bugId: "issue", status: "proposed" } });
   });
   it("shows the pending state in the active project's tenant-scoped page", async () => {
     const html = renderToStaticMarkup(await RedesignsPage());

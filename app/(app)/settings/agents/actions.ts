@@ -5,8 +5,13 @@ import { requireUser } from "@/lib/auth-helpers";
 import { isAgentLevel } from "@/lib/agents/levels";
 import { consumePairingLimit } from "@/lib/agents/rate-limit";
 import { approvePairing, findPendingPairing } from "@/lib/agents/pairing";
-import { createAgent, revokeAgent, setAgentLevel } from "@/lib/agents/registry";
+import { currentTenantIdFor } from "@/lib/tenant-context";
+import { createAgent, regenerateKey, revokeAgent, setAgentAreaPreferences, setAgentBurst, setAgentLevel } from "@/lib/agents/registry";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
+
+/** Shown when the platform is off (#505): no new agents or keys get issued. */
+const PLATFORM_OFF = "The agent platform is turned off on this site.";
 
 /** The settings page's agent actions (#427). Every one acts as the signed-in person. */
 
@@ -18,11 +23,13 @@ export async function createAgentAction(
   _previous: CreateAgentActionResult | undefined,
   formData: FormData,
 ): Promise<CreateAgentActionResult> {
+  if (!isAgentPlatformEnabled()) return { ok: false, error: PLATFORM_OFF };
   const user = await requireUser();
   const result = await createAgent(user, {
     name: formData.get("name") ?? "",
     model: formData.get("model") || undefined,
     level: formData.get("level") || undefined,
+    projectId: formData.get("projectId") ?? "",
   });
   if (!result.ok) return result;
   revalidatePath("/settings/agents");
@@ -39,10 +46,58 @@ export async function revokeAgentAction(agentId: unknown): Promise<AgentActionRe
   return result;
 }
 
+export type RegenerateKeyActionResult =
+  | { ok: true; name: string; rawKey: string; prefix: string }
+  | { ok: false; error: string };
+
+/** Replaces every live key. The new secret is returned once (#572). */
+export async function regenerateAgentKeyAction(
+  agentId: unknown,
+  projectId: unknown,
+): Promise<RegenerateKeyActionResult> {
+  if (!isAgentPlatformEnabled()) return { ok: false, error: PLATFORM_OFF };
+  if (typeof agentId !== "string" || typeof projectId !== "string" || !projectId) {
+    return { ok: false, error: "Choose a project in this workspace." };
+  }
+  const user = await requireUser();
+  const result = await regenerateKey(user, agentId, projectId);
+  if (!result.ok) return result;
+  revalidatePath("/settings/agents");
+  return { ok: true, name: result.key.name, rawKey: result.key.rawKey, prefix: result.key.prefix };
+}
+
 export async function setAgentLevelAction(agentId: unknown, level: unknown): Promise<AgentActionResult> {
   if (typeof agentId !== "string" || !isAgentLevel(level)) return { ok: false, error: "Invalid level." };
   const user = await requireUser();
   const result = await setAgentLevel(user, agentId, level);
+  if (result.ok) revalidatePath("/settings/agents");
+  return result;
+}
+
+export async function setAgentBurstAction(agentId: unknown, burst: unknown): Promise<AgentActionResult> {
+  if (typeof agentId !== "string" || typeof burst !== "boolean") {
+    return { ok: false, error: "Invalid budget." };
+  }
+  const user = await requireUser();
+  const result = await setAgentBurst(user, agentId, burst);
+  if (result.ok) revalidatePath("/settings/agents");
+  return result;
+}
+
+export async function setAgentAreaPreferencesAction(
+  agentId: unknown,
+  projectId: unknown,
+  areaIds: unknown,
+): Promise<AgentActionResult> {
+  if (
+    typeof agentId !== "string" || typeof projectId !== "string" || !projectId ||
+    !Array.isArray(areaIds) || areaIds.length > 25 ||
+    areaIds.some((areaId) => typeof areaId !== "string" || areaId.length > 191)
+  ) {
+    return { ok: false, error: "Choose a project and valid areas." };
+  }
+  const user = await requireUser();
+  const result = await setAgentAreaPreferences(user, agentId, projectId, areaIds);
   if (result.ok) revalidatePath("/settings/agents");
   return result;
 }
@@ -60,12 +115,19 @@ export async function pairAgentAction(
   _previous: PairingActionResult | undefined,
   formData: FormData,
 ): Promise<PairingActionResult> {
+  if (!isAgentPlatformEnabled()) return { ok: false, error: PLATFORM_OFF };
   const user = await requireUser();
   if (await consumePairingLimit("approve", user.id)) return { ok: false, error: RATE_LIMIT_MESSAGE };
 
   const code = String(formData.get("code") ?? "");
   if (formData.get("intent") === "approve") {
-    const result = await approvePairing(user, code);
+    const result = await approvePairing(
+      user,
+      code,
+      new Date(),
+      String(formData.get("projectId") ?? ""),
+      await currentTenantIdFor(user.id),
+    );
     if (!result.ok) return result;
     revalidatePath("/settings/agents");
     return { ok: true, step: "done", name: result.name };

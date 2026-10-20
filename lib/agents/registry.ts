@@ -1,13 +1,18 @@
 import type { AgentLevel, Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import type { AppRole } from "@/lib/roles";
+import { isAdmin, type AppRole } from "@/lib/roles";
 import { audit } from "@/lib/agents/audit";
 import { generateApiKey } from "@/lib/agents/keys";
+import { sealSecret } from "@/lib/secret-box";
 import { CREATION_LEVELS, DEFAULT_AGENT_LEVEL, canSetLevel } from "@/lib/agents/levels";
-import { isTenantAdmin, tenantForOwner } from "@/lib/agents/membership";
+import { isTenantAdmin } from "@/lib/agents/membership";
+import { currentTenantIdFor } from "@/lib/tenant-context";
 import type { AgentContext } from "@/lib/agents/require-agent";
-import { AGENT_MODEL_MAX, AGENT_NAME_MAX } from "@/lib/agents/registry-limits";
+import { AGENT_LIMIT_MESSAGE, AGENT_MODEL_MAX, AGENT_NAME_MAX, MAX_ACTIVE_AGENTS_PER_OWNER } from "@/lib/agents/registry-limits";
+import { releaseWorkOfRevokedAgent } from "@/lib/agent-api/revoke-release";
+import { notifyClaimOffered } from "@/lib/agent-notifications";
+import { scheduleOfferExpiry } from "@/lib/agent-api/offer";
 
 /**
  * Registering agents and managing their keys (#427). A person creates agents
@@ -38,6 +43,7 @@ export const createAgentSchema = z.object({
   name: agentNameSchema,
   model: agentModelSchema.optional().transform((value) => value || null),
   level: z.enum(CREATION_LEVELS).default(DEFAULT_AGENT_LEVEL),
+  projectId: z.string().trim().min(1, "Choose the project this key can work in.").max(191),
 });
 
 export type Actor = { id: string; role?: AppRole | null };
@@ -49,13 +55,14 @@ export type IssuedKey = { agentId: string; name: string; rawKey: string; prefix:
 /** Inserts an agent and its first key. Shared by the settings page and pairing. */
 export async function insertAgentWithKey(
   db: Db,
-  input: { tenantId: string; ownerUserId: string; name: string; model: string | null; level: AgentLevel },
+  input: { tenantId: string; ownerUserId: string; name: string; model: string | null; level: AgentLevel; projectId: string },
 ): Promise<IssuedKey> {
   const key = generateApiKey();
+  const { projectId, ...agentInput } = input;
   const agent = await db.agent.create({
     data: {
-      ...input,
-      apiKeys: { create: { keyHash: key.hash, prefix: key.prefix } },
+      ...agentInput,
+      apiKeys: { create: { keyHash: key.hash, prefix: key.prefix, projectId } },
     },
     select: { id: true, name: true },
   });
@@ -64,7 +71,7 @@ export async function insertAgentWithKey(
 
 export type CreateAgentResult =
   | { ok: true; key: IssuedKey }
-  | { ok: false; error: string; field?: "name" | "model" | "level" };
+  | { ok: false; error: string; field?: "name" | "model" | "level" | "projectId" };
 
 /** The owner, signed in, registers an agent and gets its key once. */
 export async function createAgent(owner: Actor, input: unknown): Promise<CreateAgentResult> {
@@ -75,39 +82,65 @@ export async function createAgent(owner: Actor, input: unknown): Promise<CreateA
     return {
       ok: false,
       error: issue?.message ?? "Check the agent's details.",
-      field: field === "name" || field === "model" || field === "level" ? field : undefined,
+      field: field === "name" || field === "model" || field === "level" || field === "projectId" ? field : undefined,
     };
   }
-  const tenant = await tenantForOwner(owner.id);
-  if (!tenant) {
+  const tenantId = await currentTenantIdFor(owner.id);
+  if (!tenantId) {
     return { ok: false, error: "Join or create a team before you register agents." };
   }
+  const project = await projectInTenant(tenantId, parsed.data.projectId);
+  if (!project) return { ok: false, error: "Choose a project in this workspace.", field: "projectId" };
 
   const key = await prisma.$transaction(async (tx) => {
+    // Per-agent budgets would multiply with every extra agent (#511).
+    const active = await tx.agent.count({
+      where: { tenantId, ownerUserId: owner.id, revokedAt: null },
+    });
+    if (active >= MAX_ACTIVE_AGENTS_PER_OWNER) return null;
     const issued = await insertAgentWithKey(tx, {
-      tenantId: tenant.tenantId,
+      tenantId,
       ownerUserId: owner.id,
-      ...parsed.data,
+      name: parsed.data.name,
+      model: parsed.data.model,
+      level: parsed.data.level,
+      projectId: project.id,
     });
     await audit(
-      { agentId: issued.agentId, tenantId: tenant.tenantId },
+      { agentId: issued.agentId, tenantId },
       "agent.created",
       `agent:${issued.agentId}`,
-      { name: issued.name, model: parsed.data.model, level: parsed.data.level, via: "settings" },
+      { name: issued.name, model: parsed.data.model, level: parsed.data.level, projectId: project.id, via: "settings" },
       { actorUserId: owner.id, db: tx },
     );
     return issued;
   });
+  if (!key) return { ok: false, error: AGENT_LIMIT_MESSAGE };
   return { ok: true, key };
 }
 
-type ManagedAgent = { id: string; tenantId: string; ownerUserId: string; revokedAt: Date | null };
+type ManagedAgent = {
+  id: string;
+  name: string;
+  tenantId: string;
+  ownerUserId: string;
+  revokedAt: Date | null;
+  defaultProjectId: string | null;
+};
+
+async function projectInTenant(tenantId: string, projectId: string) {
+  if (!projectId) return null;
+  return prisma.project.findFirst({
+    where: { id: projectId, tenantId },
+    select: { id: true, slug: true, name: true },
+  });
+}
 
 /** The agent, and whether the actor may manage it: its owner or a tenant admin. */
 async function managedAgent(actor: Actor, agentId: string) {
   const agent: ManagedAgent | null = await prisma.agent.findUnique({
     where: { id: agentId },
-    select: { id: true, tenantId: true, ownerUserId: true, revokedAt: true },
+    select: { id: true, name: true, tenantId: true, ownerUserId: true, revokedAt: true, defaultProjectId: true },
   });
   if (!agent) return null;
   const isOwner = agent.ownerUserId === actor.id;
@@ -128,17 +161,30 @@ export async function revokeAgent(actor: Actor, agentId: string, now = new Date(
   const managed = await managedAgent(actor, agentId);
   if (!managed) return { ok: false, error: NOT_FOUND };
   if (managed.agent.revokedAt) return { ok: true };
+  let offers: Awaited<ReturnType<typeof releaseWorkOfRevokedAgent>>["offers"] = [];
   await prisma.$transaction(async (tx) => {
     await tx.agent.update({ where: { id: agentId }, data: { revokedAt: now } });
     await tx.agentApiKey.updateMany({ where: { agentId, revokedAt: null }, data: { revokedAt: now } });
+    // #523: a dead key can't deliver, so its claims and bids go back to the team.
+    const { offers: releasedOffers, ...handedBack } = await releaseWorkOfRevokedAgent(tx, {
+      agentId,
+      tenantId: managed.agent.tenantId,
+      actorUserId: actor.id,
+      now,
+    });
+    offers = releasedOffers;
     await audit(
       { agentId, tenantId: managed.agent.tenantId },
       "agent.revoked",
       `agent:${agentId}`,
-      { by: managed.isOwner ? "owner" : "tenant_admin" },
+      { by: managed.isOwner ? "owner" : "tenant_admin", ...handedBack },
       { actorUserId: actor.id, db: tx },
     );
   });
+  for (const offer of offers) {
+    notifyClaimOffered(offer);
+    scheduleOfferExpiry(offer.id);
+  }
   return { ok: true };
 }
 
@@ -165,6 +211,79 @@ export async function setAgentLevel(actor: Actor, agentId: string, level: AgentL
   return { ok: true };
 }
 
+/** Save an agent's preferred areas for one project (#609). */
+export async function setAgentAreaPreferences(
+  actor: Actor,
+  agentId: string,
+  projectId: string,
+  areaIds: string[],
+): Promise<ManageResult> {
+  const managed = await managedAgent(actor, agentId);
+  if (!managed) return { ok: false, error: NOT_FOUND };
+  if (managed.agent.revokedAt) return { ok: false, error: "That agent is revoked." };
+  const project = await projectInTenant(managed.agent.tenantId, projectId);
+  if (!project) return { ok: false, error: "Choose a project in this workspace." };
+
+  const wanted = [...new Set(areaIds)].sort();
+  const validAreas = wanted.length
+    ? await prisma.projectArea.findMany({
+        where: { projectId: project.id, id: { in: wanted } },
+        select: { id: true },
+      })
+    : [];
+  if (validAreas.length !== wanted.length) return { ok: false, error: "Choose areas from this project." };
+
+  const current = await prisma.agentAreaPreference.findMany({
+    where: { agentId, projectArea: { projectId: project.id } },
+    select: { projectAreaId: true },
+  });
+  const before = current.map((preference) => preference.projectAreaId).sort();
+  if (before.length === wanted.length && before.every((areaId, index) => areaId === wanted[index])) {
+    return { ok: true };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.agentAreaPreference.deleteMany({ where: { agentId, projectArea: { projectId: project.id } } });
+    if (wanted.length) {
+      await tx.agentAreaPreference.createMany({ data: wanted.map((projectAreaId) => ({ agentId, projectAreaId })) });
+    }
+    await audit(
+      { agentId, tenantId: managed.agent.tenantId },
+      "agent.area_preferences_changed",
+      `agent:${agentId}`,
+      { projectId: project.id, from: before, to: wanted, by: managed.isOwner ? "owner" : "tenant_admin" },
+      { actorUserId: actor.id, db: tx },
+    );
+  });
+  return { ok: true };
+}
+
+/**
+ * Turns the higher write budget on or off (#440). A workspace admin or a
+ * site admin may do this. An owner who is not an admin cannot.
+ */
+export async function setAgentBurst(actor: Actor, agentId: string, burst: boolean): Promise<ManageResult> {
+  const managed = await managedAgent(actor, agentId);
+  if (!managed) return { ok: false, error: NOT_FOUND };
+  if (!managed.isTenantAdmin && !isAdmin(actor.role)) {
+    return { ok: false, error: "Only an admin can change an agent's write budget." };
+  }
+  if (managed.agent.revokedAt) return { ok: false, error: "That agent is revoked." };
+  const before = await prisma.agent.findUniqueOrThrow({ where: { id: agentId }, select: { burst: true } });
+  if (before.burst === burst) return { ok: true };
+  await prisma.$transaction(async (tx) => {
+    await tx.agent.update({ where: { id: agentId }, data: { burst } });
+    await audit(
+      { agentId, tenantId: managed.agent.tenantId },
+      "agent.burst_changed",
+      `agent:${agentId}`,
+      { from: before.burst, to: burst, by: "admin" },
+      { actorUserId: actor.id, db: tx },
+    );
+  });
+  return { ok: true };
+}
+
 /**
  * The agent replaces the key it called with. Same agent, name and owner; the
  * old key stops working and the new one is shown once.
@@ -178,8 +297,69 @@ export async function rotateKey(agent: AgentContext, now = new Date()): Promise<
     });
     // Two rotations racing with the same key: only the first gets a new one.
     if (revoked.count !== 1) throw new Error("This key was already rotated or revoked.");
-    await tx.agentApiKey.create({ data: { agentId: agent.agentId, keyHash: key.hash, prefix: key.prefix } });
-    await audit(agent, "agent.key_rotated", `agent:${agent.agentId}`, { prefix: key.prefix }, { db: tx });
+    const personal = await tx.agent.findUnique({
+      where: { id: agent.agentId },
+      select: { defaultProjectId: true },
+    });
+    const reseal = personal?.defaultProjectId != null && personal.defaultProjectId === agent.projectId;
+    await tx.agentApiKey.create({
+      data: {
+        agentId: agent.agentId,
+        keyHash: key.hash,
+        prefix: key.prefix,
+        projectId: agent.projectId ?? null,
+        ...(reseal ? { sealedKey: sealSecret(key.raw) } : {}),
+      },
+    });
+    await audit(agent, "agent.key_rotated", `agent:${agent.agentId}`, { prefix: key.prefix, projectId: agent.projectId ?? null }, { db: tx });
     return { agentId: agent.agentId, name: agent.name, rawKey: key.raw, prefix: key.prefix };
   });
+}
+
+export type RegenerateKeyResult =
+  | { ok: true; key: IssuedKey }
+  | { ok: false; error: string; field?: "projectId" };
+
+/**
+ * The owner or a tenant admin replaces every live key without the old secret
+ * (#572). The agent, its level and its history stay. The new key is shown once
+ * and is limited to the project they choose.
+ */
+export async function regenerateKey(
+  actor: Actor,
+  agentId: string,
+  projectId: string,
+  now = new Date(),
+): Promise<RegenerateKeyResult> {
+  const managed = await managedAgent(actor, agentId);
+  if (!managed) return { ok: false, error: NOT_FOUND };
+  if (managed.agent.revokedAt) return { ok: false, error: "That agent is revoked." };
+  const project = await projectInTenant(managed.agent.tenantId, projectId);
+  if (!project) return { ok: false, error: "Choose a project in this workspace.", field: "projectId" };
+
+  const key = generateApiKey();
+  const reseal = managed.agent.defaultProjectId === project.id;
+  await prisma.$transaction(async (tx) => {
+    await tx.agentApiKey.updateMany({ where: { agentId, revokedAt: null }, data: { revokedAt: now } });
+    await tx.agentApiKey.create({
+      data: {
+        agentId,
+        keyHash: key.hash,
+        prefix: key.prefix,
+        projectId: project.id,
+        ...(reseal ? { sealedKey: sealSecret(key.raw) } : {}),
+      },
+    });
+    await audit(
+      { agentId, tenantId: managed.agent.tenantId },
+      "agent.key_rotated",
+      `agent:${agentId}`,
+      { prefix: key.prefix, projectId: project.id, by: managed.isOwner ? "owner" : "tenant_admin", via: "settings" },
+      { actorUserId: actor.id, db: tx },
+    );
+  });
+  return {
+    ok: true,
+    key: { agentId, name: managed.agent.name, rawKey: key.raw, prefix: key.prefix },
+  };
 }

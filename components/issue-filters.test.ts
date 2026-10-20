@@ -10,13 +10,13 @@ vi.mock("next/navigation", () => ({
 }));
 
 /** Render the bar against a given query string. */
-async function renderFilters(params: string) {
+async function renderFilters(params: string, areas: { id: string; name: string }[] = []) {
   search.params = new URLSearchParams(params);
   const { IssueFilters } = await import("./issue-filters");
   const { createElement } = await import("react");
   const { renderToStaticMarkup } = await import("react-dom/server");
 
-  return renderToStaticMarkup(createElement(IssueFilters));
+  return renderToStaticMarkup(createElement(IssueFilters, { areas }));
 }
 
 describe("IssueFilters (#132, #361)", () => {
@@ -26,12 +26,26 @@ describe("IssueFilters (#132, #361)", () => {
   });
 
   it("displays keyboard shortcut hint in placeholder and kbd badge", async () => {
+    search.params = new URLSearchParams("");
     const { IssueFilters } = await import("./issue-filters");
     const { createElement } = await import("react");
     const { renderToStaticMarkup } = await import("react-dom/server");
 
     const html = renderToStaticMarkup(createElement(IssueFilters));
     expect(html).toContain('placeholder="Search, or type a tag like Design (/)"');
+    expect(html).toContain("<kbd");
+  });
+
+  it("omits keyboard shortcut hint and badge when shortcutsEnabled is false (#727)", async () => {
+    search.params = new URLSearchParams("");
+    const { IssueFilters } = await import("./issue-filters");
+    const { createElement } = await import("react");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+
+    const html = renderToStaticMarkup(createElement(IssueFilters, { shortcutsEnabled: false }));
+    expect(html).toContain('placeholder="Search, or type a tag like Design"');
+    expect(html).not.toContain('(/)');
+    expect(html).not.toContain("<kbd");
   });
 
   it("handles keyboard shortcut listener properly in source code", async () => {
@@ -40,12 +54,28 @@ describe("IssueFilters (#132, #361)", () => {
 
     expect(source).toContain('window.addEventListener("keydown", handleKeyDown)');
     expect(source).toContain('window.removeEventListener("keydown", handleKeyDown)');
+    expect(source).toContain('if (!shortcutsEnabled) return;');
+    expect(source).toContain("isTypingTarget(target)");
+    expect(source).toContain("inDialog");
     expect(source).toContain('event.key === "/"');
     expect(source).toContain('event.key.toLowerCase() === "k"');
     expect(source).toContain("event.isComposing");
     expect(source).toContain("isSlash && isEditable");
     expect(source).toContain("inputRef.current?.focus()");
     expect(source).toContain("inputRef.current?.select()");
+  });
+});
+
+describe("IssueFilters live search (#671)", () => {
+  it("debounces the list update and fetches issue suggestions", async () => {
+    const { readFileSync } = await import("fs");
+    const source = readFileSync("components/issue-filters.tsx", "utf8");
+
+    expect(source).toContain("SEARCH_DEBOUNCE_MS");
+    expect(source).toContain("if (livePushedRef.current) router.replace(href)");
+    expect(source).toContain("router.push(href)");
+    expect(source).toContain("/api/issues/suggest");
+    expect(source).toContain("pickSuggestion");
   });
 });
 
@@ -63,6 +93,9 @@ describe("IssueFilters clear all filters (#336)", () => {
       "status=open",
       "severity=high",
       "platform=none",
+      "area=area-web",
+      "milestone=m1",
+      "milestone=none",
       "sort=oldest",
     ]) {
       const html = await renderFilters(params);
@@ -76,7 +109,14 @@ describe("IssueFilters clear all filters (#336)", () => {
   });
 
   it("hides the button when a filter param is present but empty", async () => {
-    const html = await renderFilters("q=&tags=&status=");
+    const html = await renderFilters("q=&tags=&status=&milestone=");
     expect(html).not.toContain("Clear all filters");
+  });
+
+  it("shows the selected project area and a removable active-filter chip", async () => {
+    const html = await renderFilters("area=area-web", [{ id: "area-web", name: "Frontend" }]);
+    expect(html).toContain("Frontend");
+    expect(html).toContain("Area: Frontend");
+    expect(html).toContain('aria-label="Remove area filter"');
   });
 });

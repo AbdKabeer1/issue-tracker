@@ -1,6 +1,6 @@
 # Ziki Issues
 
-Team **Zendor** fork of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug-tracker).
+Team **Zendor** fork of [`emerjent/bug-tracker`](https://github.com/emerjent/bug-tracker) (formerly `zeduchat/bug-tracker`).
 
 Report bugs, filter the board, triage status/assignee, vote, and leave comments.
 
@@ -27,10 +27,26 @@ https://ziki.dev
 | Role | Capabilities |
 | --- | --- |
 | `user` | Report bugs, comment, vote |
-| `admin` | Everything `user` can do, plus triage (status / severity / assignee) |
-| `super_admin` | Everything `admin` can do, plus `/admin/users` management (promote users to admin) |
+| `admin` | Site catalog access (platforms, types). Does not grant power inside an organization |
+| `super_admin` | Site-wide access, including every organization's admin powers, plus `/admin/users` |
+
+Inside an organization, triage, delete, boost, and member management come from the membership role (`owner` or `admin`), not from the site-wide `admin` role. `/admin/users` lists only the organization you're currently in.
 
 Super-admin credentials come from `SUPER_ADMIN_*` env vars (see below). The seeder is idempotent and does not overwrite an existing super admin unless `SUPER_ADMIN_FORCE_UPDATE=true`.
+
+## Keyboard shortcuts
+
+Shortcuts are enabled by default and can be turned off in **Settings → Keyboard shortcuts**. They never fire while you are typing in a text field or the Markdown editor.
+
+| Shortcut | Action |
+| --- | --- |
+| `n` or `c` | Report a new issue |
+| `/` or `Ctrl/Cmd+K` | Search issues |
+| `g` then `i` | Go to issues |
+| `g` then `d` | Go to the admin dashboard (admins only) |
+| `g` then `n` | Go to notifications |
+| `j` / `k` | Next / previous issue in the list |
+| `?` | Show the shortcuts help dialog |
 
 ## Demo accounts (credentials seed)
 
@@ -59,7 +75,7 @@ The app is served from the root domain at **`http://localhost:3001`** (matching 
 
 ## Link previews (Open Graph / Twitter)
 
-Issue detail URLs (`/issues/[id]`, with legacy `/bugs/[id]` backwards-compatible redirects) emit OG + Twitter Card metadata so Slack, Discord, X, WhatsApp, and similar clients can unfurl a card with **title**, **status**, **author**, a **description snippet**, the **zedu-mark.svg** thumbnail, and a **canonical URL**.
+Issue detail URLs (`/issues/[id]`, with legacy `/bugs/[id]` backwards-compatible redirects) emit OG + Twitter Card metadata so Slack, Discord, X, WhatsApp, and similar clients can unfurl a card with **title**, **status**, **author**, a **description snippet**, the **`/Zedu.png`** share image (see `lib/share-image.ts`; SVGs are dropped by most unfurlers), and a **canonical URL**.
 
 ### Privacy (auth-gated pages)
 
@@ -105,7 +121,7 @@ Google redirect URI: `{AUTH_URL}/api/auth/callback/google`
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`AGENTS.md`](./AGENTS.md).
 
-PRs target **`main`** on `Zedu-Endor/bug-tracker` (this fork). Sync from `upstream` (`zeduchat/bug-tracker`) as needed.
+PRs target **`main`** on `Zedu-Endor/issue-tracker` (this fork; the repo was renamed from `bug-tracker`). Sync from `upstream` (`emerjent/bug-tracker`) as needed.
 
 ## Archive
 

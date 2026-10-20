@@ -25,10 +25,16 @@ describe("admin page guards (#121)", () => {
 
   it.each(pages.map((page) => [path.relative(adminDir, page), page]))(
     "%s checks the role server-side",
-    (_name, page) => {
-      expect(readFileSync(page, "utf8")).toMatch(
-        /require(Super)?Admin\(\)/,
-      );
+    (name, page) => {
+      const source = readFileSync(page, "utf8");
+      // Platforms belong to the open organization, so the page checks that
+      // membership (and the site admin role) instead of requireAdmin alone.
+      if (name === path.join("categories", "page.tsx")) {
+        expect(source).toMatch(/requireUser\(\)/);
+        expect(source).toMatch(/platformScopeFor\(/);
+        return;
+      }
+      expect(source).toMatch(/require(Super)?Admin\(\)/);
     },
   );
 

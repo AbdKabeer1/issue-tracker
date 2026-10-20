@@ -22,6 +22,8 @@ function keyRow(overrides: {
     id: "key1",
     lastUsedAt: overrides.lastUsedAt ?? null,
     revokedAt: overrides.revokedAt ?? null,
+    projectId: null,
+    project: null,
     agent: {
       id: "agent1",
       name: "Ada's Claude",
@@ -73,6 +75,8 @@ describe("requireAgent (#427)", () => {
       level: "contributor",
       burst: false,
       keyId: "key1",
+      projectId: null,
+      projectSlug: null,
     });
     // Looked up by hash only; the raw key never reaches the query.
     expect(JSON.stringify(findUnique.mock.calls[0][0])).not.toContain(KEY);
@@ -83,6 +87,14 @@ describe("requireAgent (#427)", () => {
     expect((await failure(requireAgent(request(`Bearer ${KEY}`)))).code).toBe("revoked");
     findUnique.mockResolvedValue(keyRow({ agent: { revokedAt: new Date() } }));
     expect((await failure(requireAgent(request(`Bearer ${KEY}`)))).code).toBe("revoked");
+  });
+
+  it("carries the project a key is limited to", async () => {
+    findUnique.mockResolvedValue({ ...keyRow(), projectId: "project_web", project: { slug: "web" } });
+    await expect(requireAgent(request(`Bearer ${KEY}`))).resolves.toMatchObject({
+      projectId: "project_web",
+      projectSlug: "web",
+    });
   });
 
   it("rejects an agent whose owner has left its tenant", async () => {

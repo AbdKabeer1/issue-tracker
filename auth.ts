@@ -10,6 +10,8 @@ import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 import { upsertGoogleUser, type GoogleAccount } from "@/lib/google-user";
 import { isGoogleEmailAllowed, getGoogleAllowlist } from "@/lib/google-allowlist";
 import { clientIpFrom, consumeAuthRateLimit } from "@/lib/rate-limit";
+import { TwoFactorInvalidError, TwoFactorRequiredError } from "@/lib/auth-errors";
+import { isTwoFactorEnabled, verifySecondFactor } from "@/lib/two-factor";
 
 const googleClientId = cleanEnv(
   process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID,
@@ -57,6 +59,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
+        totp: { label: "Authenticator or backup code", type: "text" },
       },
       async authorize(credentials, request) {
         if (!isPasswordAuthEnabled()) {
@@ -72,7 +75,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Shared across instances (#296).
         const limit = await consumeAuthRateLimit("login", {
           email: parsed.data.email,
-          ip: request?.headers ? clientIpFrom(request.headers) : null,
+          ip: request ? clientIpFrom(request) : null,
         });
         if (!limit.allowed) {
           console.warn("[auth] password sign-in rate limited", { email: parsed.data.email });
@@ -87,9 +90,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
-        const valid = await compare(parsed.data.password, user.passwordHash);
+        const valid = await compare(
+          parsed.data.password,
+          user.passwordHash,
+        );
         if (!valid) {
           return null;
+        }
+
+        // Second step (#648). Only reached with the right password, so these
+        // errors say nothing to someone guessing passwords. The check lives
+        // here, not in the form, so a direct POST to the credentials callback
+        // cannot skip it.
+        if (await isTwoFactorEnabled(user.id)) {
+          const code = typeof credentials?.totp === "string" ? credentials.totp : "";
+          if (!code.trim()) throw new TwoFactorRequiredError();
+          if (!(await verifySecondFactor(user.id, code))) throw new TwoFactorInvalidError();
         }
 
         return {
@@ -146,12 +162,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const image =
             (typeof profile?.picture === "string" && profile.picture) ||
             (typeof user?.image === "string" ? user.image : undefined);
+          // Google's own verified-email claim drives safe linking (#736).
+          const emailVerified =
+            typeof profile?.email_verified === "boolean"
+              ? profile.email_verified
+              : false;
 
           let dbUser: GoogleAccount | null = null;
           let lastError: unknown;
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
-              dbUser = await upsertGoogleUser({ email, name, image });
+              dbUser = await upsertGoogleUser({ email, name, image, emailVerified });
               break;
             } catch (dbError) {
               lastError = dbError;
@@ -188,6 +209,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (typeof user?.sessionVersion === "number") {
         token.sv = user.sessionVersion;
       }
+
+      // Keep a stale token (#655). Edge middleware never reads the database, so
+      // dropping the session here leaves the cookie in place and /login bounces
+      // straight back to /issues. requireUser compares sessionVersion and role,
+      // then /session-expired is what actually clears the cookie.
+      const userId = (token.id ?? token.sub) as string | undefined;
+      if (userId && !user) {
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, role: true, sessionVersion: true },
+          });
+          if (dbUser) {
+            const tokenVersion = typeof token.sv === "number" ? token.sv : 0;
+            const roleMatches = !token.role || token.role === dbUser.role;
+            if (tokenVersion === dbUser.sessionVersion && roleMatches) {
+              token.role = dbUser.role;
+              token.sv = dbUser.sessionVersion;
+            }
+          }
+        } catch {
+          // If database check errors, do not crash; token remains
+        }
+      }
+
       return token;
     },
   },
