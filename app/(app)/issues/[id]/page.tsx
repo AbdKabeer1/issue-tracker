@@ -40,6 +40,7 @@ import { IssueAgentActivity, type AgentDecision } from "@/components/issue-agent
 import { IssueEscalations, type TicketEscalation } from "@/components/issue-escalations";
 import { listBugEscalations } from "@/lib/agent-questions";
 import { IssueBids } from "@/components/issue-bids";
+import { GoalBudgetSection } from "@/components/goal-budgets";
 import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { WatchButton } from "@/components/watch-button";
@@ -1018,6 +1019,10 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       />
 
       <IssueEscalations escalations={escalations} />
+
+      <Suspense fallback={null}>
+        <GoalBudgetSection tenantId={bug.tenantId} projectId={bug.projectId} bugId={bug.id} />
+      </Suspense>
 
       <IssueAgentActivity decisions={agentDecisions} />
 
