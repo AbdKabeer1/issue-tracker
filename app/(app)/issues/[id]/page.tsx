@@ -437,6 +437,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             select: {
               id: true,
               createdAt: true,
+              deliverBy: true,
+              extendedAt: true,
               agent: { select: { name: true } },
               beneficiary: { select: { name: true } },
             },
@@ -473,6 +475,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             kind: "claimed",
             agentName: c.agent.name,
             personName: c.beneficiary.name,
+            deliverBy: bug.pullRequestUrl ? null : c.deliverBy,
+            extendedAt: c.extendedAt,
           })),
           ...verdicts.map<AgentDecision>((v) => ({
             id: `verdict-${v.id}`,
