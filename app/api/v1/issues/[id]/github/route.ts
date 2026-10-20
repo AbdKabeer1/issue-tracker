@@ -69,6 +69,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     if (result.reason === "not_accepted") {
       return NextResponse.json({ linked: true, merged: false, reason: result.reason });
     }
+    if (result.reason === "waiting_for_human") {
+      return NextResponse.json(
+        { error: "waiting_for_human", approvalId: result.approvalId, linked: true, merged: false },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(
       { linked: true, merged: false, reason: result.reason, message: result.message },
       { status: result.status },

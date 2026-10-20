@@ -99,6 +99,33 @@ describe("events endpoint", () => {
     expect(encodeEventCursor({ createdAt: event.createdAt, id: event.id })).toBeTruthy();
   });
 
+  it("filters by type, project and issue, combined with the global cursor (#602)", async () => {
+    const cursor = encodeEventCursor({ txid: event.txid, id: event.id });
+    db.agentEvent.findMany.mockResolvedValue([{ ...event, id: "event-b" }]);
+    const response = await GET(request(`/events?types=comment.created,claim.*&projectId=proj-1&bugId=issue-a&after=${cursor}`));
+    expect(response.status).toBe(200);
+    expect(db.agentEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {
+      tenantId: "tenant-a", projectId: "proj-1", bugId: "issue-a",
+      AND: [{ OR: [{ type: { in: ["comment.created"] } }, { type: { startsWith: "claim." } }] }],
+      txid: { lt: BigInt("1000") }, OR: [{ txid: { gt: event.txid } }, { txid: event.txid, id: { gt: event.id } }],
+    } }));
+    expect(decodeEventCursor((await response.json()).cursor)?.id).toBe("event-b");
+    await GET(request("/events?projectId=proj-1"));
+    expect(db.agentEvent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { tenantId: "tenant-a", projectId: "proj-1", txid: { lt: BigInt("1000") } } }));
+  });
+
+  it("returns 400 listing the valid types for an unknown type (#602)", async () => {
+    const response = await GET(request("/events?types=comment.created,issue.nope"));
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toContain("issue.nope");
+    expect(body.validTypes).toContain("comment.created");
+    for (const query of ["types=", "types=nope.*", "projectId=", "bugId="]) {
+      expect((await GET(request(`/events?${query}`))).status, query).toBe(400);
+    }
+    expect(db.agentEvent.findMany).not.toHaveBeenCalled();
+  });
+
   it("ends a long poll at its deadline without losing the existing cursor", async () => {
     vi.useFakeTimers();
     const cursor = encodeEventCursor({ createdAt: event.createdAt, id: event.id });
