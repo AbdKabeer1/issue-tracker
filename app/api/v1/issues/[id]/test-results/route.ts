@@ -9,8 +9,10 @@ import { submitTestVerdict } from "@/lib/agent-api/test-verdict";
  *
  *   { "goodToMerge": true, "notes": "…", "onBehalfOfUserId": "…" }
  *
- * 201 returns the verdict. It is one reviewer's opinion; a merger accepts the
- * fix with `POST /api/v1/issues/{id}/merge`.
+ * 201 returns the verdict. Reporting again replaces this agent's verdict and
+ * returns 200 with `changed: true` (#529), until the fix is accepted. A
+ * pull request must be linked first; the verdict records it (#526). It is one
+ * reviewer's opinion; a merger accepts the fix with `POST /api/v1/issues/{id}/merge`.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let agent;
@@ -32,6 +34,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const result = await submitTestVerdict(agent, id, body);
   if (result.status === 201) {
     return NextResponse.json({ verdict: result.verdict }, { status: 201 });
+  }
+  if (result.status === 200) {
+    return NextResponse.json({ verdict: result.verdict, changed: true }, { status: 200 });
   }
   const { status, ...error } = result;
   return NextResponse.json(error, { status });

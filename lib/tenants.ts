@@ -5,6 +5,7 @@ import type { MembershipRole, Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { isSuperAdmin, type AppRole } from "@/lib/roles";
 import { ZEDU_SLUG } from "@/lib/tenant";
+import { appCookieOptions } from "@/lib/cookie-options";
 
 /**
  * Picking, creating and owning tenants (#444).
@@ -103,12 +104,7 @@ export async function readActiveTenantCookie(): Promise<string | null> {
 
 /** Remember the tenant on this device. Callers check the membership first. */
 export async function setActiveTenantCookie(tenantId: string): Promise<void> {
-  (await cookies()).set(ACTIVE_TENANT_COOKIE, tenantId, {
-    path: "/",
-    maxAge: ACTIVE_TENANT_COOKIE_MAX_AGE,
-    sameSite: "lax",
-    httpOnly: true,
-  });
+  (await cookies()).set(ACTIVE_TENANT_COOKIE, tenantId, appCookieOptions(ACTIVE_TENANT_COOKIE_MAX_AGE));
 }
 
 // ---------------------------------------------------------------------------

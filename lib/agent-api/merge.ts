@@ -34,10 +34,12 @@ export const MERGE_VERDICTS_NEEDED = 2;
 const mergeBugSelect = {
   id: true,
   tenantId: true,
+  pullRequestUrl: true,
   severity: true,
   status: true,
   assigneeId: true,
   beneficiaryUserId: true,
+  reporterId: true,
   createdByAgentId: true,
   createdByAgent: { select: { ownerUserId: true } },
   claims: {
@@ -122,7 +124,9 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
     }
 
     const verdicts = await tx.testVerdict.findMany({
-      where: { bugId: bug.id, goodToMerge: true },
+      // #526: only verdicts on the pull request linked now count; one on an
+      // earlier PR, or with none, says nothing about this code.
+      where: { bugId: bug.id, goodToMerge: true, pullRequestUrl: bug.pullRequestUrl ?? "" },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: { id: true, onBehalfOfUserId: true, agent: { select: { id: true, ownerUserId: true } } },
     });
@@ -162,6 +166,14 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
         summary: statusChangedSummary(bug.status, "resolved"),
         metadata: { field: "status", from: bug.status, to: "resolved" },
       },
+    });
+
+    // A completed issue no longer has active work to heartbeat. Release its
+    // claim as resolved in the same transaction so the silence sweep cannot
+    // count a successful fix as abandonment.
+    await tx.issueClaim.updateMany({
+      where: { bugId: bug.id, status: "active", releasedAt: null },
+      data: { status: "released", releasedAt: new Date(), releaseReason: "resolved" },
     });
 
     // The solver: the person the active claim is for, else whoever it is

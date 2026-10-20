@@ -417,7 +417,20 @@ export const MarkdownEditor = forwardRef<
           }),
         )
         .then(({ markdown, error }) => {
-          const next = replacePlaceholder(valueRef.current, job.token, markdown);
+          const current = valueRef.current;
+          let next = replacePlaceholder(current, job.token, markdown);
+          // #732: the finished Markdown (attachment URL included) is longer
+          // than the placeholder it replaced, so the insert-time check above
+          // can pass and the field still land over its limit. Never go over
+          // silently: drop the swap the way a failed upload is dropped, and
+          // say why, so the field stays valid and room can be made to try
+          // the upload again.
+          if (next !== null && maxLength !== undefined && next.length > maxLength) {
+            setUploadError(
+              `${job.name}: there isn't room left in this field for the finished upload. Remove something and try again.`,
+            );
+            next = replacePlaceholder(current, job.token, "");
+          }
           if (next !== null) {
             valueRef.current = next;
             onChangeRef.current(next);

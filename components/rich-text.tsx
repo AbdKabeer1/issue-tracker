@@ -52,7 +52,7 @@ const LIST_ITEM_RE = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
 const TASK_MARKER_RE = /^\[([ xX])\]\s+(.*)$/;
 const HEADING_RE = /^(#{1,6})\s+(.*)$/;
 const QUOTE_RE = /^>\s?(.*)$/;
-const FENCE_RE = /^```/;
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
 const RULE_RE = /^\s*(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/;
 
 type ListItem = {
@@ -210,10 +210,23 @@ function renderBlocks(
       continue;
     }
 
-    if (FENCE_RE.test(line)) {
+    const open = FENCE_RE.exec(line);
+    if (open) {
+      // Only a bare fence of the same character, at least as long, closes the
+      // block, so a ``` sample inside a ```` block stays code (#723).
+      const marker = open[1] ?? "```";
+      const isClose = (candidate: string) => {
+        const close = FENCE_RE.exec(candidate)?.[1];
+        return (
+          !!close &&
+          close[0] === marker[0] &&
+          close.length >= marker.length &&
+          candidate.trim() === close
+        );
+      };
       const fence: string[] = [];
       i += 1;
-      while (i < lines.length && !FENCE_RE.test(lines[i] ?? "")) {
+      while (i < lines.length && !isClose(lines[i] ?? "")) {
         fence.push(lines[i] ?? "");
         i += 1;
       }
