@@ -13,8 +13,9 @@ describe("ChangePasswordForm (#570)", () => {
     expect(html).toContain('id="currentPassword"');
     expect(html).toContain('id="newPassword"');
     expect(html).toContain('id="confirmPassword"');
-    expect(html).toContain('autocomplete="current-password"');
-    expect(html).toContain('autocomplete="new-password"');
+    expect(html).toContain('autoComplete="current-password"');
+    expect(html).toContain('autoComplete="new-password"');
     expect(html).toContain("Change password");
   });
 });
+
