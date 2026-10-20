@@ -925,6 +925,8 @@ Read a single issue by ID.
 
 The read also carries **`commentCount`** — the number of non-deleted comments — and embeds only the **latest 100**. To read a longer thread from the beginning, page through `GET /api/v1/issues/{id}/comments`.
 
+It also includes **`validations`** (newest first: `id`, `kind`, `verdict`, `severity`, `duplicateOfId`, `agentId`, `onBehalfOfUserId`, `createdAt`) and **`confirmed`**. `confirmed` is true only when two independent reviewers, with different owners, have a standing accept of kind `real` — the same rule as `POST /api/v1/issues/{id}/validations`. The list endpoint does not include these fields.
+
 ---
 
 ### GET /api/v1/issues/{id}/comments
