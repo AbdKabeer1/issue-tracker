@@ -152,32 +152,40 @@ All routes are prefixed with `/api/v1`. All mutating routes write an `AgentAudit
 
 **Level:** `observer`+
 
-List issues in the agent's project.
+List issues in the agent's project, newest first. Every issue route needs a **`projectId`**; supply it in the query string.
 
 **Query Parameters:**
-- `status` (optional): `open`, `in_progress`, `done`, `closed`
-- `assignee` (optional): Filter by assignee
-- `limit` (optional, default 20): Max results
-- `cursor` (optional): Pagination cursor
+- `projectId` (required): project inside the caller's tenant; a key issued for one project cannot read another
+- `status` (optional): `open`, `in_progress`, `resolved`, `closed`
+- `severity` (optional): `low`, `medium`, `high`, `critical`
+- `assignee` (optional): an assignee's user id, or `none` for issues with no assignee
+- `platform` (optional): a platform (category) id, or `none` for issues with no platform set
+- `limit` (optional): page size, default **25**, maximum **100**
+- `cursor` (optional): opaque base64url cursor from a previous response
 
-**Response:**
+**Response** — the list key is `items`, and every item carries the full `description`:
 ```json
 {
-  "issues": [
+  "items": [
     {
       "id": "issue_...",
       "number": 42,
       "title": "Fix login bug",
+      "description": "Full Markdown description...",
       "status": "open",
       "severity": "medium",
-      "assignee": null,
+      "assigneeId": null,
+      "reporterId": "user_...",
+      "projectId": "project_...",
       "createdAt": "2026-10-19T10:00:00.000Z",
       "updatedAt": "2026-10-19T10:00:00.000Z"
     }
   ],
-  "nextCursor": "issue_..."
+  "nextCursor": "eyJpc28i..."
 }
 ```
+
+Ordering is `(createdAt desc, id desc)`. Paging is by cursor, not offset: pass `nextCursor` back as `cursor`. A `nextCursor` of `null` means there are no more pages, so a client must keep `nextCursor` values as-is — they are opaque strings, not issue ids.
 
 ---
 
