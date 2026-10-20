@@ -253,7 +253,11 @@ export default async function BugsPage({
     }
   }
 
-  const baseTenantWhere: Prisma.BugWhereInput = { ...bugInTenant(tenantId), isDeleted: isDeletedView };
+  const baseTenantWhere: Prisma.BugWhereInput = {
+    ...bugInTenant(tenantId),
+    ...(projectId ? { projectId } : {}),
+    isDeleted: isDeletedView,
+  };
 
   let statsTotal = 0;
   let statsOpen = 0;
