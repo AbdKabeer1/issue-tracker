@@ -5,7 +5,7 @@ import { hasLevel } from "@/lib/agents/levels";
 import { isTenantAdmin } from "@/lib/agents/membership";
 import { reviewerConflict, type ReviewedBug } from "@/lib/agents/independence";
 import type { AppRole } from "@/lib/roles";
-import { requireSuperAdmin } from "@/lib/auth-helpers";
+// requireSuperAdmin is imported lazily in runLevelPromotions to avoid pulling NextAuth into unit tests
 import { IssueApiError } from "@/lib/agent-api/issues";
 
 /**
@@ -224,6 +224,7 @@ export async function grantLevelByAdmin(input: AdminGrantInput, db: Db = prisma)
  */
 export async function runLevelPromotions(projectId: string): Promise<{ promoted: number; demoted: number }> {
   "use server";
+  const { requireSuperAdmin } = await import("@/lib/auth-helpers");
   await requireSuperAdmin();
   const project = await prisma.project.findUnique({
     where: { id: projectId },
