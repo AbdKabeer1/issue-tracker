@@ -85,20 +85,10 @@ export async function offerNext(db: Db, caller: { agentId?: string; tenantId: st
     lastOfferedAt: lastOffered.get(p.beneficiaryUserId) ?? null,
     pendingOffer: pendingPeople.has(p.beneficiaryUserId),
   }));
-  const eligible = availableOfferCandidates(candidates);
-  if (!eligible.length) return null;
-  // Lock only the highest-ranked available member. Under contention, skip that
-  // row and take the next ranked unlocked member in the same query.
-  const rankedIds = eligible.map((person) => person.beneficiaryUserId);
-  const locked = await db.$queryRaw<{ id: string }[]>`
-    SELECT "id" FROM "User"
-    WHERE "id" IN (${Prisma.join(rankedIds)})
-    ORDER BY array_position(ARRAY[${Prisma.join(rankedIds)}]::text[], "id")
-    LIMIT 1 FOR NO KEY UPDATE SKIP LOCKED
-  `;
-  if (!locked.length) return null;
-  const next = eligible.find((person) => person.beneficiaryUserId === locked[0].id);
+  const next = availableOfferCandidates(candidates)[0];
   if (!next) return null;
+  // Lock only the chosen member (#544) instead of looping over every member.
+  await db.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${next.beneficiaryUserId} FOR NO KEY UPDATE`;
   const claim = await db.issueClaim.create({ data: {
     bugId: bug.id, beneficiaryUserId: next.beneficiaryUserId, agentId: next.agentId, status: "offered", offeredAt: new Date(),
   } });
