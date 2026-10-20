@@ -17,9 +17,10 @@ Deployment requires `WEBHOOK_SECRET_KEY` (64 hex characters, generated from
 `WEBHOOK_DISPATCH_SECRET`. Keep both in the deployment secret store. Preserve
 the encryption key across restarts; changing it requires replacing subscriptions.
 
-Configure an external scheduler to POST `/api/v1/webhooks/dispatch` repeatedly
-(for example every 10 seconds), with
-`Authorization: Bearer <WEBHOOK_DISPATCH_SECRET>`. Each call processes up to ten
+Configure an external scheduler or Vercel Cron to call `/api/internal/cron` (or POST `/api/v1/webhooks/dispatch`) repeatedly
+(for example every 1 minute or 10 seconds) with
+`Authorization: Bearer <CRON_SECRET>`. `/api/internal/cron` coordinates all platform background sweeps:
+offer expiry, stale-claim releases, level promotions, webhook dispatch, and retention prunes (#647). Each call processes up to ten
 due deliveries, five at a time. Run more batches if traffic requires it. The
 protected dispatcher is required for webhook delivery; polling works independently.
 No webhook requests run inside an issue's database transaction.

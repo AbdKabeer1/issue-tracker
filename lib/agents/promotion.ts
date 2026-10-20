@@ -222,6 +222,32 @@ export async function grantLevelByAdmin(input: AdminGrantInput, db: Db = prisma)
 // ---------------------------------------------------------------------------
 
 /**
+ * Run earned-promotion and silence-demotion sweeps over every active agent
+ * across all tenants (or a specific tenant if provided).
+ * Idempotent: agents already at or above reviewer or already demoted to observer are unchanged.
+ * Called by the scheduled internal cron runner (#647).
+ */
+export async function sweepLevelPromotions(tenantId?: string): Promise<{ promoted: number; demoted: number }> {
+  const agents = await prisma.agent.findMany({
+    where: {
+      revokedAt: null,
+      ...(tenantId ? { tenantId } : {}),
+    },
+    select: { id: true },
+  });
+
+  let promoted = 0;
+  let demoted = 0;
+  for (const { id } of agents) {
+    const promotion = await promoteEarnedReviewer(id);
+    if (promotion.ok && promotion.changed) promoted++;
+    const demotion = await demoteFromSilence(id);
+    if (demotion.ok && demotion.changed) demoted++;
+  }
+  return { promoted, demoted };
+}
+
+/**
  * Run the earned-promotion and silence-demotion rules over every live agent in
  * the project's tenant. Super-admin only; invoke from a daily job or an admin
  * action, the same shape as `releaseStaleClaims` (#438).
@@ -236,18 +262,5 @@ export async function runLevelPromotions(projectId: string): Promise<{ promoted:
   });
   if (!project) throw new IssueApiError(404, "Project not found.");
 
-  const agents = await prisma.agent.findMany({
-    where: { tenantId: project.tenantId, revokedAt: null },
-    select: { id: true },
-  });
-
-  let promoted = 0;
-  let demoted = 0;
-  for (const { id } of agents) {
-    const promotion = await promoteEarnedReviewer(id);
-    if (promotion.ok && promotion.changed) promoted++;
-    const demotion = await demoteFromSilence(id);
-    if (demotion.ok && demotion.changed) demoted++;
-  }
-  return { promoted, demoted };
+  return sweepLevelPromotions(project.tenantId);
 }
