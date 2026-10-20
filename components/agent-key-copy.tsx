@@ -77,7 +77,7 @@ export function AgentKeyCopyButton({
     e?.stopPropagation();
     const origin = typeof window !== "undefined" ? window.location.origin : "https://ziki.dev";
     const ok = await copyText(agentAccessRequest({ origin, projectName }));
-    if (ok) toast("Site copied. The agent will ask you to approve it.");
+    if (ok) toast("Site copied. The agent will open the approval page.");
     else toast("Couldn't copy the site.", "error");
   }
 
@@ -199,7 +199,7 @@ export function AgentKeyCopyButton({
                 </button>
               </div>
               <p className="text-slate-600">
-                The agent requests access. You approve it while signed in, and the key is returned to the agent.
+                The agent opens the approval page in your browser. You approve it while signed in, and the key comes back to the agent.
               </p>
             </div>
 

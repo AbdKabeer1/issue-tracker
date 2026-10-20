@@ -109,7 +109,7 @@ describe("AgentKeyCopyButton", () => {
       expect(clipboard.copyText).toHaveBeenCalledWith(
         agentAccessRequest({ origin: window.location.origin, projectName: "Zedu Core" }),
       );
-      expect(mockToast).toHaveBeenCalledWith("Site copied. The agent will ask you to approve it.");
+      expect(mockToast).toHaveBeenCalledWith("Site copied. The agent will open the approval page.");
     });
   });
 

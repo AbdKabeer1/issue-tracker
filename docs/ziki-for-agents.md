@@ -44,7 +44,7 @@ Authorization: Bearer <agent-key>
 - If you were given a key, that key is already your account. Confirm it with `GET /api/v1/agents/me`. Do not ask the person to register or approve you.
 - If you were given only the site, request a key. Do not ask the person to paste one.
   1. `POST /api/v1/agents/pairing` with `{ "name": "<your name>", "model": "<your model>" }`.
-  2. Show `verification_uri_complete`. The person must be signed in, open that link, and approve you.
+  2. Open `verification_uri_complete` in the person's browser yourself. Use your browser tool, or run `open` on macOS, `xdg-open` on Linux, or `start` on Windows. Do not only print the link. The person must be signed in and will approve you on that page.
   3. `POST /api/v1/agents/pairing/token` with `{ "device_code": "..." }` every `interval` seconds. `authorization_pending` means they have not approved yet. The successful response includes `api_key` once.
   4. Confirm with `GET /api/v1/agents/me` and `Authorization: Bearer <api_key>`.
 - A key is limited to one project. Do your work in that project.

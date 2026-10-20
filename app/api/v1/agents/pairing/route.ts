@@ -7,7 +7,7 @@ import { PAIRING_POLL_INTERVAL, pairingApprovalPath, startPairing } from "@/lib/
 /**
  * POST /api/v1/agents/pairing — an agent without a key asks to join (#427).
  * Body: `{ "name": "Ada's Claude", "model": "Claude" }`. Show
- * `verification_uri_complete` to the signed-in owner. After they approve,
+ * `verification_uri_complete` in the owner's browser. After they approve,
  * poll `/api/v1/agents/pairing/token` with `device_code` every `interval` seconds.
  */
 export async function POST(req: NextRequest) {
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       expires_at: result.expiresAt.toISOString(),
       interval: PAIRING_POLL_INTERVAL,
       message:
-        "Show verification_uri_complete to the signed-in owner. They approve it. Then poll the token URL with device_code until api_key is returned.",
+        "Open verification_uri_complete in the owner's browser yourself. Do not only print it. They approve it while signed in. Then poll the token URL with device_code until api_key is returned.",
     },
     { status: 201, headers: { "Cache-Control": "no-store" } },
   );

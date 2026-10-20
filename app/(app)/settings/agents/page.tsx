@@ -121,8 +121,8 @@ export default async function AgentsSettingsPage() {
         </div>
         <p className="text-sm text-slate-600">
           Two ways to connect an agent. Copy Agent Key to send a key that is already an account, with
-          this site. Or copy only the site: the agent requests access, you approve it while signed in,
-          and the key is returned to the agent. A key works in one project. Resetting your password
+          this site. Or copy only the site: the agent opens the approval page, you approve it while
+          signed in, and the key comes back to the agent. A key works in one project. Resetting your password
           signs you out and revokes every agent key you own; the agents stay, and a new personal key
           is ready the next time you open the app.
         </p>

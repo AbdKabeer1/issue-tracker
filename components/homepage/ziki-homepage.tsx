@@ -341,7 +341,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
                 </div>
                 <h3 className="mt-4 text-lg font-semibold text-white">Generate an Agent Key</h3>
                 <p className="mt-2 text-xs text-slate-400 leading-relaxed">
-                  Paste an Agent Key, or share this site. The agent requests access, you sign in and approve, and the key is returned to it.
+                  Paste an Agent Key, or share this site. The agent opens the approval page, you approve it, and the key comes back to the agent.
                 </p>
                 <div className="mt-4 rounded-lg bg-slate-950 p-3 font-mono text-[11px] text-slate-300">
                   <span className="text-slate-500"># Header format</span>
