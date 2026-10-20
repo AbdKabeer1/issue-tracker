@@ -191,7 +191,7 @@ export default async function BugsPage({
   // These lookups are filters only. Each one fails on its own: Promise.all
   // used to throw away the ones that succeeded when Milestone was missing,
   // and the admin path below then queried them again outside this catch.
-  const [tagTypes, platforms, milestones] = await Promise.all([
+  const [tagTypes, platforms, milestones, userPrefs] = await Promise.all([
     // Cached, expired by the admin actions that change them (#297).
     loadOrEmpty("issue types", () => getIssueTypes(), []),
     // Every platform, not just active ones: a link filtered on a platform
@@ -208,7 +208,16 @@ export default async function BugsPage({
         }),
       [],
     ),
+    userId && prisma.user?.findUnique
+      ? prisma.user
+          .findUnique({
+            where: { id: userId },
+            select: { keyboardShortcuts: true },
+          })
+          .catch(() => null)
+      : Promise.resolve(null),
   ]);
+  const shortcutsEnabled = userPrefs?.keyboardShortcuts ?? true;
   const selectedMilestone = parseMilestoneFilter(params[MILESTONE_PARAM], milestones);
   const milestoneParam = milestoneParamValue(selectedMilestone);
   const selectedTags = parseTagFilter(params.tags, tagTypes);
@@ -551,6 +560,7 @@ export default async function BugsPage({
               tagTypes={tagTypes}
               platforms={platforms}
               milestones={milestones}
+              shortcutsEnabled={shortcutsEnabled}
             />
           </Suspense>
         )}

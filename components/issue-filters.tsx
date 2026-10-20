@@ -33,6 +33,7 @@ import {
   MIN_SUGGEST_LENGTH,
   type IssueSuggestion,
 } from "@/lib/issue-suggest";
+import { isTypingTarget } from "@/lib/keyboard-shortcuts";
 
 type TagType = { id: string; name: string; isActive?: boolean };
 
@@ -74,11 +75,13 @@ export function IssueFilters({
   tagTypes = [],
   platforms = [],
   milestones = [],
+  shortcutsEnabled = true,
 }: {
   tagTypes?: TagType[];
   platforms?: PlatformOption[];
   /** #289: open milestones first; closed ones stay selectable for history. */
   milestones?: { id: string; title: string; isClosed: boolean }[];
+  shortcutsEnabled?: boolean;
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -116,6 +119,8 @@ export function IssueFilters({
   }, [filterOpen]);
 
   useEffect(() => {
+    if (!shortcutsEnabled) return;
+
     function handleKeyDown(event: KeyboardEvent) {
       const isCmdOrCtrlK =
         (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k";
@@ -130,14 +135,23 @@ export function IssueFilters({
 
       const target = event.target as HTMLElement | null;
       const isEditable =
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.tagName === "SELECT" ||
-          target.isContentEditable ||
-          Boolean(target.closest?.("[contenteditable='true']")));
+        isTypingTarget(target) ||
+        Boolean(
+          target &&
+            (target.tagName === "INPUT" ||
+              target.tagName === "TEXTAREA" ||
+              target.tagName === "SELECT" ||
+              target.isContentEditable ||
+              Boolean(target.closest?.("[contenteditable='true']"))),
+        );
+
+      const inDialog =
+        Boolean(target?.closest?.('dialog[open], [role="dialog"], [role="alertdialog"], [data-shortcuts-ignore]')) ||
+        Boolean(document.querySelector('dialog[open], [role="dialog"], [role="alertdialog"]'));
 
       if (isSlash && isEditable) return;
+      if (inDialog) return;
+      if (isCmdOrCtrlK && isEditable) return;
 
       event.preventDefault();
       inputRef.current?.focus();
@@ -146,7 +160,7 @@ export function IssueFilters({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [shortcutsEnabled]);
 
   function updateMany(changes: Record<string, string>, replace = false) {
     // Nothing changed: don't navigate (and don't reset the page, #132).
@@ -367,7 +381,11 @@ export function IssueFilters({
               aria-activedescendant={active >= 0 && suggestions[active] ? `${listId}-${active}` : undefined}
               autoComplete="off"
               value={text}
-              placeholder="Search, or type a tag like Design (/)"
+              placeholder={
+                shortcutsEnabled
+                  ? "Search, or type a tag like Design (/)"
+                  : "Search, or type a tag like Design"
+              }
               className="w-full rounded-lg border border-slate-300 pl-3 pr-8 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
               onChange={(event) => {
                 setText(event.target.value);
@@ -404,7 +422,7 @@ export function IssueFilters({
                 applyQueryNow();
               }}
             />
-            {!text ? (
+            {!text && shortcutsEnabled ? (
               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
                 <kbd className="hidden sm:inline-flex items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 select-none">
                   /

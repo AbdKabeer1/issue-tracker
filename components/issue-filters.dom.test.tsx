@@ -209,3 +209,73 @@ describe("IssueFilters unified Filter button popover (#762)", () => {
     expect(screen.queryByRole("dialog", { name: "Filter issues" })).not.toBeInTheDocument();
   });
 });
+
+describe("IssueFilters keyboard shortcuts (#727)", () => {
+  beforeEach(() => {
+    nav.params = new URLSearchParams();
+    nav.push.mockReset();
+    nav.replace.mockReset();
+  });
+  afterEach(cleanup);
+
+  it("does not focus search or preventDefault when shortcutsEnabled is false", () => {
+    render(<IssueFilters shortcutsEnabled={false} />);
+    const searchInput = screen.getByRole("combobox", { name: /search/i });
+
+    const slashEvent = new KeyboardEvent("keydown", { key: "/", bubbles: true, cancelable: true });
+    window.dispatchEvent(slashEvent);
+
+    expect(slashEvent.defaultPrevented).toBe(false);
+    expect(document.activeElement).not.toBe(searchInput);
+
+    const cmdKEvent = new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true, cancelable: true });
+    window.dispatchEvent(cmdKEvent);
+
+    expect(cmdKEvent.defaultPrevented).toBe(false);
+    expect(document.activeElement).not.toBe(searchInput);
+  });
+
+  it("does not trigger search hotkeys when focus is inside a dialog or dialog is open", () => {
+    render(
+      <div>
+        <IssueFilters shortcutsEnabled={true} />
+        <dialog open>
+          <input data-testid="dialog-input" />
+        </dialog>
+      </div>,
+    );
+    const searchInput = screen.getByRole("combobox", { name: /search/i });
+    const dialogInput = screen.getByTestId("dialog-input");
+    dialogInput.focus();
+
+    const slashEvent = new KeyboardEvent("keydown", { key: "/", bubbles: true, cancelable: true });
+    dialogInput.dispatchEvent(slashEvent);
+
+    expect(slashEvent.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(dialogInput);
+
+    const windowSlash = new KeyboardEvent("keydown", { key: "/", bubbles: true, cancelable: true });
+    window.dispatchEvent(windowSlash);
+    expect(windowSlash.defaultPrevented).toBe(false);
+    expect(document.activeElement).not.toBe(searchInput);
+  });
+
+  it("does not trigger Ctrl/Cmd+K when focused on an editable element", () => {
+    render(
+      <div>
+        <IssueFilters shortcutsEnabled={true} />
+        <textarea data-testid="other-editor" />
+      </div>,
+    );
+    const searchInput = screen.getByRole("combobox", { name: /search/i });
+    const otherEditor = screen.getByTestId("other-editor");
+    otherEditor.focus();
+
+    const cmdKEvent = new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true, cancelable: true });
+    otherEditor.dispatchEvent(cmdKEvent);
+
+    expect(cmdKEvent.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(otherEditor);
+    expect(document.activeElement).not.toBe(searchInput);
+  });
+});
