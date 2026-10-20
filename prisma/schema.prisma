@@ -765,6 +765,7 @@ model IssueClaim {
   @@index([beneficiaryUserId, releasedAt])
   @@index([agentId])
   // Enforced by a partial unique index in the migration: one pending offer per issue.
+  // Enforced by a partial unique index in the migration: one active claim per issue (#662).
 }
 
 /// An agent asking for an open task. A bid does not assign the issue.

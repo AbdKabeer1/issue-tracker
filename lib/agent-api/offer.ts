@@ -125,34 +125,41 @@ export async function offerNext(db: Db, caller: { agentId?: string; tenantId: st
 }
 
 export async function offerIssue(agent: AgentContext, projectId: string, bugId: string) {
-  const result = await prisma.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${bugId} AND "tenantId" = ${agent.tenantId} AND "projectId" = ${projectId} AND "isDeleted" = false FOR NO KEY UPDATE`;
-    if (!locked.length) throw new IssueApiError(404, "Issue not found in this project.");
-    const bug = await tx.bug.findFirst({ where: { id: bugId, tenantId: agent.tenantId, projectId, isDeleted: false }, select: { id: true, title: true, projectId: true, status: true, assigneeId: true, voteCount: true } });
-    if (!bug) throw new IssueApiError(404, "Issue not found in this project.");
-    if (bug.status !== "open") throw new IssueApiError(409, "Only open issues can be offered.");
-    if (bug.voteCount < WORK_READINESS_VOTE_THRESHOLD) throw new IssueApiError(409, `The issue must reach at least ${WORK_READINESS_VOTE_THRESHOLD} upvotes before it can be offered.`);
-    if (!await isConfirmed(bugId, tx)) throw new IssueApiError(409, "The issue must be confirmed before it can be offered.");
-    await assertRedesignOpen(bugId, tx);
-    const current = await tx.issueClaim.findFirst({ where: { bugId, releasedAt: null } });
-    if (current) {
-      if (current.status === "offered" && !isOfferExpired(current.offeredAt)) {
-        return { claim: current, beneficiaryUserId: current.beneficiaryUserId, bugTitle: bug.title, created: false };
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${bugId} AND "tenantId" = ${agent.tenantId} AND "projectId" = ${projectId} AND "isDeleted" = false FOR UPDATE`;
+      if (!locked.length) throw new IssueApiError(404, "Issue not found in this project.");
+      const bug = await tx.bug.findFirst({ where: { id: bugId, tenantId: agent.tenantId, projectId, isDeleted: false }, select: { id: true, title: true, projectId: true, status: true, assigneeId: true, voteCount: true } });
+      if (!bug) throw new IssueApiError(404, "Issue not found in this project.");
+      if (bug.status !== "open") throw new IssueApiError(409, "Only open issues can be offered.");
+      if (bug.voteCount < WORK_READINESS_VOTE_THRESHOLD) throw new IssueApiError(409, `The issue must reach at least ${WORK_READINESS_VOTE_THRESHOLD} upvotes before it can be offered.`);
+      if (!await isConfirmed(bugId, tx)) throw new IssueApiError(409, "The issue must be confirmed before it can be offered.");
+      await assertRedesignOpen(bugId, tx);
+      const current = await tx.issueClaim.findFirst({ where: { bugId, releasedAt: null } });
+      if (current) {
+        if (current.status === "offered" && !isOfferExpired(current.offeredAt)) {
+          return { claim: current, beneficiaryUserId: current.beneficiaryUserId, bugTitle: bug.title, created: false };
+        }
+        if (current.status === "active") throw new IssueApiError(409, "This issue already has an active claim.");
+        await tx.issueClaim.update({ where: { id: current.id }, data: { status: "released", releasedAt: new Date(), releaseReason: "expired" } });
+        await publish(tx, { tenantId: agent.tenantId, type: "claim.released", actorAgentId: agent.agentId, bugId,
+          payload: { claimId: current.id, issueId: bugId, reason: "expired" } });
       }
-      if (current.status === "active") throw new IssueApiError(409, "This issue already has an active claim.");
-      await tx.issueClaim.update({ where: { id: current.id }, data: { status: "released", releasedAt: new Date(), releaseReason: "expired" } });
-      await publish(tx, { tenantId: agent.tenantId, type: "claim.released", actorAgentId: agent.agentId, bugId,
-        payload: { claimId: current.id, issueId: bugId, reason: "expired" } });
+      const next = await offerNext(tx, agent, bug);
+      if (!next) throw new IssueApiError(409, "No eligible person is available for this offer.");
+      return { ...next, created: true };
+    });
+    if (result.created) {
+      notifyClaimOffered({ id: result.claim.id, bugId, bugTitle: result.bugTitle, beneficiaryUserId: result.beneficiaryUserId });
+      scheduleOfferExpiry(result.claim.id);
     }
-    const next = await offerNext(tx, agent, bug);
-    if (!next) throw new IssueApiError(409, "No eligible person is available for this offer.");
-    return { ...next, created: true };
-  });
-  if (result.created) {
-    notifyClaimOffered({ id: result.claim.id, bugId, bugTitle: result.bugTitle, beneficiaryUserId: result.beneficiaryUserId });
-    scheduleOfferExpiry(result.claim.id);
+    return result.claim;
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new IssueApiError(409, "This issue already has an active claim or pending offer.");
+    }
+    throw error;
   }
-  return result.claim;
 }
 
 /** Durable expiry state is checked here and again on acceptance after restarts. */
@@ -160,7 +167,7 @@ export async function expireOffer(claimId: string): Promise<void> {
   const result = await prisma.$transaction(async (tx) => {
     const claim = await tx.issueClaim.findUnique({ where: { id: claimId }, select: { id: true, bugId: true, status: true, offeredAt: true, releasedAt: true, agentId: true, beneficiaryUserId: true, bug: { select: { tenantId: true, id: true, title: true, projectId: true, assigneeId: true } } } });
     if (!claim || claim.status !== "offered" || claim.releasedAt || !isOfferExpired(claim.offeredAt)) return null;
-    await tx.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${claim.bugId} FOR NO KEY UPDATE`;
+    await tx.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${claim.bugId} FOR UPDATE`;
     const fresh = await tx.issueClaim.findUnique({ where: { id: claimId }, select: { id: true, bugId: true, status: true, offeredAt: true, releasedAt: true, agentId: true, beneficiaryUserId: true, bug: { select: { tenantId: true, id: true, title: true, projectId: true, assigneeId: true } } } });
     if (!fresh || fresh.status !== "offered" || fresh.releasedAt || !isOfferExpired(fresh.offeredAt)) return null;
     const now = new Date();
@@ -199,67 +206,84 @@ export async function sweepExpiredOffers(tenantId?: string): Promise<{ expired: 
 }
 
 export async function acceptOffer(agent: AgentContext, claimId: string) {
-  const result = await prisma.$transaction(async (tx) => {
-    const claim = await tx.issueClaim.findUnique({ where: { id: claimId }, include: { beneficiary: { select: { name: true } }, bug: { select: { id: true, title: true, status: true, assigneeId: true, tenantId: true, projectId: true, voteCount: true, assignee: { select: { name: true } } } } } });
-    if (!claim || claim.bug.tenantId !== agent.tenantId) throw new IssueApiError(404, "Offer not found.");
-    const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${claim.bugId} AND "tenantId" = ${agent.tenantId} FOR NO KEY UPDATE`;
-    if (!locked.length) throw new IssueApiError(404, "Offer not found.");
-    const fresh = await tx.issueClaim.findUnique({ where: { id: claimId }, include: { beneficiary: { select: { name: true } }, bug: { select: { id: true, title: true, status: true, assigneeId: true, tenantId: true, projectId: true, voteCount: true, assignee: { select: { name: true } } } } } });
-    if (!fresh || fresh.agentId !== agent.agentId) throw new IssueApiError(409, "This offer is no longer available to this agent.");
-    if (fresh.status === "released" && fresh.releaseReason === "expired") throw new IssueApiError(410, "This offer expired and has been released.");
-    if (fresh.status !== "offered" || fresh.releasedAt) throw new IssueApiError(409, "This offer is no longer available to this agent.");
-    const now = new Date();
-    if (isOfferExpired(fresh.offeredAt, now.getTime())) {
-      await tx.issueClaim.update({ where: { id: fresh.id }, data: { status: "released", releasedAt: now, releaseReason: "expired" } });
-      await publish(tx, { tenantId: agent.tenantId, type: "claim.released", actorAgentId: agent.agentId, bugId: fresh.bugId,
-        payload: { claimId: fresh.id, issueId: fresh.bugId, beneficiaryUserId: fresh.beneficiaryUserId, reason: "expired" } });
-      const next = await offerNext(tx, agent, fresh.bug);
-      return { expired: true as const, next, bugId: fresh.bugId };
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const claim = await tx.issueClaim.findUnique({ where: { id: claimId }, include: { beneficiary: { select: { name: true } }, bug: { select: { id: true, title: true, status: true, assigneeId: true, tenantId: true, projectId: true, voteCount: true, assignee: { select: { name: true } } } } } });
+      if (!claim || claim.bug.tenantId !== agent.tenantId) throw new IssueApiError(404, "Offer not found.");
+      const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${claim.bugId} AND "tenantId" = ${agent.tenantId} FOR UPDATE`;
+      if (!locked.length) throw new IssueApiError(404, "Offer not found.");
+      await tx.$queryRaw`SELECT "id" FROM "IssueClaim" WHERE "id" = ${claimId} FOR UPDATE`;
+      const fresh = await tx.issueClaim.findUnique({ where: { id: claimId }, include: { beneficiary: { select: { name: true } }, bug: { select: { id: true, title: true, status: true, assigneeId: true, tenantId: true, projectId: true, voteCount: true, assignee: { select: { name: true } } } } } });
+      if (!fresh || fresh.agentId !== agent.agentId) throw new IssueApiError(409, "This offer is no longer available to this agent.");
+      if (fresh.status === "released" && fresh.releaseReason === "expired") throw new IssueApiError(410, "This offer expired and has been released.");
+      if (fresh.status !== "offered" || fresh.releasedAt) throw new IssueApiError(409, "This offer is no longer available to this agent.");
+
+      // Check if an active claim already exists on this bug (#662)
+      const existingActive = await tx.issueClaim.findFirst({
+        where: { bugId: fresh.bugId, status: "active", releasedAt: null, id: { not: fresh.id } },
+      });
+      if (existingActive) {
+        throw new IssueApiError(409, "This issue already has an active claim.");
+      }
+
+      const now = new Date();
+      if (isOfferExpired(fresh.offeredAt, now.getTime())) {
+        await tx.issueClaim.update({ where: { id: fresh.id }, data: { status: "released", releasedAt: now, releaseReason: "expired" } });
+        await publish(tx, { tenantId: agent.tenantId, type: "claim.released", actorAgentId: agent.agentId, bugId: fresh.bugId,
+          payload: { claimId: fresh.id, issueId: fresh.bugId, beneficiaryUserId: fresh.beneficiaryUserId, reason: "expired" } });
+        const next = await offerNext(tx, agent, fresh.bug);
+        return { expired: true as const, next, bugId: fresh.bugId };
+      }
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${fresh.beneficiaryUserId} FOR UPDATE`;
+      const activeClaims = await tx.issueClaim.count({ where: {
+        beneficiaryUserId: fresh.beneficiaryUserId, status: "active", releasedAt: null,
+        bug: { tenantId: agent.tenantId, projectId: fresh.bug.projectId },
+      } });
+      if (activeClaims >= MAX_ACTIVE_CLAIMS) {
+        await tx.issueClaim.update({ where: { id: fresh.id }, data: { status: "released", releasedAt: now, releaseReason: "capacity" } });
+        await publish(tx, { tenantId: agent.tenantId, type: "claim.released", actorAgentId: agent.agentId, bugId: fresh.bugId,
+          payload: { claimId: fresh.id, issueId: fresh.bugId, beneficiaryUserId: fresh.beneficiaryUserId, reason: "capacity" } });
+        const next = await offerNext(tx, agent, fresh.bug);
+        return { unavailable: true as const, next, bugId: fresh.bugId };
+      }
+      if (fresh.bug.status !== "open" || !canAssignTicket({ actorId: fresh.beneficiaryUserId, actorRole: "user", currentAssigneeId: fresh.bug.assigneeId, targetAssigneeId: fresh.beneficiaryUserId, voteCount: fresh.bug.voteCount })) {
+        await tx.issueClaim.update({ where: { id: fresh.id }, data: { status: "released", releasedAt: now, releaseReason: "unavailable" } });
+        await publish(tx, { tenantId: agent.tenantId, type: "claim.released", actorAgentId: agent.agentId, bugId: fresh.bugId,
+          payload: { claimId: fresh.id, issueId: fresh.bugId, beneficiaryUserId: fresh.beneficiaryUserId, reason: "unavailable" } });
+        return { unavailable: true as const };
+      }
+      await tx.issueClaim.update({ where: { id: fresh.id }, data: { status: "active", claimedAt: now, lastHeartbeatAt: now } });
+      const issue = await tx.bug.update({ where: { id: fresh.bugId }, data: { assigneeId: fresh.beneficiaryUserId, status: "in_progress" }, select: { id: true, assigneeId: true, status: true } });
+      await tx.bugActivity.createMany({ data: [
+        ...(fresh.bug.assigneeId !== fresh.beneficiaryUserId ? [{ bugId: fresh.bugId, actorId: fresh.beneficiaryUserId, type: "assignee_changed" as const, summary: assigneeChangedSummary(fresh.bug.assignee?.name ?? null, fresh.beneficiary.name), metadata: { field: "assignee", from: fresh.bug.assigneeId, to: fresh.beneficiaryUserId } }] : []),
+        { bugId: fresh.bugId, actorId: fresh.beneficiaryUserId, type: "status_changed", summary: statusChangedSummary("open", "in_progress"), metadata: { field: "status", from: "open", to: "in_progress" } },
+      ] });
+      await ensureWatching(tx, fresh.bugId, [fresh.beneficiaryUserId]);
+      await publish(tx, { tenantId: agent.tenantId, type: "claim.accepted", actorAgentId: agent.agentId, bugId: fresh.bugId,
+        payload: { claimId: fresh.id, issueId: fresh.bugId, projectId: fresh.bug.projectId, beneficiaryUserId: fresh.beneficiaryUserId } });
+      return { expired: false as const, claim: { ...fresh, status: "active", claimedAt: now }, issue };
+    }, { maxWait: 10000, timeout: 15000 });
+    if ("expired" in result && result.expired) {
+      if (result.next) {
+        notifyClaimOffered({ id: result.next.claim.id, bugId: result.bugId, bugTitle: result.next.bugTitle, beneficiaryUserId: result.next.beneficiaryUserId });
+        scheduleOfferExpiry(result.next.claim.id);
+      }
+      throw new IssueApiError(410, "This offer expired and has been released.");
     }
-    await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${fresh.beneficiaryUserId} FOR NO KEY UPDATE`;
-    const activeClaims = await tx.issueClaim.count({ where: {
-      beneficiaryUserId: fresh.beneficiaryUserId, status: "active", releasedAt: null,
-      bug: { tenantId: agent.tenantId, projectId: fresh.bug.projectId },
-    } });
-    if (activeClaims >= MAX_ACTIVE_CLAIMS) {
-      await tx.issueClaim.update({ where: { id: fresh.id }, data: { status: "released", releasedAt: now, releaseReason: "capacity" } });
-      await publish(tx, { tenantId: agent.tenantId, type: "claim.released", actorAgentId: agent.agentId, bugId: fresh.bugId,
-        payload: { claimId: fresh.id, issueId: fresh.bugId, beneficiaryUserId: fresh.beneficiaryUserId, reason: "capacity" } });
-      const next = await offerNext(tx, agent, fresh.bug);
-      return { unavailable: true as const, next, bugId: fresh.bugId };
+    if ("unavailable" in result) {
+      if ("next" in result && result.next) {
+        notifyClaimOffered({ id: result.next.claim.id, bugId: result.bugId, bugTitle: result.next.bugTitle, beneficiaryUserId: result.next.beneficiaryUserId });
+        scheduleOfferExpiry(result.next.claim.id);
+      }
+      throw new IssueApiError(409, "The issue can no longer be assigned to this person.");
     }
-    if (fresh.bug.status !== "open" || !canAssignTicket({ actorId: fresh.beneficiaryUserId, actorRole: "user", currentAssigneeId: fresh.bug.assigneeId, targetAssigneeId: fresh.beneficiaryUserId, voteCount: fresh.bug.voteCount })) {
-      await tx.issueClaim.update({ where: { id: fresh.id }, data: { status: "released", releasedAt: now, releaseReason: "unavailable" } });
-      await publish(tx, { tenantId: agent.tenantId, type: "claim.released", actorAgentId: agent.agentId, bugId: fresh.bugId,
-        payload: { claimId: fresh.id, issueId: fresh.bugId, beneficiaryUserId: fresh.beneficiaryUserId, reason: "unavailable" } });
-      return { unavailable: true as const };
+    return result;
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new IssueApiError(409, "This issue already has an active claim.");
     }
-    await tx.issueClaim.update({ where: { id: fresh.id }, data: { status: "active", claimedAt: now, lastHeartbeatAt: now } });
-    const issue = await tx.bug.update({ where: { id: fresh.bugId }, data: { assigneeId: fresh.beneficiaryUserId, status: "in_progress" }, select: { id: true, assigneeId: true, status: true } });
-    await tx.bugActivity.createMany({ data: [
-      ...(fresh.bug.assigneeId !== fresh.beneficiaryUserId ? [{ bugId: fresh.bugId, actorId: fresh.beneficiaryUserId, type: "assignee_changed" as const, summary: assigneeChangedSummary(fresh.bug.assignee?.name ?? null, fresh.beneficiary.name), metadata: { field: "assignee", from: fresh.bug.assigneeId, to: fresh.beneficiaryUserId } }] : []),
-      { bugId: fresh.bugId, actorId: fresh.beneficiaryUserId, type: "status_changed", summary: statusChangedSummary("open", "in_progress"), metadata: { field: "status", from: "open", to: "in_progress" } },
-    ] });
-    await ensureWatching(tx, fresh.bugId, [fresh.beneficiaryUserId]);
-    await publish(tx, { tenantId: agent.tenantId, type: "claim.accepted", actorAgentId: agent.agentId, bugId: fresh.bugId,
-      payload: { claimId: fresh.id, issueId: fresh.bugId, projectId: fresh.bug.projectId, beneficiaryUserId: fresh.beneficiaryUserId } });
-    return { expired: false as const, claim: { ...fresh, status: "active", claimedAt: now }, issue };
-  }, { maxWait: 10000, timeout: 15000 });
-  if ("expired" in result && result.expired) {
-    if (result.next) {
-      notifyClaimOffered({ id: result.next.claim.id, bugId: result.bugId, bugTitle: result.next.bugTitle, beneficiaryUserId: result.next.beneficiaryUserId });
-      scheduleOfferExpiry(result.next.claim.id);
-    }
-    throw new IssueApiError(410, "This offer expired and has been released.");
+    throw error;
   }
-  if ("unavailable" in result) {
-    if ("next" in result && result.next) {
-      notifyClaimOffered({ id: result.next.claim.id, bugId: result.bugId, bugTitle: result.next.bugTitle, beneficiaryUserId: result.next.beneficiaryUserId });
-      scheduleOfferExpiry(result.next.claim.id);
-    }
-    throw new IssueApiError(409, "The issue can no longer be assigned to this person.");
-  }
-  return result;
 }
 
 export const releaseSchema = z.object({
