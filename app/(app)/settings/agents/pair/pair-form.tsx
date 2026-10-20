@@ -38,8 +38,7 @@ export function PairForm({
           {result.name} is approved.
         </p>
         <p className="text-sm text-slate-700">
-          It will pick up its key on its next check, within a few seconds. It can file, comment, and bid
-          for tasks in the project you chose.
+          It is listed under Your agents now. It picks up its key on its next check, within a few seconds.
         </p>
         <Link href="/settings/agents" className="text-sm font-medium text-teal-700 hover:underline">
           See your agents
