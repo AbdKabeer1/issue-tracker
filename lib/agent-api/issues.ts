@@ -28,7 +28,7 @@ export class IssueApiError extends Error {
 const idSchema = z.string().trim().min(1).max(191);
 /** Files uploaded with POST /api/v1/attachments, linked on save (#645). */
 const attachmentIdsSchema = z.array(idSchema).max(MAX_ATTACHMENTS_PER_ITEM).optional();
-const createSchema = createBugSchema.pick({ title: true, description: true, categoryId: true, areaId: true, proofLinks: true })
+export const createSchema = createBugSchema.pick({ title: true, description: true, categoryId: true, areaId: true, proofLinks: true })
   .extend({
     // #494: no beneficiaryUserId — an agent can't file issues in someone
     // else's name. The reporter is always the agent's owner.
