@@ -25,7 +25,7 @@ import {
 } from "@/lib/activity-log";
 import { notifyLater } from "@/lib/notify";
 import {
-  checkRateLimit,
+  consumeRateLimit,
   ACTION_RATE_LIMITS,
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
@@ -56,7 +56,7 @@ export async function updateCommentAction(
 ): Promise<CommentActionResult> {
   const user = await requireUser();
 
-  const limit = checkRateLimit(
+  const limit = await consumeRateLimit(
     `edit-comment:${user.id}`,
     ACTION_RATE_LIMITS.editComment,
   );

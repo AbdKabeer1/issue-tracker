@@ -166,6 +166,25 @@ describe("updateCommentAction mention notifications (#228)", () => {
     expect(blocked).toEqual({ error: RATE_LIMIT_MESSAGE });
   });
 
+  it("uses shared persistent store for rate limiting when configured (#624)", async () => {
+    const { setRateLimitStore, ACTION_RATE_LIMITS, RATE_LIMIT_MESSAGE } = await import("@/lib/rate-limit");
+    const hitMock = vi.fn().mockResolvedValue({ allowed: false, retryAfterMs: 1000 });
+    setRateLimitStore({ hit: hitMock });
+    findCommentMock.mockResolvedValue(existingComment("Initial comment"));
+
+    try {
+      const blocked = await edit("Edit with custom store");
+      expect(blocked).toEqual({ error: RATE_LIMIT_MESSAGE });
+      expect(hitMock).toHaveBeenCalledWith(
+        "edit-comment:author-1",
+        ACTION_RATE_LIMITS.editComment,
+        expect.any(Number),
+      );
+    } finally {
+      setRateLimitStore(null);
+    }
+  });
+
   it("fails with deleted error and avoids side effects when comment was deleted concurrently (#721)", async () => {
     findCommentMock.mockResolvedValue(existingComment("Initial comment"));
     txCommentUpdateMany.mockResolvedValueOnce({ count: 0 });
