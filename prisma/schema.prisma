@@ -945,6 +945,8 @@ model WebhookSubscription {
   agentId                String
   url                    String
   signingSecretEncrypted String
+  /// Event types to deliver; empty means every event (#512).
+  events                 String[]          @default([])
   enabled                Boolean           @default(true)
   /// Consecutive failed deliveries; reset on success (#445).
   failureCount           Int               @default(0)
