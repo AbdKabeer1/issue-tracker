@@ -19,7 +19,10 @@ vi.mock("@/lib/tenant-context", () => ({
 }));
 vi.mock("@/lib/notify", () => ({ notifyLater: mocks.notifyLater }));
 vi.mock("@/lib/points/award", () => ({ awardSolver: mocks.awardSolver }));
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+  unstable_cache: (fn: (...a: unknown[]) => unknown) => fn,
+}));
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => { throw new Error(`redirect:${path}`); },
 }));
