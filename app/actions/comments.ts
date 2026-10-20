@@ -8,11 +8,8 @@ import { currentTenantAccess } from "@/lib/tenant-access";
 import { attachmentIdsInMarkdown, linkAttachments } from "@/lib/attachment-link";
 import { requireUser } from "@/lib/auth-helpers";
 import { commentSchema } from "@/lib/validations/issue";
-import {
-  extractMentionedUserIds,
-  newlyMentionedUserIds,
-  normalizeMentions,
-} from "@/lib/mentions";
+import { newlyMentionedUserIds } from "@/lib/mentions";
+import { resolveTenantMentions } from "@/lib/tenant-mentions";
 import {
   canDeleteComment,
   canEditComment,
@@ -44,7 +41,7 @@ async function loadComment(commentId: unknown, tenantId: string | null) {
       body: true,
       deletedAt: true,
       author: { select: { name: true } },
-      bug: { select: { isDeleted: true, title: true } },
+      bug: { select: { isDeleted: true, title: true, tenantId: true } },
     },
   });
 }
@@ -75,17 +72,8 @@ export async function updateCommentAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid comment" };
   }
 
-  const mentionedIds = extractMentionedUserIds(parsed.data.body);
-  const known = mentionedIds.length
-    ? await prisma.user.findMany({
-        where: { id: { in: mentionedIds } },
-        select: { id: true, name: true },
-      })
-    : [];
-  const body = normalizeMentions(
-    parsed.data.body,
-    new Map(known.map((u) => [u.id, u.name])),
-  );
+  // #502: mentions resolve only to members of the issue's tenant.
+  const body = await resolveTenantMentions(prisma, comment.bug.tenantId, parsed.data.body);
 
   const result = await prisma.$transaction(async (tx) => {
     const updated = await tx.comment.updateMany({

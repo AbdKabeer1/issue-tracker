@@ -77,7 +77,7 @@ function existingComment(body: string) {
     body,
     deletedAt: null,
     author: { name: "Ada" },
-    bug: { isDeleted: false, title: "Login button does nothing" },
+    bug: { isDeleted: false, title: "Login button does nothing", tenantId: "tenant-zedu" },
   };
 }
 
@@ -199,5 +199,46 @@ describe("agents hear about comment edits (#600)", () => {
       expect.anything(),
       expect.objectContaining({ bugId: "bug-1", type: "comment.edited", actorUserId: "author-1" }),
     );
+  });
+});
+
+describe("updateCommentAction mentions stay inside the tenant (#502)", () => {
+  const daveId = "clxxxxxxxxxxxxxxxxxxxxxxxx4";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetRateLimits();
+    txCommentUpdateMany.mockResolvedValue({ count: 1 });
+    txAttachmentUpdateMany.mockResolvedValue({ count: 0 });
+    // Bob is in the issue's tenant; Dave is only in another one.
+    findUsersMock.mockImplementation(async ({ where }: { where: { id: { in: string[] }; memberships?: { some: { tenantId: string } } } }) =>
+      [{ id: bobId, name: "Bob", tenant: "tenant-zedu" }, { id: daveId, name: "Dave Acme", tenant: "tenant-acme" }]
+        .filter((u) => where.id.in.includes(u.id) && u.tenant === where.memberships?.some.tenantId)
+        .map(({ id, name }) => ({ id, name })),
+    );
+  });
+
+  it("looks mentions up among the issue tenant's members only", async () => {
+    findCommentMock.mockResolvedValue(existingComment("first draft"));
+    await edit(`first draft @[Dave Acme](${daveId})`);
+    expect(findUsersMock.mock.calls[0][0].where).toEqual({
+      id: { in: [daveId] },
+      memberships: { some: { tenantId: "tenant-zedu" } },
+    });
+  });
+
+  it("doesn't notify someone from another tenant, and stores them as plain text", async () => {
+    findCommentMock.mockResolvedValue(existingComment("first draft"));
+    const result = await edit(`first draft @[Dave Acme](${daveId}) @[Bob](${bobId})`);
+    expect(result).toEqual({ ok: true });
+    expect(txCommentUpdateMany.mock.calls[0][0].data.body).toBe(`first draft @Dave Acme @[Bob](${bobId})`);
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+    expect(notifyMock.mock.calls[0][0]).toMatchObject({ kind: "mentioned", recipientIds: [bobId] });
+  });
+
+  it("sends nothing when the only mention is outside the tenant", async () => {
+    findCommentMock.mockResolvedValue(existingComment("first draft"));
+    await edit(`first draft @[Dave Acme](${daveId})`);
+    expect(notifyMock).not.toHaveBeenCalled();
   });
 });

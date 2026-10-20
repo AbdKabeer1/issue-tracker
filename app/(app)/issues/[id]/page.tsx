@@ -72,6 +72,7 @@ import { EditableProofLinks } from "@/components/editable-proof-links";
 import { withCurrentOption } from "@/lib/triage-options";
 import { issueTenantHintFor } from "@/lib/issue-tenant-hint";
 import { IssueTenantSwitch } from "@/components/issue-tenant-hint";
+import { tenantMemberWhere } from "@/lib/tenant-mentions";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
@@ -361,7 +362,9 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
     await Promise.all([
       canTriage
         ? loadOptional("users", [], () =>
+            // #502: only the issue's tenant can be mentioned or assigned.
             prisma.user.findMany({
+              where: tenantMemberWhere(bug.tenantId),
               orderBy: { name: "asc" },
               select: { id: true, name: true, role: true, image: true },
             }),
