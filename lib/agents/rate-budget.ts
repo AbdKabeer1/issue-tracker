@@ -34,7 +34,12 @@ export const AGENT_RATE_BUDGETS = {
 } as const satisfies Record<"standard" | "burst", Record<AgentBudgetKind, RateLimitConfig>>;
 
 /** The fields of `Agent` the budget needs. */
-export type BudgetedAgent = { id: string; burst?: boolean | null };
+export type BudgetedAgent = {
+  id: string;
+  burst?: boolean | null;
+  /** Null on an enabled grant means it has no expiry (#596). */
+  burstUntil?: Date | string | null;
+};
 
 export type AgentBudgetResult =
   | ({ allowed: true } & AgentBudgetQuota)
@@ -44,8 +49,29 @@ export function agentBudgetKey(agentId: string, kind: AgentBudgetKind): string {
   return `agent:${agentId}:${kind}`;
 }
 
-export function agentBudget(agent: BudgetedAgent, kind: AgentBudgetKind): RateLimitConfig {
-  return AGENT_RATE_BUDGETS[agent.burst ? "burst" : "standard"][kind];
+/**
+ * Whether the agent may use the higher budget right now (#596). `burst` stays
+ * the enabled flag and `burstUntil` only limits it: no expiry means the grant
+ * stays on until an admin turns it off. An expired grant falls back to the
+ * standard budget on the very next request, without a cleanup job.
+ */
+export function burstActive(
+  agent: Pick<BudgetedAgent, "burst" | "burstUntil">,
+  now = Date.now(),
+): boolean {
+  if (!agent.burst) return false;
+  if (!agent.burstUntil) return true;
+  const until = new Date(agent.burstUntil).getTime();
+  // A malformed value must never accidentally grant the higher budget.
+  return Number.isFinite(until) && until > now;
+}
+
+export function agentBudget(
+  agent: BudgetedAgent,
+  kind: AgentBudgetKind,
+  now = Date.now(),
+): RateLimitConfig {
+  return AGENT_RATE_BUDGETS[burstActive(agent, now) ? "burst" : "standard"][kind];
 }
 
 /**
@@ -58,7 +84,9 @@ export async function consumeAgentBudget(
   kind: AgentBudgetKind,
   now = Date.now(),
 ): Promise<AgentBudgetResult> {
-  const config = agentBudget(agent, kind);
+  // Expiry is evaluated from the same clock as the charge, so a grant that
+  // lapsed between authentication and this line cannot be used.
+  const config = agentBudget(agent, kind, now);
   const result = await consumeRateLimit(agentBudgetKey(agent.id, kind), config, now);
   const quota: AgentBudgetQuota = {
     kind,

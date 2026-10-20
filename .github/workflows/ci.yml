@@ -92,6 +92,7 @@ jobs:
       AUTH_SECRET: "ci-e2e-secret-dummy-must-be-long-enough-32-chars"
       AUTH_URL: "http://localhost:3000/api/auth"
       NEXTAUTH_URL: "http://localhost:3000"
+      SITE_URL_ALLOW_LOOPBACK: "true"
       AUTH_TRUST_HOST: "true"
       AUTH_PASSWORD_LOGIN: "true"
       # The agent platform is on by default in production; run e2e against the

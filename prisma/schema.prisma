@@ -156,6 +156,33 @@ enum CommentType {
   request_to_merge
 }
 
+/// A goal's lifecycle (#616). Only `active` goals accept new splits.
+enum GoalStatus {
+  active
+  completed
+  cancelled
+}
+
+/// How a split computed each slice of a goal's budget pool (#616).
+enum GoalSplitMethod {
+  /// Every target named its own amount.
+  manual
+  /// Amounts follow the targets' weights, largest-remainder rounding.
+  proportional
+  /// Targets carry percentage shares that must total exactly 100.
+  milestone
+  /// Every target gets an equal slice; the remainder spreads from the front.
+  even
+}
+
+/// What one allocation points at (#616): an issue, a nested goal, or an
+/// agent deliverable.
+enum GoalAllocationTarget {
+  issue
+  goal
+  agent
+}
+
 model User {
   id                    String               @id @default(cuid())
   name                  String
@@ -221,6 +248,7 @@ model User {
   joinRequestsReviewed  TenantJoinRequest[] @relation("TenantJoinReviewer")
   projectAuditEvents    ProjectAuditEvent[]
   jobsCreated           Job[]                 @relation("JobCreator")
+  goalsCreated          Goal[]                @relation("GoalCreator")
   jobSubmissions        JobSubmission[]       @relation("JobSubmissionBeneficiary")
   jobReviews            JobReview[]           @relation("JobReviewBeneficiary")
   jobReviewOffers       JobReviewOffer[]      @relation("JobReviewOfferBeneficiary")
@@ -241,16 +269,22 @@ model PasswordResetToken {
 }
 
 model IssueType {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  description String?
+  id            String         @id @default(cuid())
+  tenantId      String
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
   /// Markdown that pre-fills the report form's description (#307). Null: none.
-  template    String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  bugs        Bug[]
+  template      String?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  bugs          Bug[]
   approvalRules ApprovalRule[]
+
+  @@unique([tenantId, name])
+  @@unique([id, tenantId])
+  @@index([tenantId])
 }
 
 model Bug {
@@ -327,6 +361,7 @@ model Bug {
   idempotencyKeys   IdempotencyKey[]
   agentEvents       AgentEvent[]
   auditEvents       AgentAuditEvent[]
+  goalAllocations   GoalAllocation[]
 
   /// #517: issue numbers are per tenant, so two tenants can both have a #1.
   @@unique([tenantId, number])
@@ -368,7 +403,9 @@ model Category {
 /// A release or sprint grouping issues (#289).
 model Milestone {
   id          String    @id @default(cuid())
-  title       String    @unique
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title       String
   description String?
   /// A calendar day; no time of day.
   dueDate     DateTime? @db.Date
@@ -379,6 +416,9 @@ model Milestone {
   updatedAt   DateTime  @updatedAt
   bugs        Bug[]
 
+  @@unique([tenantId, title])
+  @@unique([id, tenantId])
+  @@index([tenantId])
   @@index([isClosed, dueDate])
 }
 
@@ -552,6 +592,8 @@ model Tenant {
   updatedAt     DateTime           @updatedAt
   projects      Project[]
   categories    Category[]
+  issueTypes    IssueType[]
+  milestones    Milestone[]
   memberships   Membership[]
   agents        Agent[]
   bugs          Bug[]
@@ -567,6 +609,7 @@ model Tenant {
   notifications Notification[]
   projectAuditEvents ProjectAuditEvent[]
   jobs          Job[]
+  goals         Goal[]
 }
 
 /// A product inside a tenant, e.g. Zedu Web or Zedu Desktop. Not the same as
@@ -604,6 +647,7 @@ model Project {
   jobs                 Job[]
   agentEvents          AgentEvent[]
   approvalRules        ApprovalRule[]
+  goals                Goal[]
 
   @@unique([tenantId, slug])
 }
@@ -782,6 +826,10 @@ model Agent {
   level                AgentLevel            @default(observer)
   /// Higher rate budget, set only by a tenant admin (#440).
   burst                Boolean               @default(false)
+  /// When the higher budget stops (#596). Null on an enabled grant means it
+  /// has no expiry. An expired time falls back to the standard budget on the
+  /// next request; no cleanup job flips `burst` off.
+  burstUntil           DateTime?
   revokedAt            DateTime?
   /// Set when this is the person's personal agent for that project.
   /// Created automatically so they can copy a key without registering one.
@@ -811,6 +859,7 @@ model Agent {
   jobReviews           JobReview[]
   jobReviewOffers      JobReviewOffer[]
   inboxItems           AgentInboxItem[]
+  goalAllocations      GoalAllocation[]
 
   @@unique([ownerUserId, defaultProjectId])
   @@index([tenantId])
@@ -1149,6 +1198,73 @@ model JobReviewOffer {
   @@index([submissionId, status])
   @@index([agentId, status])
   @@index([beneficiaryUserId, status])
+}
+
+/// A funded objective inside a project (#616). `budgetPool` is the total the
+/// goal may split across issues, nested goals, and agent deliverables;
+/// `allocated` is the slice already carved out and never exceeds the pool.
+model Goal {
+  id          String     @id @default(cuid())
+  tenantId    String
+  projectId   String
+  /// The person who created the goal.
+  createdById String
+  title       String
+  description String?
+  /// Total credits this goal may split (#616). Never negative.
+  budgetPool  Int
+  /// Sum of the live allocations, maintained inside the split transaction.
+  allocated   Int        @default(0)
+  status      GoalStatus @default(active)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @default(now()) @updatedAt
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User       @relation("GoalCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  /// Slices carved out of this goal's own budget pool.
+  allocations GoalAllocation[]
+  /// Slices of this goal's pool that were given to it from a parent goal.
+  nestedAllocations GoalAllocation[] @relation("GoalAllocationNested")
+
+  @@index([tenantId, createdAt])
+  @@index([projectId])
+  @@index([tenantId, projectId])
+}
+
+/// One slice carved out of a goal's budget pool (#616). Append-only: rows are
+/// never edited or deleted; releasing one sets `releasedAt`. `sourceKey` makes
+/// a split idempotent, the way `PointEntry.sourceKey` does for points.
+model GoalAllocation {
+  id       String               @id @default(cuid())
+  /// The goal whose pool this slice came from.
+  goalId   String
+  /// How the amount was computed (lib/goals/pool-split.ts).
+  method   GoalSplitMethod
+  targetType GoalAllocationTarget
+  /// Set when `targetType = issue`.
+  targetBugId String?
+  /// Set when `targetType = goal` — a nested goal's budget slice.
+  targetGoalId String?
+  /// Set when `targetType = agent`; null when the deliverable names no agent.
+  targetAgentId String?
+  /// Human name for an agent deliverable, e.g. "Audit report".
+  label    String?
+  /// Credits carved out of the pool. Always positive; release unallocates.
+  amount   Int
+  /// Idempotency key: a retried split creates each row at most once.
+  sourceKey String              @unique
+  /// Set when the slice is returned to the pool; the row itself stays.
+  releasedAt DateTime?
+  createdAt DateTime            @default(now())
+  goal     Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  bug      Bug?      @relation(fields: [targetBugId], references: [id], onDelete: SetNull)
+  targetGoal Goal?   @relation("GoalAllocationNested", fields: [targetGoalId], references: [id], onDelete: SetNull)
+  agent    Agent?    @relation(fields: [targetAgentId], references: [id], onDelete: SetNull)
+
+  @@index([goalId, createdAt])
+  @@index([targetBugId])
+  @@index([targetGoalId])
+  @@index([targetAgentId])
 }
 
 model RedesignProposal {

@@ -38,7 +38,14 @@ function fakeLedger() {
         return { count };
       }),
       update: vi.fn(async (): Promise<Record<string, unknown>> => ({})),
-      findFirst: vi.fn(async (): Promise<{ id: string; correctedAt?: Date | null } | null> => null),
+      findFirst: vi.fn(
+        async (
+          args: { where: Record<string, unknown> },
+        ): Promise<{ id: string; correctedAt?: Date | null } | null> => {
+          void args;
+          return null;
+        },
+      ),
       findUnique: vi.fn(async (): Promise<{ id: string; correctedAt?: Date | null } | null> => null),
       findMany: vi.fn(async (): Promise<unknown[]> => []),
     },
@@ -205,6 +212,34 @@ describe("openDispute", () => {
       input: { bugNumber: 42, kind: "wrong", pointEntryId: "entry-1", reason: "Wrong severity." },
     });
     expect(result).toEqual({ ok: false, error: DISPUTE_ALREADY_OPEN });
+  });
+
+  it("rejects disputing an entry from a different issue", async () => {
+    const { db, raw } = fakeLedger();
+    raw.bug.findFirst.mockResolvedValue({ id: "bug-1" });
+    const otherIssueEntry = {
+      id: "entry-x",
+      userId: ME,
+      tenantId: TENANT,
+      bugId: "bug-2",
+    };
+    raw.pointEntry.findFirst.mockImplementation(async ({ where }) => {
+      const matchesEntry =
+        where.id === otherIssueEntry.id &&
+        where.userId === otherIssueEntry.userId &&
+        where.tenantId === otherIssueEntry.tenantId &&
+        (where.bugId === undefined || where.bugId === otherIssueEntry.bugId);
+      return matchesEntry ? { id: otherIssueEntry.id, correctedAt: null } : null;
+    });
+
+    const result = await openDispute(db, {
+      tenantId: TENANT,
+      userId: ME,
+      input: { bugNumber: 42, kind: "wrong", pointEntryId: "entry-x", reason: "Wrong issue." },
+    });
+
+    expect(result).toEqual({ ok: false, error: NOT_YOUR_ENTRY });
+    expect(raw.pointDispute.create).not.toHaveBeenCalled();
   });
 });
 

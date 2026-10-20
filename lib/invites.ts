@@ -412,6 +412,58 @@ export type PendingInvite = {
   invitedByName: string;
 };
 
+export type AccountInvite = {
+  id: string;
+  expiresAt: Date;
+  tenant: { id: string; name: string; slug: string };
+  invitedByName: string;
+};
+
+/**
+ * Live invites addressed to this account. The tenants page lists these so
+ * the person can join without pasting the link. One they already belong to
+ * is left out.
+ */
+export async function openInvitesFor(
+  db: Db,
+  account: { id: string; email?: string | null },
+  now = new Date(),
+): Promise<AccountInvite[]> {
+  const email = account.email?.trim();
+  if (!email) return [];
+  const rows = await db.tenantInvite.findMany({
+    where: {
+      email: { equals: email, mode: "insensitive" },
+      acceptedAt: null,
+      expiresAt: { gt: now },
+    },
+    select: {
+      id: true,
+      expiresAt: true,
+      tenantId: true,
+      tenant: { select: { id: true, name: true, slug: true } },
+      invitedBy: { select: { name: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+  });
+  const open: AccountInvite[] = [];
+  for (const row of rows) {
+    const membership = await db.membership.findUnique({
+      where: { tenantId_userId: { tenantId: row.tenantId, userId: account.id } },
+      select: { id: true },
+    });
+    if (membership) continue;
+    open.push({
+      id: row.id,
+      expiresAt: row.expiresAt,
+      tenant: row.tenant,
+      invitedByName: row.invitedBy.name,
+    });
+  }
+  return open;
+}
+
 /** Links still waiting to be used, newest first. */
 export async function pendingInvites(
   db: Db,

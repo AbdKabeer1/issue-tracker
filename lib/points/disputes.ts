@@ -117,7 +117,7 @@ export async function openDispute(
 
   if (input.kind === "wrong") {
     const entry = await db.pointEntry.findFirst({
-      where: { id: input.pointEntryId, userId, tenantId },
+      where: { id: input.pointEntryId, userId, tenantId, bugId: bug.id },
       select: { id: true, correctedAt: true },
     });
     if (!entry) return { ok: false, error: NOT_YOUR_ENTRY };

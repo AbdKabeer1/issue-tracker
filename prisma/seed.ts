@@ -285,7 +285,12 @@ async function ensureDefaultCategories() {
 }
 
 async function ensureDefaultTypes() {
-  const count = await prisma.issueType.count();
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "zedu" }, select: { id: true } });
+  if (!tenant) {
+    console.log("Skipping default issue types: the Zedu organization is missing.");
+    return;
+  }
+  const count = await prisma.issueType.count({ where: { tenantId: tenant.id } });
   if (count > 0) {
     return;
   }
@@ -299,9 +304,10 @@ async function ensureDefaultTypes() {
 
   for (const item of defaults) {
     await prisma.issueType.upsert({
-      where: { name: item.name },
+      where: { tenantId_name: { tenantId: tenant.id, name: item.name } },
       update: {},
       create: {
+        tenantId: tenant.id,
         name: item.name,
         description: item.description,
         isActive: true,

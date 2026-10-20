@@ -148,6 +148,27 @@ export default async function SettingsPage() {
       ) : null}
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          API &amp; Integrations
+        </h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Developer documentation, cURL references, and machine-readable specifications for AI agents and automated tools.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-4 text-sm">
+          <Link href="/docs" className="font-medium text-teal-700 hover:underline">
+            API Documentation
+          </Link>
+          <a
+            href="/llms.txt"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-teal-700 hover:underline"
+          >
+            AI Specs (/llms.txt) ↗
+          </a>
+        </div>
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Keyboard shortcuts
         </h2>
         <KeyboardShortcutSettings initialEnabled={settings?.keyboardShortcuts ?? true} />

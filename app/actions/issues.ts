@@ -144,10 +144,10 @@ function foreignKeyError(error: unknown): string | null {
 }
 
 /** Reads the type, including when the template column has not been migrated yet. */
-async function issueTypeForCreate(typeId: string) {
+async function issueTypeForCreate(typeId: string, tenantId: string) {
   try {
     return await prisma.issueType.findUnique({
-      where: { id: typeId },
+      where: { id_tenantId: { id: typeId, tenantId } },
       select: { id: true, isActive: true, template: true },
     });
   } catch (error) {
@@ -162,7 +162,7 @@ async function issueTypeForCreate(typeId: string) {
       /column [`'"]?(?:[\w."]+\.)*template[`'"]?/i.test(message);
     if (!missingTemplate) throw error;
     const row = await prisma.issueType.findUnique({
-      where: { id: typeId },
+      where: { id_tenantId: { id: typeId, tenantId } },
       select: { id: true, isActive: true },
     });
     return row ? { ...row, template: null } : null;
@@ -275,7 +275,7 @@ export async function createBugAction(
   }
 
   if (typeId) {
-    const issueType = await issueTypeForCreate(typeId);
+    const issueType = await issueTypeForCreate(typeId, tenantId);
     if (!issueType || !issueType.isActive) {
       return fieldError("typeId", "That type no longer exists. Please pick another.");
     }
@@ -677,7 +677,7 @@ export async function updateBugAction(
     let toName: string | null = null;
     if (data.typeId) {
       const nextType = await prisma.issueType.findUnique({
-        where: { id: data.typeId },
+        where: { id_tenantId: { id: data.typeId, tenantId: existing.tenantId } },
         select: { id: true, name: true, isActive: true },
       });
       if (!nextType || !nextType.isActive) {
@@ -758,7 +758,7 @@ export async function updateBugAction(
       let toTitle: string | null = null;
       if (nextMilestoneId) {
         const milestone = await prisma.milestone.findUnique({
-          where: { id: nextMilestoneId },
+          where: { id_tenantId: { id: nextMilestoneId, tenantId: existing.tenantId } },
           select: { title: true, isClosed: true },
         });
         if (!milestone) return fieldError("milestoneId", "That milestone no longer exists.");

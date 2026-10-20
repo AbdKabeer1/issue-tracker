@@ -152,10 +152,17 @@ export type CreatePolicyResult =
   | { status: 409; error: "idempotency_conflict"; message: string };
 
 /** An active issue type, `null` for none, or `undefined` when it isn't one. */
-async function resolveTypeId(db: Db, typeId: unknown): Promise<string | null | undefined> {
+async function resolveTypeId(
+  db: Db,
+  typeId: unknown,
+  tenantId: string,
+): Promise<string | null | undefined> {
   if (typeId === undefined || typeId === null || typeId === "") return null;
   if (typeof typeId !== "string" || typeId.length > 191) return undefined;
-  const type = await db.issueType.findUnique({ where: { id: typeId }, select: { isActive: true } });
+  const type = await db.issueType.findUnique({
+    where: { id_tenantId: { id: typeId, tenantId } },
+    select: { isActive: true },
+  });
   return type?.isActive ? typeId : undefined;
 }
 
@@ -217,7 +224,7 @@ export async function createIssueWithPolicy(input: CreatePolicyInput): Promise<C
   const earlier = await replayFor(prisma, agent.agentId, key, cutoff);
   if (earlier) return replayOrConflict(earlier, input.requestHash);
 
-  const typeId = await resolveTypeId(prisma, input.typeId);
+  const typeId = await resolveTypeId(prisma, input.typeId, agent.tenantId);
   if (typeId === undefined) {
     return { status: 422, error: "invalid_type", message: "typeId is not an active issue type." };
   }
