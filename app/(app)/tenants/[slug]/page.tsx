@@ -11,7 +11,7 @@ import { INVITE_TTL_DAYS, canInvite, pendingInvites } from "@/lib/invites";
 import { prisma } from "@/lib/prisma";
 import { ZEDU_SLUG } from "@/lib/tenant";
 import { currentTenantIdFor } from "@/lib/tenant-context";
-import { MEMBERSHIP_ROLE_LABELS, memberTenantBySlug } from "@/lib/tenants";
+import { MEMBERSHIP_ROLE_LABELS, memberTenantBySlug, tenantMembersFrom } from "@/lib/tenants";
 import { revokeInviteAction, revokeShareLinkAction, selectTenantAction } from "../actions";
 import { CopyLinkButton } from "@/components/copy-link-button";
 import { joinedSummary, listShareLinks, shareLinkStatusLabel } from "@/lib/share-invites";
@@ -25,6 +25,27 @@ const card = "rounded-xl border border-slate-200 bg-white p-4 sm:p-6";
 
 function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
+
+/** Memberships and users are loaded apart so a missing user does not fail the page. */
+async function loadTenantMembers(tenantId: string) {
+  try {
+    const rows = await prisma.membership.findMany({
+      where: { tenantId },
+      orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+      take: 200,
+      select: { role: true, createdAt: true, userId: true },
+    });
+    if (rows.length === 0) return [];
+    const people = await prisma.user.findMany({
+      where: { id: { in: rows.map((row) => row.userId) } },
+      select: { id: true, name: true, email: true, image: true, role: true },
+    });
+    return tenantMembersFrom(rows, people);
+  } catch (error) {
+    console.error("[tenant] member list failed", error);
+    return [];
+  }
 }
 
 /**
@@ -54,16 +75,7 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
       take: 20,
     }),
     canManage ? pendingInvites(prisma, tenant.id) : [],
-    prisma.membership.findMany({
-      where: { tenantId: tenant.id },
-      orderBy: [{ role: "asc" }, { user: { name: "asc" } }],
-      take: 200,
-      select: {
-        role: true,
-        createdAt: true,
-        user: { select: { id: true, name: true, email: true, image: true, role: true } },
-      },
-    }),
+    loadTenantMembers(tenant.id),
     canManage ? listShareLinks(prisma, tenant.id) : [],
   ]);
   const ownerCount = members.filter((member) => member.role === "owner").length;
@@ -148,7 +160,7 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
                 tenantId={tenant.id}
                 tenantName={tenant.name}
                 userId={member.user.id}
-                userName={member.user.name}
+                userName={member.user.name ?? member.user.email ?? "Member"}
                 membershipRole={member.role}
                 siteSuperAdmin={member.user.role === "super_admin"}
                 canChangeRoles={canChangeRoles}
