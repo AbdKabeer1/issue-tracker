@@ -51,6 +51,7 @@ describe("ticket offers", () => {
           beneficiaryUserId: "user-1",
           bug: { tenantId: "tenant-1", id: "bug-1", title: "Bug 1", projectId: "proj-1", assigneeId: null },
         }),
+        findFirst: vi.fn().mockResolvedValue(null),
         update: vi.fn().mockResolvedValue({}),
       },
       bug: {

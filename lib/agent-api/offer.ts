@@ -41,6 +41,21 @@ export function scheduleOfferExpiry(claimId: string): void {
 /** Picks by active workload, then by who has waited longest since their last offer.
  * Exported for the stale-claim sweep (#524), which re-offers a reopened issue with no agent caller. */
 export async function offerNext(db: Db, caller: { agentId?: string; tenantId: string }, bug: { id: string; projectId: string; title: string; assigneeId?: string | null }, excludeUserIds: string[] = []) {
+  // Lock the Bug row first to serialize offer creation on this issue across concurrent calls (#680).
+  await db.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${bug.id} FOR NO KEY UPDATE`;
+
+  const existingOffer = await db.issueClaim.findFirst({
+    where: {
+      bugId: bug.id,
+      releasedAt: null,
+      OR: [
+        { status: "active" },
+        { status: "offered", offeredAt: { gt: new Date(Date.now() - OFFER_TTL_MS) } },
+      ],
+    },
+    select: { id: true },
+  });
+  if (existingOffer) return null;
   const memberships = await db.membership.findMany({
     where: {
       tenantId: caller.tenantId,
@@ -55,6 +70,7 @@ export async function offerNext(db: Db, caller: { agentId?: string; tenantId: st
     ? [{ beneficiaryUserId: m.userId, agentId: m.user.agents[0].id }]
     : []);
   if (!people.length) return null;
+
   const active = await db.issueClaim.groupBy({
     by: ["beneficiaryUserId"],
     where: { beneficiaryUserId: { in: people.map((p) => p.beneficiaryUserId) }, releasedAt: null, status: "active", bug: { tenantId: caller.tenantId, projectId: bug.projectId } },
@@ -85,16 +101,25 @@ export async function offerNext(db: Db, caller: { agentId?: string; tenantId: st
     lastOfferedAt: lastOffered.get(p.beneficiaryUserId) ?? null,
     pendingOffer: pendingPeople.has(p.beneficiaryUserId),
   }));
+
   const next = availableOfferCandidates(candidates)[0];
   if (!next) return null;
+
   // Lock only the chosen member (#544) instead of looping over every member.
   await db.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${next.beneficiaryUserId} FOR NO KEY UPDATE`;
-  const claim = await db.issueClaim.create({ data: {
-    bugId: bug.id, beneficiaryUserId: next.beneficiaryUserId, agentId: next.agentId, status: "offered", offeredAt: new Date(),
-  } });
-  const event = await publish(db, { tenantId: caller.tenantId, type: "claim.offered", actorAgentId: caller.agentId, bugId: bug.id,
-    payload: { claimId: claim.id, issueId: bug.id, projectId: bug.projectId, beneficiaryUserId: next.beneficiaryUserId, expiresAt: new Date(claim.offeredAt!.getTime() + OFFER_TTL_MS).toISOString() } });
-  return { claim, beneficiaryUserId: next.beneficiaryUserId, bugTitle: bug.title, eventId: event.id };
+  try {
+    const claim = await db.issueClaim.create({ data: {
+      bugId: bug.id, beneficiaryUserId: next.beneficiaryUserId, agentId: next.agentId, status: "offered", offeredAt: new Date(),
+    } });
+    const event = await publish(db, { tenantId: caller.tenantId, type: "claim.offered", actorAgentId: caller.agentId, bugId: bug.id,
+      payload: { claimId: claim.id, issueId: bug.id, projectId: bug.projectId, beneficiaryUserId: next.beneficiaryUserId, expiresAt: new Date(claim.offeredAt!.getTime() + OFFER_TTL_MS).toISOString() } });
+    return { claim, beneficiaryUserId: next.beneficiaryUserId, bugTitle: bug.title, eventId: event.id };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function offerIssue(agent: AgentContext, projectId: string, bugId: string) {
