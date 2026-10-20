@@ -121,6 +121,37 @@ describe("CommentForm optimistic update and rollback", () => {
     expect(submitButton().disabled).toBe(true);
   });
 
+  it("freezes the comment editor while posting and clears only the submitted snapshot (#733)", async () => {
+    mockedAddComment.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releasePendingAction = () => resolve({ ok: true });
+        }),
+    );
+    renderForm(defaultProps);
+
+    const textarea = bodyTextarea();
+    await user.type(textarea, "first comment");
+    await user.click(submitButton());
+
+    await waitFor(() => {
+      expect(submitButton().textContent).toBe("Posting…");
+    });
+    // The editor is frozen for the duration of the submission (#733).
+    expect(textarea.disabled).toBe(true);
+
+    releasePendingAction?.();
+    releasePendingAction = null;
+
+    // Only the submitted snapshot is cleared; the editor is usable again.
+    await waitFor(() => {
+      expect(textarea.value).toBe("");
+      expect(textarea.disabled).toBe(false);
+      expect(submitButton().textContent).toBe("Post comment");
+    });
+    expect(mockedAddComment).toHaveBeenCalledTimes(1);
+  });
+
   it("renders the reply variant and supports cancelling", async () => {
     const onCancel = vi.fn();
     renderForm({

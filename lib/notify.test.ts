@@ -43,6 +43,43 @@ const who = (id: string, over: Record<string, boolean> = {}) => ({
 beforeEach(() => vi.clearAllMocks());
 
 describe("deliverNotifications", () => {
+  it("does not notify a parent author who explicitly unwatched the issue (#738)", async () => {
+    const issueWatchFindMany = prisma.issueWatch.findMany as unknown as ReturnType<typeof vi.fn>;
+    issueWatchFindMany.mockResolvedValue([{ userId: "bob", watching: false }]);
+    findMany.mockResolvedValue([who("bob")]);
+
+    await deliverNotifications({
+      ...base,
+      kind: "comment_added",
+      commentId: "c1",
+      parentAuthorId: "bob",
+      recipientIds: [],
+    });
+
+    expect(prisma.notification.createMany as unknown as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("still notifies an actively watching parent author about replies (#738)", async () => {
+    const issueWatchFindMany = prisma.issueWatch.findMany as unknown as ReturnType<typeof vi.fn>;
+    issueWatchFindMany.mockResolvedValue([{ userId: "bob", watching: true }]);
+    findMany.mockResolvedValue([who("bob")]);
+
+    await deliverNotifications({
+      ...base,
+      kind: "comment_added",
+      commentId: "c1",
+      parentAuthorId: "bob",
+      recipientIds: [],
+    });
+
+    expect(prisma.notification.createMany as unknown as ReturnType<typeof vi.fn>).toHaveBeenCalled();
+    const call = (prisma.notification.createMany as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.data.map((row: { userId: string }) => row.userId)).toEqual(["bob"]);
+    expect(send).toHaveBeenCalledOnce();
+    expect(send.mock.calls[0][0].to).toBe("bob@x.dev");
+  });
+
   it("only emails people who haven't opted out", async () => {
     findMany.mockResolvedValue([who("bob")]);
     await deliverNotifications({ ...base, kind: "mentioned", recipientIds: ["bob", "cara"], place: "comment" });

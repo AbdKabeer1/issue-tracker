@@ -2,10 +2,13 @@ import type { MembershipRole } from "@prisma/client";
 import { isOrganizationAdmin } from "@/lib/organization-role";
 import type { AppRole } from "@/lib/roles";
 
+export const WORK_READINESS_VOTE_THRESHOLD = 3;
+
 export const TICKET_ASSIGN_ERRORS = {
   unauthorized: "Only an owner or admin of this organization can assign issues to other people",
   unauthorizedUpdate: "Only the assignee, or an owner or admin of this organization, can update this issue",
   statusNeedsAssignment: "Assign this issue to yourself first, then change its status.",
+  needsVotes: `This issue must reach at least ${WORK_READINESS_VOTE_THRESHOLD} upvotes before work can be assigned.`,
   invalidId: "Invalid issue ID",
   notFound: "Issue not found",
   assigneeNotFound: "Assignee not found",
@@ -29,15 +32,22 @@ export function canAssignTicket({
   membershipRole,
   currentAssigneeId,
   targetAssigneeId,
+  voteCount,
 }: {
   actorId: string;
   actorRole?: AppRole | null;
   membershipRole?: MembershipRole | null;
   currentAssigneeId?: string | null;
   targetAssigneeId?: string | null;
+  voteCount?: number;
 }): boolean {
   if (isOrganizationAdmin(membershipRole, actorRole)) {
     return true;
+  }
+
+  // If assigning work to someone (not unassigning), check work readiness threshold if voteCount is specified (#764)
+  if (targetAssigneeId && typeof voteCount === "number" && voteCount < WORK_READINESS_VOTE_THRESHOLD) {
+    return false;
   }
 
   // Self-assigning (only allowed if unassigned or already assigned to actor)

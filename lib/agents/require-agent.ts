@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { bearerToken, hashSecret } from "@/lib/agents/keys";
 import { AgentLevelError } from "@/lib/agents/levels";
+import { AgentPlatformDisabledError, agentPlatformDisabledResponse } from "@/lib/agents/platform-gate";
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
+
+export { AgentPlatformDisabledError, agentPlatformDisabledResponse };
 
 /**
  * Who is calling (#427). Every agent route starts with `requireAgent()`.
@@ -78,6 +82,7 @@ type HeaderSource = { headers: { get(name: string): string | null } };
 const LAST_USED_THROTTLE_MS = 60 * 1000;
 
 export async function requireAgent(request: HeaderSource): Promise<AgentContext> {
+  if (!isAgentPlatformEnabled()) throw new AgentPlatformDisabledError();
   const raw = bearerToken(request.headers.get("authorization"));
   if (!raw) throw new AgentAuthError("missing_key");
 
@@ -146,6 +151,7 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
  * missing or bad key, 403 for too low a level. Anything else is rethrown.
  */
 export function agentErrorResponse(error: unknown): NextResponse {
+  if (error instanceof AgentPlatformDisabledError) return agentPlatformDisabledResponse();
   if (error instanceof AgentAuthError) {
     return NextResponse.json(
       { error: error.code, message: error.message },

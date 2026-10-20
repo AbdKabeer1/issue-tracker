@@ -9,6 +9,7 @@ import { PREF_FIELD, isNotificationKind } from "@/lib/notification-prefs";
 import { displayNameSchemaFor } from "@/lib/display-name";
 import { isAdmin } from "@/lib/roles";
 import { fromZodError, type FieldErrorResult } from "@/lib/form-errors";
+import { appCookieOptions } from "@/lib/cookie-options";
 
 export type SettingsResult = { error?: string; ok?: boolean; emailNotifications?: boolean };
 
@@ -61,12 +62,7 @@ export async function setThemeAction(theme: unknown): Promise<SettingsResult> {
   } catch (err) {
     console.error("[settings] setThemeAction user update failed:", err);
   }
-  (await cookies()).set(THEME_COOKIE, theme, {
-    path: "/",
-    maxAge: THEME_COOKIE_MAX_AGE,
-    sameSite: "lax",
-    httpOnly: true,
-  });
+  (await cookies()).set(THEME_COOKIE, theme, appCookieOptions(THEME_COOKIE_MAX_AGE));
   revalidatePath("/", "layout");
   return { ok: true };
 }
