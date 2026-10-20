@@ -62,10 +62,11 @@ export default async function LoginPage({
             aria-atomic="true"
           >
             <p className="font-medium">
-              {params.error === "OAuthCallbackError" ||
-              params.error === "Configuration"
-                ? "Unable to complete Google sign-in. Please try again."
-                : "Authentication failed. Please try again."}
+              {params.error === "TwoFactor"
+                ? "This account has two-factor sign-in on. Sign in with email and password, then enter the code. Google cannot skip that step."
+                : params.error === "OAuthCallbackError" || params.error === "Configuration"
+                  ? "Unable to complete Google sign-in. Please try again."
+                  : "Authentication failed. Please try again."}
             </p>
             {params.reason ? (
               <p className="mt-1.5 font-mono text-xs text-red-800 break-words">
