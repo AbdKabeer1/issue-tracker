@@ -125,7 +125,7 @@ describe("POST /api/v1/issues/[id]/github (#452)", () => {
       select: { id: true },
     });
     expect(mocks.merge).toHaveBeenCalledWith(agent, "bug1");
-    expect(mocks.budget).toHaveBeenCalledWith({ id: "c1", burst: false }, "write");
+    expect(mocks.budget).toHaveBeenCalledWith({ id: "c1", burst: false, burstUntil: null }, "write");
   });
 
   it("links only, without merging, before the fix is accepted", async () => {

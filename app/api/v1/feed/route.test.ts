@@ -27,7 +27,7 @@ describe("feed authentication and scope", () => {
   });
   it("allows an observer key, charges a read, and audits it", async () => {
     expect((await GET(request("?projectId=project", true))).status).toBe(200);
-    expect(mocks.budget).toHaveBeenCalledWith({ id: "agent", burst: false }, "read");
+    expect(mocks.budget).toHaveBeenCalledWith({ id: "agent", burst: false, burstUntil: null }, "read");
     expect(mocks.audit).toHaveBeenCalled();
     expect(mocks.read).toHaveBeenCalledWith("tenant", "project", null, null);
     expect(mocks.session).not.toHaveBeenCalled();

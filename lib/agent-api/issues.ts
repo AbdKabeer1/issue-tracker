@@ -6,7 +6,7 @@ import { agentErrorResponse, assertKeyProject, requireAgent, type AgentContext }
 import { requireLevel } from "@/lib/agents/levels";
 import { audit } from "@/lib/agents/audit";
 import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/rate-budget";
-import { withAgentBudgetHeaders } from "@/lib/agents/rate-budget-headers";
+import { withAgentBudgetHeaders, type AgentBudgetQuota } from "@/lib/agents/rate-budget-headers";
 import { createBugSchema, commentSchema, statusSchema, severitySchema } from "@/lib/validations/issue";
 import { parsePlatformFilter, platformFilterWhere } from "@/lib/platform-filter";
 import { parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
@@ -46,6 +46,7 @@ export async function agentIssueRequest(
 ): Promise<Response> {
   let agent: AgentContext | undefined;
   let response: Response | undefined;
+  let quota: AgentBudgetQuota | undefined;
   try {
     agent = await requireAgent(request);
     requireLevel(agent, level);
@@ -53,10 +54,12 @@ export async function agentIssueRequest(
       // Retired or non-working routes must not spend the caller's budget (#554).
       response = await run(agent);
     } else {
-      const budget = await consumeAgentBudget({ id: agent.agentId, burst: agent.burst }, level === "observer" ? "read" : "write");
+      const budget = await consumeAgentBudget(
+        { id: agent.agentId, burst: agent.burst, burstUntil: agent.burstUntil ?? null },
+        level === "observer" ? "read" : "write",
+      );
+      quota = budget;
       response = budget.allowed ? await run(agent) : agentBudgetExceededResponse(budget.retryAfterSeconds, budget);
-      // #646: every charged response says what's left of the budget it used.
-      if (budget.allowed) response = withAgentBudgetHeaders(response, budget);
     }
   } catch (error) {
     if (error instanceof IssueApiError) response = NextResponse.json(error.body ? { error: error.message, ...error.body } : { error: error.message }, { status: error.status });
@@ -79,6 +82,9 @@ export async function agentIssueRequest(
       }
     }
   }
+  // #646/#596: every charged response — success, validation failure, or a
+  // domain error thrown after the charge — reports the same quota.
+  if (quota) response = withAgentBudgetHeaders(response, quota);
   response.headers.set("Cache-Control", "private, no-store");
   return response;
 }

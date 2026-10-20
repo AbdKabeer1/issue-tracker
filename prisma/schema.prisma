@@ -780,6 +780,10 @@ model Agent {
   level                AgentLevel            @default(observer)
   /// Higher rate budget, set only by a tenant admin (#440).
   burst                Boolean               @default(false)
+  /// When the higher budget stops (#596). Null on an enabled grant means it
+  /// has no expiry. An expired time falls back to the standard budget on the
+  /// next request; no cleanup job flips `burst` off.
+  burstUntil           DateTime?
   revokedAt            DateTime?
   /// Set when this is the person's personal agent for that project.
   /// Created automatically so they can copy a key without registering one.

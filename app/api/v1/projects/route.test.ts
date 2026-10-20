@@ -79,6 +79,6 @@ describe("agent project discovery (#607)", () => {
     expect((await list(request())).status).toBe(401);
     expect(db.project.findMany).not.toHaveBeenCalled();
     await list(request());
-    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false }, "read");
+    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false, burstUntil: null }, "read");
   });
 });
