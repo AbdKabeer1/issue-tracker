@@ -268,6 +268,19 @@ describe("acceptFix: a successful accept (#434)", () => {
     expect(reviewerAwards[1]).toMatchObject({ userId: "sam", points: 10, sourceKey: "reviewer:bug1:sam" });
   });
 
+  it("does not count or pay a verdict credited to the active claim beneficiary (#495)", async () => {
+    confirmWith("rob", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({ claims: [
+      { status: "active", releasedAt: null, agentId: "worker-agent", beneficiaryUserId: "claimant", agent: { ownerUserId: "worker" } },
+    ] }));
+    verdict("r1", "rob", "claimant");
+    verdict("r2", "sam", "sam");
+
+    const result = await acceptFix(merger("m1", "mo", "merger"), "bug1");
+    expect(result).toMatchObject({ status: 409, error: "not_ready", missing: "verdicts" });
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+  });
+
   it("pays the active claim's beneficiary rather than the assignee", async () => {
     confirmWith("rob", "sam");
     verdict("r1", "rob");

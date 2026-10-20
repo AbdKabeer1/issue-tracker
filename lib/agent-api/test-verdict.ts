@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
 import {
   assertIndependentReviewer,
+  reviewerCreditConflict,
   ReviewerNotIndependentError,
   type ReviewedBug,
 } from "@/lib/agents/independence";
@@ -60,6 +61,7 @@ const reviewedBugSelect = {
   pullRequestHeadSha: true,
   severity: true,
   beneficiaryUserId: true,
+  assigneeId: true,
   reporterId: true,
   createdByAgentId: true,
   createdByAgent: { select: { ownerUserId: true } },
@@ -68,6 +70,7 @@ const reviewedBugSelect = {
       status: true,
       releasedAt: true,
       agentId: true,
+      beneficiaryUserId: true,
       agent: { select: { ownerUserId: true } },
     },
   },
@@ -180,6 +183,13 @@ export async function submitTestVerdict(
         field: "onBehalfOfUserId",
       };
     }
+  }
+  if (reviewerCreditConflict(onBehalfOfUserId, bug as ReviewedBug)) {
+    return {
+      status: 403,
+      error: "not_independent",
+      message: "onBehalfOfUserId must be independent of the issue's reporter, solver, and claim beneficiary.",
+    };
   }
 
   const verdictSelect = {

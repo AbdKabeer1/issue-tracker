@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
-import { reviewerConflict, type ReviewedBug } from "@/lib/agents/independence";
+import { reviewerConflict, reviewerCreditConflict, type ReviewedBug } from "@/lib/agents/independence";
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { IssueApiError } from "@/lib/agent-api/issues";
@@ -143,6 +143,7 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
         continue;
       }
       if (reviewerConflict({ id: verdict.agent.id, ownerUserId: verdict.agent.ownerUserId }, reviewed)) continue;
+      if (reviewerCreditConflict(verdict.onBehalfOfUserId, reviewed)) continue;
       if (owners.has(verdict.agent.ownerUserId)) continue;
       owners.add(verdict.agent.ownerUserId);
       reviewers.push(verdict.onBehalfOfUserId);
