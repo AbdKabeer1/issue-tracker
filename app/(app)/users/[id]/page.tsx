@@ -4,9 +4,10 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { pointTotals } from "@/lib/points/leaderboard";
+import { pointBalance } from "@/lib/points/balance";
 import { PointsSummary } from "@/components/points-summary";
 import { requireUser } from "@/lib/auth-helpers";
-import { canViewProfile } from "@/lib/profile-access";
+import { canViewProfile, canViewWallet } from "@/lib/profile-access";
 import { roleLabels } from "@/lib/roles";
 import { Badge } from "@/components/ui/badge";
 import { LocalTime } from "@/components/local-time";
@@ -51,7 +52,7 @@ export default async function ProfilePage({ params }: ProfileProps) {
   const [person, reported, assigned, counts, assignedTotal] = await Promise.all([
     prisma.user.findUnique({
       where: { id },
-      select: { id: true, name: true, role: true, createdAt: true },
+      select: { id: true, name: true, role: true, createdAt: true, walletAddress: true },
     }),
     prisma.bug.findMany({
       where: { reporterId: id, isDeleted: false, ...scope },
@@ -80,6 +81,12 @@ export default async function ProfilePage({ params }: ProfileProps) {
   const points = tenantId
     ? await pointTotals(prisma, tenantId, person.id)
     : { points: 0, solvedTasks: 0 };
+  // #618: the ledger balance behind those points, and the wallet address that
+  // only they and workspace admins may see.
+  const [balance, walletVisible] = await Promise.all([
+    tenantId ? pointBalance(prisma, { tenantId, userId: person.id }) : Promise.resolve(null),
+    canViewWallet(prisma, viewer, person.id, tenantId),
+  ]);
 
   const reportedTotal = counts.reduce((sum, row) => sum + row._count._all, 0);
   const resolved =
@@ -109,6 +116,40 @@ export default async function ProfilePage({ params }: ProfileProps) {
       </dl>
 
       <PointsSummary points={points.points} solvedTasks={points.solvedTasks} />
+
+      {balance || (walletVisible && person.walletAddress) ? (
+        <section
+          className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5"
+          aria-labelledby="balance-heading"
+        >
+          <h2
+            id="balance-heading"
+            className="text-sm font-semibold uppercase tracking-wide text-slate-500"
+          >
+            Balance
+          </h2>
+          {balance ? (
+            <>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
+                {balance.lifetime.points}
+                <span className="ml-1 text-sm font-normal text-slate-600">
+                  point{balance.lifetime.points === 1 ? "" : "s"}
+                </span>
+              </p>
+              <p className="text-sm text-slate-600">
+                {balance.lifetime.entries} ledger entr
+                {balance.lifetime.entries === 1 ? "y" : "ies"}, corrections included
+              </p>
+            </>
+          ) : null}
+          {walletVisible && person.walletAddress ? (
+            <p className="mt-2 break-all font-mono text-sm text-slate-700">
+              <span className="font-sans font-medium text-slate-600">Wallet </span>
+              {person.walletAddress}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       <IssueList
         heading="Reported"

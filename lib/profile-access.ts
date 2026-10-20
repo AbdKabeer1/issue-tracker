@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { isTenantAdminRole } from "@/lib/agents/membership";
 import { isSuperAdmin, type AppRole } from "@/lib/roles";
 
 type Db = Pick<PrismaClient, "membership"> | Pick<Prisma.TransactionClient, "membership">;
@@ -24,4 +25,27 @@ export async function canViewProfile(
     select: { id: true },
   });
   return shared !== null;
+}
+
+/**
+ * Whether `viewer` may see `personId`'s wallet address (#618).
+ *
+ * The address is set by the person alone and only becomes useful to a
+ * transfer, so it goes to them and to admins of a tenant they share — not to
+ * everyone who can see the profile's name, points and issues. The site's
+ * super admin counts as an admin everywhere; a site-wide `admin` does not.
+ */
+export async function canViewWallet(
+  db: Db,
+  viewer: { id: string; role?: AppRole | null },
+  personId: string,
+  tenantId: string | null,
+): Promise<boolean> {
+  if (viewer.id === personId) return true;
+  if (!tenantId) return false;
+  const membership = await db.membership.findUnique({
+    where: { tenantId_userId: { tenantId, userId: viewer.id } },
+    select: { role: true },
+  });
+  return isTenantAdminRole(membership?.role, viewer.role);
 }

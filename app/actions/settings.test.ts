@@ -7,7 +7,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: { user: { update: vi.fn() } } }));
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { setKeyboardShortcutsAction, updateDisplayNameAction } from "./settings";
+import { setKeyboardShortcutsAction, setWalletAddressAction, updateDisplayNameAction } from "./settings";
 
 const update = prisma.user.update as unknown as ReturnType<typeof vi.fn>;
 const form = (name: string) => {
@@ -74,5 +74,49 @@ describe("setKeyboardShortcutsAction (#287)", () => {
     vi.clearAllMocks();
     expect(await setKeyboardShortcutsAction("off")).toEqual({ error: "Invalid setting" });
     expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("setWalletAddressAction (#618)", () => {
+  const walletForm = (value: string | null) => {
+    const f = new FormData();
+    if (value !== null) f.set("walletAddress", value);
+    return f;
+  };
+  const address = `0x${"a".repeat(40)}`;
+
+  it("saves the trimmed address on the signed-in person's own row", async () => {
+    const result = await setWalletAddressAction(undefined, walletForm(`  ${address}  `));
+    expect(result).toEqual({ ok: true, walletAddress: address });
+    expect(update).toHaveBeenCalledWith({ where: { id: "u1" }, data: { walletAddress: address } });
+    expect(revalidatePath).toHaveBeenCalledWith("/settings");
+  });
+
+  it("ignores any id smuggled into the form, so nobody can set a wallet for someone else", async () => {
+    const f = walletForm(address);
+    f.set("id", "someone-else");
+    await setWalletAddressAction(undefined, f);
+    expect(update).toHaveBeenCalledWith({ where: { id: "u1" }, data: { walletAddress: address } });
+  });
+
+  it("clears the address when the field is left empty", async () => {
+    expect(await setWalletAddressAction(undefined, walletForm(""))).toEqual({
+      ok: true,
+      walletAddress: null,
+    });
+    expect(update).toHaveBeenCalledWith({ where: { id: "u1" }, data: { walletAddress: null } });
+  });
+
+  it.each([
+    ["a truncated address", "0xdeadbeef"],
+    ["a missing 0x prefix", `0${"a".repeat(40)}`],
+    ["non-hex characters", `0x${"g".repeat(40)}`],
+    ["a domain instead of an address", "vitalik.eth"],
+  ])("rejects %s and writes nothing", async (_label, value) => {
+    const result = await setWalletAddressAction(undefined, walletForm(value));
+    expect(result.ok).toBeUndefined();
+    expect(result.field).toBe("walletAddress");
+    expect(result.error).toContain("EVM address");
+    expect(update).not.toHaveBeenCalled();
   });
 });

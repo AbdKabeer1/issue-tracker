@@ -86,7 +86,8 @@ describe("an agent gives work back (#547)", () => {
   });
 
   it("offers the issue to someone else, never back to the same person", async () => {
-    db.issueClaim.findFirst.mockResolvedValue(claim("active"));
+    db.$queryRaw.mockResolvedValueOnce([{ id: "bug-1" }]).mockResolvedValueOnce([{ id: "bob" }]);
+    db.issueClaim.findFirst.mockResolvedValueOnce(claim("active")).mockResolvedValueOnce(null);
     db.bug.findFirstOrThrow.mockResolvedValue({ id: "bug-1", title: "T", status: "in_progress", assigneeId: "ada", projectId: "p" });
     isConfirmed.mockResolvedValue(true);
     db.membership.findMany.mockResolvedValue([
