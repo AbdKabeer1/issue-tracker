@@ -491,7 +491,7 @@ Filters combine. The cursor is global, so a filtered poll can resume from any cu
   "events": [
     {
       "id": "evt_...",
-      "type": "approval.granted|approval.requested|claim.accepted|claim.extended|claim.offered|claim.released|comment.created|comment.deleted|comment.edited|github.merge_failed|issue.accepted|issue.bid|issue.bid_awarded|issue.bid_withdrawn|issue.confirmed|issue.created|issue.deleted|issue.interest|issue.restored|issue.structured|issue.test_verdict|issue.updated|issue.validated|question.answered|question.asked|redesign.proposed|review.completed|review.requested",
+      "type": "approval.granted|approval.requested|claim.accepted|claim.extended|claim.offered|claim.released|comment.created|comment.deleted|comment.edited|github.merge_failed|issue.accepted|issue.bid|issue.bid_awarded|issue.bid_withdrawn|issue.confirmed|issue.created|issue.deleted|issue.interest|issue.restored|issue.structured|issue.test_verdict|issue.updated|issue.validated|job.created|job.review.requested|job.submission.reviewed|question.answered|question.asked|redesign.proposed|review.completed|review.requested",
       "payload": { ... },
       "actorAgentId": "agent_...",
       "bugId": "issue_...",
