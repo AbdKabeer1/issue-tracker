@@ -23,7 +23,7 @@ import { GET as list, POST as create } from "@/app/api/v1/issues/route";
 import { GET as read } from "@/app/api/v1/issues/[id]/route";
 import { POST as comment, GET as comments } from "@/app/api/v1/issues/[id]/comments/route";
 import { POST as claim } from "@/app/api/v1/issues/[id]/claim/route";
-import { encodeCursor } from "./create-policy";
+import { encodeCursor, hashCreateRequest } from "./create-policy";
 import { PROJECT_ID_REQUIRED } from "./issues";
 
 afterEach(() => vi.restoreAllMocks());
@@ -31,6 +31,20 @@ afterEach(() => vi.restoreAllMocks());
 const issue = { id: "issue-a", title: "A distinct issue", createdAt: new Date("2026-10-19T12:00:00Z"), comments: [] };
 const context = { params: Promise.resolve({ id: issue.id }) };
 const validBody = { projectId: "project-a", title: issue.title, description: "An adequate description of the issue.", acknowledgeSimilar: true };
+
+function createRequestHash(body: typeof validBody, beneficiaryUserId = "owner-a") {
+  return hashCreateRequest({
+    projectId: body.projectId,
+    beneficiaryUserId,
+    title: body.title,
+    description: body.description,
+    categoryId: null,
+    proofLinks: [],
+    typeId: null,
+    severity: null,
+    acknowledgeSimilar: body.acknowledgeSimilar ?? null,
+  });
+}
 
 function request(method = "GET", body?: unknown, query = "?projectId=project-a", key = true) {
   return new NextRequest(`http://localhost/api/v1/issues${query}`, {
@@ -242,7 +256,11 @@ describe("agent issue creation via the real shared create policy", () => {
   });
 
   it("returns the policy's replay without inserting again", async () => {
-    db.idempotencyKey.findUnique.mockResolvedValueOnce({ bugId: issue.id, createdAt: new Date() });
+    db.idempotencyKey.findUnique.mockResolvedValueOnce({
+      bugId: issue.id,
+      requestHash: createRequestHash(validBody),
+      createdAt: new Date(),
+    });
     const response = await create(request("POST", validBody));
     expect(response.status).toBe(200);
     expect((await response.json()).replayed).toBe(true);
@@ -251,9 +269,25 @@ describe("agent issue creation via the real shared create policy", () => {
   });
 
   it("does not return a replay from a different project", async () => {
-    db.idempotencyKey.findUnique.mockResolvedValueOnce({ bugId: "foreign-issue", createdAt: new Date() });
+    db.idempotencyKey.findUnique.mockResolvedValueOnce({
+      bugId: "foreign-issue",
+      requestHash: createRequestHash(validBody),
+      createdAt: new Date(),
+    });
     db.bug.findFirst.mockResolvedValueOnce(null);
     expect((await create(request("POST", validBody))).status).toBe(404);
+  });
+
+  it("returns 409 when the same idempotency key is reused with a different body (#531)", async () => {
+    db.idempotencyKey.findUnique.mockResolvedValueOnce({
+      bugId: issue.id,
+      requestHash: "different-hash",
+      createdAt: new Date(),
+    });
+    const response = await create(request("POST", validBody));
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toBe("idempotency_conflict");
+    expect(db.bug.create).not.toHaveBeenCalled();
   });
 
   it("returns the shared similar-issue conflict and accepts an explicit acknowledgement", async () => {
@@ -292,7 +326,7 @@ describe("agent comments", () => {
     expect(log).toHaveBeenCalledWith("[agent-api] request audit failed", {
       tenantId: "tenant-a", agentId: "agent-a", action: "comments.create",
       target: issue.id, payload: { status: 201, request: true },
-    }, error);
+    }, expect.objectContaining({ message: error.message }));
   });
 
   it("keeps transactional domain audit failures fatal (#755)", async () => {

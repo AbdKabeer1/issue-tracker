@@ -8,13 +8,14 @@ import { audit } from "@/lib/agents/audit";
 import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/rate-budget";
 import { createBugSchema, commentSchema, statusSchema, severitySchema } from "@/lib/validations/issue";
 import { parsePlatformFilter, platformFilterWhere } from "@/lib/platform-filter";
-import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, pageSize, toPage, type IssueCursor } from "@/lib/agent-api/create-policy";
+import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, hashCreateRequest, pageSize, toPage, type IssueCursor } from "@/lib/agent-api/create-policy";
 import { createdSummary, commentedSummary, commentPreview } from "@/lib/activity-log";
 import { extractMentionedUserIds, normalizeMentions } from "@/lib/mentions";
 import { commentDepth, MAX_COMMENT_DEPTH } from "@/lib/comments";
 import { publish } from "@/lib/agent-api/events";
 import { notifyLater } from "@/lib/notify";
 import type { NotificationEvent } from "@/lib/notifications";
+import { logger } from "@/lib/logger";
 
 export class IssueApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -61,7 +62,7 @@ export async function agentIssueRequest(
         await audit(agent, action, target, payload);
       } catch (error) {
         // Retain the failed record in server logs for investigation/recovery.
-        console.error("[agent-api] request audit failed", {
+        logger.error("[agent-api] request audit failed", {
           tenantId: agent.tenantId, agentId: agent.agentId, action, target, payload,
         }, error);
       }
@@ -188,8 +189,20 @@ export async function createAgentIssue(agent: AgentContext, request: NextRequest
   const input = createSchema.parse(await issueJson(request));
   const scope = await issueProject(agent, request.nextUrl.searchParams, input.projectId);
   const beneficiaryUserId = input.beneficiaryUserId ?? agent.ownerId;
+  const requestHash = hashCreateRequest({
+    projectId: scope.projectId,
+    beneficiaryUserId,
+    title: input.title,
+    description: input.description,
+    categoryId: input.categoryId || null,
+    proofLinks: input.proofLinks,
+    typeId: input.typeId ?? null,
+    severity: input.severity ?? null,
+    acknowledgeSimilar: input.acknowledgeSimilar ?? null,
+  });
   const result = await createIssueWithPolicy({
     agent, projectId: scope.projectId, idempotencyKey: request.headers.get("Idempotency-Key"),
+    requestHash,
     title: input.title, typeId: input.typeId, severity: input.severity, acknowledgeSimilar: input.acknowledgeSimilar,
     insert: async (tx, policy) => {
       const member = await tx.membership.findUnique({

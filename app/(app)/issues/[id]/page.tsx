@@ -892,11 +892,12 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       <IssueAgentActivity decisions={agentDecisions} />
 
       <section
-        id="comments"
+        id="conversation"
         className="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-4 sm:p-6"
       >
+        <span id="comments" className="sr-only" aria-hidden="true" />
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Comments ({comments.visibleCount})
+          Conversation ({comments.visibleCount})
         </h2>
         {comments.hiddenThreads > 0 ? (
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600 print:hidden">

@@ -5,6 +5,7 @@ import { generateApiKey, generateDeviceCode, generateUserCode, hashSecret, norma
 import { tenantForOwner } from "@/lib/agents/membership";
 import { agentModelSchema, agentNameSchema, insertAgentWithKey, type Actor, type IssuedKey } from "@/lib/agents/registry";
 import { AGENT_LIMIT_MESSAGE, MAX_ACTIVE_AGENTS_PER_OWNER } from "@/lib/agents/registry-limits";
+import { logger } from "@/lib/logger";
 
 /**
  * Pairing an agent with its owner (#427), like a TV signing in to an account:
@@ -51,7 +52,7 @@ export async function startPairing(input: { name?: unknown; model?: unknown }, n
       expiresAt,
     },
   });
-  cleanupExpiredPairings(now).catch((error: unknown) => console.error("[pairing] cleanup failed", error));
+  cleanupExpiredPairings(now).catch((error: unknown) => logger.error("[pairing] cleanup failed", error));
   return { ok: true, userCode, deviceCode, expiresAt };
 }
 
@@ -142,7 +143,7 @@ export async function approvePairing(
     return { ok: true, name: pairing.proposedName } as const;
   });
   if (result.ok) {
-    cleanupExpiredPairings(now).catch((error: unknown) => console.error("[pairing] cleanup failed", error));
+    cleanupExpiredPairings(now).catch((error: unknown) => logger.error("[pairing] cleanup failed", error));
   }
   return result;
 }
@@ -168,7 +169,7 @@ export async function materializeApprovedPairings(ownerUserId: string, tenantId:
         tenantId: pairing.tenantId!,
       }));
     } catch (error) {
-      console.error("[pairing] could not record approved agent", error);
+      logger.error("[pairing] could not record approved agent", error);
     }
   }
 }

@@ -156,6 +156,16 @@ describe("BugDetailPage conditional user query (#349)", () => {
     expect(pageSourceFresh).toMatch(/Danger zone[\s\S]*?<DeleteIssueButton/);
   });
 
+  it("renders Conversation section heading and supports conversation anchor (#753)", () => {
+    const pageSourceFresh = readFileSync(
+      path.resolve(__dirname, "page.tsx"),
+      "utf8",
+    );
+    expect(pageSourceFresh).toContain('id="conversation"');
+    expect(pageSourceFresh).toContain('id="comments"');
+    expect(pageSourceFresh).toContain("Conversation ({comments.visibleCount})");
+  });
+
   describe("runtime execution", () => {
     beforeEach(() => {
       vi.clearAllMocks();
