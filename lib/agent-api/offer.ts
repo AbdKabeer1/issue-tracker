@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { IssueApiError } from "@/lib/agent-api/issues";
@@ -17,14 +17,16 @@ const id = z.string().trim().min(1).max(191);
 export const offerSchema = z.object({ projectId: id.optional() }).strict();
 
 type Db = typeof prisma | Prisma.TransactionClient;
-type OfferCandidate = { beneficiaryUserId: string; agentId: string; activeClaims: number; lastOfferedAt: Date | null; pendingOffer?: boolean };
+export type OfferCandidate = { beneficiaryUserId: string; agentId: string; activeClaims: number; lastOfferedAt: Date | null; pendingOffer?: boolean; volunteered?: boolean };
 
 export function isOfferExpired(offeredAt: Date | null, now = Date.now()): boolean {
   return !offeredAt || now - offeredAt.getTime() >= OFFER_TTL_MS;
 }
 
 export function rankOfferCandidates<T extends OfferCandidate>(candidates: T[]): T[] {
-  return [...candidates].sort((a, b) => a.activeClaims - b.activeClaims
+  return [...candidates].sort((a, b) =>
+    (b.volunteered ? 1 : 0) - (a.volunteered ? 1 : 0)
+    || a.activeClaims - b.activeClaims
     || (a.lastOfferedAt?.getTime() ?? Number.NEGATIVE_INFINITY) - (b.lastOfferedAt?.getTime() ?? Number.NEGATIVE_INFINITY)
     || a.beneficiaryUserId.localeCompare(b.beneficiaryUserId));
 }
@@ -41,6 +43,21 @@ export function scheduleOfferExpiry(claimId: string): void {
 /** Picks by active workload, then by who has waited longest since their last offer.
  * Exported for the stale-claim sweep (#524), which re-offers a reopened issue with no agent caller. */
 export async function offerNext(db: Db, caller: { agentId?: string; tenantId: string }, bug: { id: string; projectId: string; title: string; assigneeId?: string | null }, excludeUserIds: string[] = []) {
+  // Lock the Bug row first to serialize offer creation on this issue across concurrent calls (#680).
+  await db.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${bug.id} FOR NO KEY UPDATE`;
+
+  const existingOffer = await db.issueClaim.findFirst({
+    where: {
+      bugId: bug.id,
+      releasedAt: null,
+      OR: [
+        { status: "active" },
+        { status: "offered", offeredAt: { gt: new Date(Date.now() - OFFER_TTL_MS) } },
+      ],
+    },
+    select: { id: true },
+  });
+  if (existingOffer) return null;
   const memberships = await db.membership.findMany({
     where: {
       tenantId: caller.tenantId,
@@ -55,11 +72,6 @@ export async function offerNext(db: Db, caller: { agentId?: string; tenantId: st
     ? [{ beneficiaryUserId: m.userId, agentId: m.user.agents[0].id }]
     : []);
   if (!people.length) return null;
-  // Serialize offer selection across issues so a person cannot accumulate
-  // simultaneous pending offers while their active-claim count is stale.
-  for (const userId of people.map((person) => person.beneficiaryUserId).sort()) {
-    await db.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR NO KEY UPDATE`;
-  }
 
   const active = await db.issueClaim.groupBy({
     by: ["beneficiaryUserId"],
@@ -67,15 +79,16 @@ export async function offerNext(db: Db, caller: { agentId?: string; tenantId: st
     _count: { _all: true },
   });
   const counts = new Map(active.map((row) => [row.beneficiaryUserId, row._count._all]));
-  const offers = await db.issueClaim.findMany({
+  const offers = await db.issueClaim.groupBy({
+    by: ["beneficiaryUserId"],
     where: { beneficiaryUserId: { in: people.map((p) => p.beneficiaryUserId) }, offeredAt: { not: null }, bug: { tenantId: caller.tenantId } },
-    orderBy: { offeredAt: "desc" }, select: { beneficiaryUserId: true, offeredAt: true },
+    _max: { offeredAt: true },
   });
-  const lastOffered = new Map<string, Date>();
-  for (const row of offers) if (row.offeredAt && !lastOffered.has(row.beneficiaryUserId)) lastOffered.set(row.beneficiaryUserId, row.offeredAt);
+  const lastOffered = new Map(offers.map((row) => [row.beneficiaryUserId, row._max.offeredAt]));
 
   const pendingCutoff = new Date(Date.now() - OFFER_TTL_MS);
-  const pending = await db.issueClaim.findMany({
+  const pending = await db.issueClaim.groupBy({
+    by: ["beneficiaryUserId"],
     where: {
       beneficiaryUserId: { in: people.map((p) => p.beneficiaryUserId) },
       status: "offered",
@@ -83,7 +96,6 @@ export async function offerNext(db: Db, caller: { agentId?: string; tenantId: st
       offeredAt: { gt: pendingCutoff },
       bug: { tenantId: caller.tenantId },
     },
-    select: { beneficiaryUserId: true },
   });
   const pendingPeople = new Set(pending.map((row) => row.beneficiaryUserId));
   const candidates: OfferCandidate[] = people.map((p) => ({
@@ -91,14 +103,25 @@ export async function offerNext(db: Db, caller: { agentId?: string; tenantId: st
     lastOfferedAt: lastOffered.get(p.beneficiaryUserId) ?? null,
     pendingOffer: pendingPeople.has(p.beneficiaryUserId),
   }));
+
   const next = availableOfferCandidates(candidates)[0];
   if (!next) return null;
-  const claim = await db.issueClaim.create({ data: {
-    bugId: bug.id, beneficiaryUserId: next.beneficiaryUserId, agentId: next.agentId, status: "offered", offeredAt: new Date(),
-  } });
-  const event = await publish(db, { tenantId: caller.tenantId, type: "claim.offered", actorAgentId: caller.agentId, bugId: bug.id,
-    payload: { claimId: claim.id, issueId: bug.id, projectId: bug.projectId, beneficiaryUserId: next.beneficiaryUserId, expiresAt: new Date(claim.offeredAt!.getTime() + OFFER_TTL_MS).toISOString() } });
-  return { claim, beneficiaryUserId: next.beneficiaryUserId, bugTitle: bug.title, eventId: event.id };
+
+  // Lock only the chosen member (#544) instead of looping over every member.
+  await db.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${next.beneficiaryUserId} FOR NO KEY UPDATE`;
+  try {
+    const claim = await db.issueClaim.create({ data: {
+      bugId: bug.id, beneficiaryUserId: next.beneficiaryUserId, agentId: next.agentId, status: "offered", offeredAt: new Date(),
+    } });
+    const event = await publish(db, { tenantId: caller.tenantId, type: "claim.offered", actorAgentId: caller.agentId, bugId: bug.id,
+      payload: { claimId: claim.id, issueId: bug.id, projectId: bug.projectId, beneficiaryUserId: next.beneficiaryUserId, expiresAt: new Date(claim.offeredAt!.getTime() + OFFER_TTL_MS).toISOString() } });
+    return { claim, beneficiaryUserId: next.beneficiaryUserId, bugTitle: bug.title, eventId: event.id };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function offerIssue(agent: AgentContext, projectId: string, bugId: string) {
