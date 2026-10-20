@@ -504,6 +504,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       membershipRole: access.membershipRole,
       currentAssigneeId: bug.assigneeId,
       targetAssigneeId: isAssignee ? null : userId,
+      voteCount: bug.voteCount,
     });
   const userVote =
     Array.isArray(bug.votes) && bug.votes.length > 0

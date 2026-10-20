@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { clientIpFrom, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { clientRateLimitKey, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { absoluteUrl } from "@/lib/site-url";
 import { consumePairingLimit } from "@/lib/agents/rate-limit";
 import { PAIRING_POLL_INTERVAL, pairingApprovalPath, startPairing } from "@/lib/agents/pairing";
@@ -13,7 +13,7 @@ import { agentPlatformDisabledResponse } from "@/lib/agents/platform-gate";
  * poll `/api/v1/agents/pairing/token` with `device_code` every `interval` seconds.
  */
 export async function POST(req: NextRequest) {
-  const retryAfter = await consumePairingLimit("start", clientIpFrom(req.headers) ?? "unknown");
+  const retryAfter = await consumePairingLimit("start", clientRateLimitKey(req.headers));
   if (retryAfter) {
     return NextResponse.json(
       { error: "rate_limited", message: RATE_LIMIT_MESSAGE },
