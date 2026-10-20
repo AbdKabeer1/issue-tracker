@@ -68,6 +68,7 @@ describe("agent audit log page (#447)", () => {
     expect(db.agentAuditEvent.findMany.mock.calls[0][0].where).toEqual({
       tenantId: "tenant-zedu",
       agentId: { in: ["agent-alice"] },
+      NOT: { payload: { path: ["request"], equals: true } },
     });
   });
 
@@ -83,6 +84,7 @@ describe("agent audit log page (#447)", () => {
       tenantId: "tenant-zedu",
       agentId: "agent-bob",
       bugId: "bug-1",
+      NOT: { payload: { path: ["request"], equals: true } },
     });
   });
 
@@ -93,6 +95,19 @@ describe("agent audit log page (#447)", () => {
     db.agent.findMany.mockResolvedValue([]);
 
     await open();
+    expect(db.agentAuditEvent.findMany.mock.calls[0][0].where).toEqual({
+      tenantId: "tenant-zedu",
+      NOT: { payload: { path: ["request"], equals: true } },
+    });
+  });
+
+  it("includes request rows only when asked (#575)", async () => {
+    mockUser.mockResolvedValue({ id: "admin", role: "user" });
+    mockTenant.mockResolvedValue("tenant-zedu");
+    db.membership.findUnique.mockResolvedValue({ role: "admin" });
+    db.agent.findMany.mockResolvedValue([]);
+
+    await open({ show: "requests" });
     expect(db.agentAuditEvent.findMany.mock.calls[0][0].where).toEqual({ tenantId: "tenant-zedu" });
   });
 });

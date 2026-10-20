@@ -49,7 +49,7 @@ describe("claim heartbeats", () => {
     expect(sql.join("?")).toContain("FOR NO KEY UPDATE");
     expect(values).toEqual(["issue", "tenant", "project"]);
     expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(db.issueClaim.findFirst.mock.invocationCallOrder[0]);
-    expect(db.agentAuditEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: "claims.heartbeat", payload: { status: 200 } }) });
+    expect(db.agentAuditEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: "claims.heartbeat", payload: { status: 200, request: true } }) });
   });
   it("rejects another agent, offered claims, and absent/released claims", async () => {
     db.issueClaim.findFirst.mockResolvedValueOnce({ ...claim, agentId: "other" });
