@@ -532,6 +532,9 @@ model Tenant {
   name          String
   description   String?            @db.VarChar(500)
   discoverable  Boolean            @default(false)
+  /// Set when an owner archives the tenant (#573). Archived tenants are
+  /// hidden from the switcher and cannot be selected.
+  archivedAt    DateTime?
   /// #517: the next issue number this tenant hands out. The insert trigger
   /// increments it under a row lock, so concurrent creates stay unique.
   nextIssueNumber Int             @default(1)
@@ -569,6 +572,9 @@ model Project {
   stagingUrl           String?
   /// GitHub App installation used to merge accepted fixes (#452). Never a token.
   githubInstallationId String?
+  /// Set when a tenant owner archives the project (#573). Archived projects
+  /// are hidden from the switcher and cannot be selected.
+  archivedAt           DateTime?
   /// How long an accepted claim has to link a fix before it is released (#593).
   /// High and critical issues use at least 60 minutes (lib/claim-deadline.ts).
   deliveryWindowMinutes Int              @default(15)
