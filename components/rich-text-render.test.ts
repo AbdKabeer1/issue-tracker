@@ -69,3 +69,28 @@ describe("RichText nested inline formatting (#136)", () => {
     expect(html).toContain("<strong><span>bold and </span><em><span>italic</span></em></strong>");
   });
 });
+
+describe("RichText fenced code delimiters (#723)", () => {
+  it("keeps a shorter inner fence inside a four-backtick block", () => {
+    const html = render("````md\n```js\nconst a = 1;\n```\n````\n\nAfter the block");
+    expect(html.match(/<pre/g)).toHaveLength(1);
+    expect(html).toContain("<code>```js\nconst a = 1;\n```</code>");
+    expect(html).toContain("<p class=\"whitespace-pre-wrap\"><span>After the block</span></p>");
+  });
+
+  it("renders tilde-fenced code as a code block", () => {
+    const html = render("~~~js\nconst x = **1**;\n~~~");
+    expect(html).toContain("<code>const x = **1**;</code>");
+    expect(html).not.toContain("<strong>");
+  });
+
+  it("does not close a backtick fence with a tilde fence", () => {
+    const html = render("```\n~~~\nstill code\n```");
+    expect(html).toContain("<code>~~~\nstill code</code>");
+  });
+
+  it("does not close a fence on a line with an info string", () => {
+    const html = render("```\n```js\nstill code\n```");
+    expect(html).toContain("<code>```js\nstill code</code>");
+  });
+});

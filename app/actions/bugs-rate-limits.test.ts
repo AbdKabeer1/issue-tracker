@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// #600: these tests are about the actions themselves; the event is checked separately.
+const publishWebEvent = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("@/lib/agent-api/web-events", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/agent-api/web-events")>()),
+  publishWebEvent,
+}));
+
 // #425: run as a member of the Zedu tenant.
 vi.mock("@/lib/tenant-context", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/tenant-context")>()),

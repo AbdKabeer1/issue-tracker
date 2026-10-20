@@ -1,5 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+// #600: these tests are about the actions themselves; the event is checked separately.
+const publishWebEvent = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("@/lib/agent-api/web-events", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/agent-api/web-events")>()),
+  publishWebEvent,
+}));
+
 // #425: run as a member of the Zedu tenant.
 vi.mock("@/lib/tenant-context", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/tenant-context")>()),
@@ -161,5 +168,20 @@ describe("updateCommentAction mention notifications (#228)", () => {
     const res = await deleteCommentAction("comment-1");
     expect(res).toEqual({ error: COMMENT_ERRORS.deleted });
     expect(txBugActivityUpdateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("agents hear about comment edits (#600)", () => {
+  it("publishes comment.edited for the edited comment", async () => {
+    vi.clearAllMocks();
+    (await import("@/lib/rate-limit")).resetRateLimits();
+    findUsersMock.mockResolvedValue([]);
+    findCommentMock.mockResolvedValue(existingComment("first draft"));
+
+    expect(await edit("second draft")).toEqual({ ok: true });
+    expect(publishWebEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ bugId: "bug-1", type: "comment.edited", actorUserId: "author-1" }),
+    );
   });
 });
