@@ -92,6 +92,12 @@ import {
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
 import { issueChangePayload, publishWebEvent } from "@/lib/agent-api/web-events";
+import {
+  agentMentionNames,
+  agentOwnerIds,
+  mentionedAgents,
+  type MentionedAgent,
+} from "@/lib/agent-mentions";
 
 export type ActionResult = {
   error?: string;
@@ -104,16 +110,25 @@ export type ActionResult = {
 /**
  * Resolves `@[Name](userId)` tags against real accounts: known ids are
  * rewritten to the current name, unknown ids degrade to plain `@Name`.
+ * `agents` are the issue tenant's agents the text may keep tags for (#603).
  */
-async function normalizeMentionTags(text: string): Promise<string> {
+async function normalizeMentionTags(
+  text: string,
+  agents: MentionedAgent[] = [],
+): Promise<string> {
   const mentionedIds = extractMentionedUserIds(text);
-  if (mentionedIds.length === 0) return text;
+  if (mentionedIds.length === 0 && agents.length === 0) return text;
 
-  const validUsers = await prisma.user.findMany({
-    where: { id: { in: mentionedIds } },
-    select: { id: true, name: true },
-  });
-  const userMap = new Map(validUsers.map((user) => [user.id, user.name]));
+  const validUsers = mentionedIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: mentionedIds } },
+        select: { id: true, name: true },
+      })
+    : [];
+  const userMap = new Map([
+    ...validUsers.map((user) => [user.id, user.name] as [string, string]),
+    ...agentMentionNames(agents),
+  ]);
   return normalizeMentions(text, userMap);
 }
 
@@ -1125,7 +1140,7 @@ export async function addCommentAction(
 
   const bug = await prisma.bug.findUnique({
     where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
-    select: { id: true, isDeleted: true, title: true, reporterId: true, assigneeId: true },
+    select: { id: true, isDeleted: true, title: true, reporterId: true, assigneeId: true, tenantId: true },
   });
   if (!bug || bug.isDeleted) {
     return { error: "Issue not found" };
@@ -1164,7 +1179,9 @@ export async function addCommentAction(
     }
   }
 
-  const normalizedBody = await normalizeMentionTags(parsed.data.body);
+  // #603: only agents in this issue's organization can be mentioned.
+  const agents = await mentionedAgents(prisma, bug.tenantId, parsed.data.body);
+  const normalizedBody = await normalizeMentionTags(parsed.data.body, agents);
 
   const commentId = await prisma.$transaction(async (tx) => {
     const created = await tx.comment.create({
@@ -1219,7 +1236,8 @@ export async function addCommentAction(
     return created.id;
   });
 
-  const mentioned = extractMentionedUserIds(normalizedBody);
+  // A mentioned agent's owner hears about it like a mention of them (#603).
+  const mentioned = [...new Set([...extractMentionedUserIds(normalizedBody), ...agentOwnerIds(agents)])];
   const author = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
   const actor = {
     actorId: userId,

@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { agentMentionId } from "@/lib/mentions";
 import { requireUser } from "@/lib/auth-helpers";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { viewerBugScope } from "@/lib/tenant-viewer";
@@ -517,6 +518,25 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           : Promise.resolve(null)),
       ),
     ]);
+  // #603: the tenant's active agents, offered in the comment @mention list
+  // as "Mark's Claude · Mark Essien" alongside people.
+  const mentionAgents = canTriage
+    ? await loadOptional("mention agents", [], () =>
+        prisma.agent.findMany({
+          where: { tenantId: bug.tenantId, revokedAt: null },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, owner: { select: { name: true } } },
+        }),
+      )
+    : [];
+  const commentMentionUsers = [
+    ...users,
+    ...mentionAgents.map((agent) => ({
+      id: agentMentionId(agent.id),
+      name: agent.name,
+      agentOwner: agent.owner.name,
+    })),
+  ];
   const issueAttachments: AttachmentView[] = attachments.filter((a) => !a.commentId);
   const attachmentsByComment: Record<string, AttachmentView[]> = {};
   for (const a of attachments) {
@@ -1007,7 +1027,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           reporterId={bug.reporterId}
           comments={commentTree}
           attachmentsByComment={attachmentsByComment}
-          users={users}
+          users={commentMentionUsers}
           currentUserId={user.id}
           currentUserRole={user.role}
           tenantAdmin={access.admin}
