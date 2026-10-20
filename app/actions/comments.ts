@@ -86,11 +86,14 @@ export async function updateCommentAction(
     new Map(known.map((u) => [u.id, u.name])),
   );
 
-  await prisma.$transaction(async (tx) => {
-    await tx.comment.update({
-      where: { id: comment.id },
+  const result = await prisma.$transaction(async (tx) => {
+    const updated = await tx.comment.updateMany({
+      where: { id: comment.id, deletedAt: null },
       data: { body, editedAt: new Date() },
     });
+    if (updated.count === 0) {
+      return { error: COMMENT_ERRORS.deleted };
+    }
     // Images pasted while editing (#305).
     await linkAttachments(tx, {
       ids: attachmentIdsInMarkdown(body),
@@ -114,7 +117,13 @@ export async function updateCommentAction(
         } as Prisma.InputJsonValue,
       },
     });
+
+    return { ok: true as const };
   });
+
+  if (result.error) {
+    return result;
+  }
 
   const newlyMentioned = newlyMentionedUserIds(comment.body, body);
   if (newlyMentioned.length > 0) {
@@ -157,11 +166,14 @@ export async function deleteCommentAction(
   const isModeration = comment.authorId !== user.id;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      await tx.comment.update({
-        where: { id: comment.id },
+    const result = await prisma.$transaction(async (tx) => {
+      const updated = await tx.comment.updateMany({
+        where: { id: comment.id, deletedAt: null },
         data: { body: "", deletedAt: new Date() },
       });
+      if (updated.count === 0) {
+        return { error: COMMENT_ERRORS.deleted };
+      }
       // A deleted comment's files go too, e.g. a screenshot posted by mistake (#215).
       await tx.attachment.deleteMany({ where: { commentId: comment.id } });
 
@@ -189,7 +201,13 @@ export async function deleteCommentAction(
           },
         });
       }
+
+      return { ok: true as const };
     });
+
+    if ("error" in result) {
+      return result;
+    }
   } catch (error) {
     console.error("Failed to delete comment:", error);
     return { error: COMMENT_ERRORS.failed };
