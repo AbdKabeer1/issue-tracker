@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { CopyProjectIdButton } from "./copy-project-id";
 import { CreateProjectForm } from "./create-project-form";
 import { switchProjectAction } from "./actions";
+import { isTenantAdmin, isTenantAdminRole } from "@/lib/agents/membership";
+import { MissionCoverage } from "./mission-coverage";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Projects" };
@@ -34,8 +36,9 @@ export default async function ProjectsPage() {
       </div>
     );
   }
+  const canManageProjects = await isTenantAdmin(user, tenantId);
 
-  const [tenant, projects, activeProjectId] = await Promise.all([
+  const [tenant, projects, activeProjectId, membership] = await Promise.all([
     prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { name: true },
@@ -48,11 +51,28 @@ export default async function ProjectsPage() {
         slug: true,
         createdAt: true,
         _count: { select: { bugs: true } },
+        testMissions: {
+          select: {
+            id: true,
+            routePattern: true,
+            brief: true,
+            role: true,
+            viewport: true,
+            lastCoveredAt: true,
+            issuesFiled: true,
+          },
+          orderBy: [{ routePattern: "asc" }, { role: "asc" }, { viewport: "asc" }],
+        },
       },
       orderBy: { createdAt: "asc" },
     }),
     activeProjectIdFor(prisma, tenantId),
+    prisma.membership.findUnique({
+      where: { tenantId_userId: { tenantId, userId: user.id } },
+      select: { role: true },
+    }),
   ]);
+  const canManageMissions = isTenantAdminRole(membership?.role, user.role);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -115,7 +135,18 @@ export default async function ProjectsPage() {
                         {project.id}
                       </code>
                       <CopyProjectIdButton projectId={project.id} />
+                      {canManageProjects ? (
+                        <Link href={`/projects/${encodeURIComponent(project.slug)}/settings`} className="text-xs font-medium text-teal-700 hover:underline">Settings</Link>
+                      ) : null}
                     </div>
+                    <MissionCoverage
+                      projectId={project.id}
+                      canManage={canManageMissions}
+                      missions={project.testMissions.map((mission) => ({
+                        ...mission,
+                        lastCoveredAt: mission.lastCoveredAt?.toISOString() ?? null,
+                      }))}
+                    />
                   </div>
                   {active ? null : (
                     <form action={switchProjectAction}>

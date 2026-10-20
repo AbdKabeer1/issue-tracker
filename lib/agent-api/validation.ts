@@ -9,6 +9,25 @@ import { award } from "@/lib/points/award";
 import { pointSourceKey, REPORTER_POINTS } from "@/lib/points/rules";
 import { severities } from "@/lib/validations/issue";
 import { publish } from "@/lib/agent-api/events";
+import { promoteEarnedReviewer } from "@/lib/agents/promotion";
+import { offerNext, scheduleOfferExpiry } from "@/lib/agent-api/offer";
+import { notifyClaimOffered } from "@/lib/agent-notifications";
+import { WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
+import { hasBlockingRedesign } from "@/lib/redesigns";
+
+/** Severity order for the reviewer agreement rule (#528). */
+const SEVERITY_RANK: Record<(typeof severities)[number], number> = {
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4,
+};
+
+function severityRank(severity: string | null): number {
+  return severity && severity in SEVERITY_RANK
+    ? SEVERITY_RANK[severity as keyof typeof SEVERITY_RANK]
+    : 0;
+}
 
 /**
  * Reviewer agents validating issues (#433). A validation says whether an
@@ -72,10 +91,24 @@ export type ValidationBody = z.infer<typeof validationBodySchema>;
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
+type OptionalDbDelegates = {
+  bugRevision?: { findFirst?: (args: unknown) => Promise<{ editedAt: Date } | null> };
+  issueValidation?: {
+    findMany?: (args: unknown) => Promise<unknown[]>;
+    count?: (args: unknown) => Promise<number>;
+  };
+  bug?: { findUnique?: (args: unknown) => Promise<unknown> };
+};
+
 /** What the independence rule and the confirmation count need about an issue. */
 const reviewedBugSelect = {
   id: true,
   tenantId: true,
+  projectId: true,
+  title: true,
+  status: true,
+  assigneeId: true,
+  voteCount: true,
   severity: true,
   reporterId: true,
   beneficiaryUserId: true,
@@ -89,8 +122,22 @@ type LoadedBug = Prisma.BugGetPayload<{ select: typeof reviewedBugSelect }>;
 
 /** Accepts of kind `real` that count toward confirming `bug`. */
 async function countedConfirmations(db: Db, bug: LoadedBug): Promise<number> {
+  const dbDelegates = db as unknown as OptionalDbDelegates;
+  const latestRevision = await dbDelegates.bugRevision?.findFirst?.({
+    where: { bugId: bug.id },
+    orderBy: { editedAt: "desc" },
+    select: { editedAt: true },
+  });
+
+  if (!dbDelegates.issueValidation?.findMany) return 0;
+
   const accepts = await db.issueValidation.findMany({
-    where: { bugId: bug.id, kind: "real", verdict: "accept" },
+    where: {
+      bugId: bug.id,
+      kind: "real",
+      verdict: "accept",
+      ...(latestRevision?.editedAt ? { createdAt: { gt: latestRevision.editedAt } } : {}),
+    },
     select: {
       id: true,
       agentId: true,
@@ -128,6 +175,8 @@ async function countedConfirmations(db: Db, bug: LoadedBug): Promise<number> {
 
 /** True once two independent reviewers have accepted the issue as real (#434 uses this). */
 export async function isConfirmed(bugId: string, db: Db = prisma): Promise<boolean> {
+  const dbDelegates = db as unknown as OptionalDbDelegates;
+  if (!dbDelegates.bug?.findUnique) return false;
   const bug = await db.bug.findUnique({ where: { id: bugId }, select: reviewedBugSelect });
   if (!bug) return false;
   return (await countedConfirmations(db, bug)) >= CONFIRMATIONS_NEEDED;
@@ -136,8 +185,20 @@ export async function isConfirmed(bugId: string, db: Db = prisma): Promise<boole
 /** Duplicates earn the reporter nothing (#422). */
 async function isDuplicate(db: Db, bug: LoadedBug): Promise<boolean> {
   if (bug.duplicateOfId) return true;
+  const dbDelegates = db as unknown as OptionalDbDelegates;
+  const latestRevision = await dbDelegates.bugRevision?.findFirst?.({
+    where: { bugId: bug.id },
+    orderBy: { editedAt: "desc" },
+    select: { editedAt: true },
+  });
+  if (!dbDelegates.issueValidation?.count) return false;
   const accepted = await db.issueValidation.count({
-    where: { bugId: bug.id, kind: "duplicate", verdict: "accept" },
+    where: {
+      bugId: bug.id,
+      kind: "duplicate",
+      verdict: "accept",
+      ...(latestRevision?.editedAt ? { createdAt: { gt: latestRevision.editedAt } } : {}),
+    },
   });
   return accepted > 0;
 }
@@ -253,9 +314,15 @@ export async function submitValidation(
   }
 
   const setsSeverity = body.kind === "real" && body.verdict === "accept" ? body.severity! : null;
+  // Reviewers who disagree only ever raise severity: a second reviewer cannot
+  // quietly downgrade an issue someone else called critical (#528).
+  const escalatesSeverity =
+    setsSeverity !== null && severityRank(setsSeverity) > severityRank(bug.severity);
+  const severityDisagreement =
+    setsSeverity !== null && !escalatesSeverity && setsSeverity !== bug.severity;
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    const outcome = await prisma.$transaction(async (tx) => {
       // Two reviewers can confirm at the same moment. Lock the issue so the
       // second transaction sees the first accept and still pays the reporter.
       await tx.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${bug.id} FOR UPDATE`;
@@ -275,8 +342,8 @@ export async function submitValidation(
         },
         select: { id: true, kind: true, verdict: true, severity: true, duplicateOfId: true, onBehalfOfUserId: true },
       });
-      if (setsSeverity && setsSeverity !== bug.severity) {
-        await tx.bug.update({ where: { id: bug.id }, data: { severity: setsSeverity } });
+      if (escalatesSeverity) {
+        await tx.bug.update({ where: { id: bug.id }, data: { severity: setsSeverity! } });
       }
 
       const confirmed = (await countedConfirmations(tx, bug)) >= CONFIRMATIONS_NEEDED;
@@ -304,12 +371,17 @@ export async function submitValidation(
           kind: body.kind,
           verdict: body.verdict,
           onBehalfOfUserId,
-          ...(setsSeverity ? { severity: setsSeverity, previousSeverity: bug.severity } : {}),
+          ...(setsSeverity ? { severity: setsSeverity, previousSeverity: bug.severity, effectiveSeverity: escalatesSeverity ? setsSeverity : bug.severity } : {}),
+          ...(severityDisagreement ? { severityDisagreement: true } : {}),
           ...(body.duplicateOfId ? { duplicateOfId: body.duplicateOfId } : {}),
           ...(newlyConfirmed ? { confirmed: true } : {}),
         },
         { bugId: bug.id, db: tx },
       );
+
+      // Re-evaluate the earned level after this validation is stored, inside
+      // the same transaction so the validation and promotion audit commit together.
+      await promoteEarnedReviewer(agent.agentId, tx);
 
       // Publish "issue.validated" event to the agent event feed (#445)
       await publish(tx, {
@@ -322,14 +394,63 @@ export async function submitValidation(
           kind: body.kind,
           verdict: body.verdict,
           onBehalfOfUserId,
-          ...(setsSeverity ? { severity: setsSeverity, previousSeverity: bug.severity } : {}),
+          ...(setsSeverity ? { severity: setsSeverity, previousSeverity: bug.severity, effectiveSeverity: escalatesSeverity ? setsSeverity : bug.severity } : {}),
+          ...(severityDisagreement ? { severityDisagreement: true } : {}),
           ...(body.duplicateOfId ? { duplicateOfId: body.duplicateOfId } : {}),
           ...(newlyConfirmed ? { confirmed: true } : {}),
         },
       });
 
-      return { status: 201 as const, validation, confirmed, newlyConfirmed };
+      // Confirmation is its own feed/webhook event, so polling agents that
+      // only watch for confirmations do not have to parse every validation (#534).
+      if (newlyConfirmed) {
+        await publish(tx, {
+          tenantId: bug.tenantId,
+          type: "issue.confirmed",
+          actorAgentId: agent.agentId,
+          bugId: bug.id,
+          payload: {
+            issueId: bug.id,
+            validationId: validation.id,
+          },
+        });
+      }
+
+      let automaticOffer: Awaited<ReturnType<typeof offerNext>> = null;
+      if (newlyConfirmed) {
+        const issue = await tx.bug.findUnique({
+          where: { id: bug.id },
+          select: { id: true, projectId: true, title: true, status: true, assigneeId: true, voteCount: true },
+        });
+        const currentClaim = await tx.issueClaim.findFirst({
+          where: { bugId: bug.id, releasedAt: null, status: { in: ["offered", "active"] } },
+          select: { id: true },
+        });
+        if (
+          issue?.status === "open" &&
+          issue.voteCount >= WORK_READINESS_VOTE_THRESHOLD &&
+          !currentClaim &&
+          !(await hasBlockingRedesign(bug.id, tx))
+        ) {
+          automaticOffer = await offerNext(tx, { tenantId: bug.tenantId }, issue);
+        }
+      }
+
+      return {
+        submission: { status: 201 as const, validation, confirmed, newlyConfirmed },
+        automaticOffer,
+      };
     });
+    if (outcome.automaticOffer) {
+      notifyClaimOffered({
+        id: outcome.automaticOffer.claim.id,
+        bugId: bug.id,
+        bugTitle: outcome.automaticOffer.bugTitle,
+        beneficiaryUserId: outcome.automaticOffer.beneficiaryUserId,
+      });
+      scheduleOfferExpiry(outcome.automaticOffer.claim.id);
+    }
+    return outcome.submission;
   } catch (error) {
     if (!isUniqueViolation(error)) throw error;
     return {

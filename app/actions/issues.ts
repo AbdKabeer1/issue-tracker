@@ -35,6 +35,7 @@ import {
   commentSchema,
   createBugSchema,
   editBugContentSchema,
+  editProofLinksSchema,
   updateBugSchema,
 } from "@/lib/validations/issue";
 import {
@@ -58,7 +59,9 @@ import { publish } from "@/lib/agent-api/events";
 import {
   canEditTicket,
   formatEditSummary,
+  formatProofLinkSummary,
   getChangedEditFields,
+  getProofLinkChanges,
   TICKET_EDIT_ERRORS,
 } from "@/lib/ticket-editing";
 import { Prisma, type ActivityType } from "@prisma/client";
@@ -79,12 +82,16 @@ import {
 } from "@/lib/tenant-context";
 import { currentTenantAccess } from "@/lib/tenant-access";
 import { awardSolver } from "@/lib/points/award";
+import { isConfirmed } from "@/lib/agent-api/validation";
+import { correct } from "@/lib/points/correct";
+import { pointSourceKey } from "@/lib/points/rules";
 import {
   checkRateLimit,
   consumeRateLimit,
   ACTION_RATE_LIMITS,
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
+import { issueChangePayload, publishWebEvent } from "@/lib/agent-api/web-events";
 
 export type ActionResult = {
   error?: string;
@@ -284,6 +291,7 @@ export async function createBugAction(
     description,
     severity: admin ? parsed.data.severity : "medium",
     status: "open" as const,
+    voteCount: 0,
     typeId,
     proofLinks: parsed.data.proofLinks,
     reporterId: userId,
@@ -348,6 +356,19 @@ export async function createBugAction(
     uploaderId: userId,
     bugId: bug.id,
   });
+
+  // #600: agents hear about issues people file, not only ones agents file.
+  // The issue already exists, so a failed event mustn't fail the report.
+  try {
+    await publishWebEvent(prisma, {
+      bugId: bug.id,
+      type: "issue.created",
+      actorUserId: userId,
+      payload: { reporterId: userId },
+    });
+  } catch (error) {
+    console.error("[issues] issue.created event failed", error);
+  }
 
   const events: NotificationEvent[] = [];
   const actor = { actorId: userId, actorName: user.name ?? "Someone", bugId: bug.id, bugTitle: bug.title };
@@ -703,10 +724,21 @@ export async function updateBugAction(
 
   try {
     await prisma.$transaction(async (tx) => {
+      // #676: Row lock the Bug to serialize concurrent updates and prevent voteCount races.
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw`SELECT id FROM "Bug" WHERE id = ${bugId} FOR UPDATE`;
+      }
+
       if (Object.keys(data).length > 0) {
         await tx.bug.update({
           where: { id: bugId },
           data,
+        });
+      }
+      if (data.status === "resolved" || data.status === "closed") {
+        await tx.issueClaim.updateMany({
+          where: { bugId, status: "active", releasedAt: null },
+          data: { status: "released", releasedAt: new Date(), releaseReason: data.status },
         });
       }
       if (data.assigneeId) {
@@ -731,6 +763,15 @@ export async function updateBugAction(
               ...entry,
             })),
           ),
+        });
+      }
+      // #600: triage from the web app reaches agents too.
+      if (Object.keys(data).length > 0) {
+        await publishWebEvent(tx, {
+          bugId,
+          type: "issue.updated",
+          actorUserId: userId,
+          payload: issueChangePayload(data as Record<string, unknown>),
         });
       }
     });
@@ -788,6 +829,8 @@ export async function editBugContentAction(
       title: true,
       description: true,
       reporterId: true,
+      beneficiaryUserId: true,
+      tenantId: true,
       isDeleted: true,
     },
   });
@@ -843,6 +886,51 @@ export async function editBugContentAction(
       },
     });
 
+    // #713: Editing an issue invalidates confirmations and previous validations,
+    // and reverses any reporter points awarded for the replaced report.
+    type OptionalTxExtensions = {
+      pointEntry?: {
+        findFirst?: (args: unknown) => Promise<{ id: string; tenantId: string; userId: string; bugId: string | null; role: "solver" | "reporter" | "reviewer"; points: number } | null>;
+        update?: (args: unknown) => Promise<unknown>;
+      };
+      issueValidation?: {
+        deleteMany?: (args: unknown) => Promise<unknown>;
+      };
+    };
+    const txExtensions = tx as unknown as OptionalTxExtensions;
+
+    const wasConfirmed = await isConfirmed(bugId, tx);
+    if (wasConfirmed) {
+      const recipientId = existing.beneficiaryUserId ?? existing.reporterId;
+      const tenantId = existing.tenantId ?? (await currentTenantIdFor(userId));
+      if (recipientId && typeof txExtensions.pointEntry?.findFirst === "function") {
+        const entry = await txExtensions.pointEntry.findFirst({
+          where: {
+            tenantId,
+            sourceKey: pointSourceKey("reporter", bugId, recipientId),
+          },
+          select: { id: true, tenantId: true, userId: true, bugId: true, role: true, points: true },
+        });
+        if (entry) {
+          await correct(tx, { entry });
+          if (typeof txExtensions.pointEntry?.update === "function") {
+            await txExtensions.pointEntry.update({
+              where: { id: entry.id },
+              data: {
+                sourceKey: `${pointSourceKey("reporter", bugId, recipientId)}:invalidated:${entry.id}`,
+              },
+            });
+          }
+        }
+      }
+    }
+
+    if (typeof txExtensions.issueValidation?.deleteMany === "function") {
+      await txExtensions.issueValidation.deleteMany({
+        where: { bugId },
+      });
+    }
+
     await tx.bug.update({
       where: { id: bugId },
       data: {
@@ -858,6 +946,16 @@ export async function editBugContentAction(
       ids: attachmentIdsInMarkdown(normalizedDescription),
       uploaderId: userId,
       bugId,
+    });
+    await publishWebEvent(tx, {
+      bugId,
+      type: "issue.updated",
+      actorUserId: userId,
+      payload: issueChangePayload(
+        Object.fromEntries(
+          changedFields.map((field) => [field, field === "title" ? parsed.data.title : normalizedDescription]),
+        ),
+      ),
     });
 
     await tx.bugActivity.create({
@@ -888,6 +986,99 @@ export async function editBugContentAction(
       recipientIds: newlyMentioned,
     });
   }
+
+  revalidatePath("/issues");
+  revalidatePath(`/issues/${bugId}`);
+  revalidatePath("/bugs");
+  revalidatePath(`/bugs/${bugId}`);
+  return { ok: true };
+}
+
+/**
+ * Lets the reporter or an admin add, correct, or remove an issue's proof
+ * links after filing (#737). Same rules as create: GitHub URLs, at most 20.
+ */
+export async function editProofLinksAction(
+  bugId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await requireUser();
+  const userId = user.id;
+
+  const limit = checkRateLimit(
+    `edit-bug:${userId}`,
+    ACTION_RATE_LIMITS.editBug,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
+
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
+    select: {
+      id: true,
+      proofLinks: true,
+      reporterId: true,
+      isDeleted: true,
+    },
+  });
+
+  if (!existing || existing.isDeleted) {
+    return { error: TICKET_EDIT_ERRORS.notFound };
+  }
+
+  if (
+    !canEditTicket({
+      actorId: userId,
+      actorRole: user.role,
+      membershipRole: (await currentTenantAccess(userId, user.role)).membershipRole,
+      reporterId: existing.reporterId,
+    })
+  ) {
+    return { error: TICKET_EDIT_ERRORS.unauthorized };
+  }
+
+  const parsed = editProofLinksSchema.safeParse({
+    proofLinks: formData.get("proofLinks") || "",
+  });
+
+  if (!parsed.success) {
+    return fromZodError(parsed.error);
+  }
+
+  const proofLinks = parsed.data.proofLinks;
+  const changes = getProofLinkChanges(existing.proofLinks ?? [], proofLinks);
+  if (changes.added.length === 0 && changes.removed.length === 0) {
+    return { ok: true };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.bug.update({
+      where: { id: bugId },
+      data: { proofLinks, updatedAt: new Date() },
+    });
+
+    await publishWebEvent(tx, {
+      bugId,
+      type: "issue.updated",
+      actorUserId: userId,
+      payload: issueChangePayload({ proofLinks }),
+    });
+
+    await tx.bugActivity.create({
+      data: {
+        bugId,
+        actorId: userId,
+        type: "edited",
+        summary: formatProofLinkSummary(changes),
+        metadata: {
+          fields: ["proofLinks"],
+          added: changes.added,
+          removed: changes.removed,
+        },
+      },
+    });
+  });
 
   revalidatePath("/issues");
   revalidatePath(`/issues/${bugId}`);
@@ -1004,6 +1195,13 @@ export async function addCommentAction(
     });
     // Commenting on an issue means you want to hear about replies (#216).
     await ensureWatching(tx, bugId, [userId]);
+    // #600: a person's reply reaches the agents polling /api/v1/events.
+    await publishWebEvent(tx, {
+      bugId,
+      type: "comment.created",
+      actorUserId: userId,
+      payload: { commentId: created.id, parentId: parentId ?? null, authorId: userId },
+    });
     return created.id;
   });
 
@@ -1172,6 +1370,11 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
 
   try {
     await prisma.$transaction(async (tx) => {
+      // #676: Row lock the Bug to serialize with concurrent vote / update actions.
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw`SELECT id FROM "Bug" WHERE id = ${bugId} FOR UPDATE`;
+      }
+
       await tx.bug.update({
         where: { id: bugId },
         data: {
@@ -1179,6 +1382,7 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
           deletedAt: new Date(),
         },
       });
+      await publishWebEvent(tx, { bugId, type: "issue.deleted", actorUserId: user.id });
 
       await tx.bugActivity.create({
         data: {
@@ -1231,13 +1435,39 @@ export async function restoreBugAction(bugId: string): Promise<ActionResult> {
 
   try {
     await prisma.$transaction(async (tx) => {
+      // #676: Row lock the Bug to serialize with concurrent vote / update actions.
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw`SELECT id FROM "Bug" WHERE id = ${bugId} FOR UPDATE`;
+      }
+
+      // Reconcile voteCount from existing votes upon restoration (#676)
+      let voteCount: number | undefined;
+      if (tx.vote && typeof tx.vote.groupBy === "function") {
+        const voteCounts = await tx.vote.groupBy({
+          by: ["value"],
+          where: { bugId },
+          _count: { _all: true },
+        });
+
+        let likeCount = 0;
+        let dislikeCount = 0;
+        for (const c of voteCounts) {
+          if (c.value === 1) likeCount = c._count._all;
+          if (c.value === -1) dislikeCount = c._count._all;
+        }
+
+        voteCount = reconcileVoteCount(likeCount, dislikeCount);
+      }
+
       await tx.bug.update({
         where: { id: bugId },
         data: {
           isDeleted: false,
           deletedAt: null,
+          ...(voteCount !== undefined ? { voteCount } : {}),
         },
       });
+      await publishWebEvent(tx, { bugId, type: "issue.restored", actorUserId: user.id });
 
       await tx.bugActivity.create({
         data: {
@@ -1389,6 +1619,11 @@ export async function selfAssignBugAction(
 
   try {
     await prisma.$transaction(async (tx) => {
+      // #676: Row lock the Bug to serialize concurrent assignment and vote checks.
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw`SELECT id FROM "Bug" WHERE id = ${bugId} FOR UPDATE`;
+      }
+
       await tx.bug.update({
         where: { id: bugId },
         data: { assigneeId: targetAssigneeId },
@@ -1411,6 +1646,12 @@ export async function selfAssignBugAction(
             to: targetAssigneeId,
           },
         },
+      });
+      await publishWebEvent(tx, {
+        bugId,
+        type: "issue.updated",
+        actorUserId: userId,
+        payload: issueChangePayload({ assigneeId: targetAssigneeId }),
       });
     });
   } catch (error) {

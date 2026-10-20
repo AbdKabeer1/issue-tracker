@@ -60,6 +60,7 @@ describe("upsertGoogleUser (#351)", () => {
     upsert.mockRejectedValue(new Error("column missing"));
     executeRaw.mockRejectedValueOnce(new Error("passwordHash"));
     executeRaw.mockResolvedValueOnce(1);
+    findUnique.mockResolvedValueOnce(undefined); // account pre-read (#736)
     findUnique.mockResolvedValueOnce({ id: "existing", name: "Existing User", sessionVersion: 0 });
     await expect(upsertGoogleUser({ email: "a@x.dev", name: "Existing User" })).resolves.toEqual({
       id: "existing",
@@ -72,5 +73,46 @@ describe("upsertGoogleUser (#351)", () => {
       where: { email: "a@x.dev" },
       select: { id: true, name: true, sessionVersion: true },
     });
+  });
+
+  it("neutralizes the password of an unverified credentials account it adopts (#736)", async () => {
+    findUnique.mockResolvedValueOnce({ passwordHash: "hash", emailVerified: null });
+    upsert.mockResolvedValueOnce({ id: "u9", name: "N", role: "user", sessionVersion: 2 });
+
+    await upsertGoogleUser({ email: "human@x.dev", name: "Human", emailVerified: true });
+
+    const { update } = upsert.mock.calls[0][0];
+    expect(update.passwordHash).toBeNull();
+    expect(update.emailVerified).toBeInstanceOf(Date);
+  });
+
+  it("refuses to link an unverified Google email to a password account (#736)", async () => {
+    findUnique.mockResolvedValueOnce({ passwordHash: "hash", emailVerified: null });
+
+    await expect(
+      upsertGoogleUser({ email: "human@x.dev", name: "Human", emailVerified: false }),
+    ).rejects.toThrow(/unverified/i);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("keeps the password of a verified credentials account (#736)", async () => {
+    findUnique.mockResolvedValueOnce({
+      passwordHash: "hash",
+      emailVerified: new Date(),
+    });
+    upsert.mockResolvedValueOnce({ id: "u9", name: "N", role: "user", sessionVersion: 0 });
+
+    await upsertGoogleUser({ email: "human@x.dev", name: "Human", emailVerified: true });
+
+    expect(upsert.mock.calls[0][0].update.passwordHash).toBeUndefined();
+  });
+
+  it("does not touch accounts without a password (#736)", async () => {
+    findUnique.mockResolvedValueOnce({ passwordHash: null, emailVerified: null });
+    upsert.mockResolvedValueOnce({ id: "u9", name: "N", role: "user", sessionVersion: 0 });
+
+    await upsertGoogleUser({ email: "g-only@x.dev", emailVerified: true });
+
+    expect(upsert.mock.calls[0][0].update.passwordHash).toBeUndefined();
   });
 });

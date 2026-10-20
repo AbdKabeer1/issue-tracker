@@ -5,7 +5,7 @@ import { hasLevel } from "@/lib/agents/levels";
 import { isTenantAdmin } from "@/lib/agents/membership";
 import { reviewerConflict, type ReviewedBug } from "@/lib/agents/independence";
 import type { AppRole } from "@/lib/roles";
-import { requireSuperAdmin } from "@/lib/auth-helpers";
+// requireSuperAdmin is imported lazily in runLevelPromotions to avoid pulling NextAuth into unit tests
 import { IssueApiError } from "@/lib/agent-api/issues";
 
 /**
@@ -16,14 +16,15 @@ import { IssueApiError } from "@/lib/agent-api/issues";
  * that still stand — or granted by a tenant admin. `merger` is never automatic:
  * only a tenant admin may grant it, and the admin and the reason are recorded.
  *
- * Silence demotes: three claims released for going quiet (#438) inside a week
- * move a `contributor` back to `observer`. A `merger` is never demoted here.
+ * Silence demotes: three claims released for going quiet (#438) or for missing
+ * the delivery deadline (#593) inside a week move a `contributor` back to
+ * `observer`. A `merger` is never demoted here.
  *
  * An agent can't change its own level: none of these functions reads a level
  * from an agent request, and the only caller-supplied level is an admin's.
  *
- * `runLevelPromotions` is the daily/admin-invoked entry point. The rule
- * functions take a `db` so tests (and a future cron) can drive them directly.
+ * Validation and silence-release transactions invoke the rule functions as
+ * events happen. `runLevelPromotions` remains available as an admin sweep.
  */
 
 export const EARNED_REVIEWER_VALIDATIONS = 10;
@@ -78,7 +79,10 @@ export async function standingValidations(agentId: string, db: Db = prisma): Pro
 // Silence releases (#438)
 // ---------------------------------------------------------------------------
 
-/** Claims this agent lost to silence inside the window, counted as of `now`. */
+/**
+ * Claims this agent lost to silence or to a missed delivery deadline inside
+ * the window (#438, #593), counted as of `now`.
+ */
 export async function silenceReleases(
   agentId: string,
   db: Db = prisma,
@@ -86,7 +90,7 @@ export async function silenceReleases(
 ): Promise<number> {
   const since = new Date(now.getTime() - SILENCE_DEMOTION_WINDOW_DAYS * 24 * 60 * 60 * 1000);
   return db.issueClaim.count({
-    where: { agentId, releaseReason: "silence", releasedAt: { gte: since } },
+    where: { agentId, releaseReason: { in: ["silence", "deadline"] }, releasedAt: { gte: since } },
   });
 }
 
@@ -224,6 +228,7 @@ export async function grantLevelByAdmin(input: AdminGrantInput, db: Db = prisma)
  */
 export async function runLevelPromotions(projectId: string): Promise<{ promoted: number; demoted: number }> {
   "use server";
+  const { requireSuperAdmin } = await import("@/lib/auth-helpers");
   await requireSuperAdmin();
   const project = await prisma.project.findUnique({
     where: { id: projectId },

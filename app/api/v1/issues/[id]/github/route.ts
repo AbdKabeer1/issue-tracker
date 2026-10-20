@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { createReviewOffers } from "@/lib/agent-api/review-offer";
 import { agentIssueRequest, issueJson } from "@/lib/agent-api/issues";
 import {
   mergeAcceptedFix,
@@ -56,6 +57,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       data: { pullRequestUrl: parsed.data.pullRequestUrl },
     });
 
+    await createReviewOffers(prisma, agent, bug.id, {
+      pullRequestUrl: parsed.data.pullRequestUrl,
+    }).catch(() => null);
+
     const result = await mergeAcceptedFix(agent, id);
     if (result.status === 200) {
       return NextResponse.json({ linked: true, merged: true, mergeCommitSha: result.mergeCommitSha });
@@ -63,6 +68,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     // The link is saved; the merge is simply not due yet.
     if (result.reason === "not_accepted") {
       return NextResponse.json({ linked: true, merged: false, reason: result.reason });
+    }
+    if (result.reason === "waiting_for_human") {
+      return NextResponse.json(
+        { error: "waiting_for_human", approvalId: result.approvalId, linked: true, merged: false },
+        { status: 409 },
+      );
     }
     return NextResponse.json(
       { linked: true, merged: false, reason: result.reason, message: result.message },

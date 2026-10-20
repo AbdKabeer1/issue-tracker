@@ -4,6 +4,8 @@ import { audit } from "@/lib/agents/audit";
 import { generateApiKey, generateDeviceCode, generateUserCode, hashSecret, normalizeUserCode } from "@/lib/agents/keys";
 import { tenantForOwner } from "@/lib/agents/membership";
 import { agentModelSchema, agentNameSchema, insertAgentWithKey, type Actor, type IssuedKey } from "@/lib/agents/registry";
+import { AGENT_LIMIT_MESSAGE, MAX_ACTIVE_AGENTS_PER_OWNER } from "@/lib/agents/registry-limits";
+import { logger } from "@/lib/logger";
 
 /**
  * Pairing an agent with its owner (#427), like a TV signing in to an account:
@@ -50,6 +52,7 @@ export async function startPairing(input: { name?: unknown; model?: unknown }, n
       expiresAt,
     },
   });
+  cleanupExpiredPairings(now).catch((error: unknown) => logger.error("[pairing] cleanup failed", error));
   return { ok: true, userCode, deviceCode, expiresAt };
 }
 
@@ -113,7 +116,13 @@ export async function approvePairing(
   if (!project) return { ok: false, error: PROJECT_REQUIRED };
 
   const codeHash = hashSecret(code);
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
+    // Checked before the pairing is claimed, so hitting the cap does not burn
+    // the code the person already typed (#511).
+    const active = await tx.agent.count({
+      where: { tenantId: tenant, ownerUserId: owner.id, revokedAt: null },
+    });
+    if (active >= MAX_ACTIVE_AGENTS_PER_OWNER) return { ok: false, error: AGENT_LIMIT_MESSAGE } as const;
     const approved = await tx.agentPairing.updateMany({
       where: { codeHash, approvedAt: null, ownerUserId: null, expiresAt: { gt: now } },
       data: { ownerUserId: owner.id, tenantId: tenant, projectId: project.id, approvedAt: now },
@@ -133,6 +142,10 @@ export async function approvePairing(
     });
     return { ok: true, name: pairing.proposedName } as const;
   });
+  if (result.ok) {
+    cleanupExpiredPairings(now).catch((error: unknown) => logger.error("[pairing] cleanup failed", error));
+  }
+  return result;
 }
 
 /**
@@ -156,7 +169,7 @@ export async function materializeApprovedPairings(ownerUserId: string, tenantId:
         tenantId: pairing.tenantId!,
       }));
     } catch (error) {
-      console.error("[pairing] could not record approved agent", error);
+      logger.error("[pairing] could not record approved agent", error);
     }
   }
 }
@@ -294,4 +307,21 @@ async function projectForIssuedKey(tenantId: string, projectId: string | null): 
     select: { id: true },
   });
   return oldest?.id ?? null;
+}
+
+/**
+ * Deletes expired pairings that were never approved or consumed (#673).
+ *
+ * Removes unapproved pairing codes whose TTL has passed to prevent database
+ * bloat and eliminate stale pairing attempts.
+ */
+export async function cleanupExpiredPairings(now = new Date()): Promise<{ count: number }> {
+  const result = await prisma.agentPairing.deleteMany({
+    where: {
+      expiresAt: { lt: now },
+      approvedAt: null,
+      consumedAt: null,
+    },
+  });
+  return { count: result?.count ?? 0 };
 }

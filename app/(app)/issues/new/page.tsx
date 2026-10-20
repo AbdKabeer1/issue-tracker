@@ -6,6 +6,7 @@ import { currentTenantAccess } from "@/lib/tenant-access";
 import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { CreateIssueForm } from "@/components/create-issue-form";
+import { activeProjectIdFor } from "@/lib/project-context";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Report an issue" };
@@ -57,6 +58,13 @@ export default async function NewBugPage() {
     loadOrEmpty("platforms", async () => getActivePlatforms(await currentTenantIdFor(user.id)), []),
     loadOrEmpty("issue types", () => getActiveIssueTypesCached(), []),
   ]);
+  // The active project scopes the create-issue draft (#729): switching
+  // projects must not surface this form's text in another project.
+  const tenantId = await currentTenantIdFor(user.id);
+  const projectId = await loadOrEmpty("active project", async () => {
+    if (!tenantId) return null;
+    return activeProjectIdFor(prisma, tenantId);
+  }, null);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -77,6 +85,7 @@ export default async function NewBugPage() {
           types={types}
           isAdmin={admin}
           currentUserId={user.id}
+          projectId={projectId}
         />
       </div>
     </div>

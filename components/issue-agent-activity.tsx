@@ -1,6 +1,7 @@
 import type { Severity } from "@prisma/client";
 import { severityLabel } from "@/lib/labels";
 import { LocalTime } from "@/components/local-time";
+import { ClaimDeadline } from "@/components/claim-deadline";
 
 /**
  * What agents decided on one issue, in sentences (#448). The raw audit dump
@@ -16,7 +17,16 @@ export type AgentDecision =
       personName: string;
       severity: Severity | null;
     }
-  | { id: string; at: Date | string; kind: "claimed"; agentName: string; personName: string }
+  | {
+      id: string;
+      at: Date | string;
+      kind: "claimed";
+      agentName: string;
+      personName: string;
+      /** #593: the delivery deadline, and whether the one extension was used. */
+      deliverBy?: Date | string | null;
+      extendedAt?: Date | string | null;
+    }
   | { id: string; at: Date | string; kind: "verdict"; agentName: string; personName: string; goodToMerge: boolean }
   | { id: string; at: Date | string; kind: "accepted"; agentName: string };
 
@@ -45,6 +55,13 @@ function sentence(decision: AgentDecision) {
         <>
           <span className="font-medium text-slate-900">{decision.agentName}</span> claimed this issue for{" "}
           {decision.personName}.
+          {decision.deliverBy ? (
+            <>
+              {" "}
+              <ClaimDeadline deliverBy={decision.deliverBy} />
+              {decision.extendedAt ? " (extension used)" : ""}.
+            </>
+          ) : null}
         </>
       );
     case "verdict":

@@ -144,6 +144,60 @@ describe("auth rate limits (#207)", () => {
       vi.stubEnv("TRUSTED_PROXY_HOPS", "99");
       expect(trustedProxyHops()).toBe(10);
     });
+
+    it("evaluates TRUSTED_PROXIES from right to left and stops at first untrusted IP (#675)", async () => {
+      vi.stubEnv("TRUSTED_PROXIES", "10.0.0.1, 10.0.0.2, 192.168.1.0/24, loopback");
+      const { clientIpFrom } = await import("./rate-limit");
+
+      // Attacker tried spoofing 1.1.1.1, client was 203.0.113.50, then passed through trusted internal proxies
+      const headers = new Headers({
+        "x-forwarded-for": "1.1.1.1, 203.0.113.50, 192.168.1.5, 10.0.0.1",
+      });
+      expect(clientIpFrom(headers)).toBe("203.0.113.50");
+    });
+
+    it("returns null if all IPs in X-Forwarded-For are trusted proxies and no real-ip or connectionIp exists (#675)", async () => {
+      vi.stubEnv("TRUSTED_PROXIES", "10.0.0.1, 10.0.0.2");
+      const { clientIpFrom } = await import("./rate-limit");
+      const headers = new Headers({ "x-forwarded-for": "10.0.0.2, 10.0.0.1" });
+      expect(clientIpFrom(headers)).toBeNull();
+    });
+
+    it("ignores spoofed X-Forwarded-For when connectionIp is not a trusted proxy (#663)", async () => {
+      vi.stubEnv("TRUSTED_PROXIES", "10.0.0.1, 10.0.0.2");
+      const { clientIpFrom } = await import("./rate-limit");
+
+      // Attacker connects directly from 198.51.100.99 and provides spoofed X-Forwarded-For
+      const headers = new Headers({
+        "x-forwarded-for": "8.8.8.8, 1.1.1.1",
+      });
+      expect(clientIpFrom(headers, "198.51.100.99")).toBe("198.51.100.99");
+    });
+
+    it("falls back to connectionIp when all forwarded headers are trusted proxies (#663)", async () => {
+      vi.stubEnv("TRUSTED_PROXIES", "10.0.0.1, 10.0.0.2");
+      const { clientIpFrom } = await import("./rate-limit");
+
+      const headers = new Headers({ "x-forwarded-for": "10.0.0.2" });
+      expect(clientIpFrom(headers, "10.0.0.1")).toBe("10.0.0.1");
+    });
+
+    it("falls back to connectionIp when TRUSTED_PROXY_HOPS is 0 (#663)", async () => {
+      vi.stubEnv("TRUSTED_PROXY_HOPS", "0");
+      const { clientIpFrom } = await import("./rate-limit");
+
+      const headers = new Headers({ "x-forwarded-for": "1.2.3.4" });
+      expect(clientIpFrom(headers, "198.51.100.50")).toBe("198.51.100.50");
+    });
+
+    it("accepts request-like object with headers and ip in clientRateLimitKey (#663)", async () => {
+      const { clientRateLimitKey } = await import("./rate-limit");
+      const req = {
+        headers: new Headers({ "x-forwarded-for": "203.0.113.19" }),
+        ip: "10.0.0.1",
+      };
+      expect(clientRateLimitKey(req)).toBe("ip:203.0.113.19");
+    });
   });
 
   describe("auth limits can't be dodged by rotating X-Forwarded-For (#508)", () => {

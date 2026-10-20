@@ -331,8 +331,8 @@ export function CommentThread({
       {comments.length === 0 ? (
         <p className="text-sm text-slate-500">
           {readOnly
-            ? "No comments."
-            : "No comments yet. Add triage notes or reproduction steps below."}
+            ? "No conversation."
+            : "No conversation yet. Start the conversation with a comment, bid, or instruction."}
         </p>
       ) : (
         <ul className="space-y-4">

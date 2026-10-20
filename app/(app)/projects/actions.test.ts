@@ -6,6 +6,7 @@ const cookieGet = vi.hoisted(() => vi.fn());
 const cookieSet = vi.hoisted(() => vi.fn());
 const redirect = vi.hoisted(() => vi.fn());
 const revalidatePath = vi.hoisted(() => vi.fn());
+const isTenantAdmin = vi.hoisted(() => vi.fn());
 
 vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("next/headers", () => ({
@@ -13,6 +14,7 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("@/lib/auth-helpers", () => ({ requireUser }));
+vi.mock("@/lib/agents/membership", () => ({ isTenantAdmin }));
 vi.mock("@/lib/tenant-context", () => ({
   currentTenantIdFor,
   NO_TENANT_MESSAGE: "You're not a member of a workspace yet.",
@@ -24,25 +26,31 @@ vi.mock("@/lib/prisma", () => ({
       create: vi.fn(),
       findFirst: vi.fn(),
     },
+    testMission: { createMany: vi.fn() },
+    $transaction: vi.fn(),
+    projectAuditEvent: { create: vi.fn() },
   },
 }));
 
 import { prisma } from "@/lib/prisma";
 import { ACTIVE_PROJECT_COOKIE } from "@/lib/project-context";
-import { createProjectAction, switchProjectAction } from "./actions";
+import { createProjectAction, createTestMissionAction, switchProjectAction, updateProjectAction } from "./actions";
 
 const findMany = vi.mocked(prisma.project.findMany) as unknown as ReturnType<typeof vi.fn>;
 const create = vi.mocked(prisma.project.create) as unknown as ReturnType<typeof vi.fn>;
 const findFirst = vi.mocked(prisma.project.findFirst) as unknown as ReturnType<typeof vi.fn>;
+const createManyMissions = vi.mocked(prisma.testMission.createMany) as unknown as ReturnType<typeof vi.fn>;
 
 const REDIRECT = new Error("NEXT_REDIRECT");
 redirect.mockImplementation(() => {
   throw REDIRECT;
 });
 
-function form(values: Record<string, string>) {
+function form(values: Record<string, string | string[]>) {
   const data = new FormData();
-  for (const [key, value] of Object.entries(values)) data.set(key, value);
+  for (const [key, value] of Object.entries(values)) {
+    for (const entry of Array.isArray(value) ? value : [value]) data.append(key, entry);
+  }
   return data;
 }
 
@@ -57,6 +65,8 @@ beforeEach(() => {
   findMany.mockResolvedValue([{ slug: "zedu" }]);
   create.mockResolvedValue({ id: "project-new" });
   findFirst.mockResolvedValue({ id: "project-zedu" });
+  isTenantAdmin.mockResolvedValue(true);
+  createManyMissions.mockResolvedValue({ count: 4 });
   cookieGet.mockReturnValue(undefined);
 });
 
@@ -139,5 +149,84 @@ describe("switchProjectAction (#426)", () => {
 
     expect(findFirst).not.toHaveBeenCalled();
     expect(cookieSet).not.toHaveBeenCalled();
+  });
+});
+
+describe("createTestMissionAction (#619)", () => {
+  it("creates route missions for selected roles and viewports in the current tenant", async () => {
+    const result = await createTestMissionAction(undefined, form({
+      projectId: "project-zedu",
+      routePattern: "/settings/**",
+      brief: "Check settings behavior",
+      roles: ["admin", "member"],
+      viewports: ["desktop", "mobile_375"],
+    }));
+
+    expect(result).toEqual({ message: "Added 4 test missions." });
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: "project-zedu", tenantId: "tenant-zedu" },
+      select: { id: true },
+    });
+    expect(isTenantAdmin).toHaveBeenCalledWith({ id: "user-1", role: "user" }, "tenant-zedu");
+    expect(createManyMissions).toHaveBeenCalledWith({
+      data: [
+        { projectId: "project-zedu", routePattern: "/settings/**", brief: "Check settings behavior", role: "admin", viewport: "desktop" },
+        { projectId: "project-zedu", routePattern: "/settings/**", brief: "Check settings behavior", role: "admin", viewport: "mobile_375" },
+        { projectId: "project-zedu", routePattern: "/settings/**", brief: "Check settings behavior", role: "member", viewport: "desktop" },
+        { projectId: "project-zedu", routePattern: "/settings/**", brief: "Check settings behavior", role: "member", viewport: "mobile_375" },
+      ],
+      skipDuplicates: true,
+    });
+    expect(revalidatePath).toHaveBeenCalledWith("/projects");
+  });
+
+  it("does not allow a workspace member to manage missions", async () => {
+    isTenantAdmin.mockResolvedValue(false);
+
+    const result = await createTestMissionAction(undefined, form({
+      projectId: "project-zedu", routePattern: "/settings", brief: "Check settings",
+      roles: ["member"], viewports: ["desktop"],
+    }));
+
+    expect(result.error).toBe("Only project admins can manage test missions.");
+    expect(createManyMissions).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid route patterns before writing", async () => {
+    const result = await createTestMissionAction(undefined, form({
+      projectId: "project-zedu", routePattern: "https://other.example", brief: "Check settings",
+      roles: ["member"], viewports: ["desktop"],
+    }));
+
+    expect(result.error).toBeTruthy();
+    expect(createManyMissions).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateProjectAction (#608)", () => {
+  it("updates settings and records the change with the actor", async () => {
+    findFirst.mockResolvedValue({ id: "project-zedu", name: "Web", goal: null, repoUrl: null, stagingUrl: null });
+    const update = vi.fn();
+    const audit = vi.fn();
+    const transaction = vi.mocked(prisma.$transaction) as unknown as ReturnType<typeof vi.fn>;
+    transaction.mockImplementation(async (work: (tx: unknown) => Promise<unknown>) =>
+      work({ project: { update }, projectAuditEvent: { create: audit } }),
+    );
+    const result = await updateProjectAction(undefined, form({ slug: "web", name: "Web App", goal: "Ship", repoUrl: "https://github.com/acme/web", stagingUrl: "https://staging.example.com" }));
+    expect(result).toEqual({});
+    expect(update).toHaveBeenCalledWith({ where: { id: "project-zedu" }, data: { name: "Web App", goal: "Ship", repoUrl: "https://github.com/acme/web", stagingUrl: "https://staging.example.com" } });
+    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ tenantId: "tenant-zedu", projectId: "project-zedu", actorUserId: "user-1", action: "settings.updated" }) }));
+    expect(revalidatePath).toHaveBeenCalledWith("/projects/web/settings");
+    expect(revalidatePath).toHaveBeenCalledWith("/issues");
+  });
+
+  it("refuses members and invalid URLs without writing", async () => {
+    isTenantAdmin.mockResolvedValue(false);
+    expect(await updateProjectAction(undefined, form({ slug: "web", name: "Web", goal: "", repoUrl: "https://evil.example/repo", stagingUrl: "http://staging.example.com" }))).toMatchObject({ error: expect.any(String) });
+    expect(findFirst).not.toHaveBeenCalled();
+    isTenantAdmin.mockResolvedValue(true);
+    const invalid = await updateProjectAction(undefined, form({ slug: "web", name: "Web", goal: "", repoUrl: "https://evil.example/repo", stagingUrl: "http://staging.example.com" }));
+    expect(invalid.fieldErrors).toMatchObject({ repoUrl: expect.any(String), stagingUrl: expect.any(String) });
+    expect(vi.mocked(prisma.$transaction)).not.toHaveBeenCalled();
   });
 });
