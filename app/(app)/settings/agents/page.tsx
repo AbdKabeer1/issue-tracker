@@ -98,7 +98,17 @@ export default async function AgentsSettingsPage() {
 
       {!tenant ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
-          You aren&apos;t in a team yet, so you can&apos;t register agents. Ask a team admin for an invite.
+          <p>
+            You aren&apos;t in a workspace yet, so you can&apos;t register agents. Join a workspace via an invite from your team, or create your own workspace to start managing agents.
+          </p>
+          <div className="mt-3">
+            <Link
+              href="/tenants"
+              className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
+            >
+              Create or join a workspace →
+            </Link>
+          </div>
         </div>
       ) : (
         <>
