@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { agentIssueRequest, createAgentIssue, issueProject, listAgentIssues } from "@/lib/agent-api/issues";
 
-/** GET ?projectId=&status=&severity=&platform=&assignee=&cursor=&limit= */
+/** GET ?projectId=&status=&severity=&platform=&area=&assignee=&stage=&cursor=&limit= */
 export async function GET(request: NextRequest) {
   return agentIssueRequest(request, "issues.list", "observer", null, async (agent) => {
     const scope = await issueProject(agent, request.nextUrl.searchParams);

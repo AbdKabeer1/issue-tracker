@@ -215,6 +215,18 @@ export const resetPasswordSchema = z
     path: ["confirmPassword"],
   });
 
+/** Credentials required before a signed-in person can change their password. */
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Enter your current password"),
+    password: passwordField,
+    confirmPassword: z.string().min(1, "Confirm your new password"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
 /**
  * An EVM wallet address (#618): `0x` followed by 40 hex characters. Shape
  * only — no checksum validation — because the person is the one who chooses

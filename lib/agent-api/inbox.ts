@@ -5,6 +5,7 @@ import type { AgentContext } from "@/lib/agents/require-agent";
 import { extractMentionedAgentIds, extractMentionedUserIds } from "@/lib/mentions";
 import { commentPermalinkPath } from "@/lib/comment-window";
 import { absoluteUrl } from "@/lib/site-url";
+import { markMessagesRead } from "@/lib/agent-messages";
 import {
   EVENT_MAX_WAIT_SECONDS,
   nextPollDelayMs,
@@ -265,6 +266,7 @@ export async function markInboxRead(
       where: { agentId: agent.agentId, id: { in: input.ids }, readAt: null },
       data: { readAt },
     });
+    if (count) await markMessagesRead(agent.agentId, readAt);
     return count;
   }
   const anchor = await prisma.agentInboxItem.findFirst({
@@ -280,5 +282,7 @@ export async function markInboxRead(
     },
     data: { readAt },
   });
+  // #605: an owner's message is read once its inbox item is.
+  if (count) await markMessagesRead(agent.agentId, readAt);
   return count;
 }

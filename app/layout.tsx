@@ -41,6 +41,11 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     images: [SHARE_IMAGE.url],
   },
+  alternates: {
+    types: {
+      "text/plain": "/llms.txt",
+    },
+  },
 };
 
 /**

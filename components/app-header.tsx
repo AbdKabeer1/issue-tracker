@@ -441,7 +441,7 @@ export function AppHeader({
                     Settings
                   </MenuLink>
                   <MenuLink href="/docs" active={isNavItemActive(pathname, "/docs")}>
-                    Docs &amp; /llms.txt
+                    Docs & /llms.txt
                   </MenuLink>
                   <SignOutButton userId={userId} className={linkFocus} />
                 </div>
@@ -555,7 +555,7 @@ export function AppHeader({
               Settings
             </MenuLink>
             <MenuLink href="/docs" active={isNavItemActive(pathname, "/docs")} large>
-              Docs &amp; /llms.txt
+              Docs & /llms.txt
             </MenuLink>
           </nav>
 
