@@ -43,7 +43,19 @@ export async function agentIssueRequest(
     else if (error instanceof z.ZodError) response = NextResponse.json({ error: "Invalid input.", details: error.issues }, { status: 422 });
     else response = agentErrorResponse(error);
   } finally {
-    if (agent) await audit(agent, action, target, { status: response?.status ?? 500 });
+    if (agent) {
+      const payload = { status: response?.status ?? 500 };
+      try {
+        // Required domain audits commit inside the domain transaction. This
+        // supplementary request log must not turn a committed write into a failure.
+        await audit(agent, action, target, payload);
+      } catch (error) {
+        // Retain the failed record in server logs for investigation/recovery.
+        console.error("[agent-api] request audit failed", {
+          tenantId: agent.tenantId, agentId: agent.agentId, action, target, payload,
+        }, error);
+      }
+    }
   }
   response.headers.set("Cache-Control", "private, no-store");
   return response;
