@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -62,6 +63,49 @@ describe("project area actions (#609)", () => {
       data: expect.objectContaining({ tenantId: "tenant-1", projectId: "project-1", action: "area.created" }),
     }));
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/projects/web/settings");
+  });
+
+  describe("when two areas are created at the same moment (#968)", () => {
+    const collision = (target: unknown = ["projectId", "slug"]) =>
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+        meta: { target },
+      });
+
+    it("re-reads the slugs and takes the next free one", async () => {
+      mocks.areaFindMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ slug: "frontend" }]);
+      mocks.areaCreate.mockRejectedValueOnce(collision()).mockResolvedValueOnce({ id: "area-new" });
+
+      await expect(createProjectAreaAction(undefined, createForm())).resolves.toEqual({ ok: true });
+
+      expect(mocks.areaCreate).toHaveBeenCalledTimes(2);
+      expect(mocks.areaCreate.mock.calls[0][0].data.slug).toBe("frontend");
+      expect(mocks.areaCreate.mock.calls[1][0].data.slug).not.toBe("frontend");
+      expect(mocks.areaFindMany).toHaveBeenCalledTimes(2);
+      expect(mocks.revalidatePath).toHaveBeenCalledWith("/projects/web/settings");
+    });
+
+    it("gives up with a message, not a thrown error, if it keeps losing the race", async () => {
+      mocks.areaCreate.mockRejectedValue(collision());
+
+      const result = await createProjectAreaAction(undefined, createForm());
+
+      expect(result).toEqual({ ok: false, error: expect.stringMatching(/same time/i) });
+      expect(mocks.areaCreate).toHaveBeenCalledTimes(3);
+      expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    });
+
+    it("still surfaces errors that are not a slug collision", async () => {
+      mocks.areaCreate.mockRejectedValueOnce(new Error("connection lost"));
+      await expect(createProjectAreaAction(undefined, createForm())).rejects.toThrow("connection lost");
+      expect(mocks.areaCreate).toHaveBeenCalledTimes(1);
+
+      mocks.areaCreate.mockReset();
+      mocks.areaCreate.mockRejectedValueOnce(collision(["projectId", "name"]));
+      await expect(createProjectAreaAction(undefined, createForm())).rejects.toThrow(/Unique constraint/);
+      expect(mocks.areaCreate).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("requires an owner/admin before reading the project", async () => {
