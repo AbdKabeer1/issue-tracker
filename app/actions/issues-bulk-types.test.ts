@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const publishWebEvent = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("@/lib/agent-api/web-events", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/agent-api/web-events")>()),
+  publishWebEvent,
+}));
+
 const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(), access: vi.fn(), active: false,
   db: {

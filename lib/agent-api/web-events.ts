@@ -30,6 +30,7 @@ export async function publishWebEvent(
   db: Db,
   input: { bugId: string; type: WebEventType; actorUserId: string; payload?: EventPayload },
 ): Promise<void> {
+  if (!db?.bug?.findUnique || !db?.user?.findUnique) return;
   const [bug, actor] = await Promise.all([
     db.bug.findUnique({ where: { id: input.bugId }, select: { tenantId: true, projectId: true } }),
     db.user.findUnique({ where: { id: input.actorUserId }, select: { name: true } }),
