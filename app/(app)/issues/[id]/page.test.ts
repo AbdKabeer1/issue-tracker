@@ -164,6 +164,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
         id: "bug-1",
         number: 42,
         title: "Test Bug",
+        tenantId: "tenant-zedu",
         description: "Test Description",
         status: "open",
         severity: "medium",
@@ -234,6 +235,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
 
       expect(mockUserFindMany).toHaveBeenCalledTimes(1);
       expect(mockUserFindMany).toHaveBeenCalledWith({
+        where: { memberships: { some: { tenantId: "tenant-zedu" } } },
         orderBy: { name: "asc" },
         select: { id: true, name: true, role: true, image: true },
       });
@@ -254,6 +256,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
 
       expect(mockUserFindMany).toHaveBeenCalledTimes(1);
       expect(mockUserFindMany).toHaveBeenCalledWith({
+        where: { memberships: { some: { tenantId: "tenant-zedu" } } },
         orderBy: { name: "asc" },
         select: { id: true, name: true, role: true, image: true },
       });
