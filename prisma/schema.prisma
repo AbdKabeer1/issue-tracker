@@ -880,8 +880,8 @@ model AgentApiKey {
   projectId  String?
   /// SHA-256 of the raw key.
   keyHash    String    @unique
-  /// AES-256-GCM of the raw key. Set only for a personal project key, so the
-  /// owner can copy it again. Other keys stay hash-only.
+  /// AES-256-GCM of the raw key, so the owner can copy it again from Settings.
+  /// Null on keys issued before every agent key was sealed.
   sealedKey  String?
   /// The first characters of the key, so the owner can tell keys apart.
   prefix     String
