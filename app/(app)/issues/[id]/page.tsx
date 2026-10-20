@@ -69,6 +69,7 @@ import { canAssignTicket } from "@/lib/ticket-assignment";
 import { SelfAssignButton } from "@/components/self-assign-button";
 import { EditableIssueDescription } from "@/components/editable-issue-description";
 import { EditableProofLinks } from "@/components/editable-proof-links";
+import { IssuePullRequest } from "@/components/issue-pull-request";
 import { withCurrentOption } from "@/lib/triage-options";
 import { issueTenantHintFor } from "@/lib/issue-tenant-hint";
 import { IssueTenantSwitch } from "@/components/issue-tenant-hint";
@@ -944,6 +945,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           <AttachmentList attachments={issueAttachments} />
         </section>
       ) : null}
+
+      <IssuePullRequest pullRequestUrl={bug.pullRequestUrl} />
 
       <EditableProofLinks bugId={bug.id} initialLinks={proofLinks} canEdit={canEdit} />
 

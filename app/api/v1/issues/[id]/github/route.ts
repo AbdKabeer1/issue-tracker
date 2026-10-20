@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createReviewOffers } from "@/lib/agent-api/review-offer";
 import { agentIssueRequest, issueJson } from "@/lib/agent-api/issues";
+import { publish } from "@/lib/agent-api/events";
 import {
   mergeAcceptedFix,
   parseGitHubRepoUrl,
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
     const bug = await prisma.bug.findFirst({
       where: { id, tenantId: agent.tenantId, isDeleted: false },
-      select: { id: true, project: { select: { repoUrl: true } } },
+      select: { id: true, projectId: true, project: { select: { repoUrl: true } } },
     });
     if (!bug) return NextResponse.json({ error: "No such issue." }, { status: 404 });
 
@@ -52,9 +53,37 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       );
     }
 
-    await prisma.bug.update({
-      where: { id: bug.id },
-      data: { pullRequestUrl: parsed.data.pullRequestUrl },
+    await prisma.$transaction(async (tx) => {
+      await tx.bug.update({
+        where: { id: bug.id },
+        data: { pullRequestUrl: parsed.data.pullRequestUrl },
+      });
+
+      await tx.bugActivity.create({
+        data: {
+          bugId: bug.id,
+          actorId: agent.ownerId,
+          type: "edited",
+          summary: `linked PR ${parsed.data.pullRequestUrl}`,
+          metadata: {
+            field: "pullRequestUrl",
+            pullRequestUrl: parsed.data.pullRequestUrl,
+          },
+        },
+      });
+
+      await publish(tx, {
+        tenantId: agent.tenantId,
+        type: "issue.pr_linked",
+        payload: {
+          issueId: bug.id,
+          projectId: bug.projectId,
+          pullRequestUrl: parsed.data.pullRequestUrl,
+          agentId: agent.agentId,
+        },
+        actorAgentId: agent.agentId,
+        bugId: bug.id,
+      });
     });
 
     await createReviewOffers(prisma, agent, bug.id, {
