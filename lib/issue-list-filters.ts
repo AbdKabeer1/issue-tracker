@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { severities, statuses } from "@/lib/validations/issue";
-import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
+import { boundSearchTerm, escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
 import { MILESTONE_PARAM, milestoneWhere, parseMilestoneFilter } from "@/lib/milestones";
 import {
   defaultSortFor,
@@ -100,7 +100,7 @@ export function parseBugListFilters({
   Object.assign(where, milestoneWhere(parseMilestoneFilter(params[MILESTONE_PARAM], milestones)));
 
   if (q?.trim()) {
-    const escaped = escapeSearchQuery(q.trim());
+    const escaped = escapeSearchQuery(boundSearchTerm(q));
     where.OR = [
       { title: { contains: escaped, mode: "insensitive" } },
       { description: { contains: escaped, mode: "insensitive" } },

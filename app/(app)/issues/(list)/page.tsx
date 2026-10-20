@@ -20,7 +20,7 @@ import {
 import { LocalTime } from "@/components/local-time";
 import { severities, statuses } from "@/lib/validations/issue";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
-import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
+import { boundSearchTerm, escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
 import {
   hasMatch,
   highlightSegments,
@@ -248,7 +248,7 @@ export default async function BugsPage({
   Object.assign(where, projectAreaFilterWhere(selectedArea));
   Object.assign(where, milestoneWhere(selectedMilestone));
   if (qParam?.trim()) {
-    const q = escapeSearchQuery(qParam.trim());
+    const q = escapeSearchQuery(boundSearchTerm(qParam));
     where.OR = [
       { title: { contains: q, mode: "insensitive" } },
       { description: { contains: q, mode: "insensitive" } },
