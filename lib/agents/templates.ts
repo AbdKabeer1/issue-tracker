@@ -202,7 +202,7 @@ async function pair() {
 }
 
 async function getApiKey() {
-  if (process.env.ZIKI_AGENT_KEY) return process.env.ZIKI_AGENT_KEY;
+  if (process.env["ZIKI_AGENT_KEY"]) return process.env["ZIKI_AGENT_KEY"];
   if (fs.existsSync(KEY_FILE)) {
     try {
       const saved = JSON.parse(fs.readFileSync(KEY_FILE, "utf8"));
