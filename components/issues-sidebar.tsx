@@ -263,6 +263,7 @@ export function IssuesSidebar({
             <Link
               key={name}
               href={makeHref("tags", name)}
+              aria-current={isCategoryActive ? "page" : undefined}
               className={`flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                 isCategoryActive
                   ? "bg-blue-50 text-blue-700 font-semibold"
@@ -340,6 +341,7 @@ export function IssuesSidebar({
             <Link
               key={platformName}
               href={makeHref("platform", platformTarget)}
+              aria-current={isPlatformActive ? "page" : undefined}
               className={`flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                 isPlatformActive
                   ? "bg-blue-50 text-blue-700 font-semibold"
