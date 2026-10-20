@@ -197,7 +197,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.sv = user.sessionVersion;
       }
 
-      // Enforce sessionVersion on existing tokens and rotate claims (#655)
+      // Keep a stale token (#655). Edge middleware never reads the database, so
+      // dropping the session here leaves the cookie in place and /login bounces
+      // straight back to /issues. requireUser compares sessionVersion and role,
+      // then /session-expired is what actually clears the cookie.
       const userId = (token.id ?? token.sub) as string | undefined;
       if (userId && !user) {
         try {
@@ -205,18 +208,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             where: { id: userId },
             select: { id: true, role: true, sessionVersion: true },
           });
-          if (!dbUser) {
-            return null;
+          if (dbUser) {
+            const tokenVersion = typeof token.sv === "number" ? token.sv : 0;
+            const roleMatches = !token.role || token.role === dbUser.role;
+            if (tokenVersion === dbUser.sessionVersion && roleMatches) {
+              token.role = dbUser.role;
+              token.sv = dbUser.sessionVersion;
+            }
           }
-          const tokenVersion = typeof token.sv === "number" ? token.sv : 0;
-          if (tokenVersion !== dbUser.sessionVersion) {
-            return null;
-          }
-          if (token.role && token.role !== dbUser.role) {
-            return null;
-          }
-          token.role = dbUser.role;
-          token.sv = dbUser.sessionVersion;
         } catch {
           // If database check errors, do not crash; token remains
         }
