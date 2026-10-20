@@ -153,6 +153,7 @@ describe("GET /issues/export?format=json (#664)", () => {
           severity: "high",
           type: "Bug",
           platform: null,
+          area: null,
           reporter: "Alice",
           assignee: null,
           votes: 5,
