@@ -33,12 +33,14 @@ export function availableOfferCandidates<T extends OfferCandidate>(candidates: T
   return rankOfferCandidates(candidates.filter((person) => person.activeClaims < MAX_ACTIVE_CLAIMS && !person.pendingOffer));
 }
 
-function scheduleOfferExpiry(claimId: string): void {
+/** Re-arm the expiry that releases an offer nobody accepted. Exported for the stale-claim sweep (#524). */
+export function scheduleOfferExpiry(claimId: string): void {
   setTimeout(() => { void expireOffer(claimId).catch(() => undefined); }, OFFER_TTL_MS);
 }
 
-/** Picks by active workload, then by who has waited longest since their last offer. */
-async function offerNext(db: Db, caller: { agentId?: string; tenantId: string }, bug: { id: string; projectId: string; title: string; assigneeId?: string | null }) {
+/** Picks by active workload, then by who has waited longest since their last offer.
+ * Exported for the stale-claim sweep (#524), which re-offers a reopened issue with no agent caller. */
+export async function offerNext(db: Db, caller: { agentId?: string; tenantId: string }, bug: { id: string; projectId: string; title: string; assigneeId?: string | null }) {
   const memberships = await db.membership.findMany({
     where: {
       tenantId: caller.tenantId,
