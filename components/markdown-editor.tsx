@@ -539,8 +539,8 @@ export const MarkdownEditor = forwardRef<
         <div className="flex flex-nowrap items-center gap-1 overflow-hidden rounded-t-lg border-b border-slate-200 bg-slate-50 px-1.5 py-1 sm:flex-wrap">
           <div
             className="flex shrink-0 items-center gap-1 border-r border-slate-200 pr-1.5"
-            role="tablist"
-            aria-label="Editor mode"
+            role="group"
+            aria-label="Editor view"
           >
             <TabButton
               active={writing}
@@ -765,12 +765,10 @@ function TabButton({
   return (
     <button
       type="button"
-      role="tab"
-      aria-selected={active}
+      aria-pressed={active}
       aria-disabled={disabled || undefined}
       title={title}
       disabled={disabled}
-      onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
       className={`inline-flex shrink-0 items-center gap-1 rounded px-2.5 py-1.5 sm:px-2 sm:py-1 text-xs font-medium transition ${
         active

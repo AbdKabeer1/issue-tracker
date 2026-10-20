@@ -65,7 +65,7 @@ export function SelfAssignButton({
           type="button"
           disabled={pending}
           onClick={() => handleToggle(!isAssignedToMe)}
-          className={`text-xs font-medium transition-colors disabled:opacity-50 ${
+          className={`rounded text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:ring-offset-2 disabled:opacity-50 ${
             isAssignedToMe
               ? "text-slate-500 hover:text-red-600 hover:underline"
               : "text-teal-700 hover:text-teal-800 hover:underline"
