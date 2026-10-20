@@ -418,13 +418,29 @@ export async function pendingInvites(
   tenantId: string,
   now = new Date(),
 ): Promise<PendingInvite[]> {
+  // The inviter is loaded apart so a deleted account does not fail the page.
   const rows = await db.tenantInvite.findMany({
     where: { tenantId, acceptedAt: null, expiresAt: { gt: now } },
-    select: { id: true, email: true, expiresAt: true, createdAt: true, invitedBy: { select: { name: true } } },
+    select: { id: true, email: true, expiresAt: true, createdAt: true, invitedById: true },
     orderBy: { createdAt: "desc" },
     take: 50,
   });
-  return rows.map(({ invitedBy, ...row }) => ({ ...row, invitedByName: invitedBy.name }));
+  const ids = [...new Set(rows.map((row) => row.invitedById))];
+  const people =
+    ids.length === 0
+      ? []
+      : await db.user.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, name: true },
+        });
+  const names = new Map(people.map((person) => [person.id, person.name]));
+  return rows.map((row) => ({
+    id: row.id,
+    email: row.email,
+    expiresAt: row.expiresAt,
+    createdAt: row.createdAt,
+    invitedByName: names.get(row.invitedById) ?? "Someone",
+  }));
 }
 
 export type RevokeInviteResult =

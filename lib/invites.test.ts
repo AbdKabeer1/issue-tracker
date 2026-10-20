@@ -93,6 +93,11 @@ function fakeDb() {
         const user = users.find((u) => u.email === where.email);
         return user ? { id: user.id } : null;
       }),
+      findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
+        users
+          .filter((user) => where.id.in.includes(user.id))
+          .map((user) => ({ id: user.id, name: user.name })),
+      ),
     },
     membership: {
       findUnique: vi.fn(

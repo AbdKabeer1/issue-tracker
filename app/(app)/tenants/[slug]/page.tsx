@@ -42,6 +42,15 @@ function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 
+async function loadQuietly<T>(label: string, task: Promise<T>, empty: T): Promise<T> {
+  try {
+    return await task;
+  } catch (error) {
+    console.error(`[tenant] ${label} failed`, error);
+    return empty;
+  }
+}
+
 /**
  * Memberships and users are loaded apart so a missing user does not fail the page.
  * Owners and admins are taken from this list for the same reason: joining `user`
@@ -96,11 +105,11 @@ export default async function TenantPage({
   const canManageSettings = tenant.role === "owner" && !tenant.archivedAt;
   const [currentTenantId, summary, invites, members, shareLinks, joinRequests] = await Promise.all([
     currentTenantIdFor(user.id),
-    tenantSummary(prisma, tenant.id),
-    canManage ? pendingInvites(prisma, tenant.id) : [],
+    loadQuietly("summary", tenantSummary(prisma, tenant.id), null),
+    canManage ? loadQuietly("invites", pendingInvites(prisma, tenant.id), []) : [],
     loadTenantMembers(tenant.id),
-    canManage ? listShareLinks(prisma, tenant.id) : [],
-    canManage ? pendingTenantJoinRequests(prisma, tenant.id) : [],
+    canManage ? loadQuietly("share links", listShareLinks(prisma, tenant.id), []) : [],
+    canManage ? loadQuietly("join requests", pendingTenantJoinRequests(prisma, tenant.id), []) : [],
   ]);
   const managers = members.filter((member) => member.role === "owner" || member.role === "admin").slice(0, 20);
   const ownerCount = members.filter((member) => member.role === "owner").length;
