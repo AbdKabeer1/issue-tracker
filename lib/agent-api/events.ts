@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { writeInbox } from "@/lib/agent-api/inbox";
 
 /**
  * Agent event feed (#445).
@@ -42,6 +43,7 @@ export function nextPollDelayMs(attempt: number, maxMs = EVENT_MAX_POLL_INTERVAL
  */
 export const AGENT_EVENT_TYPES = [
   "claim.accepted",
+  "claim.extended",
   "claim.offered",
   "claim.released",
   "comment.created",
@@ -110,6 +112,8 @@ export async function publish(
     data: subscriptions.map(({ id }) => ({ subscriptionId: id, eventId: event.id, nextAttemptAt: new Date() })),
     skipDuplicates: true,
   });
+  // #601: what this event addresses to one agent goes to its inbox too.
+  await writeInbox(db, { id: event.id, ...params });
   return event;
 }
 
