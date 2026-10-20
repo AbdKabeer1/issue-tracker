@@ -23,6 +23,55 @@ const tagTypes = [
   { id: "t2", name: "Fixes" },
 ];
 
+describe("IssueFilters milestone filters (#728)", () => {
+  const milestones = [
+    { id: "m1", title: "Release 1", isClosed: false },
+    { id: "m2", title: "Release 2", isClosed: true },
+  ];
+
+  beforeEach(() => {
+    nav.params = new URLSearchParams();
+    nav.push.mockReset();
+    nav.replace.mockReset();
+  });
+  afterEach(cleanup);
+
+  it.each([["m1", "Release 1"], ["m2", "Release 2"], ["none", "No milestone"]])(
+    "shows a removable milestone-only filter for %s",
+    (id, label) => {
+      nav.params = new URLSearchParams(`milestone=${id}&page=3`);
+      render(<IssueFilters milestones={milestones} />);
+
+      const remove = screen.getByRole("button", { name: "Remove milestone filter" });
+      expect(remove.parentElement).toHaveTextContent(`Milestone: ${label}`);
+      expect(screen.getByRole("button", { name: "Clear all filters" })).toBeInTheDocument();
+      fireEvent.click(remove);
+      expect(nav.push).toHaveBeenCalledWith("/issues");
+    },
+  );
+
+  it("preserves other filters and resets paging when removing a milestone", () => {
+    nav.params = new URLSearchParams("milestone=m1&status=open&page=3");
+    render(<IssueFilters milestones={milestones} />);
+    fireEvent.click(screen.getByRole("button", { name: "Remove milestone filter" }));
+    expect(nav.push).toHaveBeenCalledWith("/issues?status=open");
+  });
+
+  it("clears the milestone along with other filters", () => {
+    nav.params = new URLSearchParams("milestone=m1&status=open&page=3");
+    render(<IssueFilters milestones={milestones} />);
+    fireEvent.click(screen.getByRole("button", { name: "Clear all filters" }));
+    expect(nav.push).toHaveBeenCalledWith("/issues");
+  });
+
+  it("does not show active controls for an empty milestone", () => {
+    nav.params = new URLSearchParams("milestone=&page=3");
+    render(<IssueFilters milestones={milestones} />);
+    expect(screen.queryByRole("button", { name: "Remove milestone filter" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear all filters" })).not.toBeInTheDocument();
+  });
+});
+
 function typeSearch(value: string) {
   fireEvent.change(screen.getByRole("combobox", { name: "Search" }), {
     target: { value },
@@ -108,5 +157,55 @@ describe("IssueFilters live search (#671)", () => {
 
     fireEvent.click(within(screen.getByRole("listbox")).getByText("Design"));
     expect(nav.replace).toHaveBeenCalledWith("/issues?q=crash&tags=design");
+  });
+});
+
+describe("IssueFilters unified Filter button popover (#762)", () => {
+  beforeEach(() => {
+    nav.params = new URLSearchParams();
+    nav.push.mockReset();
+    nav.replace.mockReset();
+  });
+  afterEach(cleanup);
+
+  it("renders a Filter trigger button next to search", () => {
+    render(<IssueFilters tagTypes={tagTypes} />);
+    const filterBtn = screen.getByRole("button", { name: /^filter/i });
+    expect(filterBtn).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Filter issues" })).not.toBeInTheDocument();
+  });
+
+  it("displays active filter count on the Filter button when filters are active", () => {
+    nav.params = new URLSearchParams("status=open&severity=high");
+    render(<IssueFilters tagTypes={tagTypes} />);
+    const filterBtn = screen.getByRole("button", { name: /filter \(2 active\)/i });
+    expect(filterBtn).toBeInTheDocument();
+    expect(filterBtn).toHaveTextContent("2");
+  });
+
+  it("toggles the filter popover and allows changing filters", () => {
+    render(<IssueFilters tagTypes={tagTypes} />);
+    const filterBtn = screen.getByRole("button", { name: /^filter/i });
+
+    // Open popover
+    fireEvent.click(filterBtn);
+    const dialog = screen.getByRole("dialog", { name: "Filter issues" });
+    expect(dialog).toBeInTheDocument();
+
+    // Select Status in popover
+    const statusSelect = within(dialog).getByLabelText("Status");
+    fireEvent.change(statusSelect, { target: { value: "open" } });
+    expect(nav.push).toHaveBeenCalledWith("/issues?status=open");
+  });
+
+  it("closes popover on Escape key", () => {
+    render(<IssueFilters tagTypes={tagTypes} />);
+    const filterBtn = screen.getByRole("button", { name: /^filter/i });
+
+    fireEvent.click(filterBtn);
+    expect(screen.getByRole("dialog", { name: "Filter issues" })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Filter issues" })).not.toBeInTheDocument();
   });
 });

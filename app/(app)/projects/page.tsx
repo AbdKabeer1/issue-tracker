@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CopyProjectIdButton } from "./copy-project-id";
 import { CreateProjectForm } from "./create-project-form";
 import { switchProjectAction } from "./actions";
+import { isTenantAdmin } from "@/lib/agents/membership";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Projects" };
@@ -34,6 +35,7 @@ export default async function ProjectsPage() {
       </div>
     );
   }
+  const canManageProjects = await isTenantAdmin(user, tenantId);
 
   const [tenant, projects, activeProjectId] = await Promise.all([
     prisma.tenant.findUnique({
@@ -115,6 +117,9 @@ export default async function ProjectsPage() {
                         {project.id}
                       </code>
                       <CopyProjectIdButton projectId={project.id} />
+                      {canManageProjects ? (
+                        <Link href={`/projects/${encodeURIComponent(project.slug)}/settings`} className="text-xs font-medium text-teal-700 hover:underline">Settings</Link>
+                      ) : null}
                     </div>
                   </div>
                   {active ? null : (

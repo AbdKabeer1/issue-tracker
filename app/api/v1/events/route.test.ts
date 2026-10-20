@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const db = vi.hoisted(() => ({
   agentApiKey: { findUnique: vi.fn() }, agentAuditEvent: { create: vi.fn() }, agentEvent: { findMany: vi.fn() },
-  webhookSubscription: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), delete: vi.fn(), update: vi.fn() },
+  webhookSubscription: { findMany: vi.fn(), findFirst: vi.fn(), count: vi.fn(), create: vi.fn(), delete: vi.fn(), update: vi.fn() },
 }));
 const budget = vi.hoisted(() => vi.fn());
 const ssrf = vi.hoisted(() => vi.fn());
@@ -33,6 +33,7 @@ beforeEach(() => {
   budget.mockResolvedValue({ allowed: true });
   db.agentEvent.findMany.mockResolvedValue([]);
   db.webhookSubscription.findMany.mockResolvedValue([]);
+  db.webhookSubscription.count.mockResolvedValue(0);
   db.webhookSubscription.findFirst.mockResolvedValue({ id: "subscription-a" });
   db.webhookSubscription.create.mockResolvedValue({ id: "subscription-a", url: "https://receiver.test/hook" });
   db.webhookSubscription.update.mockResolvedValue({ id: "subscription-a", enabled: true });
@@ -116,8 +117,10 @@ describe("webhook subscription endpoints", () => {
     expect((await PATCH(request("/webhooks/id", "PATCH"), context)).status).toBe(403);
   });
   it("encrypts a one-time secret and excludes it from list queries", async () => {
+    db.webhookSubscription.findFirst.mockResolvedValue(null);
     const response = await subscribe(request("/webhooks", "POST", { url: "https://receiver.test/hook" }));
     expect(response.status).toBe(201);
+    expect(db.webhookSubscription.create.mock.calls[0][0].data.events).toEqual([]);
     const secret = (await response.json()).subscription.signingSecret;
     const stored = db.webhookSubscription.create.mock.calls[0][0].data.signingSecretEncrypted;
     expect(stored).not.toBe(secret);
@@ -130,6 +133,19 @@ describe("webhook subscription endpoints", () => {
     expect((await subscribe(request("/webhooks", "POST", {}))).status).toBe(400);
     ssrf.mockResolvedValueOnce({ ok: false, reason: "Private address" });
     expect((await subscribe(request("/webhooks", "POST", { url: "https://127.0.0.1" }))).status).toBe(422);
+    expect(db.webhookSubscription.create).not.toHaveBeenCalled();
+  });
+  it("enforces the subscription cap and per-agent URL uniqueness (#512)", async () => {
+    db.webhookSubscription.count.mockResolvedValueOnce(3);
+    db.webhookSubscription.findFirst.mockResolvedValue(null);
+    const capped = await subscribe(request("/webhooks", "POST", { url: "https://receiver.test/hook" }));
+    expect(capped.status).toBe(409);
+    expect((await capped.json()).error).toContain("at most 3");
+    expect(db.webhookSubscription.create).not.toHaveBeenCalled();
+    db.webhookSubscription.findFirst.mockResolvedValueOnce({ id: "subscription-a" });
+    const duplicate = await subscribe(request("/webhooks", "POST", { url: "https://receiver.test/hook" }));
+    expect(duplicate.status).toBe(409);
+    expect((await duplicate.json()).error).toContain("already subscribed");
     expect(db.webhookSubscription.create).not.toHaveBeenCalled();
   });
   it("scopes deletion/re-enabling and handles unavailable storage", async () => {

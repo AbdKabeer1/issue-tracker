@@ -1,6 +1,6 @@
 # Ziki Issues
 
-Team **Zendor** fork of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug-tracker).
+Team **Zendor** fork of [`emerjent/bug-tracker`](https://github.com/emerjent/bug-tracker) (formerly `zeduchat/bug-tracker`).
 
 Report bugs, filter the board, triage status/assignee, vote, and leave comments.
 
@@ -75,7 +75,7 @@ The app is served from the root domain at **`http://localhost:3001`** (matching 
 
 ## Link previews (Open Graph / Twitter)
 
-Issue detail URLs (`/issues/[id]`, with legacy `/bugs/[id]` backwards-compatible redirects) emit OG + Twitter Card metadata so Slack, Discord, X, WhatsApp, and similar clients can unfurl a card with **title**, **status**, **author**, a **description snippet**, the **zedu-mark.svg** thumbnail, and a **canonical URL**.
+Issue detail URLs (`/issues/[id]`, with legacy `/bugs/[id]` backwards-compatible redirects) emit OG + Twitter Card metadata so Slack, Discord, X, WhatsApp, and similar clients can unfurl a card with **title**, **status**, **author**, a **description snippet**, the **`/Zedu.png`** share image (see `lib/share-image.ts`; SVGs are dropped by most unfurlers), and a **canonical URL**.
 
 ### Privacy (auth-gated pages)
 
@@ -121,7 +121,7 @@ Google redirect URI: `{AUTH_URL}/api/auth/callback/google`
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`AGENTS.md`](./AGENTS.md).
 
-PRs target **`main`** on `Zedu-Endor/bug-tracker` (this fork). Sync from `upstream` (`zeduchat/bug-tracker`) as needed.
+PRs target **`main`** on `Zedu-Endor/issue-tracker` (this fork; the repo was renamed from `bug-tracker`). Sync from `upstream` (`emerjent/bug-tracker`) as needed.
 
 ## Archive
 

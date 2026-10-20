@@ -36,6 +36,8 @@ import {
 } from "@/lib/labels";
 import { ActivityTimeline, type ActivityEntry } from "@/components/activity-timeline";
 import { IssueAgentActivity, type AgentDecision } from "@/components/issue-agent-activity";
+import { IssueEscalations, type TicketEscalation } from "@/components/issue-escalations";
+import { listBugEscalations } from "@/lib/agent-questions";
 import { IssueBids } from "@/components/issue-bids";
 import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
@@ -64,6 +66,8 @@ import { SelfAssignButton } from "@/components/self-assign-button";
 import { CopyLinkButton } from "@/components/copy-link-button";
 import { EditableIssueDescription } from "@/components/editable-issue-description";
 import { withCurrentOption } from "@/lib/triage-options";
+import { issueTenantHintFor } from "@/lib/issue-tenant-hint";
+import { IssueTenantSwitch } from "@/components/issue-tenant-hint";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
@@ -304,7 +308,15 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   const bug = loadedBug.bug;
 
   if (!bug) {
-    notFound();
+    // A link into another of the viewer's tenants should not dead-end (#519):
+    // name the tenant and offer the switch. Non-members still get the 404.
+    const hint = await issueTenantHintFor(prisma, {
+      userId,
+      activeTenantId: await currentTenantIdFor(userId),
+      issueId: id,
+    });
+    if (!hint) notFound();
+    return <IssueTenantSwitch issueId={id} tenant={hint} />;
   }
 
   if (bug.isDeleted && !canDelete) {
@@ -341,7 +353,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   );
   const canAwardBid = bug.status === "open" && !bug.isDeleted && (bug.reporterId === user.id || canChooseRedesign);
 
-  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions] =
+  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions, escalations] =
     await Promise.all([
       canTriage
         ? loadOptional("users", [], () =>
@@ -479,6 +491,9 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           })),
         ];
       }),
+      loadOptional<TicketEscalation[]>("escalations", [], () =>
+        tenantId ? listBugEscalations(id, tenantId) : Promise.resolve([]),
+      ),
     ]);
   const issueAttachments: AttachmentView[] = attachments.filter((a) => !a.commentId);
   const attachmentsByComment: Record<string, AttachmentView[]> = {};
@@ -920,6 +935,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         }))}
         canAward={canAwardBid}
       />
+
+      <IssueEscalations escalations={escalations} />
 
       <IssueAgentActivity decisions={agentDecisions} />
 

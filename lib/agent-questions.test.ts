@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
-  agentQuestion: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
+  agentQuestion: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
   membership: { findUnique: vi.fn() },
   bug: { findFirst: vi.fn() },
   agentAuditEvent: { create: vi.fn() },
@@ -18,6 +18,9 @@ vi.mock("@/lib/notify", () => ({ notifyLater: notify.notifyLater }));
 import {
   answerAgentQuestion,
   askAgentQuestion,
+  classifyEscalation,
+  countPendingEscalations,
+  listBugEscalations,
   readAgentQuestion,
   type AskAgentQuestionInput,
 } from "./agent-questions";
@@ -137,5 +140,42 @@ describe("answerAgentQuestion (#446)", () => {
 
     await expect(answerAgentQuestion("owner", "t1", "q1", "hi")).rejects.toMatchObject({ status: 403 });
     expect(db.agentQuestion.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("countPendingEscalations (#763)", () => {
+  it("counts unresolved questions for an owner in tenant", async () => {
+    db.agentQuestion.count.mockResolvedValue(4);
+
+    const count = await countPendingEscalations("owner", "t1");
+    expect(count).toBe(4);
+    expect(db.agentQuestion.count).toHaveBeenCalledWith({
+      where: { ownerUserId: "owner", answeredAt: null, agent: { tenantId: "t1" } },
+    });
+  });
+});
+
+describe("listBugEscalations (#763)", () => {
+  it("queries escalations linked to the bug in tenant", async () => {
+    db.agentQuestion.findMany.mockResolvedValue([{ id: "q1", body: "Need approval" }]);
+
+    const list = await listBugEscalations("b1", "t1");
+    expect(list).toEqual([{ id: "q1", body: "Need approval" }]);
+    expect(db.agentQuestion.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { bugId: "b1", agent: { tenantId: "t1" } },
+      }),
+    );
+  });
+});
+
+describe("classifyEscalation (#763)", () => {
+  it("identifies blockers, work authorizations, scope expansion, and human approval", () => {
+    expect(classifyEscalation("I am blocked by missing API keys")).toBe("Blocker");
+    expect(classifyEscalation("Need authorization to proceed on issue")).toBe("Work Authorization");
+    expect(classifyEscalation("May I have permission to start work?")).toBe("Work Authorization");
+    expect(classifyEscalation("This requires out of scope refactoring")).toBe("Scope Expansion");
+    expect(classifyEscalation("Please review and confirm sign off on this design")).toBe("Human Approval");
+    expect(classifyEscalation("What database dialect should I use?")).toBe("Question");
   });
 });

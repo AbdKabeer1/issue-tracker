@@ -4,12 +4,15 @@ import { useState, useTransition } from "react";
 import { setThemeAction } from "@/app/actions/settings";
 import { THEMES, themeAttribute, themeDescriptions, themeLabels, type Theme } from "@/lib/theme";
 
-/** Shows a choice on this page at once, before the server has saved it. */
+/** Shows a choice on this page at once, before the server has saved it, and syncs localStorage (#659). */
 function showTheme(theme: Theme) {
   const root = document.documentElement;
   const attr = themeAttribute(theme);
   if (attr) root.setAttribute("data-theme", attr);
   else root.removeAttribute("data-theme");
+  try {
+    localStorage.setItem("theme", theme);
+  } catch {}
 }
 
 /** Settings → Appearance (#277): System / Light / Dark. */

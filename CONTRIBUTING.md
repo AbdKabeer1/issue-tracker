@@ -2,13 +2,13 @@
 
 Team **Zendor (Zedu-Endor)** — lead: [@Goodnessmbakara](https://github.com/Goodnessmbakara).
 
-This is Team Zendor's **Task 1** **Ziki Issues** project (HNG15) — a fork of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug-tracker). It is **not** part of `zedu-fe`, `zedu-mobile`, or `zedu-desktop`. All PRs target **this** repository's `main`.
+This is Team Zendor's **Task 1** **Ziki Issues** project (HNG15) — `Zedu-Endor/issue-tracker`, a fork of [`emerjent/bug-tracker`](https://github.com/emerjent/bug-tracker) (formerly `zeduchat/bug-tracker`). It is **not** part of `zedu-fe`, `zedu-mobile`, or `zedu-desktop`. All PRs target **this** repository's `main`.
 
 ## Default branch
 
 - Default branch: **`main`**
 - Always branch from an up-to-date `main`
-- Open PRs against `main` in `Zedu-Endor/bug-tracker` — never against `zedu-hng` or other Zedu product repos
+- Open PRs against `main` in `Zedu-Endor/issue-tracker` — never against `zedu-hng` or other Zedu product repos
 
 ## Branch naming
 
@@ -49,7 +49,7 @@ Keep the subject imperative and under ~72 characters. One logical change per com
 
 1. One logical change per PR — keep diffs reviewable
 2. Fill in the PR template (Summary + Test plan)
-3. Target **`main`** on `Zedu-Endor/bug-tracker`
+3. Target **`main`** on `Zedu-Endor/issue-tracker`
 4. Do not mix unrelated refactors with feature work
 5. Never force-push (`git push --force`, `-f`, or `--force-with-lease`)
 6. Do not commit secrets (`.env`, keys, credentials)
@@ -102,13 +102,13 @@ Zod schemas live in `lib/validations/issue.ts`. Keep unit tests covering happy a
 ## Continuous Deployment Flow
 
 - **Staging / Team Testing (Vercel)**:
-  Every merge into `main` on `Zedu-Endor/bug-tracker` automatically triggers `.github/workflows/deploy-vercel.yml`. This runs all checks and deploys a live preview to Vercel so the team can test changes end-to-end before promoting them.
+  Every merge into `main` on `Zedu-Endor/issue-tracker` automatically triggers `.github/workflows/deploy-vercel.yml`. This runs all checks and deploys a live preview to Vercel so the team can test changes end-to-end before promoting them.
 - **Production (Coolify)**:
-  The upstream repository `zeduchat/bug-tracker` deploys to production on Coolify (`ziki.dev`, formerly `issues.zedu.chat`). Only verified and peer-reviewed PRs from team branches are submitted upstream.
+  The upstream repository `emerjent/bug-tracker` (formerly `zeduchat/bug-tracker`) deploys to production on Coolify (`ziki.dev`, formerly `issues.zedu.chat`). Only verified and peer-reviewed PRs from team branches are submitted upstream.
 
 ## Local development
 
-Paths below assume the repo lives at `/Users/abba/Desktop/bug-tracker` (or your local clone of this repo).
+Commands below run from the root of your clone of this repo.
 
 ### 1. Start Postgres
 
@@ -154,11 +154,3 @@ Demo accounts and more detail: see [README.md](./README.md).
 - Match existing TypeScript / Next.js App Router patterns in this repo
 - Do not commit `.env`, `.pem`, or credential files
 - Do not force-push to any branch shared with the team
-
-## Scheduled jobs
-
-Webhook deliveries are pulled by a scheduler, not pushed inline. Vercel Cron
-(`vercel.json`) calls `/api/v1/webhooks/dispatch` every minute with
-`Authorization: Bearer $CRON_SECRET`. On Coolify, add a scheduled command with
-the same URL and `Authorization: Bearer $WEBHOOK_DISPATCH_SECRET`. See
-`lib/webhooks/README.md` (#583).
