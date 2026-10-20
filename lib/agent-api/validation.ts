@@ -10,6 +10,10 @@ import { pointSourceKey, REPORTER_POINTS } from "@/lib/points/rules";
 import { severities } from "@/lib/validations/issue";
 import { publish } from "@/lib/agent-api/events";
 import { promoteEarnedReviewer } from "@/lib/agents/promotion";
+import { offerNext, scheduleOfferExpiry } from "@/lib/agent-api/offer";
+import { notifyClaimOffered } from "@/lib/agent-notifications";
+import { WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
+import { hasBlockingRedesign } from "@/lib/redesigns";
 
 /** Severity order for the reviewer agreement rule (#528). */
 const SEVERITY_RANK: Record<(typeof severities)[number], number> = {
@@ -91,6 +95,11 @@ type Db = PrismaClient | Prisma.TransactionClient;
 const reviewedBugSelect = {
   id: true,
   tenantId: true,
+  projectId: true,
+  title: true,
+  status: true,
+  assigneeId: true,
+  voteCount: true,
   severity: true,
   reporterId: true,
   beneficiaryUserId: true,
@@ -276,7 +285,7 @@ export async function submitValidation(
     setsSeverity !== null && !escalatesSeverity && setsSeverity !== bug.severity;
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    const outcome = await prisma.$transaction(async (tx) => {
       // Two reviewers can confirm at the same moment. Lock the issue so the
       // second transaction sees the first accept and still pays the reporter.
       await tx.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${bug.id} FOR UPDATE`;
@@ -370,8 +379,41 @@ export async function submitValidation(
         });
       }
 
-      return { status: 201 as const, validation, confirmed, newlyConfirmed };
+      let automaticOffer: Awaited<ReturnType<typeof offerNext>> = null;
+      if (newlyConfirmed) {
+        const issue = await tx.bug.findUnique({
+          where: { id: bug.id },
+          select: { id: true, projectId: true, title: true, status: true, assigneeId: true, voteCount: true },
+        });
+        const currentClaim = await tx.issueClaim.findFirst({
+          where: { bugId: bug.id, releasedAt: null, status: { in: ["offered", "active"] } },
+          select: { id: true },
+        });
+        if (
+          issue?.status === "open" &&
+          issue.voteCount >= WORK_READINESS_VOTE_THRESHOLD &&
+          !currentClaim &&
+          !(await hasBlockingRedesign(bug.id, tx))
+        ) {
+          automaticOffer = await offerNext(tx, { tenantId: bug.tenantId }, issue);
+        }
+      }
+
+      return {
+        submission: { status: 201 as const, validation, confirmed, newlyConfirmed },
+        automaticOffer,
+      };
     });
+    if (outcome.automaticOffer) {
+      notifyClaimOffered({
+        id: outcome.automaticOffer.claim.id,
+        bugId: bug.id,
+        bugTitle: outcome.automaticOffer.bugTitle,
+        beneficiaryUserId: outcome.automaticOffer.beneficiaryUserId,
+      });
+      scheduleOfferExpiry(outcome.automaticOffer.claim.id);
+    }
+    return outcome.submission;
   } catch (error) {
     if (!isUniqueViolation(error)) throw error;
     return {
