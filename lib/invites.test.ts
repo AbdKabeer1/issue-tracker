@@ -23,6 +23,7 @@ import {
   maskEmail,
   destinationForInviteInput,
   parseInviteLink,
+  openInvitesFor,
   pendingInvites,
   revokeInvite,
   viewInvite,
@@ -57,6 +58,11 @@ function inviteMatches(invite: Invite, where: Where): boolean {
     const value = invite[key as keyof Invite];
     if (condition && typeof condition === "object" && !(condition instanceof Date) && "gt" in condition) {
       if (!(value instanceof Date && value.getTime() > (condition.gt as Date).getTime())) return false;
+    } else if (condition && typeof condition === "object" && !(condition instanceof Date) && "equals" in condition) {
+      const expected = String((condition as { equals: unknown }).equals);
+      const actual = String(value ?? "");
+      const insensitive = (condition as { mode?: string }).mode === "insensitive";
+      if (insensitive ? actual.toLowerCase() !== expected.toLowerCase() : actual !== expected) return false;
     } else if (value !== condition) {
       return false;
     }
@@ -456,6 +462,30 @@ describe("viewInvite (#444)", () => {
       state: "accepted",
       details: { alreadyMember: true },
     });
+  });
+});
+
+describe("openInvitesFor", () => {
+  it("lists a live invite for this account so they can join without the link", async () => {
+    const s = setup();
+    const created = await invite(s, "Bob@example.com");
+    const open = await openInvitesFor(s.db, s.bob, NOW);
+    expect(open).toEqual([
+      {
+        id: created.invite.id,
+        expiresAt: created.invite.expiresAt,
+        tenant: { id: s.acme.id, name: "Acme", slug: "acme" },
+        invitedByName: "Olu Owner",
+      },
+    ]);
+  });
+
+  it("hides an invite once they are already in that tenant, and ignores other people", async () => {
+    const s = setup();
+    await invite(s);
+    s.join(s.acme, s.bob, "member");
+    expect(await openInvitesFor(s.db, s.bob, NOW)).toEqual([]);
+    expect(await openInvitesFor(s.db, s.outsider, NOW)).toEqual([]);
   });
 });
 
