@@ -19,11 +19,37 @@ export async function upsertGoogleUser(input: {
   email: string;
   name?: string | null;
   image?: string | null;
+  /** Google's own claim about this address (`profile.email_verified`). */
+  emailVerified?: boolean;
 }): Promise<GoogleAccount> {
   const email = input.email.toLowerCase();
   const name = input.name?.trim() || email.split("@")[0] || "User";
   const image = input.image || undefined;
   const role: Role = isSuperAdminEmail(email) ? "super_admin" : "user";
+
+  // A password preregistered at an address is unproven: when Google claims
+  // the address, the unknown credential must not survive as a second login
+  // method (#736).
+  let neutralizePassword = false;
+  let existing: { passwordHash: string | null; emailVerified: Date | null } | null | undefined;
+  try {
+    existing = await prisma.user.findUnique({
+      where: { email },
+      select: { passwordHash: true, emailVerified: true },
+    });
+  } catch (error) {
+    console.error("[auth] Google account pre-read failed:", error);
+  }
+  if (existing?.passwordHash) {
+    if (input.emailVerified === false) {
+      throw new Error(
+        "Google sign-in email is unverified; refusing to link it to a password account",
+      );
+    }
+    // Verified credentials kept their password (the owner proved the
+    // address some other way or still signs in with it).
+    neutralizePassword = !existing.emailVerified;
+  }
 
   try {
     const user = await prisma.user.upsert({
@@ -42,6 +68,7 @@ export async function upsertGoogleUser(input: {
         ...(image ? { image } : {}),
         emailVerified: new Date(),
         ...(role === "super_admin" ? { role } : {}),
+        ...(neutralizePassword ? { passwordHash: null } : {}),
       },
       select: { id: true, name: true, role: true, sessionVersion: true },
     });
