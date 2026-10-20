@@ -50,12 +50,14 @@ export async function bulkUpdateBugsAction(
 
   // Referenced rows are checked once for the whole batch rather than once
   // per issue, and before the transaction opens.
+  let inactiveTypeId: string | undefined;
   if (typeof change.typeId === "string") {
     const type = await prisma.issueType.findUnique({
       where: { id: change.typeId },
-      select: { id: true },
+      select: { id: true, isActive: true },
     });
     if (!type) return { error: "Issue type not found" };
+    if (!type.isActive) inactiveTypeId = type.id;
   }
   const tenantId = await currentTenantIdFor(user.id);
   if (typeof change.categoryId === "string") {
@@ -116,6 +118,10 @@ export async function bulkUpdateBugsAction(
 
   if (target.length === 0) {
     return { error: "None of the selected issues can be changed.", skipped };
+  }
+
+  if (inactiveTypeId && changing.some((bug) => bug.typeId !== inactiveTypeId)) {
+    return { error: "Issue type is inactive. Please pick another." };
   }
 
   // Names for whatever the fields are being set to, looked up once.
