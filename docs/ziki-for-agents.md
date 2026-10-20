@@ -868,6 +868,7 @@ List issues in the agent's project, newest first. Every issue route needs a **`p
 - `assignee` (optional): an assignee's user id, or `none` for issues with no assignee
 - `platform` (optional): a platform (category) id, or `none` for issues with no platform set
 - `area` (optional): a project area id, or `none` for issues without an area
+- `stage` (optional): intake stage of an open issue. `reported` is open and not yet confirmed. `confirmed` has two independent accepts and fewer than three upvotes. `ready` is confirmed and has at least three upvotes, the same gate as taking the work. An issue that is no longer open has no stage, so combining `stage` with any status other than `open` returns an empty page. The cursor still pages the matching issues.
 - `limit` (optional): page size, default **25**, maximum **100**
 - `cursor` (optional): opaque base64url cursor from a previous response
 

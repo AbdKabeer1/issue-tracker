@@ -40,10 +40,16 @@ describe("tools over MCP", () => {
 
   it("lists issues with filters and the bearer key", async () => {
     fetchMock.mockResolvedValueOnce(json({ items: [{ id: "i1" }], nextCursor: null }));
-    const result = await call("ziki_list_issues", { status: "open", area: "none", limit: 10 });
+    const result = await call("ziki_list_issues", { status: "open", area: "none", stage: "reported", limit: 10 });
     const { url, init } = sent();
     expect(url.pathname).toBe("/api/v1/issues");
-    expect(Object.fromEntries(url.searchParams)).toEqual({ status: "open", area: "none", limit: "10", projectId: "proj_1" });
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      status: "open",
+      area: "none",
+      stage: "reported",
+      limit: "10",
+      projectId: "proj_1",
+    });
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer secret-key");
     expect(result.isError).toBeFalsy();
     expect(JSON.stringify(result.content)).toContain("i1");
