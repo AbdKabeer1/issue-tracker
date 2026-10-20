@@ -47,6 +47,7 @@ import { UpdateIssueForm } from "@/components/update-issue-form";
 import { CommentThread } from "@/components/comment-thread";
 import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
 import { ChooseRedesignButton } from "@/components/choose-redesign-button";
+import { IssueApprovalBanner } from "@/components/issue-approval-banner";
 import { isTenantAdminRole } from "@/lib/agents/membership";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
@@ -356,7 +357,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   );
   const canAwardBid = bug.status === "open" && !bug.isDeleted && (bug.reporterId === user.id || canChooseRedesign);
 
-  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions, escalations, volunteerCount] =
+  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions, escalations, volunteerCount, pendingApproval] =
     await Promise.all([
       canTriage
         ? loadOptional("users", [], () =>
@@ -506,6 +507,15 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           where: { bugId: id, withdrawnAt: null },
         }),
       ),
+      loadOptional("pendingApproval", null, () =>
+        (typeof (prisma as { issueApproval?: unknown }).issueApproval !== "undefined"
+          ? prisma.issueApproval.findFirst({
+              where: { bugId: id, status: "pending" },
+              include: { rule: { include: { issueType: { select: { name: true } } } } },
+              orderBy: { createdAt: "desc" },
+            })
+          : Promise.resolve(null)),
+      ),
     ]);
   const issueAttachments: AttachmentView[] = attachments.filter((a) => !a.commentId);
   const attachmentsByComment: Record<string, AttachmentView[]> = {};
@@ -625,6 +635,13 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             </p>
           ) : null}
         </section>
+      ) : null}
+
+      {pendingApproval ? (
+        <IssueApprovalBanner
+          approval={pendingApproval}
+          canDecide={canChooseRedesign}
+        />
       ) : null}
 
       {redesignProposals.length ? (

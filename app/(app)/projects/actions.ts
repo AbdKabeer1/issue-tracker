@@ -172,3 +172,52 @@ export async function switchProjectAction(formData: FormData): Promise<void> {
   revalidatePath("/issues");
   redirect("/issues");
 }
+
+export async function createApprovalRuleAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const tenantId = await currentTenantIdFor(user.id);
+  if (!tenantId) return;
+
+  const projectId = String(formData.get("projectId") ?? "").trim();
+  const slug = String(formData.get("slug") ?? "").trim();
+  const stage = String(formData.get("stage") ?? "before_merge").trim() as "before_offer" | "before_merge";
+  const issueTypeId = String(formData.get("issueTypeId") ?? "").trim() || null;
+  const severity = String(formData.get("severity") ?? "").trim() || null;
+  const fileGlob = String(formData.get("fileGlob") ?? "").trim() || null;
+
+  if (!projectId || (stage !== "before_offer" && stage !== "before_merge")) return;
+
+  const { createApprovalRule } = await import("@/lib/approvals");
+  await createApprovalRule(
+    user.id,
+    tenantId,
+    projectId,
+    {
+      stage,
+      issueTypeId,
+      severity: severity as "low" | "medium" | "high" | "critical" | null,
+      fileGlob,
+    },
+  );
+
+  if (slug) {
+    revalidatePath(`/projects/${slug}/settings`);
+  }
+}
+
+export async function deleteApprovalRuleAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const tenantId = await currentTenantIdFor(user.id);
+  if (!tenantId) return;
+
+  const ruleId = String(formData.get("ruleId") ?? "").trim();
+  const slug = String(formData.get("slug") ?? "").trim();
+  if (!ruleId) return;
+
+  const { deleteApprovalRule } = await import("@/lib/approvals");
+  await deleteApprovalRule(user.id, tenantId, ruleId);
+
+  if (slug) {
+    revalidatePath(`/projects/${slug}/settings`);
+  }
+}
