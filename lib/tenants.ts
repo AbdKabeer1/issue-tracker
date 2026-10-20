@@ -217,7 +217,9 @@ function nameRules(label: string, { optional = false } = {}) {
       (value) => value.length <= TENANT_NAME_MAX,
       `${label} must be ${TENANT_NAME_MAX} characters or fewer.`,
     )
-    .refine((value) => !hasControlChars(value), `${label} can't contain control characters.`);
+    .refine((value) => !hasControlChars(value), `${label} can't contain control characters.`)
+    // #537: a name is plain text. Angle brackets only ever mean markup here.
+    .refine((value) => !/[<>]/.test(value), `${label} can't contain < or >.`);
 }
 
 export const tenantNameSchema = z
@@ -298,7 +300,13 @@ export type CreateTenantResult =
       tenant: { id: string; slug: string; name: string };
       projectId: string;
     }
-  | { ok: false; error: string; field?: "name" | "projectName" };
+  | {
+      ok: false;
+      error: string;
+      field?: "name" | "projectName";
+      /** #537: set when the creator already belongs to a tenant with this name. */
+      duplicateName?: string;
+    };
 
 /**
  * Creates a tenant with the creator as its owner, and its first project.
@@ -310,7 +318,7 @@ export type CreateTenantResult =
 export async function createTenant(
   db: Db,
   creator: { id: string },
-  input: { name?: unknown; projectName?: unknown },
+  input: { name?: unknown; projectName?: unknown; confirmDuplicate?: unknown },
   suffix: () => string = randomSuffix,
 ): Promise<CreateTenantResult> {
   const parsed = createTenantSchema.safeParse({
@@ -329,6 +337,24 @@ export async function createTenant(
   const { name } = parsed.data;
   const projectName = parsed.data.projectName || name;
   const base = slugFromName(name, "tenant");
+
+  // #537: two tenants you're in with the same name look identical. Ask first;
+  // sending the same name back as `confirmDuplicate` creates it anyway.
+  const confirmed = typeof input.confirmDuplicate === "string" && collapse(input.confirmDuplicate) === name;
+  if (!confirmed) {
+    const same = await db.membership.findFirst({
+      where: { userId: creator.id, tenant: { name: { equals: name, mode: "insensitive" } } },
+      select: { tenant: { select: { name: true, slug: true } } },
+    });
+    if (same) {
+      return {
+        ok: false,
+        field: "name",
+        duplicateName: name,
+        error: `You're already in a tenant called "${same.tenant.name}" (${same.tenant.slug}). Choose another name, or select Create anyway to have both.`,
+      };
+    }
+  }
 
   for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt++) {
     const slug = tenantSlugCandidate(base, attempt, suffix);

@@ -61,6 +61,13 @@ export default async function TenantsPage({
     (tenant) => tenant.archivedAt && tenant.role === "owner",
   );
   const hasTenants = activeTenants.length > 0;
+  // #537: names shared by two of your tenants, so their buttons say which is which.
+  const nameCounts = new Map<string, number>();
+  for (const tenant of activeTenants) {
+    const key = tenant.name.toLocaleLowerCase();
+    nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
+  }
+  const sharesName = (name: string) => (nameCounts.get(name.toLocaleLowerCase()) ?? 0) > 1;
   const [discoverable, joinRequests] = await Promise.all([
     !hasTenants && !inviteId ? discoverableTenants(prisma, user.id) : Promise.resolve([]),
     requestsForUser(prisma, user.id),
@@ -190,7 +197,8 @@ export default async function TenantsPage({
                       ) : null}
                     </p>
                     <p className="mt-0.5 text-xs text-slate-500">
-                      {MEMBERSHIP_ROLE_LABELS[tenant.role]} ·{" "}
+                      {/* #537: the slug tells tenants with the same name apart. */}
+                      <span className="font-mono">{tenant.slug}</span> · {MEMBERSHIP_ROLE_LABELS[tenant.role]} ·{" "}
                       <Link href={`/tenants/${tenant.slug}`} className="text-teal-700 hover:underline">
                         People and invites
                       </Link>
@@ -200,6 +208,7 @@ export default async function TenantsPage({
                     <input type="hidden" name="tenantId" value={tenant.id} />
                     <Button type="submit" variant={current ? "secondary" : "primary"}>
                       Open {tenant.name}
+                      {sharesName(tenant.name) ? <span className="sr-only"> ({tenant.slug})</span> : null}
                     </Button>
                   </form>
                 </li>
@@ -233,7 +242,7 @@ export default async function TenantsPage({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-slate-900">{tenant.name}</p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    Archived · {MEMBERSHIP_ROLE_LABELS[tenant.role]}
+                    <span className="font-mono">{tenant.slug}</span> · Archived · {MEMBERSHIP_ROLE_LABELS[tenant.role]}
                   </p>
                 </div>
                 <form action={setTenantArchivedAction}>
