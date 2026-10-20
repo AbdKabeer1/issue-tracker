@@ -32,14 +32,20 @@ const agentCommentSchema = commentSchema.extend({ projectId: idSchema.optional()
 export async function agentIssueRequest(
   request: NextRequest, action: string, level: AgentLevel, target: string | null,
   run: (agent: AgentContext) => Promise<Response>,
+  options: { budget?: "none" } = {},
 ): Promise<Response> {
   let agent: AgentContext | undefined;
   let response: Response | undefined;
   try {
     agent = await requireAgent(request);
     requireLevel(agent, level);
-    const budget = await consumeAgentBudget({ id: agent.agentId, burst: agent.burst }, level === "observer" ? "read" : "write");
-    response = budget.allowed ? await run(agent) : agentBudgetExceededResponse(budget.retryAfterSeconds);
+    if (options.budget === "none") {
+      // Retired or non-working routes must not spend the caller's budget (#554).
+      response = await run(agent);
+    } else {
+      const budget = await consumeAgentBudget({ id: agent.agentId, burst: agent.burst }, level === "observer" ? "read" : "write");
+      response = budget.allowed ? await run(agent) : agentBudgetExceededResponse(budget.retryAfterSeconds);
+    }
   } catch (error) {
     if (error instanceof IssueApiError) response = NextResponse.json({ error: error.message }, { status: error.status });
     else if (error instanceof z.ZodError) response = NextResponse.json({ error: "Invalid input.", details: error.issues }, { status: 422 });

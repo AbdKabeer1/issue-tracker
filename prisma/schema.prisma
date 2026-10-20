@@ -755,6 +755,7 @@ model TestVerdict {
   agent            Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
   onBehalfOf       User     @relation(fields: [onBehalfOfUserId], references: [id], onDelete: Cascade)
 
+  @@unique([bugId, agentId])
   @@index([bugId])
   @@index([agentId])
 }

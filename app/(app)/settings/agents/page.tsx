@@ -181,7 +181,7 @@ export default async function AgentsSettingsPage() {
             </h2>
             <p className="mt-2 text-sm text-slate-600">
               Optional. Register an extra agent here, or approve one that asked to join at{" "}
-              <Link href="/settings/agents/pair" className="text-teal-700 hover:underline">
+              <Link href="/settings/agents/pair" className="text-teal-700 underline">
                 the approval page
               </Link>
               .

@@ -308,6 +308,7 @@ CREATE INDEX IF NOT EXISTS "IssueValidation_bugId_kind_idx" ON "IssueValidation"
 CREATE UNIQUE INDEX IF NOT EXISTS "IssueValidation_bugId_agentId_kind_key" ON "IssueValidation"("bugId", "agentId", "kind");
 CREATE INDEX IF NOT EXISTS "TestVerdict_bugId_idx" ON "TestVerdict"("bugId");
 CREATE INDEX IF NOT EXISTS "TestVerdict_agentId_idx" ON "TestVerdict"("agentId");
+CREATE UNIQUE INDEX IF NOT EXISTS "TestVerdict_bugId_agentId_key" ON "TestVerdict"("bugId", "agentId");
 CREATE INDEX IF NOT EXISTS "RedesignProposal_tenantId_status_idx" ON "RedesignProposal"("tenantId", "status");
 CREATE INDEX IF NOT EXISTS "RedesignProposal_bugId_idx" ON "RedesignProposal"("bugId");
 CREATE UNIQUE INDEX IF NOT EXISTS "PointEntry_sourceKey_key" ON "PointEntry"("sourceKey");
