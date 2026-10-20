@@ -5,8 +5,20 @@ vi.mock("@/lib/auth-helpers", () => ({
   requireUser: vi.fn(),
 }));
 
+const tenantAccessFor = vi.hoisted(() =>
+  vi.fn(async () => ({
+    tenantId: "tenant-ziki",
+    tenantName: "Ziki",
+    tenantSlug: "ziki",
+    membershipRole: "member" as "owner" | "admin" | "member",
+    admin: false,
+  })),
+);
+vi.mock("@/lib/tenant-access", () => ({ tenantAccessFor }));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    membership: { findUnique: vi.fn() },
     attachment: {
       findUnique: vi.fn(),
     },
@@ -19,6 +31,7 @@ import { GET } from "./route";
 
 const userMock = vi.mocked(requireUser) as unknown as ReturnType<typeof vi.fn>;
 const findUnique = vi.mocked(prisma.attachment.findUnique) as unknown as ReturnType<typeof vi.fn>;
+const membershipFindUnique = vi.mocked(prisma.membership.findUnique) as unknown as ReturnType<typeof vi.fn>;
 
 function makeRequest(id: string) {
   return GET(new NextRequest(`http://localhost:3000/api/attachments/${id}`), {
@@ -82,7 +95,7 @@ describe("GET /api/attachments/[id]", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns 200 if attachment belongs to a deleted issue and user is an admin", async () => {
+  it("returns 404 when a site admin is only a member of the issue's organization", async () => {
     userMock.mockResolvedValue({ id: "admin-1", role: "admin" });
     findUnique.mockResolvedValue({
       uploaderId: "user-2",
@@ -90,7 +103,28 @@ describe("GET /api/attachments/[id]", () => {
       contentType: "image/png",
       size: 50,
       data: Buffer.from("png-bytes"),
-      bug: { isDeleted: true },
+      bug: { isDeleted: true, tenantId: "tenant-ziki" },
+    });
+    const res = await makeRequest("att-2");
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 200 if an owner of the organization requests a file on a deleted issue", async () => {
+    userMock.mockResolvedValue({ id: "admin-1", role: "user" });
+    tenantAccessFor.mockResolvedValueOnce({
+      tenantId: "tenant-ziki",
+      tenantName: "Ziki",
+      tenantSlug: "ziki",
+      membershipRole: "owner",
+      admin: true,
+    });
+    findUnique.mockResolvedValue({
+      uploaderId: "user-2",
+      filename: "issue.png",
+      contentType: "image/png",
+      size: 50,
+      data: Buffer.from("png-bytes"),
+      bug: { isDeleted: true, tenantId: "tenant-ziki" },
     });
     const res = await makeRequest("att-2");
     expect(res.status).toBe(200);
@@ -109,5 +143,20 @@ describe("GET /api/attachments/[id]", () => {
     const res = await makeRequest("att-3");
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("image/webp");
+  });
+
+  it("serves a proposal mockup only to members of its tenant", async () => {
+    userMock.mockResolvedValue({ id: "user-3", role: "user" });
+    findUnique.mockResolvedValue({
+      uploaderId: "user-2", filename: "mockup.png", contentType: "image/png", size: 50,
+      data: Buffer.from("png-bytes"), bug: null, redesignProposal: { tenantId: "tenant-1" },
+    });
+    membershipFindUnique.mockResolvedValue({ userId: "user-3" });
+    expect((await makeRequest("att-proposal")).status).toBe(200);
+    expect(membershipFindUnique).toHaveBeenCalledWith({
+      where: { tenantId_userId: { tenantId: "tenant-1", userId: "user-3" } }, select: { userId: true },
+    });
+    membershipFindUnique.mockResolvedValueOnce(null);
+    expect((await makeRequest("att-proposal")).status).toBe(404);
   });
 });

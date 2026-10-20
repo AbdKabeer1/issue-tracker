@@ -54,7 +54,7 @@ function descriptionTextarea() {
 
 function submitButton() {
   return screen.getByRole("button", {
-    name: /^(Create issue|Creating…)$/,
+    name: /^(Create issue|Creating…|Uploading…)$/,
   }) as HTMLButtonElement;
 }
 
@@ -194,6 +194,71 @@ describe("CreateBugForm optimistic submission", () => {
     expect(capturedFormData?.get("assigneeId")).toBeNull();
   });
 
+  it("disables submit button and prevents submission while an attachment is uploading (#734)", async () => {
+    // The file input lives inside its label. user.upload clicks that input, and
+    // the label can open the dialog again, so more than one request may be in
+    // flight. Resolving only the last one leaves the button disabled.
+    const finishUpload: Array<() => void> = [];
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishUpload.push(() =>
+            resolve({
+              ok: true,
+              json: async () => ({ id: "att-456", size: 4096 }),
+            }),
+          );
+        }),
+    );
+
+    mockedCreateBug.mockImplementationOnce((formData) => {
+      capturedFormData = formData;
+      return Promise.resolve({ ok: true });
+    });
+
+    try {
+      const { container } = renderForm();
+      await fillValidForm(user);
+
+      const fileInput = container.querySelector(
+        'input[type="file"]',
+      ) as HTMLInputElement;
+      expect(fileInput).toBeTruthy();
+
+      const file = new File(["content"], "diag.png", { type: "image/png" });
+      await user.upload(fileInput, file);
+
+      // Submit button should be disabled and show Uploading…
+      await waitFor(() => {
+        expect(submitButton().disabled).toBe(true);
+        expect(submitButton().textContent).toBe("Uploading…");
+      });
+
+      // Attempting to submit form while uploading should be prevented
+      const form = container.querySelector("form") as HTMLFormElement;
+      form.requestSubmit();
+      expect(mockedCreateBug).not.toHaveBeenCalled();
+
+      // Resolve every upload started by the dialog.
+      finishUpload.splice(0).forEach((finish) => finish());
+
+      // Button becomes enabled
+      await waitFor(() => {
+        expect(submitButton().disabled).toBe(false);
+        expect(submitButton().textContent).toBe("Create issue");
+      });
+
+      // Submit should now succeed with attachment included
+      await user.click(submitButton());
+      await waitFor(() => expect(mockedCreateBug).toHaveBeenCalledTimes(1));
+
+      expect(String(capturedFormData?.get("attachmentIds"))).toContain("att-456");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it("supports simplified human report intake mode without technical fields (#764)", async () => {
     mockedCreateBug.mockImplementationOnce((formData) => {
       capturedFormData = formData;
@@ -229,5 +294,9 @@ describe("CreateBugForm optimistic submission", () => {
     expect(capturedFormData?.get("description")).toBe(
       "When clicking on profile settings on mobile, the screen flashes white and logs out.",
     );
+    expect(capturedFormData?.get("typeId")).toBeFalsy();
+    expect(capturedFormData?.get("categoryId")).toBeFalsy();
+    expect(capturedFormData?.get("proofLinks")).toBeFalsy();
   });
 });
+

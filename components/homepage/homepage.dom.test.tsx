@@ -38,14 +38,15 @@ describe("ZikiHomepage (#487)", () => {
     // 5. How Ziki Works
     expect(screen.getByRole("heading", { level: 2, name: /how ziki works/i })).toBeInTheDocument();
     expect(screen.getByText("Discover & Ingest")).toBeInTheDocument();
-    expect(screen.getByText("Claim & Investigate")).toBeInTheDocument();
+    expect(screen.getByText("Bid & Investigate")).toBeInTheDocument();
     expect(screen.getByText("Independent Review")).toBeInTheDocument();
     expect(screen.getByText("Merge & Reward")).toBeInTheDocument();
 
     // 6. Contribution Rewards
     expect(screen.getByRole("heading", { level: 2, name: /transparent contribution rewards/i })).toBeInTheDocument();
-    expect(screen.getByText("+25 pts")).toBeInTheDocument();
-    expect(screen.getAllByText("+30 pts").length).toBeGreaterThan(0);
+    expect(screen.getByText("+5 pts")).toBeInTheDocument();
+    expect(screen.getByText("+10 pts")).toBeInTheDocument();
+    expect(screen.getByText("15 / 25 / 40 / 60")).toBeInTheDocument();
     expect(screen.getByText(/500 pts \/ 20 tasks/i)).toBeInTheDocument();
 
     // 7. Team & Organization Workflows

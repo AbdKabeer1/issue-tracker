@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import type { AgentLevel, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { agentErrorResponse, requireAgent, type AgentContext } from "@/lib/agents/require-agent";
+import { agentErrorResponse, assertKeyProject, requireAgent, type AgentContext } from "@/lib/agents/require-agent";
 import { requireLevel } from "@/lib/agents/levels";
 import { audit } from "@/lib/agents/audit";
 import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/rate-budget";
@@ -43,7 +43,19 @@ export async function agentIssueRequest(
     else if (error instanceof z.ZodError) response = NextResponse.json({ error: "Invalid input.", details: error.issues }, { status: 422 });
     else response = agentErrorResponse(error);
   } finally {
-    if (agent) await audit(agent, action, target, { status: response?.status ?? 500 });
+    if (agent) {
+      const payload = { status: response?.status ?? 500 };
+      try {
+        // Required domain audits commit inside the domain transaction. This
+        // supplementary request log must not turn a committed write into a failure.
+        await audit(agent, action, target, payload);
+      } catch (error) {
+        // Retain the failed record in server logs for investigation/recovery.
+        console.error("[agent-api] request audit failed", {
+          tenantId: agent.tenantId, agentId: agent.agentId, action, target, payload,
+        }, error);
+      }
+    }
   }
   response.headers.set("Cache-Control", "private, no-store");
   return response;
@@ -61,6 +73,8 @@ export async function issueProject(agent: AgentContext, params: URLSearchParams,
   const projectId = idSchema.parse(queryId ?? bodyProjectId);
   const project = await prisma.project.findFirst({ where: { id: projectId, tenantId: agent.tenantId }, select: { id: true } });
   if (!project) throw new IssueApiError(404, "Project not found.");
+  // A key issued for one project cannot read or change another (#742).
+  assertKeyProject(agent, project.id);
   return { tenantId: agent.tenantId, projectId: project.id };
 }
 
@@ -75,7 +89,10 @@ export async function listAgentIssues(scope: Scope, params: URLSearchParams) {
   const status = params.get("status");
   const severity = params.get("severity");
   const assignee = params.get("assignee");
-  const platforms = await prisma.category.findMany({ select: { id: true, name: true } });
+  const platforms = await prisma.category.findMany({
+    where: { tenantId: scope.tenantId },
+    select: { id: true, name: true },
+  });
   const cursorRaw = params.get("cursor");
   const cursor = decodeCursor(cursorRaw);
   if (cursorRaw !== null && !cursor) throw new IssueApiError(400, "Invalid cursor.");
@@ -126,7 +143,10 @@ export async function createAgentIssue(agent: AgentContext, request: NextRequest
       if (!member) throw new IssueApiError(422, "The beneficiary must be a member of the tenant.");
       const categoryId = input.categoryId || null;
       if (categoryId) {
-        const category = await tx.category.findFirst({ where: { id: categoryId, isActive: true }, select: { id: true } });
+        const category = await tx.category.findFirst({
+          where: { id: categoryId, tenantId: scope.tenantId, isActive: true },
+          select: { id: true },
+        });
         if (!category) throw new IssueApiError(422, "Platform not found or inactive.");
       }
       const description = await normalizeTenantMentions(tx, scope.tenantId, input.description);

@@ -21,10 +21,12 @@ type Item =
 export function AttachmentPicker({
   name = "attachmentIds",
   onChange,
+  onUploadingChange,
   disabled = false,
 }: {
   name?: string;
   onChange?: (ids: string[]) => void;
+  onUploadingChange?: (uploading: boolean) => void;
   disabled?: boolean;
 }) {
   const inputId = useId();
@@ -34,6 +36,8 @@ export function AttachmentPicker({
 
   const doneIds = (list: Item[]) =>
     list.flatMap((item) => (item.state === "done" ? [item.id] : []));
+
+  const isUploading = items.some((item) => item.state === "uploading");
 
   const update = (fn: (list: Item[]) => Item[]) => setItems(fn);
 
@@ -46,6 +50,19 @@ export function AttachmentPicker({
   useEffect(() => {
     onChangeRef.current?.(idsKey ? idsKey.split(",") : []);
   }, [idsKey]);
+
+  const onUploadingChangeRef = useRef(onUploadingChange);
+  useEffect(() => {
+    onUploadingChangeRef.current = onUploadingChange;
+  });
+  useEffect(() => {
+    onUploadingChangeRef.current?.(isUploading);
+    return () => {
+      if (isUploading) {
+        onUploadingChangeRef.current?.(false);
+      }
+    };
+  }, [isUploading]);
 
   async function upload(file: File, key: string) {
     const body = new FormData();

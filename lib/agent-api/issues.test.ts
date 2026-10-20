@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const db = vi.hoisted(() => ({
@@ -21,6 +21,8 @@ import { GET as list, POST as create } from "@/app/api/v1/issues/route";
 import { GET as read } from "@/app/api/v1/issues/[id]/route";
 import { POST as comment } from "@/app/api/v1/issues/[id]/comments/route";
 import { encodeCursor } from "./create-policy";
+
+afterEach(() => vi.restoreAllMocks());
 
 const issue = { id: "issue-a", title: "A distinct issue", createdAt: new Date("2026-10-19T12:00:00Z"), comments: [] };
 const context = { params: Promise.resolve({ id: issue.id }) };
@@ -212,6 +214,41 @@ describe("agent issue creation via the real shared create policy", () => {
 });
 
 describe("agent comments", () => {
+  it("preserves a committed comment response if only the request audit fails (#755)", async () => {
+    const error = new Error("Request audit storage unavailable");
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.agentAuditEvent.create.mockImplementation(async ({ data }) => {
+      if (data.action === "comments.create") throw error;
+    });
+
+    const response = await comment(request("POST", { body: "A helpful comment" }), context);
+
+    expect(response.status).toBe(201);
+    expect((await response.json()).comment.id).toBe("comment-a");
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(db.comment.create).toHaveBeenCalledTimes(1);
+    expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: "comment.created", bugId: issue.id }),
+    }));
+    expect(log).toHaveBeenCalledWith("[agent-api] request audit failed", {
+      tenantId: "tenant-a", agentId: "agent-a", action: "comments.create",
+      target: issue.id, payload: { status: 201 },
+    }, error);
+  });
+
+  it("keeps transactional domain audit failures fatal (#755)", async () => {
+    const error = new Error("Domain audit failed");
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.agentAuditEvent.create.mockImplementation(async ({ data }) => {
+      if (data.action === "comment.created") throw error;
+      throw new Error("Request audit also failed");
+    });
+    await expect(comment(request("POST", { body: "A helpful comment" }), context)).rejects.toBe(error);
+    expect(log).toHaveBeenCalledWith("[agent-api] request audit failed", expect.objectContaining({
+      payload: { status: 500 },
+    }), expect.any(Error));
+  });
+
   it("records the person and agent with activity, watching, and audit", async () => {
     expect((await comment(request("POST", { body: "A helpful comment" }), context)).status).toBe(201);
     expect(db.comment.create).toHaveBeenCalledWith(expect.objectContaining({ data: { bugId: issue.id, authorId: "owner-a", agentId: "agent-a", body: "A helpful comment", parentId: null } }));

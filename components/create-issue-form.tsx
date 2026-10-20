@@ -106,6 +106,9 @@ export function CreateIssueForm({
   );
   const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
   const [mode, setMode] = useState<"report" | "detailed">("detailed");
+  const [editorUploading, setEditorUploading] = useState(false);
+  const [pickerUploading, setPickerUploading] = useState(false);
+  const isUploading = editorUploading || pickerUploading;
   const [error, setError] = useState<string | null>(null);
   // True when the request itself failed (network / server error), so the
   // person can simply retry; validation errors from the server aren't retryable.
@@ -121,17 +124,20 @@ export function CreateIssueForm({
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
+        if (pending || isUploading) return;
         setError(null);
         setCanRetry(false);
         errs.clear();
         const formData = new FormData();
         formData.set("title", values.title);
-        formData.set("typeId", values.typeId);
         formData.set("description", values.description);
-        formData.set("categoryId", values.categoryId);
-        formData.set("proofLinks", values.proofLinks);
         formData.set("attachmentIds", attachmentIds.join(","));
         formData.set("isReport", mode === "report" ? "true" : "false");
+        if (mode === "detailed") {
+          formData.set("typeId", values.typeId);
+          formData.set("categoryId", values.categoryId);
+          formData.set("proofLinks", values.proofLinks);
+        }
         if (isAdmin) {
           formData.set("severity", values.severity);
           formData.set("assigneeId", values.assigneeId);
@@ -279,7 +285,6 @@ export function CreateIssueForm({
             <FieldError formId={errs.formId} field="categoryId" errors={errs.fieldErrors} />
           </div>
         ) : null}
-
         <div className="space-y-1.5">
           <label
             id="description-label"
@@ -303,6 +308,7 @@ export function CreateIssueForm({
             }
             value={values.description}
             onChange={(val) => setValue("description", val)}
+            onUploadingChange={setEditorUploading}
             users={mentionUsers}
             {...errs.attrs("description")}
             footer={
@@ -350,7 +356,12 @@ export function CreateIssueForm({
             Optional. No GitHub account needed: attach a screenshot, console log
             or recording export straight to the report.
           </p>
-          <AttachmentPicker name="attachmentIdsPicker" onChange={setAttachmentIds} />
+          <AttachmentPicker
+            name="attachmentIdsPicker"
+            onChange={setAttachmentIds}
+            onUploadingChange={setPickerUploading}
+            disabled={pending}
+          />
         </fieldset>
       </div>
       {isAdmin ? (
@@ -418,7 +429,7 @@ export function CreateIssueForm({
           {canRetry ? (
             <button
               type="button"
-              disabled={pending}
+              disabled={pending || isUploading}
               onClick={() => formRef.current?.requestSubmit()}
               className="text-sm font-medium text-teal-700 underline-offset-2 hover:underline disabled:opacity-50"
             >
@@ -427,8 +438,8 @@ export function CreateIssueForm({
           ) : null}
         </div>
       ) : null}
-      <Button type="submit" disabled={pending}>
-        {pending ? "Creating…" : "Create issue"}
+      <Button type="submit" disabled={pending || isUploading}>
+        {pending ? "Creating…" : isUploading ? "Uploading…" : "Create issue"}
       </Button>
     </form>
   );

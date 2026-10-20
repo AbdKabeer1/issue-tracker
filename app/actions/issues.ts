@@ -20,7 +20,6 @@ import {
   type ActivityMetadata,
 } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
-import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import {
   resolveSessionUserId,
@@ -63,6 +62,7 @@ import {
   TICKET_EDIT_ERRORS,
 } from "@/lib/ticket-editing";
 import { Prisma, type ActivityType } from "@prisma/client";
+import { isBugNumberConflict, repairBugNumberSequence } from "@/lib/bug-number";
 import { notifyLater } from "@/lib/notify";
 import { ensureWatching } from "@/lib/watch";
 import { parseResolutionNote } from "@/lib/resolution-note";
@@ -77,6 +77,7 @@ import {
   defaultProjectIdFor,
   NO_TENANT_MESSAGE,
 } from "@/lib/tenant-context";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { awardSolver } from "@/lib/points/award";
 import {
   checkRateLimit,
@@ -109,6 +110,39 @@ async function normalizeMentionTags(text: string): Promise<string> {
   return normalizeMentions(text, userMap);
 }
 
+function foreignKeyError(error: unknown): string | null {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+    return getForeignKeyErrorMessage(error.meta as Record<string, unknown> | undefined);
+  }
+  return null;
+}
+
+/** Reads the type, including when the template column has not been migrated yet. */
+async function issueTypeForCreate(typeId: string) {
+  try {
+    return await prisma.issueType.findUnique({
+      where: { id: typeId },
+      select: { id: true, isActive: true, template: true },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const missingTemplate =
+      (typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        (error as { code?: unknown }).code === "P2022" &&
+        "meta" in error &&
+        String((error as { meta?: { column?: unknown } }).meta?.column ?? "").includes("template")) ||
+      /column [`'"]?(?:[\w."]+\.)*template[`'"]?/i.test(message);
+    if (!missingTemplate) throw error;
+    const row = await prisma.issueType.findUnique({
+      where: { id: typeId },
+      select: { id: true, isActive: true },
+    });
+    return row ? { ...row, template: null } : null;
+  }
+}
+
 /** Redirects to login when the JWT is missing or no longer maps to a User row. */
 async function requireUserId() {
   const resolved = await resolveSessionUserId();
@@ -124,7 +158,8 @@ export async function createBugAction(
 ): Promise<ActionResult> {
   const user = await requireUser();
   const userId = user.id;
-  const admin = isAdmin(user.role);
+  const access = await currentTenantAccess(userId, user.role);
+  const admin = access.admin;
 
   const limit = await consumeRateLimit(
     `create-bug:${userId}`,
@@ -147,6 +182,7 @@ export async function createBugAction(
       !canAssignTicket({
         actorId: userId,
         actorRole: user.role,
+        membershipRole: access.membershipRole,
         currentAssigneeId: null,
         targetAssigneeId,
       })
@@ -205,10 +241,7 @@ export async function createBugAction(
   }
 
   if (typeId) {
-    const issueType = await prisma.issueType.findUnique({
-      where: { id: typeId },
-      select: { id: true, isActive: true, template: true },
-    });
+    const issueType = await issueTypeForCreate(typeId);
     if (!issueType || !issueType.isActive) {
       return fieldError("typeId", "That type no longer exists. Please pick another.");
     }
@@ -225,16 +258,6 @@ export async function createBugAction(
       ? parsed.data.categoryId
       : null;
 
-  if (categoryId) {
-    const category = await prisma.category.findUnique({
-      where: { id: categoryId },
-      select: { id: true, isActive: true },
-    });
-    if (!category || !category.isActive) {
-      return fieldError("categoryId", "Platform not found or inactive");
-    }
-  }
-
   // #425: the issue goes into the reporter's tenant. No membership, no issue.
   const tenantId = await currentTenantIdFor(userId);
   const projectId = tenantId ? await defaultProjectIdFor(prisma, tenantId) : null;
@@ -242,54 +265,75 @@ export async function createBugAction(
     return { error: NO_TENANT_MESSAGE };
   }
 
+  if (categoryId) {
+    const category = await prisma.category.findFirst({
+      where: { id: categoryId, tenantId, isActive: true },
+      select: { id: true },
+    });
+    if (!category) {
+      return fieldError("categoryId", "Platform not found or inactive");
+    }
+  }
+
   // Always open at creation — createBugSchema rejects client status.
+  const issueData = {
+    tenantId,
+    projectId,
+    beneficiaryUserId: userId,
+    title: parsed.data.title,
+    description,
+    severity: admin ? parsed.data.severity : "medium",
+    status: "open" as const,
+    typeId,
+    proofLinks: parsed.data.proofLinks,
+    reporterId: userId,
+    assigneeId,
+    categoryId,
+    // Reporter and assignee watch the issue from the start (#216).
+    watches: {
+      create: [...new Set([userId, assigneeId].filter((id): id is string => Boolean(id)))].map(
+        (watcherId) => ({ userId: watcherId }),
+      ),
+    },
+    activities: {
+      create: {
+        actorId: userId,
+        type: "created" as const,
+        summary: createdSummary(parsed.data.title),
+        metadata: {
+          field: "title",
+          to: parsed.data.title,
+        } as Prisma.InputJsonValue,
+      },
+    },
+  };
+
   let bug;
   try {
-    bug = await prisma.bug.create({
-      data: {
-        tenantId,
-        projectId,
-        beneficiaryUserId: userId,
-        title: parsed.data.title,
-        description,
-        severity: admin ? parsed.data.severity : "medium",
-        status: "open",
-        typeId,
-        proofLinks: parsed.data.proofLinks,
-        reporterId: userId,
-        assigneeId,
-        categoryId,
-        // Reporter and assignee watch the issue from the start (#216).
-        watches: {
-          create: [...new Set([userId, assigneeId].filter((id): id is string => Boolean(id)))].map(
-            (watcherId) => ({ userId: watcherId }),
-          ),
-        },
-        activities: {
-          create: {
-            actorId: userId,
-            type: "created",
-            summary: createdSummary(parsed.data.title),
-            metadata: {
-              field: "title",
-              to: parsed.data.title,
-            } as Prisma.InputJsonValue,
-          },
-        },
-      },
-    });
+    bug = await prisma.bug.create({ data: issueData });
   } catch (error) {
-    if (
+    const foreignKey = foreignKeyError(error);
+    if (foreignKey) return { error: foreignKey };
+    // The issue-number sequence can sit behind MAX(number) and then every
+    // create hits a unique violation, which the form shows as a 500.
+    if (isBugNumberConflict(error)) {
+      try {
+        await repairBugNumberSequence(prisma);
+        bug = await prisma.bug.create({ data: issueData });
+      } catch (retryError) {
+        const retryForeignKey = foreignKeyError(retryError);
+        if (retryForeignKey) return { error: retryForeignKey };
+        console.error("[issues] create failed after repairing the issue number", retryError);
+        return { error: "Could not save the issue. Try again." };
+      }
+    } else if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2003"
+      error.code === "P2002"
     ) {
-      return {
-        error: getForeignKeyErrorMessage(
-          error.meta as Record<string, unknown> | undefined,
-        ),
-      };
+      return { error: "That issue could not be saved because it conflicts with an existing one. Try again." };
+    } else {
+      throw error;
     }
-    throw error;
   }
 
   // Files uploaded while writing the report (#215).
@@ -348,7 +392,8 @@ export async function updateBugAction(
 ): Promise<ActionResult> {
   const user = await requireUser();
   const userId = user.id;
-  const admin = isAdmin(user.role);
+  const access = await currentTenantAccess(userId, user.role);
+  const admin = access.admin;
 
   const existing = await prisma.bug.findUnique({
     where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
@@ -388,6 +433,7 @@ export async function updateBugAction(
     !canChangeTicketStatus({
       actorId: userId,
       actorRole: user.role,
+      membershipRole: access.membershipRole,
       currentAssigneeId: existing.assigneeId,
     })
   ) {
@@ -396,7 +442,7 @@ export async function updateBugAction(
 
   if (!admin && !isAssignee && !isSelfAssigning) {
     return {
-      error: "Only the assignee or an admin can update this issue",
+      error: "Only the assignee, or an owner or admin of this organization, can update this issue",
     };
   }
 
@@ -405,6 +451,7 @@ export async function updateBugAction(
       !canAssignTicket({
         actorId: userId,
         actorRole: user.role,
+        membershipRole: access.membershipRole,
         currentAssigneeId: existing.assigneeId,
         targetAssigneeId,
         voteCount: existing.voteCount,
@@ -590,8 +637,8 @@ export async function updateBugAction(
   ) {
     let toName: string | null = null;
     if (data.categoryId) {
-      const cat = await prisma.category.findUnique({
-        where: { id: data.categoryId },
+      const cat = await prisma.category.findFirst({
+        where: { id: data.categoryId, tenantId: existing.tenantId },
         select: { id: true, name: true },
       });
       if (!cat) {
@@ -609,8 +656,8 @@ export async function updateBugAction(
       },
     });
   } else if (data.categoryId) {
-    const cat = await prisma.category.findUnique({
-      where: { id: data.categoryId },
+    const cat = await prisma.category.findFirst({
+      where: { id: data.categoryId, tenantId: existing.tenantId },
       select: { id: true },
     });
     if (!cat) {
@@ -753,6 +800,7 @@ export async function editBugContentAction(
     !canEditTicket({
       actorId: userId,
       actorRole: user.role,
+      membershipRole: (await currentTenantAccess(userId, user.role)).membershipRole,
       reporterId: existing.reporterId,
     })
   ) {
@@ -1100,7 +1148,8 @@ export async function toggleVoteAction(
  */
 export async function deleteBugAction(bugId: string): Promise<ActionResult> {
   const user = await requireUser();
-  if (!canDeleteTicket(user.role)) {
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!canDeleteTicket(user.role, access.membershipRole)) {
     return { error: TICKET_DELETION_ERRORS.unauthorized };
   }
 
@@ -1158,7 +1207,8 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
  */
 export async function restoreBugAction(bugId: string): Promise<ActionResult> {
   const user = await requireUser();
-  if (!canRestoreTicket(user.role)) {
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!canRestoreTicket(user.role, access.membershipRole)) {
     return { error: TICKET_DELETION_ERRORS.unauthorizedRestore };
   }
 
@@ -1218,7 +1268,8 @@ export async function toggleBoostBugAction(
   bugId: string,
 ): Promise<ActionResult & { isBoosted?: boolean }> {
   const user = await requireUser();
-  if (!canBoostTicket(user.role)) {
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!canBoostTicket(user.role, access.membershipRole)) {
     return { error: TICKET_BOOST_ERRORS.unauthorized };
   }
 
@@ -1318,6 +1369,7 @@ export async function selfAssignBugAction(
     !canAssignTicket({
       actorId: userId,
       actorRole: user.role,
+      membershipRole: (await currentTenantAccess(userId, user.role)).membershipRole,
       currentAssigneeId: existing.assigneeId,
       targetAssigneeId,
       voteCount: existing.voteCount,

@@ -7,7 +7,7 @@ import { isConfirmed } from "@/lib/agent-api/validation";
 import { publish } from "@/lib/agent-api/events";
 import { notifyClaimOffered } from "@/lib/agent-notifications";
 import { MAX_ACTIVE_CLAIMS } from "@/lib/agent-api/claim";
-import { canAssignTicket } from "@/lib/ticket-assignment";
+import { canAssignTicket, WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
 import { assigneeChangedSummary, statusChangedSummary } from "@/lib/activity-log";
 import { ensureWatching } from "@/lib/watch";
 import { assertRedesignOpen } from "@/lib/redesigns";
@@ -96,7 +96,7 @@ export async function offerIssue(agent: AgentContext, projectId: string, bugId: 
     const bug = await tx.bug.findFirst({ where: { id: bugId, tenantId: agent.tenantId, projectId, isDeleted: false }, select: { id: true, title: true, projectId: true, status: true, assigneeId: true, voteCount: true } });
     if (!bug) throw new IssueApiError(404, "Issue not found in this project.");
     if (bug.status !== "open") throw new IssueApiError(409, "Only open issues can be offered.");
-    if (bug.voteCount < 3) throw new IssueApiError(409, "The issue must reach at least 3 upvotes before it can be offered.");
+    if (bug.voteCount < WORK_READINESS_VOTE_THRESHOLD) throw new IssueApiError(409, `The issue must reach at least ${WORK_READINESS_VOTE_THRESHOLD} upvotes before it can be offered.`);
     if (!await isConfirmed(bugId, tx)) throw new IssueApiError(409, "The issue must be confirmed before it can be offered.");
     await assertRedesignOpen(bugId, tx);
     const current = await tx.issueClaim.findFirst({ where: { bugId, releasedAt: null }, select: { id: true, status: true, offeredAt: true } });

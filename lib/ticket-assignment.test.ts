@@ -2,15 +2,28 @@ import { describe, expect, it } from "vitest";
 import { canAssignTicket } from "./ticket-assignment";
 
 describe("canAssignTicket", () => {
-  it("allows admins to assign to any user", () => {
+  it("allows organization admins to assign to any user", () => {
     expect(
       canAssignTicket({
         actorId: "admin-1",
-        actorRole: "admin",
+        actorRole: "user",
+        membershipRole: "admin",
         currentAssigneeId: null,
         targetAssigneeId: "user-2",
       }),
     ).toBe(true);
+  });
+
+  it("denies a site-wide admin who is only a member", () => {
+    expect(
+      canAssignTicket({
+        actorId: "admin-1",
+        actorRole: "admin",
+        membershipRole: "member",
+        currentAssigneeId: null,
+        targetAssigneeId: "user-2",
+      }),
+    ).toBe(false);
   });
 
   it("allows super admins to assign to any user", () => {
@@ -24,11 +37,12 @@ describe("canAssignTicket", () => {
     ).toBe(true);
   });
 
-  it("allows admins to unassign tickets", () => {
+  it("allows organization admins to unassign tickets", () => {
     expect(
       canAssignTicket({
         actorId: "admin-1",
-        actorRole: "admin",
+        actorRole: "user",
+        membershipRole: "owner",
         currentAssigneeId: "user-2",
         targetAssigneeId: null,
       }),
@@ -128,7 +142,7 @@ describe("canAssignTicket", () => {
       expect(
         canAssignTicket({
           actorId: "admin-1",
-          actorRole: "admin",
+          membershipRole: "admin",
           currentAssigneeId: null,
           targetAssigneeId: "user-1",
           voteCount: 3,

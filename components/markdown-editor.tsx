@@ -136,6 +136,7 @@ export type MarkdownEditorProps = {
    * is named by a visible label rather than by `aria-label`.
    */
   labelId?: string;
+  onUploadingChange?: (uploading: boolean) => void;
 } & Omit<
   TextareaHTMLAttributes<HTMLTextAreaElement>,
   "value" | "onChange" | "children"
@@ -208,6 +209,7 @@ export const MarkdownEditor = forwardRef<
     onBlur,
     onInvalid,
     labelId,
+    onUploadingChange,
     ...rest
   },
   ref,
@@ -226,6 +228,19 @@ export const MarkdownEditor = forwardRef<
     onChangeRef.current = onChange;
   });
   const [uploading, setUploading] = useState(0);
+  const onUploadingChangeRef = useRef(onUploadingChange);
+  useEffect(() => {
+    onUploadingChangeRef.current = onUploadingChange;
+  });
+  useEffect(() => {
+    const isUploading = uploading > 0;
+    onUploadingChangeRef.current?.(isUploading);
+    return () => {
+      if (isUploading) {
+        onUploadingChangeRef.current?.(false);
+      }
+    };
+  }, [uploading]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   // `false` on the server so the first client render matches the server HTML.
@@ -306,7 +321,11 @@ export const MarkdownEditor = forwardRef<
   );
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (disabled) {
+    if (
+      disabled ||
+      event.nativeEvent.isComposing ||
+      event.nativeEvent.keyCode === 229
+    ) {
       onKeyDown?.(event);
       return;
     }
@@ -398,7 +417,20 @@ export const MarkdownEditor = forwardRef<
           }),
         )
         .then(({ markdown, error }) => {
-          const next = replacePlaceholder(valueRef.current, job.token, markdown);
+          const current = valueRef.current;
+          let next = replacePlaceholder(current, job.token, markdown);
+          // #732: the finished Markdown (attachment URL included) is longer
+          // than the placeholder it replaced, so the insert-time check above
+          // can pass and the field still land over its limit. Never go over
+          // silently: drop the swap the way a failed upload is dropped, and
+          // say why, so the field stays valid and room can be made to try
+          // the upload again.
+          if (next !== null && maxLength !== undefined && next.length > maxLength) {
+            setUploadError(
+              `${job.name}: there isn't room left in this field for the finished upload. Remove something and try again.`,
+            );
+            next = replacePlaceholder(current, job.token, "");
+          }
           if (next !== null) {
             valueRef.current = next;
             onChangeRef.current(next);

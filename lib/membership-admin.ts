@@ -1,0 +1,256 @@
+import type { MembershipRole, Prisma, PrismaClient } from "@prisma/client";
+import type { AppRole } from "@/lib/roles";
+import { isSuperAdmin } from "@/lib/roles";
+import { buildUserSearchWhere } from "@/lib/user-search";
+
+/**
+ * Changing who can administer an organization (#504, #515, #569).
+ *
+ * Owners (and the site super admin) set roles. Owners and admins can remove
+ * members. The last owner always stays, so an organization can't be left
+ * with nobody allowed to invite or promote.
+ */
+
+type Db = PrismaClient | Prisma.TransactionClient;
+
+export const MEMBERSHIP_ADMIN_ERRORS = {
+  "not-found": "That person isn't in this organization.",
+  "not-allowed": "Only an owner of this organization can change roles.",
+  "remove-not-allowed": "Only an owner or admin of this organization can remove someone.",
+  "last-owner": "This organization needs at least one owner.",
+  "same-role": "They already have that role.",
+  "cannot-remove-self": "You can't remove yourself. Leave the organization instead.",
+  "admin-removes-member-only": "Admins can remove members. Ask an owner to change another admin.",
+  failed: "Couldn't update that membership. Try again.",
+} as const;
+
+export type MembershipAdminError = keyof typeof MEMBERSHIP_ADMIN_ERRORS;
+
+export type MembershipRoleRefusal =
+  | "not-found"
+  | "not-allowed"
+  | "last-owner"
+  | "same-role"
+  | null;
+
+/** Whether `actor` may set `target` to `nextRole` inside this organization. */
+export function refuseMembershipRoleChange(input: {
+  actorIsOwner: boolean;
+  actorIsSuperAdmin: boolean;
+  target: { role: MembershipRole } | null;
+  nextRole: MembershipRole;
+  ownerCount: number;
+}): MembershipRoleRefusal {
+  const { actorIsOwner, actorIsSuperAdmin, target, nextRole, ownerCount } = input;
+  if (!target) return "not-found";
+  if (!actorIsOwner && !actorIsSuperAdmin) return "not-allowed";
+  if (nextRole === "owner") return "not-allowed";
+  if (target.role === nextRole) return "same-role";
+  if (target.role === "owner" && ownerCount <= 1) return "last-owner";
+  return null;
+}
+
+export type MemberRemovalRefusal =
+  | "not-found"
+  | "not-allowed"
+  | "last-owner"
+  | "cannot-remove-self"
+  | "admin-removes-member-only"
+  | null;
+
+/** Whether `actor` may remove `target`. Leaving is a separate check. */
+export function refuseMemberRemoval(input: {
+  actorId: string;
+  actorIsOwner: boolean;
+  actorIsAdmin: boolean;
+  actorIsSuperAdmin: boolean;
+  target: { userId: string; role: MembershipRole } | null;
+  ownerCount: number;
+}): MemberRemovalRefusal {
+  const { actorId, actorIsOwner, actorIsAdmin, actorIsSuperAdmin, target, ownerCount } = input;
+  if (!target) return "not-found";
+  if (target.userId === actorId) return "cannot-remove-self";
+  if (!actorIsOwner && !actorIsAdmin && !actorIsSuperAdmin) return "not-allowed";
+  if (target.role === "owner" && ownerCount <= 1) return "last-owner";
+  if (!actorIsOwner && !actorIsSuperAdmin && target.role !== "member") {
+    return "admin-removes-member-only";
+  }
+  return null;
+}
+
+export type LeaveRefusal = "not-found" | "last-owner" | null;
+
+/** Anyone can leave, except the last owner. */
+export function refuseLeave(input: {
+  target: { role: MembershipRole } | null;
+  ownerCount: number;
+}): LeaveRefusal {
+  if (!input.target) return "not-found";
+  if (input.target.role === "owner" && input.ownerCount <= 1) return "last-owner";
+  return null;
+}
+
+export type MembershipAdminResult = { ok: true } | { ok: false; error: string };
+
+function refusalMessage(code: string): string {
+  if (code in MEMBERSHIP_ADMIN_ERRORS) {
+    return MEMBERSHIP_ADMIN_ERRORS[code as MembershipAdminError];
+  }
+  return MEMBERSHIP_ADMIN_ERRORS.failed;
+}
+
+/** Run `fn` in a transaction when `db` can start one. A client already inside one just runs it. */
+async function inTransaction<T>(db: Db, fn: (tx: Db) => Promise<T>): Promise<T> {
+  if ("$transaction" in db && typeof db.$transaction === "function") {
+    return (db as PrismaClient).$transaction((tx) => fn(tx));
+  }
+  return fn(db);
+}
+
+type Actor = { id: string; role?: AppRole | null };
+
+async function ownerCount(db: Db, tenantId: string): Promise<number> {
+  return db.membership.count({ where: { tenantId, role: "owner" } });
+}
+
+async function recordChange(
+  db: Db,
+  row: {
+    tenantId: string;
+    actorUserId: string;
+    targetUserId: string;
+    action: "role_changed" | "removed" | "left";
+    fromRole: MembershipRole;
+    toRole: MembershipRole | null;
+  },
+): Promise<void> {
+  await db.membershipChange.create({ data: row });
+}
+
+/**
+ * Set a member's role in one organization. Does not touch the site-wide
+ * `User.role`, and never removes the last owner.
+ */
+export async function changeMembershipRole(
+  db: Db,
+  actor: Actor,
+  input: { tenantId: string; targetUserId: string; nextRole: MembershipRole },
+): Promise<MembershipAdminResult> {
+  return inTransaction(db, async (tx) => {
+    const [target, actorMembership, owners] = await Promise.all([
+      tx.membership.findUnique({
+        where: { tenantId_userId: { tenantId: input.tenantId, userId: input.targetUserId } },
+        select: { id: true, role: true },
+      }),
+      tx.membership.findUnique({
+        where: { tenantId_userId: { tenantId: input.tenantId, userId: actor.id } },
+        select: { role: true },
+      }),
+      ownerCount(tx, input.tenantId),
+    ]);
+
+    const refusal = refuseMembershipRoleChange({
+      actorIsOwner: actorMembership?.role === "owner",
+      actorIsSuperAdmin: isSuperAdmin(actor.role),
+      target,
+      nextRole: input.nextRole,
+      ownerCount: owners,
+    });
+    if (refusal || !target) return { ok: false, error: refusalMessage(refusal ?? "not-found") };
+
+    await tx.membership.update({ where: { id: target.id }, data: { role: input.nextRole } });
+    await recordChange(tx, {
+      tenantId: input.tenantId,
+      actorUserId: actor.id,
+      targetUserId: input.targetUserId,
+      action: "role_changed",
+      fromRole: target.role,
+      toRole: input.nextRole,
+    });
+    return { ok: true };
+  });
+}
+
+/** Remove someone else. Admins can remove members; owners can remove anyone but the last owner. */
+export async function removeMembership(
+  db: Db,
+  actor: Actor,
+  input: { tenantId: string; targetUserId: string },
+): Promise<MembershipAdminResult> {
+  return inTransaction(db, async (tx) => {
+    const [target, actorMembership, owners] = await Promise.all([
+      tx.membership.findUnique({
+        where: { tenantId_userId: { tenantId: input.tenantId, userId: input.targetUserId } },
+        select: { id: true, role: true, userId: true },
+      }),
+      tx.membership.findUnique({
+        where: { tenantId_userId: { tenantId: input.tenantId, userId: actor.id } },
+        select: { role: true },
+      }),
+      ownerCount(tx, input.tenantId),
+    ]);
+
+    const refusal = refuseMemberRemoval({
+      actorId: actor.id,
+      actorIsOwner: actorMembership?.role === "owner",
+      actorIsAdmin: actorMembership?.role === "admin",
+      actorIsSuperAdmin: isSuperAdmin(actor.role),
+      target,
+      ownerCount: owners,
+    });
+    if (refusal || !target) {
+      const code = refusal === "not-allowed" ? "remove-not-allowed" : (refusal ?? "not-found");
+      return { ok: false, error: refusalMessage(code) };
+    }
+
+    await tx.membership.delete({ where: { id: target.id } });
+    await recordChange(tx, {
+      tenantId: input.tenantId,
+      actorUserId: actor.id,
+      targetUserId: input.targetUserId,
+      action: "removed",
+      fromRole: target.role,
+      toRole: null,
+    });
+    return { ok: true };
+  });
+}
+
+/** Leave an organization. The last owner has to choose another owner first. */
+export async function leaveMembership(
+  db: Db,
+  actor: Actor,
+  tenantId: string,
+): Promise<MembershipAdminResult> {
+  return inTransaction(db, async (tx) => {
+    const [target, owners] = await Promise.all([
+      tx.membership.findUnique({
+        where: { tenantId_userId: { tenantId, userId: actor.id } },
+        select: { id: true, role: true },
+      }),
+      ownerCount(tx, tenantId),
+    ]);
+    const refusal = refuseLeave({ target, ownerCount: owners });
+    if (refusal || !target) return { ok: false, error: refusalMessage(refusal ?? "not-found") };
+
+    await tx.membership.delete({ where: { id: target.id } });
+    await recordChange(tx, {
+      tenantId,
+      actorUserId: actor.id,
+      targetUserId: actor.id,
+      action: "left",
+      fromRole: target.role,
+      toRole: null,
+    });
+    return { ok: true };
+  });
+}
+
+/** Members of one organization, optionally filtered by name or email. Never another organization's people. */
+export function tenantMemberWhere(tenantId: string, query?: string | null): Prisma.MembershipWhereInput {
+  const user = buildUserSearchWhere(query);
+  return {
+    tenantId,
+    ...(Object.keys(user).length > 0 ? { user } : {}),
+  };
+}

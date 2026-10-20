@@ -34,7 +34,13 @@ export function isPublicPath(
     isAuthPage ||
     isPasswordResetPage ||
     isIssuePreview ||
+    pathWithoutBase === "/" ||
     pathWithoutBase.startsWith("/session-expired") ||
+    // Shareable invite links (#444). Guests must see the organization and
+    // sign in with Google before the link is used; the page itself never
+    // spends a use.
+    pathWithoutBase === "/join" ||
+    pathWithoutBase.startsWith("/join/") ||
     pathWithoutBase.startsWith("/api/auth") ||
     pathWithoutBase.startsWith("/api/health") ||
     // The agent API (#427) authenticates every call with an agent key, not a
@@ -78,7 +84,7 @@ export default auth((req) => {
       BASE_PATH ? `${BASE_PATH}/login` : "/login",
       req.nextUrl.origin,
     );
-    url.searchParams.set("callbackUrl", pathWithoutBase);
+    url.searchParams.set("callbackUrl", callbackPath(pathWithoutBase, req.nextUrl));
     return NextResponse.redirect(url);
   }
 
@@ -96,6 +102,14 @@ export default auth((req) => {
 
   return NextResponse.next();
 });
+
+/** Keeps the agent approval code across the sign-in redirect. Other queries stay off the callback. */
+function callbackPath(path: string, url: URL): string {
+  if (path !== "/settings/agents/pair") return path;
+  const code = url.searchParams.get("code") ?? "";
+  if (!/^[A-Za-z0-9-]{1,20}$/.test(code)) return path;
+  return `${path}?code=${code}`;
+}
 
 export const config = {
   matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\..*).*)"],

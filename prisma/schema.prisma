@@ -23,8 +23,8 @@ enum Status {
 
 /// Application roles for RBAC.
 /// - user: default; report bugs, comment, vote
-/// - admin: triage bugs (status / severity / assignee)
-/// - super_admin: all admin powers + manage user roles
+/// - admin: site catalog access. Does not grant power inside an organization.
+/// - super_admin: site-wide access, including every organization's admin powers
 enum Role {
   user
   admin
@@ -89,6 +89,7 @@ enum RedesignStatus {
   proposed
   approved
   rejected
+  superseded
 }
 
 enum PointRole {
@@ -156,6 +157,7 @@ model User {
   agentPairingsApproved AgentPairing[]
   beneficiaryBugs       Bug[]                @relation("BugBeneficiary")
   claims                IssueClaim[]
+  issueBids             IssueBid[]           @relation("IssueBidBeneficiary")
   validations           IssueValidation[]
   testVerdicts          TestVerdict[]
   redesignsOnBehalf     RedesignProposal[]   @relation("RedesignOnBehalfOf")
@@ -166,6 +168,10 @@ model User {
   auditActions          AgentAuditEvent[]    @relation("AuditActorUser")
   agentQuestions        AgentQuestion[]
   tenantInvitesSent     TenantInvite[]
+  membershipChangesMade MembershipChange[] @relation("MembershipChangeActor")
+  membershipChangesReceived MembershipChange[] @relation("MembershipChangeTarget")
+  shareLinksSent        TenantShareLink[]
+  shareRedemptions      TenantShareRedemption[]
 }
 
 /// Single-use password reset tokens (~30 min TTL). Store only the SHA-256 hash.
@@ -247,6 +253,7 @@ model Bug {
   activities        BugActivity[]
   revisions         BugRevision[]
   claims            IssueClaim[]
+  bids              IssueBid[]
   validations       IssueValidation[]
   testVerdicts      TestVerdict[]
   redesigns         RedesignProposal[]
@@ -275,13 +282,20 @@ model Bug {
   @@index([isDeleted, isBoosted(sort: Desc), boostedAt(sort: Desc), createdAt(sort: Desc), id(sort: Desc)], map: "Bug_list_newest_idx")
 }
 
+/// A platform (Desktop, Web, Mobile) inside one organization.
+/// The same name can exist in another organization; it is a different platform.
 model Category {
   id        String   @id @default(cuid())
-  name      String   @unique
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   bugs      Bug[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
 }
 
 /// A release or sprint grouping issues (#289).
@@ -365,6 +379,7 @@ model Attachment {
   uploaderId  String
   bugId       String?
   commentId   String?
+  redesignProposalId String?
   filename    String
   contentType String
   size        Int
@@ -373,9 +388,11 @@ model Attachment {
   uploader    User     @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
   bug         Bug?     @relation(fields: [bugId], references: [id], onDelete: Cascade)
   comment     Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  redesignProposal RedesignProposal? @relation(fields: [redesignProposalId], references: [id], onDelete: Cascade)
 
   @@index([bugId])
   @@index([commentId])
+  @@index([redesignProposalId])
   @@index([uploaderId, createdAt])
 }
 
@@ -453,6 +470,7 @@ model Tenant {
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   projects      Project[]
+  categories    Category[]
   memberships   Membership[]
   agents        Agent[]
   bugs          Bug[]
@@ -461,11 +479,13 @@ model Tenant {
   pointEntries  PointEntry[]
   pointDisputes PointDispute[]
   invites       TenantInvite[]
+  shareLinks    TenantShareLink[]
   events        AgentEvent[]
+  membershipChanges MembershipChange[]
 }
 
 /// A product inside a tenant, e.g. Zedu Web or Zedu Desktop. Not the same as
-/// Category, which stays the "platform" filter.
+/// Category, the per-organization platform filter.
 model Project {
   id                   String             @id @default(cuid())
   tenantId             String
@@ -482,6 +502,9 @@ model Project {
   tenant               Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   bugs                 Bug[]
   redesigns            RedesignProposal[]
+  apiKeys              AgentApiKey[]
+  pairings             AgentPairing[]
+  defaultAgents        Agent[]            @relation("DefaultProjectAgent")
 
   @@unique([tenantId, slug])
 }
@@ -499,6 +522,25 @@ model Membership {
   @@index([userId])
 }
 
+/// A change to who is in a tenant and what they can do there.
+/// Site-wide User.role is not this: an admin of one organization is a member of another.
+model MembershipChange {
+  id           String          @id @default(cuid())
+  tenantId     String
+  actorUserId  String?
+  targetUserId String?
+  /// "role_changed", "removed", or "left".
+  action       String
+  fromRole     MembershipRole?
+  toRole       MembershipRole?
+  createdAt    DateTime        @default(now())
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor        User?           @relation("MembershipChangeActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  target       User?           @relation("MembershipChangeTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+}
+
 /// A named agent working for its owner inside a tenant (#427). It always acts
 /// as itself and for a named person.
 model Agent {
@@ -513,15 +555,20 @@ model Agent {
   /// Higher rate budget, set only by a tenant admin (#440).
   burst                Boolean               @default(false)
   revokedAt            DateTime?
+  /// Set when this is the person's personal agent for that project.
+  /// Created automatically so they can copy a key without registering one.
+  defaultProjectId     String?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   owner                User                  @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  defaultProject       Project?              @relation("DefaultProjectAgent", fields: [defaultProjectId], references: [id], onDelete: Cascade)
   apiKeys              AgentApiKey[]
   auditEvents          AgentAuditEvent[]
   createdBugs          Bug[]                 @relation("AgentCreatedBugs")
   comments             Comment[]
   claims               IssueClaim[]
+  bids                 IssueBid[]
   validations          IssueValidation[]
   testVerdicts         TestVerdict[]
   redesigns            RedesignProposal[]
@@ -530,24 +577,34 @@ model Agent {
   events               AgentEvent[]
   webhookSubscriptions WebhookSubscription[]
 
+  @@unique([ownerUserId, defaultProjectId])
   @@index([tenantId])
   @@index([ownerUserId])
 }
 
-/// Only a one-way hash of the key is stored; the raw key is shown once.
+/// A one-way hash of the key is always stored. The raw key is shown once,
+/// except a person's personal project key, which is also sealed so they can copy it.
 model AgentApiKey {
   id         String    @id @default(cuid())
   agentId    String
+  /// The only project this key may act in. Null is a legacy key that still
+  /// works across the tenant; new keys always set it (#742).
+  projectId  String?
   /// SHA-256 of the raw key.
   keyHash    String    @unique
+  /// AES-256-GCM of the raw key. Set only for a personal project key, so the
+  /// owner can copy it again. Other keys stay hash-only.
+  sealedKey  String?
   /// The first characters of the key, so the owner can tell keys apart.
   prefix     String
   lastUsedAt DateTime?
   revokedAt  DateTime?
   createdAt  DateTime  @default(now())
   agent      Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  project    Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([agentId])
+  @@index([agentId, projectId])
 }
 
 /// Pairing an agent by code (#427). The owner is set only when a signed-in
@@ -561,6 +618,8 @@ model AgentPairing {
   ownerUserId    String?
   /// The tenant the agent joins, set on approval.
   tenantId       String?
+  /// The project the issued key is limited to, set on approval (#742).
+  projectId      String?
   /// The agent row created on approval.
   agentId        String?
   /// SHA-256 of the secret the waiting agent polls with to collect its key.
@@ -571,6 +630,7 @@ model AgentPairing {
   approvedAt     DateTime?
   createdAt      DateTime  @default(now())
   owner          User?     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  project        Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
 }
 
 /// Every agent action, so any call can be traced and undone (#427, #450).
@@ -619,9 +679,33 @@ model IssueClaim {
   beneficiary       User        @relation(fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
   agent             Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
+  awardedBid        IssueBid?
   @@index([bugId, releasedAt])
   @@index([beneficiaryUserId, releasedAt])
   @@index([agentId])
+  // Enforced by a partial unique index in the migration: one pending offer per issue.
+}
+
+/// An agent asking for an open task. A bid does not assign the issue.
+/// A person awards one bid, and that award becomes the active claim.
+model IssueBid {
+  id                String      @id @default(cuid())
+  bugId             String
+  agentId           String
+  beneficiaryUserId String
+  /// Why this agent wants the task. Optional, and short.
+  note              String?
+  createdAt         DateTime    @default(now())
+  withdrawnAt       DateTime?
+  awardedAt         DateTime?
+  claimId           String?     @unique
+  bug               Bug         @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  agent             Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  beneficiary       User        @relation("IssueBidBeneficiary", fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+  claim             IssueClaim? @relation(fields: [claimId], references: [id], onDelete: SetNull)
+
+  @@unique([bugId, agentId])
+  @@index([bugId, createdAt])
 }
 
 /// A reviewer agent's verdict on an issue or its fix (#433). One per agent
@@ -676,6 +760,7 @@ model RedesignProposal {
   onBehalfOfUserId String
   title            String
   body             String
+  previewUrl       String?
   status           RedesignStatus @default(proposed)
   approverId       String?
   approvedAt       DateTime?
@@ -687,6 +772,7 @@ model RedesignProposal {
   authorAgent      Agent          @relation(fields: [authorAgentId], references: [id], onDelete: Cascade)
   onBehalfOf       User           @relation("RedesignOnBehalfOf", fields: [onBehalfOfUserId], references: [id], onDelete: Cascade)
   approver         User?          @relation("RedesignApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  attachments      Attachment[]
 
   @@index([tenantId, status])
   @@index([bugId])
@@ -722,6 +808,8 @@ model PointDispute {
   userId       String
   pointEntryId String?
   bugId        String
+  /// The award a "missing" dispute asked for. Empty when the dispute is about an existing entry.
+  requestedRole PointRole?
   reason       String
   status       DisputeStatus @default(open)
   resolvedById String?
@@ -773,6 +861,43 @@ model TenantInvite {
 
   @@index([tenantId])
   @@index([email])
+}
+
+/// A shareable invite link for a tenant. Not tied to one email address.
+/// The raw token is encrypted so an owner can copy it again; acceptance
+/// looks up the hash. maxUses null means anyone can join until it expires
+/// or is revoked. A redemption is one person, so the same account cannot
+/// use a seat twice.
+model TenantShareLink {
+  id             String                  @id @default(cuid())
+  tenantId       String
+  tokenHash      String                  @unique
+  tokenEncrypted String
+  /// Optional note so an owner can tell links apart. Never shown to guests.
+  label          String?
+  expiresAt      DateTime
+  maxUses        Int?
+  useCount       Int                     @default(0)
+  revokedAt      DateTime?
+  invitedById    String
+  createdAt      DateTime                @default(now())
+  tenant         Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedBy      User                    @relation(fields: [invitedById], references: [id], onDelete: Cascade)
+  redemptions    TenantShareRedemption[]
+
+  @@index([tenantId, createdAt])
+}
+
+model TenantShareRedemption {
+  id        String          @id @default(cuid())
+  linkId    String
+  userId    String
+  createdAt DateTime        @default(now())
+  link      TenantShareLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([linkId, userId])
+  @@index([userId])
 }
 
 /// One create per agent per Idempotency-Key (#441).

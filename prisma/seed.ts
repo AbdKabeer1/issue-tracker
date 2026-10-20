@@ -106,12 +106,12 @@ async function seedDemoData() {
   const tenant = await prisma.tenant.upsert({
     where: { slug: "zedu" },
     update: {},
-    create: { slug: "zedu", name: "Zedu" },
+    create: { slug: "zedu", name: "Ziki" },
   });
   const project = await prisma.project.upsert({
     where: { tenantId_slug: { tenantId: tenant.id, slug: "zedu" } },
     update: {},
-    create: { tenantId: tenant.id, slug: "zedu", name: "Zedu" },
+    create: { tenantId: tenant.id, slug: "zedu", name: "Ziki" },
   });
   const zedu = { tenantId: tenant.id, projectId: project.id };
   await prisma.membership.createMany({
@@ -245,12 +245,17 @@ async function seedDemoData() {
 }
 
 async function ensureDefaultCategories() {
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "zedu" }, select: { id: true } });
+  if (!tenant) {
+    console.log("Skipping default platforms: the Zedu organization is missing.");
+    return;
+  }
   const defaults = ["Desktop", "Web", "Mobile"];
   for (const name of defaults) {
     await prisma.category.upsert({
-      where: { name },
+      where: { tenantId_name: { tenantId: tenant.id, name } },
       update: {},
-      create: { name, isActive: true },
+      create: { tenantId: tenant.id, name, isActive: true },
     });
   }
 }

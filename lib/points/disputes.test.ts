@@ -8,12 +8,14 @@ import {
   NOT_YOUR_ENTRY,
   correctionSourceKey,
   correctEntry,
+  creditMissingAwards,
   disputeInputSchema,
   disputesForMember,
   grantMissingAward,
   missingAwardEntry,
   openDispute,
   openDisputes,
+  parseIssueNumbers,
   rejectDispute,
   type DisputeInput,
   type DisputeRow,
@@ -47,6 +49,7 @@ function fakeLedger() {
     },
     bug: {
       findFirst: vi.fn(async (): Promise<{ id: string } | null> => null),
+      findMany: vi.fn(async (): Promise<unknown[]> => []),
     },
   };
   return { rows, db: db as never, raw: db };
@@ -157,6 +160,7 @@ describe("openDispute", () => {
           userId: ME,
           bugId: "bug-1",
           pointEntryId: null,
+          requestedRole: "solver",
         }),
       }),
     );
@@ -362,6 +366,7 @@ describe("dispute list queries", () => {
         resolvedAt: null,
         createdAt: new Date("2026-10-19"),
         pointEntryId: null,
+        requestedRole: "solver",
         bug: { id: "bug-1", number: 42, title: "Login is broken" },
         user: { id: ME, name: "Ada" },
         pointEntry: null,
@@ -372,6 +377,7 @@ describe("dispute list queries", () => {
       expect.objectContaining({
         id: "dispute-1",
         kind: "missing",
+        requestedRole: "solver",
         bugNumber: 42,
         openerName: "Ada",
         entry: null,
@@ -385,5 +391,76 @@ describe("dispute list queries", () => {
     expect(raw.pointDispute.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId: TENANT, userId: ME } }),
     );
+  });
+});
+
+describe("creditMissingAwards", () => {
+  const solved = {
+    id: "bug-269",
+    number: 269,
+    tenantId: TENANT,
+    reporterId: ME,
+    assigneeId: "user-solver",
+    severity: "high" as Severity,
+    status: "resolved",
+    isDeleted: false,
+    duplicateOfId: null,
+  };
+
+  it("parses a loose list of issue numbers", () => {
+    expect(parseIssueNumbers("#269, #270 #10 and 271")).toEqual([269, 270, 10, 271]);
+  });
+
+  it("credits a resolved assigned issue once, and skips the rest", async () => {
+    const { db, raw } = fakeLedger();
+    raw.bug.findMany.mockResolvedValue([
+      solved,
+      { ...solved, id: "bug-10", number: 10, assigneeId: null },
+      { ...solved, id: "bug-11", number: 11, status: "open", assigneeId: "user-solver" },
+      { ...solved, id: "bug-12", number: 12, duplicateOfId: "bug-1" },
+    ]);
+
+    const first = await creditMissingAwards(db, {
+      tenantId: TENANT,
+      numbers: [269, 10, 11, 999],
+      role: "solver",
+    });
+    expect(first).toEqual({
+      credited: [269],
+      already: [],
+      skipped: [
+        { number: 10, reason: "no assignee" },
+        { number: 11, reason: "not resolved" },
+        { number: 999, reason: "not in this workspace" },
+      ],
+    });
+
+    const again = await creditMissingAwards(db, {
+      tenantId: TENANT,
+      numbers: [269],
+      role: "solver",
+    });
+    expect(again.credited).toEqual([]);
+    expect(again.already).toEqual([269]);
+  });
+
+  it("withholds the reporter award on a duplicate and pays it otherwise", async () => {
+    const { db, raw } = fakeLedger();
+    raw.bug.findMany.mockResolvedValue([
+      { ...solved, status: "open" },
+      { ...solved, id: "bug-12", number: 12, duplicateOfId: "bug-1" },
+    ]);
+    const result = await creditMissingAwards(db, {
+      tenantId: TENANT,
+      numbers: [269, 12],
+      role: "reporter",
+    });
+    expect(result.credited).toEqual([269]);
+    expect(result.skipped).toEqual([{ number: 12, reason: "duplicate" }]);
+    expect(raw.pointEntry.createMany.mock.calls[0][0].data[0]).toMatchObject({
+      role: "reporter",
+      points: 5,
+      sourceKey: "reporter:bug-269:user-me",
+    });
   });
 });

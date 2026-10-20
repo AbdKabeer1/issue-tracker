@@ -26,9 +26,12 @@ export function RoleSwitcher({
 
   const choose = (next: AppRole) => {
     if (next === activeRole) return;
+    const returnTo = `${window.location.pathname}${window.location.search}`;
     startTransition(async () => {
-      await switchActiveRoleAction(next);
-      window.location.reload();
+      // Success redirects so the new cookie is on the next request. An error
+      // object means the choice was refused; stay on the current role.
+      const result = await switchActiveRoleAction(next, returnTo);
+      if (result?.error) return;
     });
   };
 

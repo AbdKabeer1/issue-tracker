@@ -7,6 +7,27 @@ import {
 } from "./structure";
 import type { AgentContext } from "@/lib/agents/require-agent";
 
+const txMock = {
+  bug: {
+    update: vi.fn().mockResolvedValue({ id: "bug-1" }),
+  },
+  issueValidation: {
+    upsert: vi.fn().mockResolvedValue({ id: "val-1" }),
+  },
+  bugActivity: {
+    create: vi.fn().mockResolvedValue({ id: "act-1" }),
+  },
+  agentEvent: {
+    create: vi.fn().mockResolvedValue({ id: "event-1" }),
+  },
+  agentAuditEvent: {
+    create: vi.fn().mockResolvedValue({ id: "audit-1" }),
+  },
+  webhookSubscription: {
+    findMany: vi.fn().mockResolvedValue([]),
+  },
+};
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     bug: {
@@ -35,26 +56,7 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn().mockResolvedValue([]),
     },
     $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) => {
-      return callback({
-        bug: {
-          update: vi.fn().mockResolvedValue({ id: "bug-1" }),
-        },
-        issueValidation: {
-          upsert: vi.fn().mockResolvedValue({ id: "val-1" }),
-        },
-        bugActivity: {
-          create: vi.fn().mockResolvedValue({ id: "act-1" }),
-        },
-        agentEvent: {
-          create: vi.fn().mockResolvedValue({ id: "event-1" }),
-        },
-        agentAuditEvent: {
-          create: vi.fn().mockResolvedValue({ id: "audit-1" }),
-        },
-        webhookSubscription: {
-          findMany: vi.fn().mockResolvedValue([]),
-        },
-      });
+      return callback(txMock);
     }),
   },
 }));
@@ -95,6 +97,8 @@ vi.mock("@/lib/agent-api/events", () => ({
 }));
 
 import { prisma } from "@/lib/prisma";
+import { audit } from "@/lib/agents/audit";
+import { publish } from "@/lib/agent-api/events";
 
 const mockAgent: AgentContext = {
   agentId: "agent-1",
@@ -192,5 +196,37 @@ describe("structureIssue execution", () => {
     expect(result.potentialDuplicates.length).toBe(1);
     expect(result.inferred.categoryId).toBe("cat-mobile");
     expect(result.inferred.typeId).toBe("type-bug");
+
+    expect(txMock.bug.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "bug-1" },
+        data: expect.objectContaining({
+          title: "Login crashes on mobile",
+          description: expect.stringContaining("### Steps to Reproduce"),
+          categoryId: "cat-mobile",
+          typeId: "type-bug",
+        }),
+      }),
+    );
+    expect(txMock.issueValidation.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ kind: "format", verdict: "accept" }),
+      }),
+    );
+    expect(txMock.bugActivity.create).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledWith(
+      txMock,
+      expect.objectContaining({
+        type: "issue.structured",
+        bugId: "bug-1",
+      }),
+    );
+    expect(audit).toHaveBeenCalledWith(
+      mockAgent,
+      "issue.structured",
+      "bug-1",
+      expect.anything(),
+      expect.objectContaining({ db: txMock, bugId: "bug-1" }),
+    );
   });
 });

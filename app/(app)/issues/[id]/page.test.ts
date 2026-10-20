@@ -13,6 +13,17 @@ vi.mock("@/lib/tenant-viewer", () => ({
   viewerBugScope: vi.fn(async () => ({ tenantId: "tenant-zedu" })),
 }));
 
+const tenantAccess = vi.hoisted(() => ({
+  currentTenantAccess: vi.fn(async (_id: string, role: string) => ({
+    tenantId: "tenant-zedu",
+    tenantName: "Zedu",
+    tenantSlug: "zedu",
+    membershipRole: "member" as "owner" | "admin" | "member",
+    admin: role === "super_admin",
+  })),
+}));
+vi.mock("@/lib/tenant-access", () => tenantAccess);
+
 const pageSource = readFileSync(
   path.resolve(__dirname, "page.tsx"),
   "utf8",
@@ -33,6 +44,7 @@ vi.mock("@/lib/auth-helpers", () => ({
 
 vi.mock("@/lib/roles", () => ({
   isAdmin: vi.fn((role) => role === "admin" || role === "super_admin"),
+  isSuperAdmin: vi.fn((role) => role === "super_admin"),
 }));
 
 vi.mock("@/lib/ticket-deletion", () => ({
@@ -85,6 +97,9 @@ vi.mock("@/lib/platforms", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     bug: { findUnique: vi.fn() },
+    membership: { findUnique: vi.fn().mockResolvedValue({ role: "member", userId: "user-123" }) },
+    redesignProposal: { findMany: vi.fn().mockResolvedValue([]) },
+    issueBid: { findMany: vi.fn().mockResolvedValue([]) },
     user: { findMany: vi.fn() },
     category: { findMany: vi.fn().mockResolvedValue([]) },
     bugActivity: {
@@ -162,10 +177,30 @@ describe("BugDetailPage conditional user query (#349)", () => {
       expect(mockUserFindMany).not.toHaveBeenCalled();
     });
 
-    it("queries database users when viewer is an admin", async () => {
+    it("does not query database users when a site admin is only a member", async () => {
       mockRequireUser.mockResolvedValue({
         id: "admin-123",
         role: "admin",
+      } as unknown as Awaited<ReturnType<typeof requireUser>>);
+
+      await BugDetailPage({
+        params: Promise.resolve({ id: "bug-1" }),
+      });
+
+      expect(mockUserFindMany).not.toHaveBeenCalled();
+    });
+
+    it("queries database users when the viewer administers this organization", async () => {
+      tenantAccess.currentTenantAccess.mockResolvedValueOnce({
+        tenantId: "tenant-zedu",
+        tenantName: "Zedu",
+        tenantSlug: "zedu",
+        membershipRole: "owner",
+        admin: true,
+      });
+      mockRequireUser.mockResolvedValue({
+        id: "admin-123",
+        role: "user",
       } as unknown as Awaited<ReturnType<typeof requireUser>>);
       mockUserFindMany.mockResolvedValue([
         { id: "u-1", name: "Alice", role: "admin", image: null },

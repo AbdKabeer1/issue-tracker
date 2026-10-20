@@ -1,8 +1,10 @@
-import { isAdmin, type AppRole } from "@/lib/roles";
+import type { MembershipRole } from "@prisma/client";
+import { isOrganizationAdmin } from "@/lib/organization-role";
+import type { AppRole } from "@/lib/roles";
 
 export const TICKET_DELETION_ERRORS = {
-  unauthorized: "Only admins and super admins can delete issues",
-  unauthorizedRestore: "Only admins and super admins can restore issues",
+  unauthorized: "Only an owner or admin of this organization can delete issues",
+  unauthorizedRestore: "Only an owner or admin of this organization can restore issues",
   invalidId: "Invalid issue ID",
   notFound: "Issue not found",
   alreadyDeleted: "Issue is already deleted",
@@ -14,17 +16,20 @@ export const TICKET_DELETION_ERRORS = {
 export type TicketDeletionError = keyof typeof TICKET_DELETION_ERRORS;
 
 /**
- * Checks whether a user with the given role has permission to soft-delete tickets.
- * Admins and super admins are permitted.
+ * Soft-delete is an organization power: owner, admin, or the site super admin.
+ * A site-wide admin who is only a member cannot delete here.
  */
-export function canDeleteTicket(role?: AppRole | null): boolean {
-  return isAdmin(role);
+export function canDeleteTicket(
+  role?: AppRole | null,
+  membershipRole?: MembershipRole | null,
+): boolean {
+  return isOrganizationAdmin(membershipRole, role);
 }
 
-/**
- * Checks whether a user with the given role has permission to restore soft-deleted tickets.
- * Admins and super admins are permitted.
- */
-export function canRestoreTicket(role?: AppRole | null): boolean {
-  return isAdmin(role);
+/** Same people who can delete can restore. */
+export function canRestoreTicket(
+  role?: AppRole | null,
+  membershipRole?: MembershipRole | null,
+): boolean {
+  return isOrganizationAdmin(membershipRole, role);
 }

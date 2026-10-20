@@ -23,6 +23,10 @@ const db = vi.hoisted(() => ({
   issueValidation: { findMany: vi.fn(), create: vi.fn(), count: vi.fn() },
   pointEntry: { createMany: vi.fn() },
   agentAuditEvent: { create: vi.fn(), findMany: vi.fn() },
+  agentEvent: { create: vi.fn() },
+  webhookSubscription: { findMany: vi.fn() },
+  webhookDelivery: { createMany: vi.fn() },
+  $queryRaw: vi.fn(),
   $transaction: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
@@ -57,11 +61,15 @@ beforeEach(() => {
   state.validations = [];
   state.agents = {};
   db.$transaction.mockImplementation((fn: (tx: unknown) => unknown) => fn(db));
+  db.$queryRaw.mockResolvedValue([]);
   db.bug.findFirst.mockResolvedValue(bugRow());
   db.bug.findUnique.mockResolvedValue(bugRow());
   db.membership.findUnique.mockResolvedValue({ id: "m1" });
   db.pointEntry.createMany.mockResolvedValue({ count: 1 });
   db.agentAuditEvent.findMany.mockResolvedValue([]);
+  db.agentEvent.create.mockResolvedValue({ id: "evt1" });
+  db.webhookSubscription.findMany.mockResolvedValue([]);
+  db.webhookDelivery.createMany.mockResolvedValue({ count: 0 });
   db.issueValidation.findMany.mockImplementation(async ({ where }: { where: Record<string, string> }) =>
     state.validations
       .filter((v) => v.bugId === where.bugId && v.kind === where.kind && v.verdict === where.verdict)
@@ -192,6 +200,7 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
     const second = await submitValidation(reviewer("r2", "sam"), "bug1", { ...acceptReal, severity: "low" });
     expect(second).toMatchObject({ status: 201, confirmed: true, newlyConfirmed: true });
     expect(await isConfirmed("bug1")).toBe(true);
+    expect(db.$queryRaw).toHaveBeenCalled();
     expect(db.pointEntry.createMany).toHaveBeenCalledTimes(1);
     expect(db.pointEntry.createMany.mock.calls[0][0].data[0]).toEqual({
       tenantId: "tenant_zedu",

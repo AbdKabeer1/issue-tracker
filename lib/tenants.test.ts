@@ -14,6 +14,7 @@ import {
   memberTenantById,
   memberTenantBySlug,
   promoteFirstZeduOwner,
+  tenantMembersFrom,
   readActiveTenantCookie,
   setActiveTenantCookie,
   slugFromName,
@@ -209,6 +210,13 @@ describe("createTenant (#444)", () => {
         // Exactly one membership: the creator's, as owner. Nobody else joins.
         memberships: { create: { userId: "ada", role: "owner" } },
         projects: { create: { slug: "acme-web", name: "Acme Web" } },
+        categories: {
+          create: [
+            { name: "Desktop", isActive: true },
+            { name: "Web", isActive: true },
+            { name: "Mobile", isActive: true },
+          ],
+        },
       },
     });
   });
@@ -324,6 +332,21 @@ describe("Zedu's first owner (#444)", () => {
       error: "Zedu already has an owner.",
     });
     expect(db.membership.update).not.toHaveBeenCalled();
+  });
+
+  it("skips a membership whose user record is gone and orders owners first", () => {
+    const members = tenantMembersFrom(
+      [
+        { role: "member", createdAt: new Date("2026-01-02"), userId: "gone" },
+        { role: "admin", createdAt: new Date("2026-01-03"), userId: "bea" },
+        { role: "owner", createdAt: new Date("2026-01-01"), userId: "ada" },
+      ],
+      [
+        { id: "bea", name: "Bea" },
+        { id: "ada", name: "Ada" },
+      ],
+    );
+    expect(members.map((member) => member.user.id)).toEqual(["ada", "bea"]);
   });
 
   it("needs a valid email", async () => {

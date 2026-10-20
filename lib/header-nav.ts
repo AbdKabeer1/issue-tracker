@@ -9,7 +9,7 @@ export const SWITCH_TENANT_LINK: HeaderNavItem = { href: "/tenants", label: "Swi
 /** Links shown in the header for the role the user is currently viewing as. */
 export function headerNavItems(
   role?: AppRole | null,
-  options?: { agentPlatform?: boolean },
+  options?: { agentPlatform?: boolean; managePlatforms?: boolean },
 ): HeaderNavItem[] {
   const items: HeaderNavItem[] = [
     { href: "/issues", label: "Issues" },
@@ -24,11 +24,13 @@ export function headerNavItems(
       { href: "/redesigns", label: "Redesigns" },
     );
   }
+  // Platforms are per organization, so an owner or admin of the open
+  // organization sees them too. Types stay a site-wide catalog.
+  if (options?.managePlatforms || isAdmin(role)) {
+    items.push({ href: "/admin/categories", label: "Platforms" });
+  }
   if (isAdmin(role)) {
-    items.push(
-      { href: "/admin/categories", label: "Platforms" },
-      { href: "/admin/types", label: "Types" },
-    );
+    items.push({ href: "/admin/types", label: "Types" });
   }
   if (isSuperAdmin(role)) {
     items.push({ href: "/admin/users", label: "Admins" });

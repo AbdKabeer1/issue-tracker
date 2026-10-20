@@ -37,6 +37,35 @@ export const MEMBERSHIP_ROLE_LABELS: Record<MembershipRole, string> = {
   member: "Member",
 };
 
+const MEMBERSHIP_ROLE_ORDER: Record<MembershipRole, number> = {
+  owner: 0,
+  admin: 1,
+  member: 2,
+};
+
+/**
+ * Pair memberships with the people they point at. A membership whose user
+ * row is gone is skipped: joining it in one query makes Prisma throw
+ * "Field user is required" and the whole tenant page fails.
+ */
+export function tenantMembersFrom<TUser extends { id: string; name: string | null }>(
+  memberships: { role: MembershipRole; createdAt: Date; userId: string }[],
+  users: TUser[],
+): { role: MembershipRole; createdAt: Date; user: TUser }[] {
+  const byId = new Map(users.map((user) => [user.id, user]));
+  return memberships
+    .flatMap((membership) => {
+      const user = byId.get(membership.userId);
+      if (!user) return [];
+      return [{ role: membership.role, createdAt: membership.createdAt, user }];
+    })
+    .sort((a, b) => {
+      const byRole = MEMBERSHIP_ROLE_ORDER[a.role] - MEMBERSHIP_ROLE_ORDER[b.role];
+      if (byRole !== 0) return byRole;
+      return (a.user.name ?? "").localeCompare(b.user.name ?? "");
+    });
+}
+
 export type TenantChoice = {
   id: string;
   slug: string;
@@ -307,6 +336,11 @@ export async function createTenant(
           name,
           memberships: { create: { userId: creator.id, role: "owner" } },
           projects: { create: { slug: slugFromName(projectName, "project"), name: projectName } },
+          // Same three names as DEFAULT_PLATFORMS. Inlined so this file does not
+          // import lib/categories, which reads the active tenant from here.
+          categories: {
+            create: (["Desktop", "Web", "Mobile"] as const).map((name) => ({ name, isActive: true })),
+          },
         },
         select: { id: true, slug: true, name: true, projects: { select: { id: true } } },
       });

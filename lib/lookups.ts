@@ -105,19 +105,15 @@ async function readIssueTypes(): Promise<IssueTypeLookup[]> {
   }
 }
 
-const readPlatforms = (): Promise<PlatformLookup[]> =>
+const readPlatforms = (tenantId: string): Promise<PlatformLookup[]> =>
   prisma.category.findMany({
+    where: { tenantId },
     select: { id: true, name: true, isActive: true },
     orderBy: { name: "asc" },
   });
 
 const cachedIssueTypes = unstable_cache(readIssueTypes, ["lookup", "issue-types", "v2"], {
   tags: [TAGS.issueTypes],
-  revalidate: LOOKUP_TTL_SECONDS,
-});
-
-const cachedPlatforms = unstable_cache(readPlatforms, ["lookup", "platforms", "v1"], {
-  tags: [TAGS.platforms],
   revalidate: LOOKUP_TTL_SECONDS,
 });
 
@@ -145,22 +141,31 @@ export function platformsNeedRepair(
 }
 
 /**
- * Every platform, active or not, by name.
+ * Every platform in this organization, active or not, by name.
+ * No organization means no platforms: another organization's list is never used.
  *
  * The report form used to run `ensureDefaultPlatforms` — three upserts and
- * an update — on every render. Now it runs only when the list actually
- * needs repairing. A render can't expire a cache tag, so after a repair the
- * fresh rows are read directly; the stale entry ages out within the TTL.
+ * an update — on every render. Now it runs only when this organization's
+ * list actually needs repairing. A render can't expire a cache tag, so after
+ * a repair the fresh rows are read directly; the stale entry ages out within
+ * the TTL.
  */
-export async function getPlatforms(): Promise<PlatformLookup[]> {
-  const platforms = await cachedPlatforms();
+export async function getPlatforms(tenantId: string | null): Promise<PlatformLookup[]> {
+  if (!tenantId) return [];
+  const platforms = await unstable_cache(
+    () => readPlatforms(tenantId),
+    ["lookup", "platforms", "v2", tenantId],
+    { tags: [TAGS.platforms], revalidate: LOOKUP_TTL_SECONDS },
+  )();
   if (!platformsNeedRepair(platforms)) return platforms;
-  await ensureDefaultPlatforms();
-  return readPlatforms();
+  await ensureDefaultPlatforms(tenantId);
+  return readPlatforms(tenantId);
 }
 
-export async function getActivePlatforms(): Promise<Pick<PlatformLookup, "id" | "name">[]> {
-  return (await getPlatforms())
+export async function getActivePlatforms(
+  tenantId: string | null,
+): Promise<Pick<PlatformLookup, "id" | "name">[]> {
+  return (await getPlatforms(tenantId))
     .filter((p) => p.isActive)
     .map(({ id, name }) => ({ id, name }));
 }

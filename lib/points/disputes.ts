@@ -127,6 +127,10 @@ export async function openDispute(
       userId,
       bugId: bug.id,
       pointEntryId: input.kind === "wrong" ? input.pointEntryId : null,
+      requestedRole:
+        input.kind === "missing" && (input.role === "solver" || input.role === "reporter")
+          ? input.role
+          : null,
       reason: input.reason,
     },
     select: { id: true },
@@ -245,6 +249,7 @@ const disputeSelect = {
   resolvedAt: true,
   createdAt: true,
   pointEntryId: true,
+  requestedRole: true,
   bug: { select: { id: true, number: true, title: true } },
   user: { select: { id: true, name: true } },
   pointEntry: { select: { id: true, points: true, role: true } },
@@ -259,6 +264,8 @@ export type DisputeView = {
   createdAt: Date;
   /** "wrong" when it disputes an entry, "missing" otherwise. */
   kind: DisputeKind;
+  /** The award a missing-points dispute asked for. */
+  requestedRole: DisputeRole | null;
   bugId: string;
   bugNumber: number;
   bugTitle: string;
@@ -278,6 +285,8 @@ function toView(row: DisputeRowWithRelations): DisputeView {
     resolvedAt: row.resolvedAt,
     createdAt: row.createdAt,
     kind: row.pointEntryId ? "wrong" : "missing",
+    requestedRole:
+      row.requestedRole === "solver" || row.requestedRole === "reporter" ? row.requestedRole : null,
     bugId: row.bug.id,
     bugNumber: row.bug.number,
     bugTitle: row.bug.title,
@@ -346,4 +355,103 @@ export async function entriesForMember(
     createdAt: row.createdAt,
     bugNumber: row.bug?.number ?? null,
   }));
+}
+
+/** How many issue numbers one credit request may name. */
+export const MAX_CREDIT_NUMBERS = 50;
+
+export type CreditSkip = { number: number; reason: string };
+
+export type CreditResult = {
+  credited: number[];
+  already: number[];
+  skipped: CreditSkip[];
+};
+
+/** Pulls positive issue numbers out of a list like "#269, 270 10". */
+export function parseIssueNumbers(raw: string): number[] {
+  const numbers = [
+    ...new Set(
+      raw
+        .split(/[^0-9]+/)
+        .map((part) => Number(part))
+        .filter((value) => Number.isInteger(value) && value > 0),
+    ),
+  ];
+  return numbers.slice(0, MAX_CREDIT_NUMBERS);
+}
+
+type CreditBug = DisputableBug & {
+  status: string;
+  isDeleted: boolean;
+  duplicateOfId: string | null;
+};
+
+/**
+ * Writes the missing solver or reporter award for the named issues.
+ * The canonical sourceKey means an issue that already has the award is skipped
+ * rather than paid twice. Solver points need a resolved or closed issue with
+ * an assignee. Reporter points are withheld on duplicates.
+ */
+export async function creditMissingAwards(
+  db: Db,
+  args: { tenantId: string; numbers: number[]; role: DisputeRole },
+): Promise<CreditResult> {
+  const numbers = [...new Set(args.numbers)].slice(0, MAX_CREDIT_NUMBERS);
+  const credited: number[] = [];
+  const already: number[] = [];
+  const skipped: CreditSkip[] = [];
+  if (numbers.length === 0) return { credited, already, skipped };
+
+  const bugs = (await db.bug.findMany({
+    where: { tenantId: args.tenantId, number: { in: numbers } },
+    select: {
+      id: true,
+      number: true,
+      tenantId: true,
+      reporterId: true,
+      assigneeId: true,
+      severity: true,
+      status: true,
+      isDeleted: true,
+      duplicateOfId: true,
+    },
+  })) as CreditBug[];
+  const byNumber = new Map(bugs.map((bug) => [bug.number, bug]));
+
+  for (const number of numbers) {
+    const bug = byNumber.get(number);
+    if (!bug) {
+      skipped.push({ number, reason: "not in this workspace" });
+      continue;
+    }
+    if (bug.isDeleted) {
+      skipped.push({ number, reason: "deleted" });
+      continue;
+    }
+    if (args.role === "solver") {
+      if (bug.status !== "resolved" && bug.status !== "closed") {
+        skipped.push({ number, reason: "not resolved" });
+        continue;
+      }
+      if (!bug.assigneeId) {
+        skipped.push({ number, reason: "no assignee" });
+        continue;
+      }
+    } else if (bug.duplicateOfId) {
+      skipped.push({ number, reason: "duplicate" });
+      continue;
+    }
+
+    const entry = missingAwardEntry(bug, args.role);
+    if (!entry) {
+      skipped.push({ number, reason: "no assignee" });
+      continue;
+    }
+    const awarded = await award(db, entry);
+    if (awarded) credited.push(number);
+    else already.push(number);
+  }
+
+  return { credited, already, skipped };
 }

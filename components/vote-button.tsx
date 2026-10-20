@@ -5,6 +5,7 @@ import { toggleVoteAction } from "@/app/actions/issues";
 import { calculateVoteChange } from "@/lib/voting";
 import { updateVoteCounts, type VoterInfo } from "@/lib/voters";
 import { VoterAvatars } from "@/components/voter-avatars";
+import { WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
 
 type VoteButtonProps = {
   bugId: string;
@@ -268,21 +269,21 @@ export function VoteButton({
             <div
               data-testid="readiness-gate-indicator"
               className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold shadow-xs transition-colors ${
-                voteCount >= 3
+                voteCount >= WORK_READINESS_VOTE_THRESHOLD
                   ? "border-emerald-200 bg-emerald-50 text-emerald-800"
                   : "border-amber-200 bg-amber-50 text-amber-800"
               }`}
               aria-label={
-                voteCount >= 3
-                  ? `Work unlocked, ${voteCount} of 3 votes reached`
-                  : `Upvote, ${Math.max(0, voteCount)} of 3 votes to unlock work`
+                voteCount >= WORK_READINESS_VOTE_THRESHOLD
+                  ? `Work unlocked, ${voteCount} of ${WORK_READINESS_VOTE_THRESHOLD} votes reached`
+                  : `Upvote, ${Math.max(0, voteCount)} of ${WORK_READINESS_VOTE_THRESHOLD} votes to unlock work`
               }
             >
               <span aria-hidden="true" className="text-[11px]">▲</span>
               <span>
-                {voteCount >= 3
-                  ? `Work unlocked (${voteCount}/3 votes)`
-                  : `Upvote (${Math.max(0, voteCount)}/3 votes to unlock work)`}
+                {voteCount >= WORK_READINESS_VOTE_THRESHOLD
+                  ? `Work unlocked (${voteCount}/${WORK_READINESS_VOTE_THRESHOLD} votes)`
+                  : `Upvote (${Math.max(0, voteCount)}/${WORK_READINESS_VOTE_THRESHOLD} votes to unlock work)`}
               </span>
             </div>
           ) : null}

@@ -15,6 +15,15 @@ vi.mock("@/lib/session-user", () => ({ resolveSessionUserId: vi.fn() }));
 vi.mock("@/lib/auth-helpers", () => ({
   requireUser: vi.fn().mockResolvedValue({ id: "user-1", name: "Alice", role: "admin" }),
 }));
+vi.mock("@/lib/tenant-access", () => ({
+  currentTenantAccess: vi.fn(async () => ({
+    tenantId: "tenant-zedu",
+    tenantName: "Zedu",
+    tenantSlug: "zedu",
+    membershipRole: "member",
+    admin: false,
+  })),
+}));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     bug: {
