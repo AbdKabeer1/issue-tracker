@@ -217,7 +217,8 @@ describe("mergeAcceptedFix gates (#452)", () => {
 describe("checksGreen against the GitHub API (#491)", () => {
   const ref = { owner: "zedu", repo: "web", number: 7 };
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-  const env = {
+  const env: NodeJS.ProcessEnv = {
+    NODE_ENV: "test",
     GITHUB_APP_ID: "123456",
     GITHUB_APP_PRIVATE_KEY: privateKey.export({ type: "pkcs1", format: "pem" }).toString(),
   };
