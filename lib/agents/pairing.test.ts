@@ -40,6 +40,7 @@ const DEVICE = "d".repeat(43);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv("AUTH_SECRET", "test-secret-at-least-16-chars");
   db.$transaction.mockImplementation((fn: (tx: unknown) => unknown) => fn(db));
   db.agentPairing.deleteMany.mockResolvedValue({ count: 0 });
   db.membership.findMany.mockResolvedValue([{ tenantId: "tenant_zedu", role: "member", tenant: { slug: "zedu" } }]);
