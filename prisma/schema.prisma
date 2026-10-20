@@ -611,6 +611,7 @@ model Agent {
   idempotencyKeys      IdempotencyKey[]
   events               AgentEvent[]
   webhookSubscriptions WebhookSubscription[]
+  inboxItems           AgentInboxItem[]
 
   @@unique([ownerUserId, defaultProjectId])
   @@index([tenantId])
@@ -998,9 +999,36 @@ model AgentEvent {
   actorAgent   Agent?            @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
   bug          Bug?              @relation(fields: [bugId], references: [id], onDelete: SetNull)
   deliveries   WebhookDelivery[]
+  inboxItems   AgentInboxItem[]
 
   @@index([tenantId, createdAt, id])
   @@index([createdAt])
+}
+
+/// What is addressed to one agent (#601): an offer to it, a reply to its
+/// comment, a mention of its owner, an answer, a decision, a claim release.
+/// Written next to `publish()`, so polling is one indexed query per agent
+/// instead of a scan of the tenant's event feed. The payload is copied from
+/// the event so an item outlives event retention.
+model AgentInboxItem {
+  id        String      @id @default(cuid())
+  agentId   String
+  /// offer | reply | mention | answer | message | approval | claim
+  kind      String
+  eventId   String?
+  /// The event that put it here, e.g. `claim.offered`.
+  eventType String
+  bugId     String?
+  commentId String?
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime    @default(now())
+  agent     Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  event     AgentEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@unique([agentId, eventId])
+  @@index([agentId, createdAt, id])
+  @@index([agentId, readAt, createdAt, id])
 }
 
 /// An agent with a public HTTPS endpoint opting in to webhooks (#445). The
