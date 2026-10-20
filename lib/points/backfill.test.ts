@@ -92,6 +92,66 @@ describe("backfill points (#435)", () => {
     it("invents no reviewer points", () => {
       expect(backfillEntries(bug({})).some((e) => e.role === "reviewer")).toBe(false);
     });
+
+    it("gives an unconfirmed modern agent issue no reporter points (#715)", () => {
+      expect(
+        backfillEntries(
+          bug({ createdByAgentId: "agent-1", isConfirmed: false, status: "open", assigneeId: null }),
+        ),
+      ).toEqual([]);
+    });
+
+    it("gives a confirmed modern agent issue reporter points to the beneficiary (#715)", () => {
+      expect(
+        backfillEntries(
+          bug({
+            createdByAgentId: "agent-1",
+            beneficiaryUserId: "user-bene",
+            reporterId: "user-agent-owner",
+            isConfirmed: true,
+            status: "open",
+            assigneeId: null,
+          }),
+        ),
+      ).toEqual([
+        {
+          tenantId: "tenant-zedu",
+          userId: "user-bene",
+          bugId: "bug-1",
+          role: "reporter",
+          points: 5,
+          sourceKey: "reporter:bug-1:user-bene",
+        },
+      ]);
+    });
+
+    it("requires confirmation for issues created on or after the cutoff date (#715)", () => {
+      const cutoff = new Date("2026-10-21T00:00:00Z");
+      const unconfirmed = bug({
+        createdAt: new Date("2026-10-21T12:00:00Z"),
+        isConfirmed: false,
+        assigneeId: null,
+      });
+      expect(backfillEntries(unconfirmed, { cutoffDate: cutoff })).toEqual([]);
+
+      const confirmed = bug({
+        createdAt: new Date("2026-10-21T12:00:00Z"),
+        isConfirmed: true,
+        assigneeId: null,
+      });
+      expect(backfillEntries(confirmed, { cutoffDate: cutoff })).toMatchObject([
+        { role: "reporter", points: 5 },
+      ]);
+
+      const prePlatform = bug({
+        createdAt: new Date("2026-10-20T12:00:00Z"),
+        isConfirmed: false,
+        assigneeId: null,
+      });
+      expect(backfillEntries(prePlatform, { cutoffDate: cutoff })).toMatchObject([
+        { role: "reporter", points: 5 },
+      ]);
+    });
   });
 
   it("lists one solver and one reporter line in a dry run, and writes nothing", async () => {
@@ -169,5 +229,32 @@ describe("backfill script arguments (#435)", () => {
 
   it("refuses an unknown flag next to a valid one", () => {
     expect(parseBackfillArgs(["--dry-run", "--force"]).ok).toBe(false);
+  });
+
+  it("accepts valid --cutoff flag and rejects invalid ones (#715)", () => {
+    const valid = parseBackfillArgs(["--cutoff=2026-10-21T00:00:00Z"]);
+    expect(valid.ok).toBe(true);
+    if (valid.ok) {
+      expect(valid.cutoffDate?.toISOString()).toBe("2026-10-21T00:00:00.000Z");
+    }
+
+    const validSpace = parseBackfillArgs(["--cutoff", "2026-10-21T00:00:00Z", "--dry-run"]);
+    expect(validSpace.ok).toBe(true);
+    if (validSpace.ok) {
+      expect(validSpace.cutoffDate?.toISOString()).toBe("2026-10-21T00:00:00.000Z");
+      expect(validSpace.dryRun).toBe(true);
+    }
+
+    expect(parseBackfillArgs(["--cutoff"]).ok).toBe(false);
+    expect(parseBackfillArgs(["--cutoff", "--dry-run"]).ok).toBe(false);
+    expect(parseBackfillArgs(["--cutoff=not-a-date"]).ok).toBe(false);
+    expect(parseBackfillArgs(["--cutoff", "not-a-date"]).ok).toBe(false);
+  });
+
+  it("rejects invalid cutoff Date object in backfillPoints (#715)", async () => {
+    const { db } = fixture([]);
+    await expect(backfillPoints(db, { cutoffDate: new Date("invalid") })).rejects.toThrow(
+      "Invalid cutoffDate provided to backfillPoints",
+    );
   });
 });

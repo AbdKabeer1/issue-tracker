@@ -27,12 +27,14 @@ vi.mock("@/lib/prisma", () => ({
       findFirst: vi.fn(),
     },
     testMission: { createMany: vi.fn() },
+    $transaction: vi.fn(),
+    projectAuditEvent: { create: vi.fn() },
   },
 }));
 
 import { prisma } from "@/lib/prisma";
 import { ACTIVE_PROJECT_COOKIE } from "@/lib/project-context";
-import { createProjectAction, createTestMissionAction, switchProjectAction } from "./actions";
+import { createProjectAction, createTestMissionAction, switchProjectAction, updateProjectAction } from "./actions";
 
 const findMany = vi.mocked(prisma.project.findMany) as unknown as ReturnType<typeof vi.fn>;
 const create = vi.mocked(prisma.project.create) as unknown as ReturnType<typeof vi.fn>;
@@ -198,5 +200,35 @@ describe("createTestMissionAction (#619)", () => {
 
     expect(result.error).toBeTruthy();
     expect(createManyMissions).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateProjectAction (#608)", () => {
+  it("updates settings and records the change with the actor", async () => {
+    findFirst.mockResolvedValue({ id: "project-zedu", name: "Web", goal: null, repoUrl: null, stagingUrl: null });
+    const update = vi.fn();
+    const audit = vi.fn();
+    const transaction = vi.mocked(prisma.$transaction) as unknown as ReturnType<typeof vi.fn>;
+    transaction.mockImplementation(async (work: (tx: unknown) => Promise<unknown>) =>
+      work({ project: { update }, projectAuditEvent: { create: audit } }),
+    );
+    const result = await updateProjectAction(undefined, form({ slug: "web", name: "Web App", goal: "Ship", repoUrl: "https://github.com/acme/web", stagingUrl: "https://staging.example.com" }));
+    expect(result).toEqual({});
+    expect(update).toHaveBeenCalledWith({ where: { id: "project-zedu" }, data: { name: "Web App", goal: "Ship", repoUrl: "https://github.com/acme/web", stagingUrl: "https://staging.example.com" } });
+    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ tenantId: "tenant-zedu", projectId: "project-zedu", actorUserId: "user-1", action: "settings.updated" }) }));
+    expect(revalidatePath).toHaveBeenCalledWith("/projects/web/settings");
+    expect(revalidatePath).toHaveBeenCalledWith("/issues");
+  });
+
+  it("refuses members and invalid URLs without writing", async () => {
+    isTenantAdmin.mockResolvedValue(false);
+    expect(await updateProjectAction(undefined, form({ slug: "web", name: "Web", goal: "", repoUrl: "https://evil.example/repo", stagingUrl: "http://staging.example.com" }))).toMatchObject({ error: expect.any(String) });
+    expect(findFirst).not.toHaveBeenCalled();
+    isTenantAdmin.mockResolvedValue(true);
+    const invalid = await updateProjectAction(undefined, form({ slug: "web", name: "Web", goal: "", repoUrl: "https://evil.example/repo", stagingUrl: "http://staging.example.com" }));
+    expect(invalid.fieldErrors).toMatchObject({ repoUrl: expect.any(String), stagingUrl: expect.any(String) });
+    expect(vi.mocked(prisma.$transaction)).not.toHaveBeenCalled();
+  });
+});
   });
 });

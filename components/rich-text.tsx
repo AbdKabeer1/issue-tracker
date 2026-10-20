@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import {
   inlineImageSrc,
   looksLikeMarkdown,
@@ -52,7 +52,7 @@ const LIST_ITEM_RE = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
 const TASK_MARKER_RE = /^\[([ xX])\]\s+(.*)$/;
 const HEADING_RE = /^(#{1,6})\s+(.*)$/;
 const QUOTE_RE = /^>\s?(.*)$/;
-const FENCE_RE = /^```/;
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
 const RULE_RE = /^\s*(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/;
 
 type ListItem = {
@@ -134,7 +134,24 @@ function isBlockStart(line: string): boolean {
   );
 }
 
+/**
+ * Render sibling items, starting a new list whenever the marker type switches
+ * between ordered and unordered, so `1. a` then `- b` stays an ol + ul (#725).
+ */
 function renderListItems(items: ListItem[], renderMentions?: (text: string) => ReactNode) {
+  const runs: ListItem[][] = [];
+  for (const item of items) {
+    const run = runs[runs.length - 1];
+    if (run && run[0]?.ordered === item.ordered) run.push(item);
+    else runs.push([item]);
+  }
+  if (runs.length <= 1) return renderListRun(items, renderMentions);
+  return runs.map((run, index) => (
+    <Fragment key={index}>{renderListRun(run, renderMentions)}</Fragment>
+  ));
+}
+
+function renderListRun(items: ListItem[], renderMentions?: (text: string) => ReactNode) {
   if (items.length === 0) return null;
   const ordered = items[0]?.ordered ?? false;
   const start = ordered ? items[0]?.orderNumber : undefined;
@@ -210,10 +227,23 @@ function renderBlocks(
       continue;
     }
 
-    if (FENCE_RE.test(line)) {
+    const open = FENCE_RE.exec(line);
+    if (open) {
+      // Only a bare fence of the same character, at least as long, closes the
+      // block, so a ``` sample inside a ```` block stays code (#723).
+      const marker = open[1] ?? "```";
+      const isClose = (candidate: string) => {
+        const close = FENCE_RE.exec(candidate)?.[1];
+        return (
+          !!close &&
+          close[0] === marker[0] &&
+          close.length >= marker.length &&
+          candidate.trim() === close
+        );
+      };
       const fence: string[] = [];
       i += 1;
-      while (i < lines.length && !FENCE_RE.test(lines[i] ?? "")) {
+      while (i < lines.length && !isClose(lines[i] ?? "")) {
         fence.push(lines[i] ?? "");
         i += 1;
       }

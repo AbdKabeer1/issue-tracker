@@ -171,6 +171,7 @@ model User {
   issueBids             IssueBid[]           @relation("IssueBidBeneficiary")
   validations           IssueValidation[]
   testVerdicts          TestVerdict[]
+  reviewOffers          ReviewOffer[]
   redesignsOnBehalf     RedesignProposal[]   @relation("RedesignOnBehalfOf")
   redesignsApproved     RedesignProposal[]   @relation("RedesignApprover")
   pointEntries          PointEntry[]
@@ -183,6 +184,7 @@ model User {
   membershipChangesReceived MembershipChange[] @relation("MembershipChangeTarget")
   shareLinksSent        TenantShareLink[]
   shareRedemptions      TenantShareRedemption[]
+  projectAuditEvents    ProjectAuditEvent[]
 }
 
 /// Single-use password reset tokens (~30 min TTL). Store only the SHA-256 hash.
@@ -212,8 +214,10 @@ model IssueType {
 
 model Bug {
   id                String             @id @default(cuid())
-  /// Human-readable reference (#1, #2, ...), assigned by a Postgres sequence.
-  number            Int                @unique @default(autoincrement())
+  /// Human-readable reference (#1, #2, ...), counted per tenant (#517). The
+  /// database trigger `Bug_assign_tenant_number` replaces the sequence value
+  /// with `Tenant.nextIssueNumber`, so each organisation starts at #1.
+  number            Int                @default(autoincrement())
   title             String
   description       String
   severity          Severity           @default(medium)
@@ -267,6 +271,7 @@ model Bug {
   bids              IssueBid[]
   validations       IssueValidation[]
   testVerdicts      TestVerdict[]
+  reviewOffers      ReviewOffer[]
   redesigns         RedesignProposal[]
   pointEntries      PointEntry[]
   pointDisputes     PointDispute[]
@@ -275,6 +280,8 @@ model Bug {
   agentEvents       AgentEvent[]
   auditEvents       AgentAuditEvent[]
 
+  /// #517: issue numbers are per tenant, so two tenants can both have a #1.
+  @@unique([tenantId, number])
   @@index([tenantId, projectId])
   @@index([beneficiaryUserId])
   @@index([createdByAgentId])
@@ -441,6 +448,7 @@ model IssueWatch {
 model Notification {
   id        String    @id @default(cuid())
   userId    String
+  tenantId  String?
   bugId     String?
   /// Event kind, e.g. "comment_added", "mentioned", "status_changed".
   kind      String
@@ -450,10 +458,12 @@ model Notification {
   readAt    DateTime?
   createdAt DateTime  @default(now())
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant    Tenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   bug       Bug?      @relation(fields: [bugId], references: [id], onDelete: SetNull)
 
   @@index([userId, readAt])
   @@index([userId, createdAt])
+  @@index([userId, tenantId, readAt])
 }
 
 /// Sliding-window rate-limit attempts, shared by every app instance (#296).
@@ -478,6 +488,9 @@ model Tenant {
   id            String             @id @default(cuid())
   slug          String             @unique
   name          String
+  /// #517: the next issue number this tenant hands out. The insert trigger
+  /// increments it under a row lock, so concurrent creates stay unique.
+  nextIssueNumber Int             @default(1)
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   projects      Project[]
@@ -493,6 +506,8 @@ model Tenant {
   shareLinks    TenantShareLink[]
   events        AgentEvent[]
   membershipChanges MembershipChange[]
+  notifications Notification[]
+  projectAuditEvents ProjectAuditEvent[]
 }
 
 /// A product inside a tenant, e.g. Zedu Web or Zedu Desktop. Not the same as
@@ -517,6 +532,7 @@ model Project {
   pairings             AgentPairing[]
   defaultAgents        Agent[]            @relation("DefaultProjectAgent")
   testMissions         TestMission[]
+  auditEvents          ProjectAuditEvent[]
 
   @@unique([tenantId, slug])
 }
@@ -543,6 +559,24 @@ model TestMission {
   @@unique([projectId, routePattern, role, viewport])
   @@index([projectId, lastCoveredAt, lastAssignedAt])
   @@index([leaseAgentId, leaseExpiresAt])
+}
+
+/// Human changes to project configuration, including GitHub App linking.
+model ProjectAuditEvent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  projectId   String
+  actorUserId String
+  action      String
+  changes     Json
+  createdAt   DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actor       User     @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 model Membership {
@@ -607,6 +641,7 @@ model Agent {
   bids                 IssueBid[]
   validations          IssueValidation[]
   testVerdicts         TestVerdict[]
+  reviewOffers         ReviewOffer[]
   redesigns            RedesignProposal[]
   questions            AgentQuestion[]
   idempotencyKeys      IdempotencyKey[]
@@ -667,6 +702,8 @@ model AgentPairing {
   createdAt      DateTime  @default(now())
   owner          User?     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
   project        Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([expiresAt])
 }
 
 /// Every agent action, so any call can be traced and undone (#427, #450).
@@ -694,6 +731,7 @@ model AgentAuditEvent {
   @@index([tenantId, createdAt])
   @@index([agentId, createdAt])
   @@index([bugId, createdAt])
+  @@index([createdAt])
 }
 
 /// An agent working an issue for a person (#432, #438, #449).
@@ -777,16 +815,48 @@ model TestVerdict {
   onBehalfOfUserId String
   goodToMerge      Boolean
   notes            String?
+  /// The pull request this verdict tested (#526). Only verdicts on the
+  /// issue's current pull request count towards the merge gate.
+  pullRequestUrl   String?
   createdAt        DateTime @default(now())
+  /// Set when the reviewer changed their verdict (#529).
+  changedAt        DateTime?
   bug              Bug      @relation(fields: [bugId], references: [id], onDelete: Cascade)
   agent            Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
   onBehalfOf       User     @relation(fields: [onBehalfOfUserId], references: [id], onDelete: Cascade)
 
+  @@unique([bugId, agentId])
   @@index([bugId])
   @@index([agentId])
 }
 
 /// A redesign an agent proposes; blocked until a person approves it (#431).
+/// An offer to an independent reviewer agent to test and validate a fix (#597).
+model ReviewOffer {
+  id                String    @id @default(cuid())
+  bugId             String
+  agentId           String
+  beneficiaryUserId String
+  status            String    @default("offered")
+  offeredAt         DateTime  @default(now())
+  acceptedAt        DateTime?
+  completedAt       DateTime?
+  expiredAt         DateTime?
+  deadlineAt        DateTime?
+  pullRequestUrl    String
+  headSha           String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @default(now()) @updatedAt
+
+  bug               Bug       @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  agent             Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  beneficiary       User      @relation(fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+
+  @@index([bugId, status])
+  @@index([agentId, status])
+  @@index([beneficiaryUserId, status])
+}
+
 model RedesignProposal {
   id               String         @id @default(cuid())
   tenantId         String
@@ -966,6 +1036,7 @@ model AgentEvent {
   deliveries   WebhookDelivery[]
 
   @@index([tenantId, createdAt, id])
+  @@index([createdAt])
 }
 
 /// An agent with a public HTTPS endpoint opting in to webhooks (#445). The
@@ -975,6 +1046,8 @@ model WebhookSubscription {
   agentId                String
   url                    String
   signingSecretEncrypted String
+  /// Event types to deliver; empty means every event (#512).
+  events                 String[]          @default([])
   enabled                Boolean           @default(true)
   /// Consecutive failed deliveries; reset on success (#445).
   failureCount           Int               @default(0)
@@ -1004,4 +1077,5 @@ model WebhookDelivery {
 
   @@unique([subscriptionId, eventId])
   @@index([status, nextAttemptAt])
+  @@index([status, createdAt])
 }

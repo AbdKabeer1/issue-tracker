@@ -28,6 +28,27 @@ function sharedStore(): RateLimitStore & { rows: Map<string, number[]> } {
       rows.set(key, [...live, now]);
       return { allowed: true, retryAfterMs: 0 };
     },
+    async hitMany(items, now) {
+      const blocked = [];
+      const added = new Map<string, number>();
+      for (const item of items) {
+        const live = (rows.get(item.key) ?? []).filter((t) => t > now - item.config.windowMs);
+        const count = live.length + (added.get(item.key) ?? 0);
+        if (count >= item.config.max) {
+          blocked.push({ allowed: false, retryAfterMs: live[0] + item.config.windowMs - now });
+        } else {
+          added.set(item.key, (added.get(item.key) ?? 0) + 1);
+        }
+      }
+      if (blocked.length > 0) {
+        return { allowed: false, retryAfterMs: Math.max(...blocked.map((b) => b.retryAfterMs)) };
+      }
+      for (const item of items) {
+        const live = (rows.get(item.key) ?? []).filter((t) => t > now - item.config.windowMs);
+        rows.set(item.key, [...live, now]);
+      }
+      return { allowed: true, retryAfterMs: 0 };
+    },
   };
 }
 
@@ -99,5 +120,52 @@ describe("consumeAuthRateLimit", () => {
     const max = AUTH_RATE_LIMITS.signup.email.max;
     for (let i = 0; i < max; i++) await consumeAuthRateLimit("signup", { email: "b@x.test" }, 10 + i);
     expect((await consumeAuthRateLimit("signup", { email: "b@x.test" }, 50)).allowed).toBe(false);
+  });
+
+  it("checks email and IP atomically without partial increments when blocked (#678)", async () => {
+    const store = sharedStore();
+    setRateLimitStore(store);
+
+    // Max out the IP bucket
+    const ipMax = AUTH_RATE_LIMITS.login.ip.max;
+    for (let i = 0; i < ipMax; i++) {
+      const res = await consumeAuthRateLimit("login", { email: `user-${i}@x.test`, ip: "192.168.1.10" }, 1000 + i);
+      expect(res.allowed).toBe(true);
+    }
+
+    // Now attempt a login for a fresh email from the exhausted IP
+    const blocked = await consumeAuthRateLimit("login", { email: "fresh@x.test", ip: "192.168.1.10" }, 2000);
+    expect(blocked.allowed).toBe(false);
+
+    // Ensure the fresh email bucket was NOT incremented
+    const emailKey = "auth:login:email:fresh@x.test";
+    expect(store.rows.get(emailKey) ?? []).toEqual([]);
+
+    // The fresh email from a different, unblocked IP should still have its full quota available
+    const freshIpRes = await consumeAuthRateLimit("login", { email: "fresh@x.test", ip: "192.168.1.20" }, 2001);
+    expect(freshIpRes.allowed).toBe(true);
+  });
+
+  it("falls back gracefully when the shared store throws an error (#678)", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    setRateLimitStore({
+      hit: async () => Promise.reject(new Error("db error")),
+      hitMany: async () => Promise.reject(new Error("db transaction failed")),
+    });
+
+    const res = await consumeAuthRateLimit("login", { email: "fallback@x.test", ip: "192.168.1.1" }, 1000);
+    expect(res.allowed).toBe(true);
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("supports stores with only hit implementation via fallbackHitMany", async () => {
+    const storeOnlyHit: RateLimitStore = {
+      hit: async (key, config) => ({ allowed: config.max > 0, retryAfterMs: 0 }),
+    };
+    setRateLimitStore(storeOnlyHit);
+
+    const res = await consumeAuthRateLimit("login", { email: "legacy@x.test", ip: "192.168.1.2" }, 1000);
+    expect(res.allowed).toBe(true);
   });
 });

@@ -23,7 +23,7 @@ async function main() {
     console.error(args.error);
     process.exit(2);
   }
-  const { dryRun, verbose } = args;
+  const { dryRun, verbose, cutoffDate } = args;
   const url = cleanEnv(process.env.DATABASE_URL);
   const prisma = new PrismaClient(url ? { datasources: { db: { url } } } : undefined);
 
@@ -31,6 +31,7 @@ async function main() {
     console.log(dryRun ? "Dry run: nothing will be written.\n" : "Backfilling points.\n");
     const result = await backfillPoints(prisma, {
       dryRun,
+      cutoffDate,
       onLine: verbose ? (line) => console.log(describe(line)) : undefined,
     });
     console.log(

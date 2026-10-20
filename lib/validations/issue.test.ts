@@ -307,6 +307,41 @@ describe("signupSchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("accepts a password of exactly 72 bytes", () => {
+    // 24 cups of tea: 24 characters in JS, 72 bytes in UTF-8 (#735).
+    const password = "☕".repeat(24);
+    const result = signupSchema.safeParse({
+      name: "Dana Dev",
+      email: "dana@zendor.dev",
+      password,
+      confirmPassword: password,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a 73-byte password, unlike the 128-char limit", () => {
+    const result = signupSchema.safeParse({
+      name: "Dana Dev",
+      email: "dana@zendor.dev",
+      password: "x".repeat(72) + "1",
+      confirmPassword: "x".repeat(72) + "1",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toContain("72");
+    }
+  });
+
+  it("rejects 24 emoji (96 bytes) even though it is only 48 characters", () => {
+    const result = signupSchema.safeParse({
+      name: "Dana Dev",
+      email: "dana@zendor.dev",
+      password: "😀".repeat(24),
+      confirmPassword: "😀".repeat(24),
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("forgotPasswordSchema", () => {

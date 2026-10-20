@@ -104,11 +104,12 @@ describe("tenant context (#425)", () => {
       expect(commentInTenant("tenant-zedu")).toEqual({ bug: { tenantId: "tenant-zedu" } });
     });
 
-    it("keeps personal notifications, and only this tenant's issue notifications", () => {
+    it("keeps personal notifications in the active tenant and supports all workspaces", () => {
       expect(notificationInTenant("tenant-zedu")).toEqual({
-        OR: [{ bugId: null }, { bug: { tenantId: "tenant-zedu" } }],
+        OR: [{ tenantId: null }, { tenantId: "tenant-zedu" }],
       });
-      expect(notificationInTenant(null)).toEqual({ bugId: null });
+      expect(notificationInTenant(null)).toEqual({ tenantId: null });
+      expect(notificationInTenant("tenant-zedu", true)).toEqual({});
     });
   });
 

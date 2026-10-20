@@ -15,6 +15,7 @@ import {
   solverPoints,
 } from "@/lib/points/rules";
 import { assertRedesignOpen } from "@/lib/redesigns";
+import { statusChangedSummary } from "@/lib/activity-log";
 
 /**
  * A merger accepting a fix (#434). The gate: the issue is confirmed, no
@@ -33,6 +34,7 @@ export const MERGE_VERDICTS_NEEDED = 2;
 const mergeBugSelect = {
   id: true,
   tenantId: true,
+  pullRequestUrl: true,
   severity: true,
   status: true,
   assigneeId: true,
@@ -122,7 +124,9 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
     }
 
     const verdicts = await tx.testVerdict.findMany({
-      where: { bugId: bug.id, goodToMerge: true },
+      // #526: only verdicts on the pull request linked now count; one on an
+      // earlier PR, or with none, says nothing about this code.
+      where: { bugId: bug.id, goodToMerge: true, pullRequestUrl: bug.pullRequestUrl ?? "" },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: { id: true, onBehalfOfUserId: true, agent: { select: { id: true, ownerUserId: true } } },
     });
@@ -154,6 +158,16 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
     const solverUserId = claim?.beneficiaryUserId ?? bug.assigneeId;
 
     await tx.bug.update({ where: { id: bug.id }, data: { status: "resolved" } });
+    await tx.bugActivity.create({
+      data: {
+        bugId: bug.id,
+        actorId: agent.ownerId,
+        type: "status_changed",
+        summary: statusChangedSummary(bug.status, "resolved"),
+        metadata: { field: "status", from: bug.status, to: "resolved" },
+      },
+    });
+
     // A completed issue no longer has active work to heartbeat. Release its
     // claim as resolved in the same transaction so the silence sweep cannot
     // count a successful fix as abandonment.

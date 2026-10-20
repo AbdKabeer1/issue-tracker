@@ -1,4 +1,8 @@
-const defaultTz =
+export function getDefaultTimeZone(): string {
+  return process.env.TZ || process.env.DEFAULT_TIMEZONE || "Africa/Lagos";
+}
+
+export const defaultTz =
   process.env.TZ || process.env.DEFAULT_TIMEZONE || "Africa/Lagos";
 
 export function formatDate(value: Date | string, timeZone?: string) {
@@ -10,7 +14,7 @@ export function formatDate(value: Date | string, timeZone?: string) {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-    timeZone: timeZone || defaultTz,
+    timeZone: timeZone || getDefaultTimeZone(),
   }).format(date);
 }
 
