@@ -84,11 +84,15 @@ async function main() {
       },
     });
   }
-  // Every test account is a Zedu member, as every existing user is after the
-  // migration.
-  const users = await prisma.user.findMany({ select: { id: true } });
+  // Every test account is a Zedu member. Site admins are organization admins
+  // too: delete and triage follow the membership role, not the site-wide one.
+  const users = await prisma.user.findMany({ select: { id: true, role: true } });
   await prisma.membership.createMany({
-    data: users.map((user) => ({ tenantId: tenant.id, userId: user.id })),
+    data: users.map((user) => ({
+      tenantId: tenant.id,
+      userId: user.id,
+      role: user.role === "super_admin" ? "owner" : user.role === "admin" ? "admin" : "member",
+    })),
   });
   console.log("e2e seed: database reset and seeded");
 }
