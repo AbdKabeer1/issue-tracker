@@ -11,7 +11,7 @@ const db = vi.hoisted(() => {
       update: vi.fn(),
       updateMany: vi.fn(),
     },
-    agent: { create: vi.fn(), delete: vi.fn() },
+    agent: { create: vi.fn(), delete: vi.fn(), count: vi.fn(async () => 0) },
     agentApiKey: { create: vi.fn() },
     agentAuditEvent: { create: vi.fn() },
     membership: { findMany: vi.fn(), findUnique: vi.fn() },
@@ -24,6 +24,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: db }));
 
 import { hashSecret, normalizeUserCode } from "./keys";
 import { PAIRING_TTL_MS, approvePairing, collectPairing, materializeApprovedPairings, pairingApprovalPath, startPairing } from "./pairing";
+import { MAX_ACTIVE_AGENTS_PER_OWNER } from "./registry-limits";
 
 const NOW = new Date("2026-10-19T12:00:00Z");
 const DEVICE = "d".repeat(43);
@@ -79,6 +80,15 @@ describe("approvePairing (#427)", () => {
       expiresAt: { gt: NOW },
     });
     expect(data).toEqual({ ownerUserId: "ada", tenantId: "tenant_zedu", projectId: "project_zedu", approvedAt: NOW });
+  });
+
+  it("refuses to approve past the owner's agent cap without burning the code (#511)", async () => {
+    db.agent.count.mockResolvedValueOnce(MAX_ACTIVE_AGENTS_PER_OWNER);
+    const result = await approvePairing({ id: "ada" }, "ABCD-2345", NOW, "project_zedu");
+    expect(result).toMatchObject({ ok: false });
+    if (!result.ok) expect(result.error).toContain("Revoke one");
+    expect(db.agentPairing.updateMany).not.toHaveBeenCalled();
+    expect(db.agent.create).not.toHaveBeenCalled();
   });
 
   it("fails for a used, expired or unknown code", async () => {
