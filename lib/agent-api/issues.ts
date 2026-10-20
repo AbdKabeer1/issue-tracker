@@ -10,6 +10,7 @@ import { withAgentBudgetHeaders, type AgentBudgetQuota } from "@/lib/agents/rate
 import { createBugSchema, commentSchema, statusSchema, severitySchema } from "@/lib/validations/issue";
 import { parsePlatformFilter, platformFilterWhere } from "@/lib/platform-filter";
 import { parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
+import { openIssueStages, type IssueStage } from "@/lib/issue-stage";
 import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, hashCreateRequest, pageSize, toPage, type IssueCursor } from "@/lib/agent-api/create-policy";
 import { createdSummary, commentedSummary, commentPreview } from "@/lib/activity-log";
 import { extractMentionedUserIds, normalizeMentions } from "@/lib/mentions";
@@ -26,6 +27,7 @@ export class IssueApiError extends Error {
 }
 
 const idSchema = z.string().trim().min(1).max(191);
+const stageSchema = z.enum(["reported", "confirmed", "ready"]);
 /** Files uploaded with POST /api/v1/attachments, linked on save (#645). */
 const attachmentIdsSchema = z.array(idSchema).max(MAX_ATTACHMENTS_PER_ITEM).optional();
 export const createSchema = createBugSchema.pick({ title: true, description: true, categoryId: true, areaId: true, proofLinks: true })
@@ -124,6 +126,8 @@ export async function listAgentIssues(scope: Scope, params: URLSearchParams) {
   const status = params.get("status");
   const severity = params.get("severity");
   const assignee = params.get("assignee");
+  const stageRaw = params.get("stage");
+  const stage: IssueStage | null = stageRaw ? stageSchema.parse(stageRaw) : null;
   const platforms = await prisma.category.findMany({
     where: { tenantId: scope.tenantId },
     select: { id: true, name: true },
@@ -136,15 +140,24 @@ export async function listAgentIssues(scope: Scope, params: URLSearchParams) {
   const cursor = decodeCursor(cursorRaw);
   if (cursorRaw !== null && !cursor) throw new IssueApiError(400, "Invalid cursor.");
   const limit = pageSize(params.get("limit"));
-  const where: Prisma.BugWhereInput = {
+  const filtered: Prisma.BugWhereInput = {
     ...scope, isDeleted: false,
     ...(status ? { status: statusSchema.parse(status) } : {}),
     ...(severity ? { severity: severitySchema.parse(severity) } : {}),
     ...(assignee ? { assigneeId: assignee === "none" ? null : idSchema.parse(assignee) } : {}),
     ...platformFilterWhere(parsePlatformFilter(params.get("platform"), platforms)),
     ...projectAreaFilterWhere(parseProjectAreaFilter(requestedArea, areas)),
-    ...cursorWhere(cursor),
   };
+  if (stage) {
+    // A stage only exists on an open issue. Any other status is an empty page.
+    if (filtered.status && filtered.status !== "open") return { items: [], nextCursor: null };
+    filtered.status = "open";
+    const stages = await openIssueStages(prisma, filtered);
+    const ids = [...stages.entries()].filter(([, value]) => value === stage).map(([id]) => id);
+    if (ids.length === 0) return { items: [], nextCursor: null };
+    filtered.id = { in: ids };
+  }
+  const where: Prisma.BugWhereInput = { ...filtered, ...cursorWhere(cursor) };
   const rows = await prisma.bug.findMany({ where, orderBy: cursorOrderBy(), take: limit + 1, select: issueSelect });
   return toPage(rows, limit);
 }

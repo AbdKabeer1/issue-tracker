@@ -67,12 +67,13 @@ export const TOOLS: readonly ToolDef[] = [
   },
   {
     name: "ziki_list_issues",
-    summary: "List issues in a project, newest first. Page with `nextCursor`.",
+    summary:
+      "List issues in a project, newest first. Page with `nextCursor`. Use `stage` for the intake queue: reported, confirmed, or ready.",
     level: "observer",
     method: "GET",
     route: "/issues",
     projectScoped: true,
-    query: ["status", "severity", "assignee", "platform", "area", "limit", "cursor"],
+    query: ["status", "severity", "assignee", "platform", "area", "stage", "limit", "cursor"],
     input: {
       projectId,
       status: z.enum(["open", "in_progress", "resolved", "closed"]).optional().describe("Only issues in this status."),
@@ -80,6 +81,12 @@ export const TOOLS: readonly ToolDef[] = [
       assignee: z.string().optional().describe("An assignee's user id, or `none` for unassigned issues."),
       platform: z.string().optional().describe("A platform (category) id, or `none` for issues with no platform."),
       area: z.string().optional().describe("A project area id, or `none` for issues without an area."),
+      stage: z
+        .enum(["reported", "confirmed", "ready"])
+        .optional()
+        .describe(
+          "Intake stage of an open issue. reported: not yet confirmed. confirmed: two independent accepts and fewer than three upvotes. ready: confirmed and at least three upvotes, so the work can be taken. Issues that are no longer open have no stage.",
+        ),
       limit: z.number().int().min(1).max(100).optional().describe("Page size (default 25, maximum 100)."),
       cursor,
     },

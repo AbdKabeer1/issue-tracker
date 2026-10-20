@@ -239,6 +239,7 @@ model User {
   pointDisputesResolved PointDispute[]       @relation("DisputeResolver")
   auditActions          AgentAuditEvent[]    @relation("AuditActorUser")
   agentQuestions        AgentQuestion[]
+  agentMessagesSent     AgentMessage[]
   tenantInvitesSent     TenantInvite[]
   membershipChangesMade MembershipChange[] @relation("MembershipChangeActor")
   membershipChangesReceived MembershipChange[] @relation("MembershipChangeTarget")
@@ -852,6 +853,8 @@ model Agent {
   /// Set when this is the person's personal agent for that project.
   /// Created automatically so they can copy a key without registering one.
   defaultProjectId     String?
+  /// The owner's standing brief (#605), returned by `GET /api/v1/agents/me`.
+  instructions         String?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -870,6 +873,7 @@ model Agent {
   reviewOffers         ReviewOffer[]
   redesigns            RedesignProposal[]
   questions            AgentQuestion[]
+  messages             AgentMessage[]
   idempotencyKeys      IdempotencyKey[]
   events               AgentEvent[]
   webhookSubscriptions WebhookSubscription[]
@@ -894,8 +898,8 @@ model AgentApiKey {
   projectId  String?
   /// SHA-256 of the raw key.
   keyHash    String    @unique
-  /// AES-256-GCM of the raw key. Set only for a personal project key, so the
-  /// owner can copy it again. Other keys stay hash-only.
+  /// AES-256-GCM of the raw key, so the owner can copy it again from Settings.
+  /// Null on keys issued before every agent key was sealed.
   sealedKey  String?
   /// The first characters of the key, so the owner can tell keys apart.
   prefix     String
@@ -1378,6 +1382,22 @@ model AgentQuestion {
 
   @@index([ownerUserId, answeredAt])
   @@index([agentId])
+}
+
+/// A person writing to an agent (#605): its owner, or an admin of its tenant.
+/// The agent reads it as an inbox item of kind `message`.
+model AgentMessage {
+  id         String    @id @default(cuid())
+  agentId    String
+  fromUserId String
+  body       String
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+  agent      Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  fromUser   User      @relation(fields: [fromUserId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, createdAt])
+  @@index([fromUserId])
 }
 
 /// A single-use invite to a tenant (#444). Only the token's hash is stored.

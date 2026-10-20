@@ -7,7 +7,7 @@ import { rotateKey } from "@/lib/agents/registry";
 
 /**
  * POST /api/v1/agents/me/key — the agent rotates the key it called with
- * (#427). The old key stops working at once; the new one is shown once.
+ * (#427). The old key stops working at once. The new one is returned here and sealed so the owner can copy it again from Settings.
  *
  * Authorized by the bearer token, not a session cookie. Browsers still send
  * Origin, and a cross-site Origin is rejected (#654). Clients that omit
