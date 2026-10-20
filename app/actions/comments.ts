@@ -29,6 +29,7 @@ import {
   ACTION_RATE_LIMITS,
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
+import { publishWebEvent } from "@/lib/agent-api/web-events";
 
 export type CommentActionResult = { error?: string; ok?: boolean };
 
@@ -117,6 +118,13 @@ export async function updateCommentAction(
         } as Prisma.InputJsonValue,
       },
     });
+    // #600: agents following the thread see the edit.
+    await publishWebEvent(tx, {
+      bugId: comment.bugId,
+      type: "comment.edited",
+      actorUserId: user.id,
+      payload: { commentId: comment.id, authorId: comment.authorId },
+    });
 
     return { ok: true as const };
   });
@@ -201,6 +209,12 @@ export async function deleteCommentAction(
           },
         });
       }
+      await publishWebEvent(tx, {
+        bugId: comment.bugId,
+        type: "comment.deleted",
+        actorUserId: user.id,
+        payload: { commentId: comment.id, authorId: comment.authorId, moderated: isModeration },
+      });
 
       return { ok: true as const };
     });
