@@ -38,6 +38,10 @@ const runMiddleware = (req: MockRequest): Response => {
 };
 
 describe("isPublicPath (#348)", () => {
+  it("treats root path / as public", () => {
+    expect(isPublicPath("/")).toBe(true);
+  });
+
   it("treats /session-expired as public", () => {
     expect(isPublicPath("/session-expired")).toBe(true);
     expect(isPublicPath("/session-expired/")).toBe(true);
