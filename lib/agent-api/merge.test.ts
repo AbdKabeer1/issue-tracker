@@ -119,6 +119,58 @@ describe("acceptFix: who may merge (#434)", () => {
   });
 });
 
+describe("acceptFix: the merger must be independent too (#493)", () => {
+  it("refuses a merger whose owner is the claim's beneficiary, even with every other gate met", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(
+      bugRow({ claims: [{ status: "active", releasedAt: null, agentId: "w1", beneficiaryUserId: "ada", agent: { ownerUserId: "ada" } }] }),
+    );
+
+    expect(await acceptFix(merger("m1", "ada", "merger"), "bug1")).toMatchObject({
+      status: 403,
+      error: "not_independent",
+    });
+    expect(db.bug.update).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+    expect(db.agentAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a merger whose owner is the ticket's reporter", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ reporterId: "ada", beneficiaryUserId: "zoe" }));
+    expect(await acceptFix(merger("m1", "ada", "merger"), "bug1")).toMatchObject({
+      status: 403,
+      error: "not_independent",
+    });
+  });
+
+  it("refuses a merger whose owner filed the ticket through its agent", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ createdByAgent: { ownerUserId: "ada" }, beneficiaryUserId: "zoe" }));
+    expect(await acceptFix(merger("m1", "ada", "merger"), "bug1")).toMatchObject({
+      status: 403,
+      error: "not_independent",
+    });
+  });
+
+  it("refuses a merger that owns the agent holding the active claim", async () => {
+    db.bug.findFirst.mockResolvedValue(
+      bugRow({ claims: [{ status: "active", releasedAt: null, agentId: "w1", beneficiaryUserId: "zoe", agent: { ownerUserId: "ada" } }] }),
+    );
+    expect(await acceptFix(merger("m1", "ada", "merger"), "bug1")).toMatchObject({
+      status: 403,
+      error: "not_independent",
+    });
+  });
+
+  it("lets an independent merger accept", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({ status: 200, accepted: true });
+  });
+});
+
 describe("acceptFix: the gate (#434)", () => {
   it("names the missing condition: already accepted", async () => {
     db.bug.findFirst.mockResolvedValue(bugRow({ status: "resolved" }));
