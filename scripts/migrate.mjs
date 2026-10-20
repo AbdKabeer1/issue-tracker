@@ -9,8 +9,9 @@ import { existsSync } from "fs";
  * which silently drops columns/tables that schema.prisma no longer has.
  *
  * If deploy stops early, scripts/sql/ensure-bug-number.sql still adds the
- * missing issue reference column, and scripts/sql/ensure-bug-duplicates.sql
- * adds Bug.duplicateOfId. Neither drops anything.
+ * missing issue reference column, scripts/sql/ensure-bug-duplicates.sql adds
+ * Bug.duplicateOfId, and scripts/sql/ensure-agent-key-project-scope.sql adds
+ * AgentApiKey.projectId and AgentPairing.projectId. None of them drop anything.
  */
 
 let url = process.env.DATABASE_URL;
@@ -58,6 +59,7 @@ const userSettingsMigrations = [
   "20261020010000_theme_preference",
 ];
 const agentPlatformMigration = "20261021000000_agent_platform";
+const agentKeyProjectScopeMigration = "20261022120000_agent_key_project_scope";
 
 function runPrisma(args, inherit = false) {
   return execSync(`${prismaBin} ${args}`, {
@@ -367,5 +369,55 @@ try {
   console.error(
     "[db:migrate] Could not add Agent platform schema:",
     agentPlatformError instanceof Error ? agentPlatformError.message : String(agentPlatformError),
+  );
+}
+
+// Pairing's insert returns AgentPairing.projectId (#742). If an earlier
+// migration is stuck, deploy never reaches 20261022120000_agent_key_project_scope
+// and POST /api/v1/agents/pairing returns 500 after the name is accepted.
+try {
+  console.log("[db:migrate] Ensuring agent key project columns exist...");
+  runPrisma(
+    "db execute --schema prisma/schema.prisma --file scripts/sql/ensure-agent-key-project-scope.sql",
+    true,
+  );
+  console.log("[db:migrate] AgentApiKey.projectId and AgentPairing.projectId are present.");
+  try {
+    runPrisma(`migrate resolve --applied ${agentKeyProjectScopeMigration}`, true);
+    console.log(`[db:migrate] Recorded ${agentKeyProjectScopeMigration} as applied.`);
+  } catch (resolveError) {
+    const message =
+      resolveError instanceof Error ? resolveError.message : String(resolveError);
+    console.log(
+      `[db:migrate] ${agentKeyProjectScopeMigration} was already recorded:`,
+      message.split("\n")[0],
+    );
+    if (/failed|P3018|P3009/i.test(message)) {
+      try {
+        runPrisma(`migrate resolve --rolled-back ${agentKeyProjectScopeMigration}`, true);
+        runPrisma(`migrate resolve --applied ${agentKeyProjectScopeMigration}`, true);
+        console.log(`[db:migrate] Recorded ${agentKeyProjectScopeMigration} as applied.`);
+      } catch (retryResolveError) {
+        console.error(
+          `[db:migrate] Could not record ${agentKeyProjectScopeMigration}:`,
+          retryResolveError instanceof Error
+            ? retryResolveError.message.split("\n")[0]
+            : retryResolveError,
+        );
+      }
+    }
+  }
+  try {
+    deploy();
+  } catch (retryError) {
+    console.error(
+      "[db:migrate] migrate deploy still failing after agent key project repair:",
+      retryError instanceof Error ? retryError.message : String(retryError),
+    );
+  }
+} catch (projectScopeError) {
+  console.error(
+    "[db:migrate] Could not add agent key project columns:",
+    projectScopeError instanceof Error ? projectScopeError.message : String(projectScopeError),
   );
 }
