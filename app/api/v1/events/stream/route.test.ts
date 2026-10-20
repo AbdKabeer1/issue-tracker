@@ -190,8 +190,10 @@ describe("events/stream SSE endpoint", () => {
 
     // Try to read with timeout - should not get this event
     const readPromise = reader!.read();
-    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ timeout: true }), 100));
-    const result: any = await Promise.race([readPromise, timeoutPromise]);
+    const result = await Promise.race([
+      readPromise.then(() => ({ timeout: false as const })),
+      new Promise<{ timeout: true }>((resolve) => setTimeout(() => resolve({ timeout: true }), 100)),
+    ]);
     expect(result.timeout).toBe(true);
 
     reader!.cancel();
@@ -217,7 +219,7 @@ describe("events/stream SSE endpoint", () => {
       method: "GET",
       headers: { authorization: "Bearer ziki_test-key" },
       signal: controller.signal,
-    } as any);
+    });
 
     const res = await GET(req);
     const reader = res.body?.getReader();

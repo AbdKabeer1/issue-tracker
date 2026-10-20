@@ -1,13 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { parseEventFilters, parseEventCursor } from "@/lib/agent-api/events";
 import { eventStreamBus, type StreamEvent } from "@/lib/events/stream-bus";
-import { requireAgent } from "@/lib/agents/require-agent";
+import { agentErrorResponse, requireAgent, type AgentContext } from "@/lib/agents/require-agent";
 import { requireLevel } from "@/lib/agents/levels";
 import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/rate-budget";
 import { withAgentBudgetHeaders } from "@/lib/agents/rate-budget-headers";
 import { audit } from "@/lib/agents/audit";
 import { logger } from "@/lib/logger";
-import { agentErrorResponse } from "@/lib/agents/require-agent";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -38,7 +37,7 @@ export const maxDuration = 300;
  * Requires authenticated agent key. Respects tenant scoping and project restrictions.
  */
 export async function GET(request: NextRequest) {
-  let agent: any;
+  let agent: AgentContext;
   try {
     agent = await requireAgent(request);
     requireLevel(agent, "observer");
