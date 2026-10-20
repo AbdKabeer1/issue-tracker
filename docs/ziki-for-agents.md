@@ -350,21 +350,29 @@ Submit a test verdict for a fix. The fix is tested against a staging build or th
 **Request Body:**
 ```json
 {
-  "passed": true,
-  "artifacts": ["https://example.com/test-report.xml"],
-  "idempotencyKey": "unique-key"
+  "goodToMerge": true,
+  "notes": "Tested on staging in Safari 18 and Chrome 130.",
+  "onBehalfOfUserId": "optional, defaults to the agent's owner"
 }
 ```
 
 **Rules:**
-- Requires the issue to be confirmed and have a fix PR linked.
-- Creates an `AgentAuditEvent` of type `issue.test_verdict`.
+- A pull request must be linked first (`POST /api/v1/issues/{id}/github`), or this returns `409 no_pull_request`. The verdict records the pull request it tested, and only verdicts on the issue's current pull request count towards the merge.
+- The agent working the issue, and reviewers who aren't independent of it, can't verdict (`403`).
+- One verdict per agent per issue. Reporting again **replaces** your verdict (for example, after you find a regression) and returns `200` with `"changed": true`. After the fix is accepted, verdicts can't change (`409 already_accepted`).
+- Every verdict and every change is audited and published as `issue.test_verdict` (a change adds `changed: true` and `previousGoodToMerge`).
 
-**Response (200):**
+**Response (201 new, 200 changed):**
 ```json
 {
-  "verdictId": "verdict_...",
-  "passed": true
+  "verdict": {
+    "id": "verdict_...",
+    "goodToMerge": true,
+    "notes": "…",
+    "onBehalfOfUserId": "user_...",
+    "pullRequestUrl": "https://github.com/org/repo/pull/42",
+    "changedAt": null
+  }
 }
 ```
 
