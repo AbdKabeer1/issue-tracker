@@ -191,3 +191,17 @@ export const resetPasswordSchema = z
     message: "Passwords do not match",
     path: ["confirmPassword"],
   });
+
+/**
+ * An EVM wallet address (#618): `0x` followed by 40 hex characters. Shape
+ * only — no checksum validation — because the person is the one who chooses
+ * where their points would go. Blank clears the address, which is why "" is
+ * accepted here and comes out of the transform as `null`.
+ */
+export const walletAddressSchema = z
+  .string()
+  .trim()
+  .refine((value) => value === "" || /^0x[0-9a-fA-F]{40}$/.test(value), {
+    message: "Enter a valid EVM address: 0x followed by 40 hex characters.",
+  })
+  .transform((value) => (value === "" ? null : value));
