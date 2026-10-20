@@ -10,6 +10,7 @@ import { MAIN_CONTENT_ID, SkipLink } from "@/components/skip-link";
 import { FocusMainOnNavigate } from "@/components/focus-main-on-navigate";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { isAdmin } from "@/lib/roles";
+import { isTenantAdminRole } from "@/lib/agents/membership";
 import { prisma } from "@/lib/prisma";
 import { projectContextFor, type ProjectChoice } from "@/lib/project-context";
 import { currentTenantIdFor } from "@/lib/tenant-context";
@@ -40,11 +41,19 @@ export default async function AppLayout({
   // #426: the header switcher and the issue list read the same active project.
   let projects: ProjectChoice[] = [];
   let activeProjectId: string | null = null;
+  let canManagePlatforms = false;
   try {
     const tenantId = await currentTenantIdFor(user.id);
     const context = await projectContextFor(prisma, tenantId);
     projects = context.projects;
     activeProjectId = context.activeProjectId;
+    if (tenantId) {
+      const membership = await prisma.membership.findUnique({
+        where: { tenantId_userId: { tenantId, userId: user.id } },
+        select: { role: true },
+      });
+      canManagePlatforms = isTenantAdminRole(membership?.role, user.role);
+    }
   } catch (error) {
     console.error("[layout] project context failed", error);
   }
@@ -83,6 +92,7 @@ export default async function AppLayout({
         userId={user.id}
         projects={projects}
         activeProjectId={activeProjectId}
+        canManagePlatforms={canManagePlatforms}
       />
       <main
         id={MAIN_CONTENT_ID}

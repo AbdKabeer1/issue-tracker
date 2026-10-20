@@ -75,7 +75,10 @@ export async function listAgentIssues(scope: Scope, params: URLSearchParams) {
   const status = params.get("status");
   const severity = params.get("severity");
   const assignee = params.get("assignee");
-  const platforms = await prisma.category.findMany({ select: { id: true, name: true } });
+  const platforms = await prisma.category.findMany({
+    where: { tenantId: scope.tenantId },
+    select: { id: true, name: true },
+  });
   const cursorRaw = params.get("cursor");
   const cursor = decodeCursor(cursorRaw);
   if (cursorRaw !== null && !cursor) throw new IssueApiError(400, "Invalid cursor.");
@@ -126,7 +129,10 @@ export async function createAgentIssue(agent: AgentContext, request: NextRequest
       if (!member) throw new IssueApiError(422, "The beneficiary must be a member of the tenant.");
       const categoryId = input.categoryId || null;
       if (categoryId) {
-        const category = await tx.category.findFirst({ where: { id: categoryId, isActive: true }, select: { id: true } });
+        const category = await tx.category.findFirst({
+          where: { id: categoryId, tenantId: scope.tenantId, isActive: true },
+          select: { id: true },
+        });
         if (!category) throw new IssueApiError(422, "Platform not found or inactive.");
       }
       const description = await normalizeTenantMentions(tx, scope.tenantId, input.description);

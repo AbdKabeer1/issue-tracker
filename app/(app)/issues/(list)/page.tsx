@@ -174,7 +174,7 @@ export default async function BugsPage({
     // Every platform, not just active ones: a link filtered on a platform
     // that was since deactivated still has to resolve. BugFilters narrows
     // the dropdown itself.
-    loadOrEmpty("platforms", () => getPlatforms(), []),
+    loadOrEmpty("platforms", () => getPlatforms(tenantId), []),
     // #289: few rows; closed ones too, so an old link still resolves.
     loadOrEmpty(
       "milestones",

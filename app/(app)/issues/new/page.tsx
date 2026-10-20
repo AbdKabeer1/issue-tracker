@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
+import { currentTenantIdFor } from "@/lib/tenant-context";
 import { CreateIssueForm } from "@/components/create-issue-form";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
@@ -53,7 +54,7 @@ export default async function NewBugPage() {
     // Cached (#297). getActivePlatforms also seeds the default platforms,
     // but only when they're actually missing — it used to upsert all three
     // on every render of this form.
-    loadOrEmpty("platforms", () => getActivePlatforms(), []),
+    loadOrEmpty("platforms", async () => getActivePlatforms(await currentTenantIdFor(user.id)), []),
     loadOrEmpty("issue types", () => getActiveIssueTypesCached(), []),
   ]);
 

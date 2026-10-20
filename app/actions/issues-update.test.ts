@@ -23,7 +23,7 @@ vi.mock("@/lib/prisma", () => ({
     bug: { findUnique: vi.fn() },
     user: { findUnique: vi.fn() },
     issueType: { findUnique: vi.fn() },
-    category: { findUnique: vi.fn() },
+    category: { findUnique: vi.fn(), findFirst: vi.fn() },
     milestone: { findUnique: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -40,7 +40,7 @@ const db = prisma as unknown as {
   bug: { findUnique: ReturnType<typeof vi.fn> };
   user: { findUnique: ReturnType<typeof vi.fn> };
   issueType: { findUnique: ReturnType<typeof vi.fn> };
-  category: { findUnique: ReturnType<typeof vi.fn> };
+  category: { findUnique: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
   milestone: { findUnique: ReturnType<typeof vi.fn> };
   $transaction: ReturnType<typeof vi.fn>;
 };
@@ -93,7 +93,7 @@ beforeEach(() => {
   awarded = [];
   db.user.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({ name: where.id }));
   db.issueType.findUnique.mockResolvedValue({ id: "t1", name: "Fix", isActive: true });
-  db.category.findUnique.mockResolvedValue({ id: "c1", name: "Web" });
+  db.category.findFirst.mockResolvedValue({ id: "c1", name: "Web", tenantId: "tenant-zedu" });
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
     fn({
       bug: { update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => (written = data)) },

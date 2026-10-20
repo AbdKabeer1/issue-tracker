@@ -157,6 +157,7 @@ export function AppHeader({
   userId,
   projects = [],
   activeProjectId = null,
+  canManagePlatforms = false,
 }: {
   userName?: string | null;
   /** Their picture, if their sign-in provider gave one (#290). */
@@ -170,6 +171,8 @@ export function AppHeader({
   /** The tenant's projects and the one currently active (#426). */
   projects?: ProjectChoice[];
   activeProjectId?: string | null;
+  /** Owner or admin of the organization currently open. */
+  canManagePlatforms?: boolean;
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -195,7 +198,7 @@ export function AppHeader({
     setAccountOpen(false);
   }
 
-  const items = headerNavItems(role);
+  const items = headerNavItems(role, { managePlatforms: canManagePlatforms });
   const canSwitchRole = Boolean((isRealSuperAdmin || isRealAdmin) && role);
   const realRole = realRoleOf({ isRealSuperAdmin, isRealAdmin });
   const viewingAsOther = canSwitchRole && role !== realRole;

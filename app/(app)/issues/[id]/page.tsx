@@ -316,7 +316,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             }),
           )
         : Promise.resolve([]),
-      loadOptional("platforms", [], () => getActivePlatforms()),
+      loadOptional("platforms", [], () => getActivePlatforms(bug.tenantId)),
       canTriage ? loadOptional("types", [], () => getActiveIssueTypesCached()) : Promise.resolve([]),
       loadOptional("votes", createEmptyVoterSummary(), () => fetchVoterSummary(id)),
       loadOptional("activity", [] as ActivityEntry[], () =>
