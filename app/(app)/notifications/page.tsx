@@ -15,7 +15,7 @@ export default async function NotificationsPage({
   searchParams,
 }: {
   searchParams?: Promise<{ scope?: string | string[] }>;
-} = {}) {
+}) {
   const user = await requireUser();
   const params = await searchParams;
   const allWorkspaces = params?.scope === "all";
