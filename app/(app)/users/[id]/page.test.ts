@@ -22,6 +22,7 @@ vi.mock("@/lib/points/leaderboard", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: { findUnique: vi.fn() },
+    membership: { findFirst: vi.fn() },
     bug: {
       findMany: vi.fn(),
       groupBy: vi.fn(),
@@ -30,8 +31,9 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import ProfilePage from "./page";
+import ProfilePage, { generateMetadata } from "./page";
 
 const person = {
   id: "reporter-1",
@@ -46,6 +48,8 @@ beforeEach(() => {
   vi.mocked(prisma.bug.findMany).mockResolvedValue([] as never);
   vi.mocked(prisma.bug.groupBy).mockResolvedValue([] as never);
   vi.mocked(prisma.bug.count).mockResolvedValue(0 as never);
+  // By default the viewer and the person share a tenant.
+  vi.mocked(prisma.membership.findFirst).mockResolvedValue({ id: "m-1" } as never);
 });
 
 describe("profile issues (#439)", () => {
@@ -75,5 +79,41 @@ describe("profile issues (#439)", () => {
         where: expect.objectContaining({ reporterId: person.id, tenantId: "tenant-zedu" }),
       }),
     );
+  });
+});
+
+describe("profiles outside your tenants (#503)", () => {
+  beforeEach(() => {
+    vi.mocked(notFound).mockImplementation(() => {
+      throw new Error("NEXT_NOT_FOUND");
+    });
+    currentTenantIdFor.mockResolvedValue("tenant-acme");
+  });
+
+  it("404s when the viewer shares no tenant with the person", async () => {
+    vi.mocked(prisma.membership.findFirst).mockResolvedValue(null as never);
+
+    await expect(ProfilePage({ params: Promise.resolve({ id: person.id }) })).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(prisma.membership.findFirst).toHaveBeenCalledWith({
+      where: { userId: person.id, tenant: { memberships: { some: { userId: "viewer-1" } } } },
+      select: { id: true },
+    });
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(prisma.bug.findMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps the name out of the tab title too", async () => {
+    vi.mocked(prisma.membership.findFirst).mockResolvedValue(null as never);
+
+    const meta = await generateMetadata({ params: Promise.resolve({ id: person.id }) });
+    expect(meta.title).toBe("Person not found");
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("still shows the profile when they share a tenant", async () => {
+    await ProfilePage({ params: Promise.resolve({ id: person.id }) });
+    expect(notFound).not.toHaveBeenCalled();
+    const meta = await generateMetadata({ params: Promise.resolve({ id: person.id }) });
+    expect(meta.title).toBe("Ada");
   });
 });

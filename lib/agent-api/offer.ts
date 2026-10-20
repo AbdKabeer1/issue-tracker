@@ -7,7 +7,7 @@ import { isConfirmed } from "@/lib/agent-api/validation";
 import { publish } from "@/lib/agent-api/events";
 import { notifyClaimOffered } from "@/lib/agent-notifications";
 import { MAX_ACTIVE_CLAIMS } from "@/lib/agent-api/claim";
-import { canAssignTicket } from "@/lib/ticket-assignment";
+import { canAssignTicket, WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
 import { assigneeChangedSummary, statusChangedSummary } from "@/lib/activity-log";
 import { ensureWatching } from "@/lib/watch";
 import { assertRedesignOpen } from "@/lib/redesigns";
@@ -38,7 +38,7 @@ function scheduleOfferExpiry(claimId: string): void {
 }
 
 /** Picks by active workload, then by who has waited longest since their last offer. */
-async function offerNext(db: Db, caller: { agentId?: string; tenantId: string }, bug: { id: string; projectId: string; title: string; assigneeId?: string | null }) {
+async function offerNext(db: Db, caller: { agentId?: string; tenantId: string }, bug: { id: string; projectId: string; title: string; assigneeId?: string | null }, excludeUserIds: string[] = []) {
   const memberships = await db.membership.findMany({
     where: {
       tenantId: caller.tenantId,
@@ -49,7 +49,7 @@ async function offerNext(db: Db, caller: { agentId?: string; tenantId: string },
       orderBy: { createdAt: "asc" }, take: 1, select: { id: true },
     } } } },
   });
-  const people = memberships.flatMap((m) => m.user.agents[0] && (!bug.assigneeId || bug.assigneeId === m.userId)
+  const people = memberships.flatMap((m) => m.user.agents[0] && !excludeUserIds.includes(m.userId) && (!bug.assigneeId || bug.assigneeId === m.userId)
     ? [{ beneficiaryUserId: m.userId, agentId: m.user.agents[0].id }]
     : []);
   if (!people.length) return null;
@@ -93,9 +93,10 @@ export async function offerIssue(agent: AgentContext, projectId: string, bugId: 
   const result = await prisma.$transaction(async (tx) => {
     const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${bugId} AND "tenantId" = ${agent.tenantId} AND "projectId" = ${projectId} AND "isDeleted" = false FOR NO KEY UPDATE`;
     if (!locked.length) throw new IssueApiError(404, "Issue not found in this project.");
-    const bug = await tx.bug.findFirst({ where: { id: bugId, tenantId: agent.tenantId, projectId, isDeleted: false }, select: { id: true, title: true, projectId: true, status: true, assigneeId: true } });
+    const bug = await tx.bug.findFirst({ where: { id: bugId, tenantId: agent.tenantId, projectId, isDeleted: false }, select: { id: true, title: true, projectId: true, status: true, assigneeId: true, voteCount: true } });
     if (!bug) throw new IssueApiError(404, "Issue not found in this project.");
     if (bug.status !== "open") throw new IssueApiError(409, "Only open issues can be offered.");
+    if (bug.voteCount < WORK_READINESS_VOTE_THRESHOLD) throw new IssueApiError(409, `The issue must reach at least ${WORK_READINESS_VOTE_THRESHOLD} upvotes before it can be offered.`);
     if (!await isConfirmed(bugId, tx)) throw new IssueApiError(409, "The issue must be confirmed before it can be offered.");
     await assertRedesignOpen(bugId, tx);
     const current = await tx.issueClaim.findFirst({ where: { bugId, releasedAt: null }, select: { id: true, status: true, offeredAt: true } });
@@ -137,11 +138,11 @@ async function expireOffer(claimId: string): Promise<void> {
 
 export async function acceptOffer(agent: AgentContext, claimId: string) {
   const result = await prisma.$transaction(async (tx) => {
-    const claim = await tx.issueClaim.findUnique({ where: { id: claimId }, include: { beneficiary: { select: { name: true } }, bug: { select: { id: true, title: true, status: true, assigneeId: true, tenantId: true, projectId: true, assignee: { select: { name: true } } } } } });
+    const claim = await tx.issueClaim.findUnique({ where: { id: claimId }, include: { beneficiary: { select: { name: true } }, bug: { select: { id: true, title: true, status: true, assigneeId: true, tenantId: true, projectId: true, voteCount: true, assignee: { select: { name: true } } } } } });
     if (!claim || claim.bug.tenantId !== agent.tenantId) throw new IssueApiError(404, "Offer not found.");
     const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${claim.bugId} AND "tenantId" = ${agent.tenantId} FOR NO KEY UPDATE`;
     if (!locked.length) throw new IssueApiError(404, "Offer not found.");
-    const fresh = await tx.issueClaim.findUnique({ where: { id: claimId }, include: { beneficiary: { select: { name: true } }, bug: { select: { id: true, title: true, status: true, assigneeId: true, tenantId: true, projectId: true, assignee: { select: { name: true } } } } } });
+    const fresh = await tx.issueClaim.findUnique({ where: { id: claimId }, include: { beneficiary: { select: { name: true } }, bug: { select: { id: true, title: true, status: true, assigneeId: true, tenantId: true, projectId: true, voteCount: true, assignee: { select: { name: true } } } } } });
     if (!fresh || fresh.agentId !== agent.agentId) throw new IssueApiError(409, "This offer is no longer available to this agent.");
     if (fresh.status === "released" && fresh.releaseReason === "expired") throw new IssueApiError(410, "This offer expired and has been released.");
     if (fresh.status !== "offered" || fresh.releasedAt) throw new IssueApiError(409, "This offer is no longer available to this agent.");
@@ -165,7 +166,7 @@ export async function acceptOffer(agent: AgentContext, claimId: string) {
       const next = await offerNext(tx, agent, fresh.bug);
       return { unavailable: true as const, next, bugId: fresh.bugId };
     }
-    if (fresh.bug.status !== "open" || !canAssignTicket({ actorId: fresh.beneficiaryUserId, actorRole: "user", currentAssigneeId: fresh.bug.assigneeId, targetAssigneeId: fresh.beneficiaryUserId })) {
+    if (fresh.bug.status !== "open" || !canAssignTicket({ actorId: fresh.beneficiaryUserId, actorRole: "user", currentAssigneeId: fresh.bug.assigneeId, targetAssigneeId: fresh.beneficiaryUserId, voteCount: fresh.bug.voteCount })) {
       await tx.issueClaim.update({ where: { id: fresh.id }, data: { status: "released", releasedAt: now, releaseReason: "unavailable" } });
       await publish(tx, { tenantId: agent.tenantId, type: "claim.released", actorAgentId: agent.agentId, bugId: fresh.bugId,
         payload: { claimId: fresh.id, issueId: fresh.bugId, beneficiaryUserId: fresh.beneficiaryUserId, reason: "unavailable" } });
@@ -197,4 +198,72 @@ export async function acceptOffer(agent: AgentContext, claimId: string) {
     throw new IssueApiError(409, "The issue can no longer be assigned to this person.");
   }
   return result;
+}
+
+export const releaseSchema = z.object({
+  projectId: id.optional(),
+  /** Why the agent is giving the work back, shown in the audit log. */
+  reason: z.string().trim().max(500).optional(),
+}).strict();
+
+/**
+ * An agent gives back an issue it holds (#547): declines a pending offer, or
+ * releases an active claim it can't finish. Either way the issue goes to the
+ * next person, without waiting for an offer to expire or a heartbeat to lapse.
+ *
+ * - Only the agent holding the offer or claim can release it.
+ * - releaseReason is "declined" for an offer and "agent" for an active claim.
+ *   Neither counts as a silence release, so giving work back promptly is never
+ *   penalised the way going quiet is.
+ * - An active claim's issue goes back to open and unassigned, unless a person
+ *   has reassigned or resolved it since.
+ * - The issue is then offered to someone else (never straight back to the
+ *   same person), if it is still open and confirmed.
+ */
+export async function releaseClaim(agent: AgentContext, projectId: string, bugId: string, reason?: string) {
+  const result = await prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${bugId} AND "tenantId" = ${agent.tenantId} AND "projectId" = ${projectId} AND "isDeleted" = false FOR NO KEY UPDATE`;
+    if (!locked.length) throw new IssueApiError(404, "Issue not found in this project.");
+    const claim = await tx.issueClaim.findFirst({
+      where: { bugId, agentId: agent.agentId, releasedAt: null, status: { in: ["offered", "active"] } },
+      include: { beneficiary: { select: { name: true } } },
+    });
+    if (!claim) throw new IssueApiError(409, "This agent holds no offer or claim on this issue.");
+    const now = new Date();
+    const releaseReason = claim.status === "offered" ? "declined" : "agent";
+    await tx.issueClaim.update({ where: { id: claim.id }, data: { status: "released", releasedAt: now, releaseReason } });
+
+    const bug = await tx.bug.findFirstOrThrow({
+      where: { id: bugId },
+      select: { id: true, title: true, status: true, assigneeId: true, projectId: true },
+    });
+    let reopened = false;
+    if (claim.status === "active") {
+      const otherOpen = await tx.issueClaim.count({ where: { bugId, releasedAt: null, id: { not: claim.id } } });
+      if (!otherOpen && bug.status === "in_progress" && bug.assigneeId === claim.beneficiaryUserId) {
+        await tx.bug.update({ where: { id: bugId }, data: { assigneeId: null, status: "open" } });
+        await tx.bugActivity.createMany({ data: [
+          { bugId, actorId: claim.beneficiaryUserId, type: "assignee_changed", summary: assigneeChangedSummary(claim.beneficiary.name, null), metadata: { field: "assignee", from: claim.beneficiaryUserId, to: null } },
+          { bugId, actorId: claim.beneficiaryUserId, type: "status_changed", summary: statusChangedSummary("in_progress", "open"), metadata: { field: "status", from: "in_progress", to: "open" } },
+        ] });
+        reopened = true;
+      }
+    }
+    await publish(tx, { tenantId: agent.tenantId, type: "claim.released", actorAgentId: agent.agentId, bugId,
+      payload: { claimId: claim.id, issueId: bugId, beneficiaryUserId: claim.beneficiaryUserId, reason: releaseReason, ...(reason ? { note: reason } : {}) } });
+
+    const stillOpen = claim.status === "offered" ? bug.status === "open" : reopened;
+    const next = stillOpen && (await isConfirmed(bugId, tx))
+      ? await offerNext(tx, agent, { ...bug, assigneeId: null }, [claim.beneficiaryUserId])
+      : null;
+    return {
+      released: { claimId: claim.id, issueId: bugId, reason: releaseReason, reopened: claim.status === "active" ? reopened : false },
+      next,
+    };
+  }, { maxWait: 10000, timeout: 15000 });
+  if (result.next) {
+    notifyClaimOffered({ id: result.next.claim.id, bugId, bugTitle: result.next.bugTitle, beneficiaryUserId: result.next.beneficiaryUserId });
+    scheduleOfferExpiry(result.next.claim.id);
+  }
+  return { ...result.released, reofferedTo: result.next?.beneficiaryUserId ?? null };
 }

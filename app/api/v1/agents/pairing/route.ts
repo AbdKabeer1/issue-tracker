@@ -1,17 +1,19 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { clientIpFrom, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { clientRateLimitKey, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { absoluteUrl } from "@/lib/site-url";
 import { consumePairingLimit } from "@/lib/agents/rate-limit";
-import { PAIRING_POLL_INTERVAL, startPairing } from "@/lib/agents/pairing";
+import { PAIRING_POLL_INTERVAL, pairingApprovalPath, startPairing } from "@/lib/agents/pairing";
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
+import { agentPlatformDisabledResponse } from "@/lib/agents/platform-gate";
 
 /**
- * POST /api/v1/agents/pairing — an agent without a key asks to be paired
- * (#427). Body: `{ "name": "Ada's Claude", "model": "Claude" }`. Show the
- * returned `user_code` to your owner, then poll `/api/v1/agents/pairing/token`
- * with `device_code` every `interval` seconds.
+ * POST /api/v1/agents/pairing — an agent without a key asks to join (#427).
+ * Body: `{ "name": "Ada's Claude", "model": "Claude" }`. Show
+ * `verification_uri_complete` in the owner's browser. After they approve,
+ * poll `/api/v1/agents/pairing/token` with `device_code` every `interval` seconds.
  */
 export async function POST(req: NextRequest) {
-  const retryAfter = await consumePairingLimit("start", clientIpFrom(req.headers) ?? "unknown");
+  const retryAfter = await consumePairingLimit("start", clientRateLimitKey(req.headers));
   if (retryAfter) {
     return NextResponse.json(
       { error: "rate_limited", message: RATE_LIMIT_MESSAGE },
@@ -19,6 +21,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // #505: switched off means switched off, not just hidden in Settings.
+  if (!isAgentPlatformEnabled()) return agentPlatformDisabledResponse();
   const body = (await req.json().catch(() => null)) as { name?: unknown; model?: unknown } | null;
   const result = await startPairing({ name: body?.name, model: body?.model });
   if (!result.ok) {
@@ -30,8 +34,11 @@ export async function POST(req: NextRequest) {
       user_code: result.userCode,
       device_code: result.deviceCode,
       verification_uri: absoluteUrl("/settings/agents/pair"),
+      verification_uri_complete: absoluteUrl(pairingApprovalPath(result.userCode)),
       expires_at: result.expiresAt.toISOString(),
       interval: PAIRING_POLL_INTERVAL,
+      message:
+        "Open verification_uri_complete in the owner's browser yourself. Do not only print it. They approve it while signed in. Then poll the token URL with device_code until api_key is returned.",
     },
     { status: 201, headers: { "Cache-Control": "no-store" } },
   );

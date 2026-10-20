@@ -52,6 +52,7 @@ const FILTER_PARAMS = [
   "severity",
   PLATFORM_PARAM,
   "sort",
+  MILESTONE_PARAM,
 ];
 
 /** The issues URL with `changes` applied and paging reset. */
@@ -283,6 +284,7 @@ export function IssueFilters({
     parsePlatformFilter(params.get(PLATFORM_PARAM), platforms) ?? "";
   const platformOptions = platformChoices(platforms, currentPlatform || null);
   const currentMine = parseMineFilter(params.get("mine")) ?? "";
+  const currentMilestone = params.get(MILESTONE_PARAM) ?? "";
 
   // Only worth offering when there is something to clear (#336).
   const hasActiveFilters = FILTER_PARAMS.some((key) => (params.get(key) ?? "") !== "");
@@ -509,7 +511,7 @@ export function IssueFilters({
           id="category"
           className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:w-auto"
           value={selectedNames[0] ?? ""}
-          onChange={(event) => update(TAGS_PARAM, event.target.value)}
+          onChange={(event) => update(TAGS_PARAM, serializeTags([event.target.value]))}
         >
           <option value="">All</option>
           {Array.from(
@@ -670,6 +672,21 @@ export function IssueFilters({
                 onClick={() => update(PLATFORM_PARAM, "")}
                 aria-label="Remove platform filter"
                 className="ml-0.5 rounded-full p-0.5 text-sky-700 hover:bg-sky-200/60"
+              >
+                ✕
+              </button>
+            </span>
+          ) : null}
+          {currentMilestone ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-indigo-900">
+              Milestone: {currentMilestone === MILESTONE_NONE
+                ? "No milestone"
+                : milestones.find((milestone) => milestone.id === currentMilestone)?.title ?? currentMilestone}
+              <button
+                type="button"
+                onClick={() => update(MILESTONE_PARAM, "")}
+                aria-label="Remove milestone filter"
+                className="ml-0.5 rounded-full p-0.5 text-indigo-700 hover:bg-indigo-200/60"
               >
                 ✕
               </button>

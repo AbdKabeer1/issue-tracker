@@ -21,7 +21,7 @@ export function ZeduOwnerForm() {
       const next = await promoteZeduOwnerAction(previous, formData);
       // Toast here, not in an effect: on success the page refreshes without
       // this section, so this form unmounts before an effect would run.
-      if (next.ok) toast(`${next.name} is now Zedu's owner.`, "success");
+      if (next.ok) toast(`${next.name} is now Ziki's owner.`, "success");
       return next;
     },
     undefined,

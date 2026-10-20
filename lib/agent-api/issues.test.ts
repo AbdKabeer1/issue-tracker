@@ -14,6 +14,8 @@ const db = vi.hoisted(() => ({
 }));
 const budget = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
+const notifyLater = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/notify", () => ({ notifyLater }));
 vi.mock("@/lib/agents/rate-budget", async (original) => ({
   ...await original<typeof import("@/lib/agents/rate-budget")>(), consumeAgentBudget: budget,
 }));
@@ -88,7 +90,7 @@ describe("agent issue API authentication", () => {
     expect((await comment(request("POST", { body: "hello" }), context)).status).toBe(403);
     expect(db.bug.create).not.toHaveBeenCalled();
     expect(db.comment.create).not.toHaveBeenCalled();
-    expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "issues.create", payload: { status: 403 } }) }));
+    expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "issues.create", payload: { status: 403, request: true } }) }));
   });
 
   it("uses the shared read/write budgets and preserves Retry-After", async () => {
@@ -232,7 +234,7 @@ describe("agent comments", () => {
     }));
     expect(log).toHaveBeenCalledWith("[agent-api] request audit failed", {
       tenantId: "tenant-a", agentId: "agent-a", action: "comments.create",
-      target: issue.id, payload: { status: 201 },
+      target: issue.id, payload: { status: 201, request: true },
     }, error);
   });
 
@@ -245,7 +247,7 @@ describe("agent comments", () => {
     });
     await expect(comment(request("POST", { body: "A helpful comment" }), context)).rejects.toBe(error);
     expect(log).toHaveBeenCalledWith("[agent-api] request audit failed", expect.objectContaining({
-      payload: { status: 500 },
+      payload: { status: 500, request: true },
     }), expect.any(Error));
   });
 
@@ -275,5 +277,50 @@ describe("agent comments", () => {
       id: { in: ["member", "outsider"] }, memberships: { some: { tenantId: "tenant-a" } },
     } }));
     expect(db.comment.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ body: "@[Real name](member) @Other" }) }));
+  });
+});
+
+describe("agent comments and issues notify people (#533)", () => {
+  it("tells watchers, the parent's author and anyone mentioned", async () => {
+    db.bug.findFirst.mockResolvedValue({ ...issue, reporterId: "reporter-a", assigneeId: "assignee-a" });
+    db.comment.findFirst.mockResolvedValue({ id: "cl000000000000000000000001", authorId: "parent-author" });
+    db.comment.findMany.mockResolvedValue([{ id: "cl000000000000000000000001", parentId: null }]);
+    db.user.findMany.mockResolvedValue([{ id: "bob", name: "Bob" }]);
+    db.comment.create.mockResolvedValue({ id: "comment-b", body: "@[Bob](bob) can you retest?", createdAt: new Date() });
+
+    const response = await comment(
+      request("POST", { body: "@[Bob](bob) can you retest?", parentId: "cl000000000000000000000001" }),
+      context,
+    );
+    expect(response.status).toBe(201);
+
+    const events = notifyLater.mock.calls.flat();
+    expect(events).toEqual([
+      expect.objectContaining({ kind: "mentioned", place: "comment", recipientIds: ["bob"], commentId: "comment-b", actorId: "owner-a" }),
+      expect.objectContaining({
+        kind: "comment_added",
+        commentId: "comment-b",
+        parentAuthorId: "parent-author",
+        recipientIds: ["reporter-a", "assignee-a"],
+        excludeIds: ["bob"],
+        bugTitle: issue.title,
+      }),
+    ]);
+    // Named after the agent, so people can tell who wrote it.
+    expect(events[0]?.actorName).toBe("Agent A");
+  });
+
+  it("sends nothing when the comment couldn't be saved", async () => {
+    db.bug.findFirst.mockResolvedValueOnce(null);
+    expect((await comment(request("POST", { body: "hello" }), context)).status).toBe(404);
+    expect(notifyLater).not.toHaveBeenCalled();
+  });
+
+  it("tells people mentioned in an agent's new issue", async () => {
+    db.bug.findFirst.mockResolvedValue({ ...issue, description: "Seen by @[Bob](bob) on Safari" });
+    expect((await create(request("POST", validBody))).status).toBe(201);
+    expect(notifyLater).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "mentioned", place: "description", recipientIds: ["bob"], bugId: issue.id, actorId: "owner-a", actorName: "Agent A",
+    }));
   });
 });
