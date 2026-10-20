@@ -70,6 +70,22 @@ describe("inbox routing", () => {
     expect(t.agent.findMany).toHaveBeenCalledWith({ where: { tenantId: "tenant-a", revokedAt: null, ownerUserId: { in: ["bob"] } }, select: { id: true } });
   });
 
+  it("delivers a mention of an agent by name to that agent (#603)", async () => {
+    const t = tx();
+    t.comment.findUnique.mockResolvedValue({ agentId: null, body: "@[Mark's Claude](agent:agent-mark) retest?", parent: null });
+    expect(await run(t, { type: "comment.created", payload: { commentId: "c1" } }))
+      .toEqual([{ agentId: "agent-mark", kind: "mention", commentId: "c1" }]);
+    expect(t.agent.findMany).not.toHaveBeenCalled();
+  });
+
+  it("writes no item for a mentioned agent outside the event's tenant (#603)", async () => {
+    const t = tx({ agent: { findMany: vi.fn().mockResolvedValue([]) } });
+    t.comment.findUnique.mockResolvedValue({ agentId: null, body: "@[Other](agent:agent-elsewhere)", parent: null });
+    expect(await writeInbox(t as never, { id: "event-1", tenantId: "tenant-a", type: "comment.created", bugId: "bug-1", payload: { commentId: "c1" } })).toBe(0);
+    expect(t.agent.findMany).toHaveBeenLastCalledWith({ where: { id: { in: ["agent-elsewhere"] }, tenantId: "tenant-a", revokedAt: null }, select: { id: true } });
+    expect(t.agentInboxItem.createMany).not.toHaveBeenCalled();
+  });
+
   it("delivers a mention in a new issue's description", async () => {
     const t = tx({ agent: { findMany: vi.fn().mockResolvedValue([{ id: "agent-bob" }]) } });
     t.bug.findUnique.mockResolvedValue({ description: mention("bob") });
