@@ -19,20 +19,48 @@ import { IssueApiError } from "@/lib/agent-api/issues";
 
 const id = z.string().trim().min(1).max(191);
 
+export const escalationTypeValues = [
+  "question",
+  "work_authorization",
+  "blocker",
+  "scope_change",
+  "human_approval",
+] as const;
+
+export type EscalationTypeSlug = (typeof escalationTypeValues)[number];
+
+export const escalationTypeSchema = z.enum(escalationTypeValues);
+
 export const agentQuestionSchema = z
   .object({
     /** The issue the question is about, when there is one. */
     bugId: id.optional(),
     body: z.string().trim().min(3).max(2000),
+    type: escalationTypeSchema.optional(),
   })
   .strict();
+
+export const agentEscalationSchema = agentQuestionSchema;
 
 export const answerSchema = z.object({ answer: z.string().trim().min(1).max(2000) }).strict();
 
 export type AskAgentQuestionInput = z.infer<typeof agentQuestionSchema>;
+export type AskAgentEscalationInput = AskAgentQuestionInput;
+
+export type EscalationStatus = "open" | "resolved" | "dismissed";
+
+export function getEscalationStatus(answeredAt: Date | null | undefined, answer?: string | null): EscalationStatus {
+  if (!answeredAt) return "open";
+  if (answer && answer.toLowerCase().startsWith("dismissed")) return "dismissed";
+  return "resolved";
+}
 
 /** A contributor or above asks its owner. */
 export async function askAgentQuestion(agent: AgentContext, input: AskAgentQuestionInput) {
+  const effectiveBody = input.type ? `[${input.type}] ${input.body}` : input.body;
+  const escalationType = input.type ? slugToEscalationType(input.type) : classifyEscalation(input.body);
+  const typeSlug = input.type ?? escalationTypeToSlug(escalationType);
+
   const question = await prisma.$transaction(async (tx) => {
     let bugTitle: string | null = null;
     if (input.bugId) {
@@ -49,16 +77,16 @@ export async function askAgentQuestion(agent: AgentContext, input: AskAgentQuest
         agentId: agent.agentId,
         ownerUserId: agent.ownerId,
         bugId: input.bugId ?? null,
-        body: input.body,
+        body: effectiveBody,
       },
       select: { id: true, bugId: true, body: true, createdAt: true },
     });
 
-    await audit(agent, "question.asked", created.id, { bugId: created.bugId }, { db: tx, bugId: created.bugId });
+    await audit(agent, "question.asked", created.id, { bugId: created.bugId, type: typeSlug }, { db: tx, bugId: created.bugId });
     await publish(tx, {
       tenantId: agent.tenantId,
       type: "question.asked",
-      payload: { questionId: created.id, agentId: agent.agentId, bugId: created.bugId },
+      payload: { questionId: created.id, agentId: agent.agentId, bugId: created.bugId, type: typeSlug },
       actorAgentId: agent.agentId,
       bugId: created.bugId,
     });
@@ -76,8 +104,18 @@ export async function askAgentQuestion(agent: AgentContext, input: AskAgentQuest
     bugId: question.bugId,
     bugTitle: question.bugTitle,
   });
-  return question;
+
+  const parsed = parseEscalationBody(question.body);
+
+  return {
+    ...question,
+    body: parsed.cleanBody,
+    type: typeSlug,
+    status: "open" as const,
+  };
 }
+
+export const askAgentEscalation = askAgentQuestion;
 
 /** The asking agent reads its own question and the answer, once there is one. */
 export async function readAgentQuestion(agent: AgentContext, questionId: string) {
@@ -87,6 +125,24 @@ export async function readAgentQuestion(agent: AgentContext, questionId: string)
   });
   if (!question) throw new IssueApiError(404, "Question not found.");
   return question;
+}
+
+export async function readAgentEscalation(agent: AgentContext, escalationId: string) {
+  const question = await readAgentQuestion(agent, escalationId);
+  const parsed = parseEscalationBody(question.body);
+  const typeSlug = escalationTypeToSlug(parsed.type);
+  const status = getEscalationStatus(question.answeredAt, question.answer);
+
+  return {
+    id: question.id,
+    bugId: question.bugId,
+    body: parsed.cleanBody,
+    type: typeSlug,
+    status,
+    resolution: question.answer,
+    resolvedAt: question.answeredAt,
+    createdAt: question.createdAt,
+  };
 }
 
 /**
@@ -186,6 +242,51 @@ export type EscalationType =
   | "Question"
   | "Scope Expansion"
   | "Human Approval";
+
+export function escalationTypeToSlug(type: EscalationType): EscalationTypeSlug {
+  switch (type) {
+    case "Blocker":
+      return "blocker";
+    case "Work Authorization":
+      return "work_authorization";
+    case "Scope Expansion":
+      return "scope_change";
+    case "Human Approval":
+      return "human_approval";
+    case "Question":
+    default:
+      return "question";
+  }
+}
+
+export function slugToEscalationType(slug: EscalationTypeSlug | string): EscalationType {
+  switch (slug) {
+    case "blocker":
+      return "Blocker";
+    case "work_authorization":
+      return "Work Authorization";
+    case "scope_change":
+      return "Scope Expansion";
+    case "human_approval":
+      return "Human Approval";
+    case "question":
+    default:
+      return "Question";
+  }
+}
+
+export function parseEscalationBody(rawBody: string): { type: EscalationType; cleanBody: string } {
+  const match = rawBody.match(/^\[([a-zA-Z\s_]+)\]\s*([\s\S]*)$/);
+  if (match) {
+    const tag = match[1].toLowerCase().replace(/\s+/g, "_");
+    if (tag === "blocker") return { type: "Blocker", cleanBody: match[2] };
+    if (tag === "work_authorization" || tag === "authorization") return { type: "Work Authorization", cleanBody: match[2] };
+    if (tag === "scope_change" || tag === "scope_expansion") return { type: "Scope Expansion", cleanBody: match[2] };
+    if (tag === "human_approval" || tag === "approval") return { type: "Human Approval", cleanBody: match[2] };
+    if (tag === "question") return { type: "Question", cleanBody: match[2] };
+  }
+  return { type: classifyEscalation(rawBody), cleanBody: rawBody };
+}
 
 /**
  * Classifies an agent escalation into a standard human-actionable type (#763).
