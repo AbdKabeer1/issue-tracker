@@ -129,7 +129,10 @@ beforeEach(() => {
   db.projectArea.findFirst.mockResolvedValue({ id: "area-web", name: "Frontend" });
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
     fn({
-      bug: { update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => (written = data)) },
+      bug: {
+        update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => (written = data)),
+        findUnique: vi.fn(async () => ({ projectId: null })),
+      },
       bugActivity: {
         createMany: vi.fn(async ({ data }: { data: Array<{ type: string }> }) => {
           activities = data.map((entry) => entry.type);
