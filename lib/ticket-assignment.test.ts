@@ -100,4 +100,62 @@ describe("canAssignTicket", () => {
       }),
     ).toBe(false);
   });
+
+  describe("work readiness gate (#764)", () => {
+    it("blocks assignment when voteCount is below the threshold of 3", () => {
+      expect(
+        canAssignTicket({
+          actorId: "admin-1",
+          actorRole: "admin",
+          currentAssigneeId: null,
+          targetAssigneeId: "user-1",
+          voteCount: 2,
+        }),
+      ).toBe(false);
+
+      expect(
+        canAssignTicket({
+          actorId: "user-1",
+          actorRole: "user",
+          currentAssigneeId: null,
+          targetAssigneeId: "user-1",
+          voteCount: 0,
+        }),
+      ).toBe(false);
+    });
+
+    it("allows assignment when voteCount reaches or exceeds 3", () => {
+      expect(
+        canAssignTicket({
+          actorId: "admin-1",
+          actorRole: "admin",
+          currentAssigneeId: null,
+          targetAssigneeId: "user-1",
+          voteCount: 3,
+        }),
+      ).toBe(true);
+
+      expect(
+        canAssignTicket({
+          actorId: "user-1",
+          actorRole: "user",
+          currentAssigneeId: null,
+          targetAssigneeId: "user-1",
+          voteCount: 5,
+        }),
+      ).toBe(true);
+    });
+
+    it("allows unassigning even if voteCount is below 3", () => {
+      expect(
+        canAssignTicket({
+          actorId: "user-1",
+          actorRole: "user",
+          currentAssigneeId: "user-1",
+          targetAssigneeId: null,
+          voteCount: 1,
+        }),
+      ).toBe(true);
+    });
+  });
 });

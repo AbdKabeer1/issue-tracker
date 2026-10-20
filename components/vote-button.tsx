@@ -17,6 +17,7 @@ type VoteButtonProps = {
   dislikeVoters?: VoterInfo[];
   size?: "sm" | "md";
   showAvatars?: boolean;
+  showReadinessGate?: boolean;
   /** Deleted issues: show counts, but likes and dislikes can't be changed. */
   readOnly?: boolean;
 };
@@ -90,6 +91,7 @@ export function VoteButton({
   dislikeVoters = [],
   size = "sm",
   showAvatars = false,
+  showReadinessGate = true,
   readOnly = false,
 }: VoteButtonProps) {
   const initialVote =
@@ -260,6 +262,30 @@ export function VoteButton({
               />
             )}
           </div>
+
+          {/* Work Readiness Gate Progress Indicator (#764) */}
+          {showReadinessGate ? (
+            <div
+              data-testid="readiness-gate-indicator"
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold shadow-xs transition-colors ${
+                voteCount >= 3
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-amber-200 bg-amber-50 text-amber-800"
+              }`}
+              aria-label={
+                voteCount >= 3
+                  ? `Work unlocked, ${voteCount} of 3 votes reached`
+                  : `Upvote, ${Math.max(0, voteCount)} of 3 votes to unlock work`
+              }
+            >
+              <span aria-hidden="true" className="text-[11px]">▲</span>
+              <span>
+                {voteCount >= 3
+                  ? `Work unlocked (${voteCount}/3 votes)`
+                  : `Upvote (${Math.max(0, voteCount)}/3 votes to unlock work)`}
+              </span>
+            </div>
+          ) : null}
         </div>
 
         {error ? (

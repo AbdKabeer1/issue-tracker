@@ -1,9 +1,12 @@
 import { isAdmin, type AppRole } from "@/lib/roles";
 
+export const WORK_READINESS_VOTE_THRESHOLD = 3;
+
 export const TICKET_ASSIGN_ERRORS = {
   unauthorized: "Only admins can assign issues to other users",
   unauthorizedUpdate: "Only the assignee or an admin can update this issue",
   statusNeedsAssignment: "Assign this issue to yourself first, then change its status.",
+  needsVotes: "This issue must reach at least 3 upvotes before work can be assigned.",
   invalidId: "Invalid issue ID",
   notFound: "Issue not found",
   assigneeNotFound: "Assignee not found",
@@ -25,12 +28,19 @@ export function canAssignTicket({
   actorRole,
   currentAssigneeId,
   targetAssigneeId,
+  voteCount,
 }: {
   actorId: string;
   actorRole?: AppRole | null;
   currentAssigneeId?: string | null;
   targetAssigneeId?: string | null;
+  voteCount?: number;
 }): boolean {
+  // If assigning work to someone (not unassigning), check work readiness threshold if voteCount is specified (#764)
+  if (targetAssigneeId && typeof voteCount === "number" && voteCount < WORK_READINESS_VOTE_THRESHOLD) {
+    return false;
+  }
+
   if (isAdmin(actorRole)) {
     return true;
   }
