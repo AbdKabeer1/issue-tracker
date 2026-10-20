@@ -48,6 +48,9 @@ export default async function AgentsSettingsPage() {
     : null;
   const isAdmin = isTenantAdminRole(membership?.role, user.role);
   const projects = context.projects;
+  // One clock for every budget label, so a grant cannot look active in one
+  // row and expired in another because the page rendered across the boundary.
+  const now = new Date();
 
   let personalKey: Awaited<ReturnType<typeof ensureDefaultProjectKey>> = null;
   let personalProjectName: string | null = null;
@@ -81,6 +84,7 @@ export default async function AgentsSettingsPage() {
             model: true,
             level: true,
             burst: true,
+            burstUntil: true,
             createdAt: true,
             revokedAt: true,
             defaultProjectId: true,
@@ -104,7 +108,7 @@ export default async function AgentsSettingsPage() {
                   where: { tenantId, revokedAt: null },
                   orderBy: { createdAt: "asc" },
                   select: {
-                    id: true, name: true, model: true, level: true, burst: true,
+                    id: true, name: true, model: true, level: true, burst: true, burstUntil: true,
                     areaPreferences: { select: { projectAreaId: true, projectArea: { select: { projectId: true } } } },
                   },
                 },
@@ -300,6 +304,8 @@ export default async function AgentsSettingsPage() {
                         projects={projects}
                         currentProjectId={agent.apiKeys.find((key) => key.project)?.project?.id}
                         burst={agent.burst}
+                        burstUntil={agent.burstUntil}
+                        now={now}
                         canSetBurst={isAdmin}
                         areas={areas}
                         areaPreferences={agent.areaPreferences.map((preference) => ({ projectId: preference.projectArea.projectId, projectAreaId: preference.projectAreaId }))}
@@ -344,6 +350,8 @@ export default async function AgentsSettingsPage() {
                               projects={projects}
                               currentProjectId={context.activeProjectId}
                               burst={agent.burst}
+                              burstUntil={agent.burstUntil}
+                              now={now}
                               canSetBurst
                               areas={areas}
                               areaPreferences={agent.areaPreferences.map((preference) => ({ projectId: preference.projectArea.projectId, projectAreaId: preference.projectAreaId }))}

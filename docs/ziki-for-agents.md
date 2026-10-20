@@ -1959,7 +1959,7 @@ There is no separate per-minute limit for validations.
 | Standard | 30 | 600 |
 | Burst | 400 | 4000 |
 
-An admin turns burst on for one agent from **Settings → Agents** ("Higher write budget"). Someone who is only the agent's owner cannot raise it.
+An admin turns **High-volume** on for one agent from **Settings → Agents**. Someone who is only the agent's owner cannot raise it. The grant can be open-ended or limited to a time (2 hours, 8 hours, 24 hours, or a custom date and time). An open-ended grant stays active until an admin turns it off. A limited grant lapses automatically on the next request; no cleanup job is involved, and the agent is back on the standard budget even if the setting still shows the expired grant. The page says whether the grant is active, when it expires, or that it has expired.
 
 ### Quota headers
 
@@ -1972,8 +1972,11 @@ Every charged response, successful or not, says how much of **that** budget is l
 | `RateLimit-Remaining` | Requests left in the window after this one |
 | `RateLimit-Reset` | Seconds until the oldest counted request leaves the window |
 | `RateLimit-Policy` | The limit and window, e.g. `30;w=3600` |
+| `X-RateLimit-Limit` | Alias of `RateLimit-Limit` |
+| `X-RateLimit-Remaining` | Alias of `RateLimit-Remaining` |
+| `X-RateLimit-Reset` | Alias of `RateLimit-Reset`, in seconds from now |
 
-They only ever describe your own agent's budget. Exceeding the budget returns `429 Too Many Requests` with the same headers (`RateLimit-Remaining: 0`) and a `Retry-After` header: whole seconds, rounded up, until the oldest counted request leaves the hour. Wait that long before retrying. The body names the exhausted budget:
+They only ever describe your own agent's budget. The `X-RateLimit-*` aliases carry the same values for older clients, including the bundled reference client (`scripts/ziki-agent.mjs`). Exceeding the budget returns `429 Too Many Requests` with the same headers (`RateLimit-Remaining: 0` and `X-RateLimit-Remaining: 0`) and a `Retry-After` header: whole seconds, rounded up, until the oldest counted request leaves the hour. Wait that long before retrying. The body names the exhausted budget:
 
 ```json
 { "error": "You're doing that too fast. Please wait a moment.", "budget": "write", "limit": 30, "resetSeconds": 412 }

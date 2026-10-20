@@ -54,7 +54,7 @@ describe("POST /api/v1/attachments (#645)", () => {
     expect(await response.json()).toMatchObject({ id: "att-1", contentType: "image/png", filename: "safari-bug.png" });
     expect(db.attachment.create.mock.calls[0][0].data).toMatchObject({ uploaderId: "ada", contentType: "image/png" });
     expect(db.attachment.create.mock.calls[0][0].data).not.toHaveProperty("bugId");
-    expect(budget).toHaveBeenCalledWith({ id: "agent-a", burst: false }, "write");
+    expect(budget).toHaveBeenCalledWith({ id: "agent-a", burst: false, burstUntil: null }, "write");
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: "attachments.upload" }) });
     // The #543 sweep runs for the owner after a successful upload.
     expect(db.attachment.deleteMany).toHaveBeenCalledWith({ where: expect.objectContaining({ uploaderId: "ada", bugId: null }) });
