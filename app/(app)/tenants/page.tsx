@@ -122,10 +122,10 @@ export default async function TenantsPage({
       {zeduOwnerNeeded ? (
         <section aria-labelledby="zedu-owner" className="rounded-xl border border-amber-200 bg-amber-50 p-4 sm:p-6">
           <h2 id="zedu-owner" className="text-base font-semibold text-amber-900">
-            Zedu has no owner yet
+            Ziki has no owner yet
           </h2>
           <p className="mt-1 text-sm text-amber-900">
-            Everyone moved into Zedu is a member, so nobody can invite people. As the site&apos;s
+            Everyone moved into Ziki is a member, so nobody can invite people. As the site&apos;s
             super admin, choose its first owner from its existing members.
           </p>
           <ZeduOwnerForm />

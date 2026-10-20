@@ -13,6 +13,8 @@ import { isAdmin } from "@/lib/roles";
 import { isTenantAdminRole } from "@/lib/agents/membership";
 import { prisma } from "@/lib/prisma";
 import type { AgentKeyHint } from "@/components/agent-key-copy";
+import { ensureDefaultProjectKey } from "@/lib/agents/default-key";
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 import { projectContextFor, type ProjectChoice } from "@/lib/project-context";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 
@@ -44,6 +46,8 @@ export default async function AppLayout({
   let activeProjectId: string | null = null;
   let canManagePlatforms = false;
   let agentKeys: AgentKeyHint[] = [];
+  let apiKey: string | null = null;
+  let keyPrefix: string | null = null;
   let tenantId: string | null = null;
   try {
     tenantId = await currentTenantIdFor(user.id);
@@ -60,7 +64,22 @@ export default async function AppLayout({
   } catch (error) {
     console.error("[layout] project context failed", error);
   }
-  // Prefixes only: the raw key is shown once and never stored (#742).
+  // Create this person's agent for the active project, so the header can copy its key.
+  if (tenantId && activeProjectId && isAgentPlatformEnabled()) {
+    try {
+      const personal = await ensureDefaultProjectKey({
+        userId: user.id,
+        tenantId,
+        projectId: activeProjectId,
+      });
+      if (personal) {
+        apiKey = personal.rawKey;
+        keyPrefix = personal.prefix;
+      }
+    } catch (error) {
+      console.error("[layout] default agent key failed", error);
+    }
+  }
   if (tenantId && activeProjectId) {
     try {
       const keys = await prisma.agentApiKey.findMany({
@@ -115,6 +134,8 @@ export default async function AppLayout({
         activeProjectId={activeProjectId}
         canManagePlatforms={canManagePlatforms}
         agentKeys={agentKeys}
+        apiKey={apiKey}
+        keyPrefix={keyPrefix}
       />
       <main
         id={MAIN_CONTENT_ID}

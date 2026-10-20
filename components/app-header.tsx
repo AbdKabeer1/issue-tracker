@@ -159,6 +159,8 @@ export function AppHeader({
   activeProjectId = null,
   canManagePlatforms = false,
   agentKeys = [],
+  apiKey = null,
+  keyPrefix = null,
 }: {
   userName?: string | null;
   /** Their picture, if their sign-in provider gave one (#290). */
@@ -176,6 +178,9 @@ export function AppHeader({
   canManagePlatforms?: boolean;
   /** Prefixes of this person's live agent keys for the active project. */
   agentKeys?: AgentKeyHint[];
+  /** Personal API key for the active project. Copying it includes the site. */
+  apiKey?: string | null;
+  keyPrefix?: string | null;
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -233,6 +238,8 @@ export function AppHeader({
             projectId={activeProjectId ?? projects[0]?.id}
             projectName={projects.find((p) => p.id === (activeProjectId ?? projects[0]?.id))?.name}
             keys={agentKeys}
+            apiKey={apiKey}
+            keyPrefix={keyPrefix}
           />
         </div>
 
@@ -395,6 +402,8 @@ export function AppHeader({
                 projectId={activeProjectId ?? projects[0]?.id}
                 projectName={projects.find((p) => p.id === (activeProjectId ?? projects[0]?.id))?.name}
                 keys={agentKeys}
+                apiKey={apiKey}
+                keyPrefix={keyPrefix}
                 fullWidth
               />
             </div>

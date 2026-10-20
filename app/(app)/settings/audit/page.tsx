@@ -2,7 +2,8 @@ import Link from "next/link";
 import { forbidden } from "next/navigation";
 import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
-import { isTenantAdminRole, tenantForOwner } from "@/lib/agents/membership";
+import { isTenantAdminRole } from "@/lib/agents/membership";
+import { currentTenantIdFor } from "@/lib/tenant-context";
 import { auditAccess, auditWhere } from "@/lib/agent-audit/visibility";
 import { AuditLog, type AuditLogRow } from "@/components/audit-log";
 import { undoAuditEventAction } from "@/app/actions/audit";
@@ -26,7 +27,14 @@ const single = (value: string | string[] | undefined): string | null => {
  */
 export default async function AuditLogPage({ searchParams }: Props) {
   const user = await requireUser();
-  const tenant = await tenantForOwner(user.id);
+  const tenantId = await currentTenantIdFor(user.id);
+  const membership = tenantId
+    ? await prisma.membership.findUnique({
+        where: { tenantId_userId: { tenantId, userId: user.id } },
+        select: { role: true },
+      })
+    : null;
+  const tenant = tenantId ? { tenantId, role: membership?.role } : null;
   const owned = tenant
     ? await prisma.agent.findMany({
         where: { ownerUserId: user.id, tenantId: tenant.tenantId },
