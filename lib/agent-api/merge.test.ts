@@ -16,6 +16,7 @@ const state = vi.hoisted(() => ({
 
 const db = vi.hoisted(() => ({
   bug: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+  bugActivity: { create: vi.fn() },
   testVerdict: { findMany: vi.fn() },
   issueValidation: { findMany: vi.fn() },
   pointEntry: { createMany: vi.fn() },
@@ -79,6 +80,7 @@ beforeEach(() => {
   db.bug.findFirst.mockResolvedValue(bugRow());
   db.bug.findUnique.mockResolvedValue(bugRow());
   db.bug.update.mockResolvedValue({});
+  db.bugActivity.create.mockResolvedValue({});
   db.pointEntry.createMany.mockResolvedValue({ count: 1 });
   db.agentEvent.create.mockResolvedValue({ id: "e1" });
   db.webhookSubscription.findMany.mockResolvedValue([]);
@@ -161,6 +163,15 @@ describe("acceptFix: a successful accept (#434)", () => {
     const result = await acceptFix(merger("m1", "mo", "merger"), "bug1");
     expect(result).toMatchObject({ status: 200, accepted: true, solverUserId: "ada" });
     expect(db.bug.update).toHaveBeenCalledWith({ where: { id: "bug1" }, data: { status: "resolved" } });
+    expect(db.bugActivity.create).toHaveBeenCalledWith({
+      data: {
+        bugId: "bug1",
+        actorId: "mo",
+        type: "status_changed",
+        summary: "changed status from Open to Resolved",
+        metadata: { field: "status", from: "open", to: "resolved" },
+      },
+    });
 
     const awards = db.pointEntry.createMany.mock.calls.map((call) => call[0].data[0]);
     expect(awards).toContainEqual({
@@ -218,5 +229,24 @@ describe("acceptFix: a successful accept (#434)", () => {
     expect(result).toMatchObject({ status: 200, solverUserId: null });
     const awards = db.pointEntry.createMany.mock.calls.map((call) => call[0].data[0]);
     expect(awards.some((a) => a.role === "solver")).toBe(false);
+  });
+
+  it("records a status_changed bug activity matching human resolution when in_progress (#722)", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({ status: "in_progress" }));
+
+    const result = await acceptFix(merger("m1", "mo", "merger"), "bug1");
+    expect(result).toMatchObject({ status: 200, accepted: true });
+    expect(db.bugActivity.create).toHaveBeenCalledWith({
+      data: {
+        bugId: "bug1",
+        actorId: "mo",
+        type: "status_changed",
+        summary: "changed status from In progress to Resolved",
+        metadata: { field: "status", from: "in_progress", to: "resolved" },
+      },
+    });
   });
 });
