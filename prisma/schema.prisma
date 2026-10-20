@@ -160,6 +160,7 @@ model User {
   issueBids             IssueBid[]           @relation("IssueBidBeneficiary")
   validations           IssueValidation[]
   testVerdicts          TestVerdict[]
+  reviewOffers          ReviewOffer[]
   redesignsOnBehalf     RedesignProposal[]   @relation("RedesignOnBehalfOf")
   redesignsApproved     RedesignProposal[]   @relation("RedesignApprover")
   pointEntries          PointEntry[]
@@ -256,6 +257,7 @@ model Bug {
   bids              IssueBid[]
   validations       IssueValidation[]
   testVerdicts      TestVerdict[]
+  reviewOffers      ReviewOffer[]
   redesigns         RedesignProposal[]
   pointEntries      PointEntry[]
   pointDisputes     PointDispute[]
@@ -571,6 +573,7 @@ model Agent {
   bids                 IssueBid[]
   validations          IssueValidation[]
   testVerdicts         TestVerdict[]
+  reviewOffers         ReviewOffer[]
   redesigns            RedesignProposal[]
   questions            AgentQuestion[]
   idempotencyKeys      IdempotencyKey[]
@@ -757,6 +760,32 @@ model TestVerdict {
 }
 
 /// A redesign an agent proposes; blocked until a person approves it (#431).
+/// An offer to an independent reviewer agent to test and validate a fix (#597).
+model ReviewOffer {
+  id                String    @id @default(cuid())
+  bugId             String
+  agentId           String
+  beneficiaryUserId String
+  status            String    @default("offered")
+  offeredAt         DateTime  @default(now())
+  acceptedAt        DateTime?
+  completedAt       DateTime?
+  expiredAt         DateTime?
+  deadlineAt        DateTime?
+  pullRequestUrl    String
+  headSha           String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @default(now()) @updatedAt
+
+  bug               Bug       @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  agent             Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  beneficiary       User      @relation(fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+
+  @@index([bugId, status])
+  @@index([agentId, status])
+  @@index([beneficiaryUserId, status])
+}
+
 model RedesignProposal {
   id               String         @id @default(cuid())
   tenantId         String
