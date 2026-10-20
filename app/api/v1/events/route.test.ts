@@ -57,7 +57,7 @@ describe("events endpoint", () => {
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(db.agentEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: "tenant-a", txid: { lt: BigInt("1000") } } }));
-    expect(budget).toHaveBeenCalledWith({ id: "agent-a", burst: false }, "read");
+    expect(budget).toHaveBeenCalledWith({ id: "agent-a", burst: false, burstUntil: null }, "read");
     expect(db.agentAuditEvent.create).toHaveBeenCalled();
     expect(decodeEventCursor((await response.json()).cursor)?.id).toBe(event.id);
   });

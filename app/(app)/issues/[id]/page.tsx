@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { agentMentionId } from "@/lib/mentions";
 import { requireUser } from "@/lib/auth-helpers";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { viewerBugScope } from "@/lib/tenant-viewer";
@@ -39,6 +40,7 @@ import { IssueAgentActivity, type AgentDecision } from "@/components/issue-agent
 import { IssueEscalations, type TicketEscalation } from "@/components/issue-escalations";
 import { listBugEscalations } from "@/lib/agent-questions";
 import { IssueBids } from "@/components/issue-bids";
+import { GoalBudgetSection } from "@/components/goal-budgets";
 import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { WatchButton } from "@/components/watch-button";
@@ -73,6 +75,7 @@ import { IssuePullRequest } from "@/components/issue-pull-request";
 import { withCurrentOption } from "@/lib/triage-options";
 import { issueTenantHintFor } from "@/lib/issue-tenant-hint";
 import { IssueTenantSwitch } from "@/components/issue-tenant-hint";
+import { tenantMemberWhere } from "@/lib/tenant-mentions";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
@@ -223,15 +226,18 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   const access = await currentTenantAccess(user.id, user.role);
   const canTriage = access.admin;
   const canDelete = canDeleteTicket(user.role, access.membershipRole);
+  const userTenantId = await currentTenantIdFor(userId);
   // #289: open milestones for the triage panel (admins only). Started here,
   // alongside the issue query, and awaited where the form needs them.
   const milestoneOptionsPromise: Promise<{ id: string; title: string; isClosed: boolean }[]> = canTriage
     ? loadOptional("milestones", [], () =>
-        prisma.milestone.findMany({
-          where: { isClosed: false },
-          select: { id: true, title: true, isClosed: true },
-          orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { title: "asc" }],
-        }),
+        userTenantId
+          ? prisma.milestone.findMany({
+              where: { isClosed: false, tenantId: userTenantId },
+              select: { id: true, title: true, isClosed: true },
+              orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { title: "asc" }],
+            })
+          : Promise.resolve([]),
       )
     : Promise.resolve([]);
 
@@ -370,8 +376,9 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
     await Promise.all([
       canTriage
         ? loadOptional("users", [], () =>
+            // #502: only the issue's tenant can be mentioned or assigned.
             prisma.user.findMany({
-              where: { memberships: { some: { tenantId: bug.tenantId } } },
+              where: tenantMemberWhere(bug.tenantId),
               orderBy: { name: "asc" },
               select: { id: true, name: true, role: true, image: true },
             }),
@@ -385,7 +392,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             select: { id: true, name: true },
           }))
         : Promise.resolve([]),
-      canTriage ? loadOptional("types", [], () => getActiveIssueTypesCached()) : Promise.resolve([]),
+      canTriage ? loadOptional("types", [], () => getActiveIssueTypesCached(bug.tenantId)) : Promise.resolve([]),
       loadOptional("votes", createEmptyVoterSummary(), () => fetchVoterSummary(id)),
       loadOptional("activity", [] as ActivityEntry[], () =>
         prisma.bugActivity.findMany({
@@ -534,6 +541,25 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           : Promise.resolve(null)),
       ),
     ]);
+  // #603: the tenant's active agents, offered in the comment @mention list
+  // as "Mark's Claude · Mark Essien" alongside people.
+  const mentionAgents = canTriage
+    ? await loadOptional("mention agents", [], () =>
+        prisma.agent.findMany({
+          where: { tenantId: bug.tenantId, revokedAt: null },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, owner: { select: { name: true } } },
+        }),
+      )
+    : [];
+  const commentMentionUsers = [
+    ...users,
+    ...mentionAgents.map((agent) => ({
+      id: agentMentionId(agent.id),
+      name: agent.name,
+      agentOwner: agent.owner.name,
+    })),
+  ];
   const issueAttachments: AttachmentView[] = attachments.filter((a) => !a.commentId);
   const attachmentsByComment: Record<string, AttachmentView[]> = {};
   for (const a of attachments) {
@@ -994,6 +1020,10 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
 
       <IssueEscalations escalations={escalations} />
 
+      <Suspense fallback={null}>
+        <GoalBudgetSection tenantId={bug.tenantId} projectId={bug.projectId} bugId={bug.id} />
+      </Suspense>
+
       <IssueAgentActivity decisions={agentDecisions} />
 
       <section
@@ -1037,7 +1067,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           reporterId={bug.reporterId}
           comments={commentTree}
           attachmentsByComment={attachmentsByComment}
-          users={users}
+          users={commentMentionUsers}
           currentUserId={user.id}
           currentUserRole={user.role}
           tenantAdmin={access.admin}

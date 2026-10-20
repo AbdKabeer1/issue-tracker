@@ -115,12 +115,12 @@ describe("agent issue API authentication", () => {
 
   it("uses the shared read/write budgets and preserves Retry-After", async () => {
     await list(request());
-    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false }, "read");
+    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false, burstUntil: null }, "read");
     budget.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 12 });
     const response = await create(request("POST", validBody));
     expect(response.status).toBe(429);
     expect(response.headers.get("retry-after")).toBe("12");
-    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false }, "write");
+    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false, burstUntil: null }, "write");
     expect(db.bug.create).not.toHaveBeenCalled();
   });
 
@@ -132,6 +132,9 @@ describe("agent issue API authentication", () => {
     expect(ok.headers.get("ratelimit-remaining")).toBe("412");
     expect(ok.headers.get("ratelimit-reset")).toBe("1800");
     expect(ok.headers.get("ratelimit-policy")).toBe("600;w=3600");
+    expect(ok.headers.get("x-ratelimit-limit")).toBe("600");
+    expect(ok.headers.get("x-ratelimit-remaining")).toBe("412");
+    expect(ok.headers.get("x-ratelimit-reset")).toBe("1800");
 
     budget.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 90, kind: "write", limit: 30, windowSeconds: 3600, remaining: 0, resetSeconds: 90 });
     const limited = await create(request("POST", validBody));
@@ -139,6 +142,18 @@ describe("agent issue API authentication", () => {
     expect(limited.headers.get("ratelimit-budget")).toBe("write");
     expect(limited.headers.get("ratelimit-remaining")).toBe("0");
     expect(await limited.json()).toMatchObject({ budget: "write", limit: 30, resetSeconds: 90 });
+    expect(limited.headers.get("x-ratelimit-limit")).toBe("30");
+    expect(limited.headers.get("x-ratelimit-remaining")).toBe("0");
+    expect(limited.headers.get("x-ratelimit-reset")).toBe("90");
+  });
+
+  it("keeps the quota headers when a charged request fails validation (#596)", async () => {
+    budget.mockResolvedValueOnce({ allowed: true, kind: "write", limit: 30, windowSeconds: 3600, remaining: 29, resetSeconds: 3000 });
+    const invalid = await create(request("POST", {}));
+    expect([400, 422]).toContain(invalid.status);
+    expect(invalid.headers.get("x-ratelimit-limit")).toBe("30");
+    expect(invalid.headers.get("x-ratelimit-remaining")).toBe("29");
+    expect(invalid.headers.get("x-ratelimit-reset")).toBe("3000");
   });
 
   it("retires direct claims with 410 and without spending the write budget (#554)", async () => {
@@ -241,7 +256,7 @@ describe("agent comment paging (#604)", () => {
     expect((await comments(request("GET", undefined, "", false), context)).status).toBe(401);
     expect(db.comment.findMany).not.toHaveBeenCalled();
     await comments(request(), context);
-    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false }, "read");
+    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false, burstUntil: null }, "read");
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "comments.list" }) }));
   });
 });

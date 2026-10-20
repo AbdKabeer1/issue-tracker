@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 import { requireUser } from "@/lib/auth-helpers";
 import { isTenantAdmin } from "@/lib/agents/membership";
 import { currentTenantIdFor, NO_TENANT_MESSAGE } from "@/lib/tenant-context";
@@ -29,6 +30,17 @@ function revalidateProject(slug: string) {
   revalidatePath("/issues");
 }
 
+/** How many times a create re-reads the slugs after losing a race to the same slug. */
+const CREATE_ATTEMPTS = 3;
+
+/** A unique-index violation on the area's slug, as opposed to any other database error. */
+function isSlugCollision(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") return false;
+  const target = error.meta?.target;
+  if (Array.isArray(target)) return target.includes("slug");
+  return typeof target === "string" ? target.includes("slug") : true;
+}
+
 function areaInput(formData: FormData) {
   return projectAreaSchema.safeParse({
     name: formData.get("name"),
@@ -47,28 +59,40 @@ export async function createProjectAreaAction(
   const parsed = areaInput(formData);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the area details." };
 
-  const existing = await prisma.projectArea.findMany({
-    where: { projectId: access.project.id },
-    select: { slug: true },
-  });
-  const areaSlug = nextProjectSlug(projectSlugBase(parsed.data.name), new Set(existing.map((area) => area.slug)));
-  await prisma.$transaction(async (tx) => {
-    const area = await tx.projectArea.create({
-      data: { projectId: access.project.id, ...parsed.data, slug: areaSlug },
-      select: { id: true },
+  // The slug is picked from the slugs read a moment ago, so two admins adding
+  // the same name together both pick the same one and the second insert hits
+  // the (projectId, slug) unique index. Read again and take the next free slug
+  // instead of failing (#968).
+  for (let attempt = 0; attempt < CREATE_ATTEMPTS; attempt++) {
+    const existing = await prisma.projectArea.findMany({
+      where: { projectId: access.project.id },
+      select: { slug: true },
     });
-    await tx.projectAuditEvent.create({
-      data: {
-        tenantId: access.tenantId,
-        projectId: access.project.id,
-        actorUserId: access.user.id,
-        action: "area.created",
-        changes: { area: { from: null, to: { id: area.id, ...parsed.data, slug: areaSlug } } },
-      },
-    });
-  });
-  revalidateProject(access.project.slug);
-  return { ok: true };
+    const areaSlug = nextProjectSlug(projectSlugBase(parsed.data.name), new Set(existing.map((area) => area.slug)));
+    try {
+      await prisma.$transaction(async (tx) => {
+        const area = await tx.projectArea.create({
+          data: { projectId: access.project.id, ...parsed.data, slug: areaSlug },
+          select: { id: true },
+        });
+        await tx.projectAuditEvent.create({
+          data: {
+            tenantId: access.tenantId,
+            projectId: access.project.id,
+            actorUserId: access.user.id,
+            action: "area.created",
+            changes: { area: { from: null, to: { id: area.id, ...parsed.data, slug: areaSlug } } },
+          },
+        });
+      });
+    } catch (error) {
+      if (isSlugCollision(error)) continue;
+      throw error;
+    }
+    revalidateProject(access.project.slug);
+    return { ok: true };
+  }
+  return { ok: false, error: "Another area was added at the same time. Please try again." };
 }
 
 export async function updateProjectAreaAction(

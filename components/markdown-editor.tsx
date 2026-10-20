@@ -34,6 +34,7 @@ import {
   StrikethroughIcon,
   TaskListIcon,
 } from "@/components/editor-icons";
+import { AgentMentionBadge } from "@/components/comment-body";
 import {
   useMentionSuggestions,
   type MentionUser,
@@ -820,7 +821,15 @@ function MentionList({
               }}
               onMouseEnter={() => onHover(index)}
             >
-              {user.name}
+              {user.agentOwner ? (
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate">{user.name}</span>
+                  <AgentMentionBadge />
+                  <span className="truncate text-slate-500">· {user.agentOwner}</span>
+                </span>
+              ) : (
+                user.name
+              )}
             </button>
           </li>
         );

@@ -74,12 +74,27 @@ export async function setAgentLevelAction(agentId: unknown, level: unknown): Pro
   return result;
 }
 
-export async function setAgentBurstAction(agentId: unknown, burst: unknown): Promise<AgentActionResult> {
+export async function setAgentBurstAction(
+  agentId: unknown,
+  burst: unknown,
+  burstUntil: unknown = null,
+): Promise<AgentActionResult> {
   if (typeof agentId !== "string" || typeof burst !== "boolean") {
     return { ok: false, error: "Invalid budget." };
   }
+
+  // Only an explicit ISO timestamp is accepted. Disabling ignores any expiry;
+  // the registry clears the stored value so a later grant starts clean.
+  let expiresAt: Date | null = null;
+  if (burst && burstUntil !== null && burstUntil !== undefined && burstUntil !== "") {
+    if (typeof burstUntil !== "string") return { ok: false, error: "Invalid expiry time." };
+    expiresAt = new Date(burstUntil);
+    if (!Number.isFinite(expiresAt.getTime())) return { ok: false, error: "Invalid expiry time." };
+    if (expiresAt.getTime() <= Date.now()) return { ok: false, error: "Choose an expiry time in the future." };
+  }
+
   const user = await requireUser();
-  const result = await setAgentBurst(user, agentId, burst);
+  const result = await setAgentBurst(user, agentId, burst, expiresAt);
   if (result.ok) revalidatePath("/settings/agents");
   return result;
 }

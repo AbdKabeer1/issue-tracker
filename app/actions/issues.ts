@@ -32,6 +32,7 @@ import {
   newlyMentionedUserIds,
   normalizeMentions,
 } from "@/lib/mentions";
+import { resolveTenantMentions, tenantMemberWhere } from "@/lib/tenant-mentions";
 import {
   commentSchema,
   createBugSchema,
@@ -93,6 +94,12 @@ import {
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
 import { issueChangePayload, publishWebEvent } from "@/lib/agent-api/web-events";
+import {
+  agentMentionNames,
+  agentOwnerIds,
+  mentionedAgents,
+  type MentionedAgent,
+} from "@/lib/agent-mentions";
 
 export type ActionResult = {
   error?: string;
@@ -104,18 +111,28 @@ export type ActionResult = {
 };
 
 /**
- * Resolves `@[Name](userId)` tags against real accounts: known ids are
- * rewritten to the current name, unknown ids degrade to plain `@Name`.
+ * Resolves `@[Name](userId)` tags against this tenant's members: known ids are
+ * rewritten to the current name, anyone else degrades to plain `@Name` (#502).
+ * `agents` are the issue tenant's agents the text may keep tags for (#603).
  */
-async function normalizeMentionTags(text: string): Promise<string> {
+async function normalizeMentionTags(
+  text: string,
+  tenantId: string,
+  agents: MentionedAgent[] = [],
+): Promise<string> {
   const mentionedIds = extractMentionedUserIds(text);
-  if (mentionedIds.length === 0) return text;
+  if (mentionedIds.length === 0 && agents.length === 0) return text;
 
-  const validUsers = await prisma.user.findMany({
-    where: { id: { in: mentionedIds } },
-    select: { id: true, name: true },
-  });
-  const userMap = new Map(validUsers.map((user) => [user.id, user.name]));
+  const validUsers = mentionedIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: mentionedIds }, ...tenantMemberWhere(tenantId) },
+        select: { id: true, name: true },
+      })
+    : [];
+  const userMap = new Map([
+    ...validUsers.map((user) => [user.id, user.name] as [string, string]),
+    ...agentMentionNames(agents),
+  ]);
   return normalizeMentions(text, userMap);
 }
 
@@ -127,10 +144,10 @@ function foreignKeyError(error: unknown): string | null {
 }
 
 /** Reads the type, including when the template column has not been migrated yet. */
-async function issueTypeForCreate(typeId: string) {
+async function issueTypeForCreate(typeId: string, tenantId: string) {
   try {
     return await prisma.issueType.findUnique({
-      where: { id: typeId },
+      where: { id_tenantId: { id: typeId, tenantId } },
       select: { id: true, isActive: true, template: true },
     });
   } catch (error) {
@@ -145,7 +162,7 @@ async function issueTypeForCreate(typeId: string) {
       /column [`'"]?(?:[\w."]+\.)*template[`'"]?/i.test(message);
     if (!missingTemplate) throw error;
     const row = await prisma.issueType.findUnique({
-      where: { id: typeId },
+      where: { id_tenantId: { id: typeId, tenantId } },
       select: { id: true, isActive: true },
     });
     return row ? { ...row, template: null } : null;
@@ -258,7 +275,7 @@ export async function createBugAction(
   }
 
   if (typeId) {
-    const issueType = await issueTypeForCreate(typeId);
+    const issueType = await issueTypeForCreate(typeId, tenantId);
     if (!issueType || !issueType.isActive) {
       return fieldError("typeId", "That type no longer exists. Please pick another.");
     }
@@ -268,8 +285,6 @@ export async function createBugAction(
     }
   }
 
-  const description = await normalizeMentionTags(parsed.data.description);
-
   const categoryId =
     parsed.data.categoryId && parsed.data.categoryId.length > 0
       ? parsed.data.categoryId
@@ -277,6 +292,8 @@ export async function createBugAction(
   const areaId = parsed.data.areaId && parsed.data.areaId.length > 0
     ? parsed.data.areaId
     : null;
+  // #502: mentions resolve only to members of the issue's tenant.
+  const description = await resolveTenantMentions(prisma, tenantId, parsed.data.description);
 
   if (categoryId) {
     const category = await prisma.category.findFirst({
@@ -660,7 +677,7 @@ export async function updateBugAction(
     let toName: string | null = null;
     if (data.typeId) {
       const nextType = await prisma.issueType.findUnique({
-        where: { id: data.typeId },
+        where: { id_tenantId: { id: data.typeId, tenantId: existing.tenantId } },
         select: { id: true, name: true, isActive: true },
       });
       if (!nextType || !nextType.isActive) {
@@ -741,7 +758,7 @@ export async function updateBugAction(
       let toTitle: string | null = null;
       if (nextMilestoneId) {
         const milestone = await prisma.milestone.findUnique({
-          where: { id: nextMilestoneId },
+          where: { id_tenantId: { id: nextMilestoneId, tenantId: existing.tenantId } },
           select: { title: true, isClosed: true },
         });
         if (!milestone) return fieldError("milestoneId", "That milestone no longer exists.");
@@ -958,7 +975,7 @@ export async function editBugContentAction(
     return fromZodError(parsed.error);
   }
 
-  const normalizedDescription = await normalizeMentionTags(parsed.data.description);
+  const normalizedDescription = await resolveTenantMentions(prisma, existing.tenantId, parsed.data.description);
   const changedFields = getChangedEditFields(existing, {
     title: parsed.data.title,
     description: normalizedDescription,
@@ -1224,7 +1241,7 @@ export async function addCommentAction(
 
   const bug = await prisma.bug.findUnique({
     where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
-    select: { id: true, isDeleted: true, title: true, reporterId: true, assigneeId: true },
+    select: { id: true, isDeleted: true, title: true, reporterId: true, assigneeId: true, tenantId: true },
   });
   if (!bug || bug.isDeleted) {
     return { error: "Issue not found" };
@@ -1263,7 +1280,9 @@ export async function addCommentAction(
     }
   }
 
-  const normalizedBody = await normalizeMentionTags(parsed.data.body);
+  // #603: only agents in this issue's organization can be mentioned.
+  const agents = await mentionedAgents(prisma, bug.tenantId, parsed.data.body);
+  const normalizedBody = await normalizeMentionTags(parsed.data.body, bug.tenantId, agents);
 
   const commentId = await prisma.$transaction(async (tx) => {
     const created = await tx.comment.create({
@@ -1318,7 +1337,8 @@ export async function addCommentAction(
     return created.id;
   });
 
-  const mentioned = extractMentionedUserIds(normalizedBody);
+  // A mentioned agent's owner hears about it like a mention of them (#603).
+  const mentioned = [...new Set([...extractMentionedUserIds(normalizedBody), ...agentOwnerIds(agents)])];
   const author = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
   const actor = {
     actorId: userId,

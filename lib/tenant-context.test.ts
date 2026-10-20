@@ -110,9 +110,11 @@ describe("tenant context (#425)", () => {
 
     it("keeps personal notifications in the active tenant and supports all workspaces", () => {
       expect(notificationInTenant("tenant-zedu")).toEqual({
-        OR: [{ tenantId: null }, { tenantId: "tenant-zedu" }],
+        OR: [{ tenantId: null }, { tenantId: "tenant-zedu" }, { kind: "tenant_invite" }],
       });
-      expect(notificationInTenant(null)).toEqual({ tenantId: null });
+      expect(notificationInTenant(null)).toEqual({
+        OR: [{ tenantId: null }, { kind: "tenant_invite" }],
+      });
       expect(notificationInTenant("tenant-zedu", true)).toEqual({});
     });
   });

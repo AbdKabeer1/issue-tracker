@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { agentErrorResponse, requireAgent } from "@/lib/agents/require-agent";
+import { agentBudgetExceededResponse, consumeAgentBudget } from "@/lib/agents/rate-budget";
+import { withAgentBudgetHeaders } from "@/lib/agents/rate-budget-headers";
 import { listAgentProjectSummaries } from "@/lib/agent-api/projects";
 import { readAgentInstructions } from "@/lib/agent-messages";
 
@@ -12,21 +14,31 @@ import { readAgentInstructions } from "@/lib/agent-messages";
 export async function GET(req: NextRequest) {
   try {
     const agent = await requireAgent(req);
+    // A read like the other list/get routes, so every authenticated agent
+    // response carries its own quota headers (#596).
+    const budget = await consumeAgentBudget(
+      { id: agent.agentId, burst: agent.burst, burstUntil: agent.burstUntil ?? null },
+      "read",
+    );
+    if (!budget.allowed) return agentBudgetExceededResponse(budget.retryAfterSeconds, budget);
     const [projects, instructions] = await Promise.all([
       listAgentProjectSummaries(agent.tenantId),
       readAgentInstructions(agent.agentId),
     ]);
-    return NextResponse.json({
-      id: agent.agentId,
-      name: agent.name,
-      owner_id: agent.ownerId,
-      tenant_id: agent.tenantId,
-      level: agent.level,
-      project_id: agent.projectId ?? null,
-      project_slug: agent.projectSlug ?? null,
-      projects,
-      instructions,
-    });
+    return withAgentBudgetHeaders(
+      NextResponse.json({
+        id: agent.agentId,
+        name: agent.name,
+        owner_id: agent.ownerId,
+        tenant_id: agent.tenantId,
+        level: agent.level,
+        project_id: agent.projectId ?? null,
+        project_slug: agent.projectSlug ?? null,
+        projects,
+        instructions,
+      }),
+      budget,
+    );
   } catch (error) {
     return agentErrorResponse(error);
   }

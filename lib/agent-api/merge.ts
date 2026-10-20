@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
-import { reviewerConflict, ReviewerNotIndependentError, type ReviewedBug } from "@/lib/agents/independence";
+import { reviewerConflict, reviewerCreditConflict, ReviewerNotIndependentError, type ReviewedBug } from "@/lib/agents/independence";
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { IssueApiError } from "@/lib/agent-api/issues";
@@ -11,9 +11,12 @@ import { award } from "@/lib/points/award";
 import {
   MAX_REWARDED_REVIEWERS,
   pointSourceKey,
-  REVIEWER_POINTS,
-  solverPoints,
 } from "@/lib/points/rules";
+import {
+  calculateReviewerPoints,
+  calculateSolverPoints,
+  getProjectRewardConfig,
+} from "@/lib/points/project-rewards";
 import { assertRedesignOpen } from "@/lib/redesigns";
 import { statusChangedSummary } from "@/lib/activity-log";
 
@@ -37,6 +40,7 @@ export const MERGE_VERDICTS_NEEDED = 2;
 const mergeBugSelect = {
   id: true,
   tenantId: true,
+  projectId: true,
   pullRequestUrl: true,
   pullRequestHeadSha: true,
   severity: true,
@@ -170,6 +174,7 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
         continue;
       }
       if (reviewerConflict({ id: verdict.agent.id, ownerUserId: verdict.agent.ownerUserId }, reviewed)) continue;
+      if (reviewerCreditConflict(verdict.onBehalfOfUserId, reviewed)) continue;
       if (owners.has(verdict.agent.ownerUserId)) continue;
       owners.add(verdict.agent.ownerUserId);
       reviewers.push(verdict.onBehalfOfUserId);
@@ -211,23 +216,25 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
     // The solver: the person the active claim is for, else whoever it is
     // assigned to. The sourceKey makes a second accept, or the backfill
     // (#435), a no-op.
+    const rewardConfig = await getProjectRewardConfig(tx, bug.projectId);
     if (solverUserId) {
       await award(tx, {
         tenantId: bug.tenantId,
         userId: solverUserId,
         bugId: bug.id,
         role: "solver",
-        points: solverPoints(bug.severity),
+        points: calculateSolverPoints(bug.severity, rewardConfig),
         sourceKey: pointSourceKey("solver", bug.id, solverUserId),
       });
     }
+    const reviewerPoints = calculateReviewerPoints(rewardConfig);
     for (const userId of rewardedReviewerUserIds) {
       await award(tx, {
         tenantId: bug.tenantId,
         userId,
         bugId: bug.id,
         role: "reviewer",
-        points: REVIEWER_POINTS,
+        points: reviewerPoints,
         sourceKey: pointSourceKey("reviewer", bug.id, userId),
       });
     }

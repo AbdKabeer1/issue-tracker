@@ -216,7 +216,7 @@ describe("createTenant (#444)", () => {
       if (failure) throw failure;
       return { id: "tenant-new", slug: data.slug, name: data.name, projects: [{ id: "project-new" }] };
     });
-    return { tenant: { create } };
+    return { tenant: { create }, membership: { findFirst: vi.fn<(args: unknown) => Promise<unknown>>(async () => null) } };
   }
   const slugTaken = Object.assign(new Error("Unique constraint failed on the fields: (`slug`)"), {
     code: "P2002",
@@ -299,6 +299,51 @@ describe("createTenant (#444)", () => {
     });
     expect(await createTenant(db as never, { id: "ada" }, {})).toMatchObject({ ok: false, field: "name" });
     expect(db.tenant.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses markup-like names (#537)", async () => {
+    const db = tenantDb();
+    expect(await createTenant(db as never, { id: "ada" }, { name: "<b>Évil</b> Co" })).toEqual({
+      ok: false,
+      error: "Tenant name can't contain < or >.",
+      field: "name",
+    });
+    expect(await createTenant(db as never, { id: "ada" }, { name: "Acme", projectName: "<script>" })).toMatchObject({
+      ok: false,
+      field: "projectName",
+    });
+    // Accents and emoji are real names.
+    expect(await createTenant(db as never, { id: "ada" }, { name: "Évora Café 😀" })).toMatchObject({ ok: true });
+  });
+
+  it("asks before creating a second tenant with a name you already have (#537)", async () => {
+    const db = tenantDb();
+    db.membership.findFirst.mockResolvedValue({ tenant: { name: "Acme", slug: "acme" } });
+
+    const result = await createTenant(db as never, { id: "ada" }, { name: "  acme " });
+    expect(result).toEqual({
+      ok: false,
+      field: "name",
+      duplicateName: "acme",
+      error: `You're already in a tenant called "Acme" (acme). Choose another name, or select Create anyway to have both.`,
+    });
+    expect(db.membership.findFirst.mock.calls[0]![0]).toMatchObject({
+      where: { userId: "ada", tenant: { name: { equals: "acme", mode: "insensitive" } } },
+    });
+    expect(db.tenant.create).not.toHaveBeenCalled();
+  });
+
+  it("creates the duplicate once the same name is confirmed (#537)", async () => {
+    const db = tenantDb();
+    db.membership.findFirst.mockResolvedValue({ tenant: { name: "Acme", slug: "acme" } });
+
+    const result = await createTenant(db as never, { id: "ada" }, { name: "Acme", confirmDuplicate: " Acme " }, () => "q7i3");
+    expect(result).toMatchObject({ ok: true, tenant: { name: "Acme" } });
+    expect(db.membership.findFirst).not.toHaveBeenCalled();
+
+    // Confirming a different name doesn't skip the check.
+    const other = await createTenant(db as never, { id: "ada" }, { name: "Acme", confirmDuplicate: "Acme Labs" });
+    expect(other).toMatchObject({ ok: false, duplicateName: "Acme" });
   });
 });
 

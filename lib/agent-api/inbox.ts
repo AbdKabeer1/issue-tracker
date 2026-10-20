@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import type { AgentContext } from "@/lib/agents/require-agent";
-import { extractMentionedUserIds } from "@/lib/mentions";
+import { extractMentionedAgentIds, extractMentionedUserIds } from "@/lib/mentions";
 import { commentPermalinkPath } from "@/lib/comment-window";
 import { absoluteUrl } from "@/lib/site-url";
 import { markMessagesRead } from "@/lib/agent-messages";
@@ -17,7 +17,7 @@ import {
  *
  * `/api/v1/events` is the whole tenant's feed. The inbox is only what is
  * addressed to one agent: an offer to it, a reply to its comment, a mention
- * of its owner, an answer to its question, a person's decision on what it
+ * of it or its owner, an answer to its question, a person's decision on what it
  * proposed, or a release of its claim. `publish()` writes the rows in the
  * same transaction as the event, so polling is one indexed query on
  * `(agentId, createdAt, id)` instead of a scan of every event.
@@ -54,17 +54,22 @@ async function claimAgentId(db: Db, claimId: unknown): Promise<string | null> {
   return claim?.agentId ?? null;
 }
 
-/** The tenant's live agents whose owner was @mentioned, except the author. */
+/**
+ * Agents @mentioned by name (#603), then the tenant's live agents whose owner
+ * was @mentioned, except the author. `writeInbox` drops out-of-tenant ids.
+ */
 async function mentionDeliveries(
   db: Db, tenantId: string, body: string, authorAgentId: string | null, commentId: string | null,
 ): Promise<InboxDelivery[]> {
+  const direct = extractMentionedAgentIds(body).map((id) => ({ id }));
   const userIds = extractMentionedUserIds(body);
-  if (!userIds.length) return [];
-  const agents = await db.agent.findMany({
-    where: { tenantId, revokedAt: null, ownerUserId: { in: userIds } },
-    select: { id: true },
-  });
-  return agents
+  const owned = userIds.length
+    ? await db.agent.findMany({
+        where: { tenantId, revokedAt: null, ownerUserId: { in: userIds } },
+        select: { id: true },
+      })
+    : [];
+  return [...direct, ...owned]
     .filter((agent) => agent.id !== authorAgentId)
     .map((agent) => ({ agentId: agent.id, kind: "mention" as const, commentId }));
 }

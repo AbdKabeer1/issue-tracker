@@ -58,6 +58,8 @@ export default async function LoginPage({
           <div
             className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700"
             role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
           >
             <p className="font-medium">
               {params.error === "OAuthCallbackError" ||

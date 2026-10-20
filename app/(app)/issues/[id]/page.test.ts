@@ -111,6 +111,7 @@ vi.mock("@/lib/prisma", () => ({
     attachment: { findMany: vi.fn().mockResolvedValue([]) },
     bugRevision: { findFirst: vi.fn().mockResolvedValue(null) },
     milestone: { findMany: vi.fn().mockResolvedValue([]) },
+    goal: { findMany: vi.fn().mockResolvedValue([]) },
     issueValidation: { findMany: vi.fn().mockResolvedValue([]) },
     issueClaim: { findMany: vi.fn().mockResolvedValue([]) },
     testVerdict: { findMany: vi.fn().mockResolvedValue([]) },
@@ -173,8 +174,8 @@ describe("BugDetailPage conditional user query (#349)", () => {
       mockBugFindUnique.mockResolvedValue({
         id: "bug-1",
         number: 42,
-        title: "Test Bug",
         tenantId: "tenant-zedu",
+        title: "Test Bug",
         description: "Test Description",
         status: "open",
         severity: "medium",
@@ -244,6 +245,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
       });
 
       expect(mockUserFindMany).toHaveBeenCalledTimes(1);
+      // #502: only the issue's tenant can be mentioned or assigned.
       expect(mockUserFindMany).toHaveBeenCalledWith({
         where: { memberships: { some: { tenantId: "tenant-zedu" } } },
         orderBy: { name: "asc" },
@@ -265,6 +267,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
       });
 
       expect(mockUserFindMany).toHaveBeenCalledTimes(1);
+      // #502: only the issue's tenant can be mentioned or assigned.
       expect(mockUserFindMany).toHaveBeenCalledWith({
         where: { memberships: { some: { tenantId: "tenant-zedu" } } },
         orderBy: { name: "asc" },

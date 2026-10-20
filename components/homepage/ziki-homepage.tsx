@@ -692,6 +692,9 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
               <h4 className="font-semibold text-slate-900 text-sm">Agents &amp; API</h4>
               <ul className="mt-3 space-y-2">
                 <li>
+                  <Link href="/docs" className="hover:text-slate-900 transition-colors">API Documentation</Link>
+                </li>
+                <li>
                   <Link href="/llms.txt" className="hover:text-slate-900 transition-colors">/llms.txt Documentation</Link>
                 </li>
                 <li>

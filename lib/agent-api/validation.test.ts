@@ -165,6 +165,26 @@ describe("submitValidation: who may validate (#433)", () => {
     expect(db.bug.findFirst.mock.calls[0][0].select.reporterId).toBe(true);
   });
 
+  it("rejects validations credited to the reporter, assigned solver, or claim beneficiary (#495)", async () => {
+    const reviewerAgent = reviewer("r1", "rob");
+    for (const bug of [
+      bugRow({ reporterId: "reporter", beneficiaryUserId: "beneficiary" }),
+      bugRow({ reporterId: "reporter", beneficiaryUserId: "beneficiary", assigneeId: "solver" }),
+      bugRow({ reporterId: "reporter", beneficiaryUserId: "beneficiary", claims: [
+        { status: "active", releasedAt: null, beneficiaryUserId: "claimant", agent: { ownerUserId: "worker" } },
+      ] }),
+    ]) {
+      db.bug.findFirst.mockResolvedValueOnce(bug);
+    }
+    for (const creditedUser of ["reporter", "solver", "claimant"]) {
+      expect(await submitValidation(reviewerAgent, "bug1", { ...acceptReal, onBehalfOfUserId: creditedUser })).toMatchObject({
+        status: 403,
+        error: "not_independent",
+      });
+    }
+    expect(state.validations).toHaveLength(0);
+  });
+
   it("is 404 for an issue outside the agent's tenant or deleted", async () => {
     db.bug.findFirst.mockResolvedValue(null);
     expect(await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal)).toMatchObject({ status: 404 });
