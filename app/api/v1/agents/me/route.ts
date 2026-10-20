@@ -14,6 +14,8 @@ export async function GET(req: NextRequest) {
       owner_id: agent.ownerId,
       tenant_id: agent.tenantId,
       level: agent.level,
+      project_id: agent.projectId ?? null,
+      project_slug: agent.projectSlug ?? null,
     });
   } catch (error) {
     return agentErrorResponse(error);

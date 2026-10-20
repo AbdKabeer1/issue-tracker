@@ -12,8 +12,11 @@ import { prisma } from "@/lib/prisma";
 import { ZEDU_SLUG } from "@/lib/tenant";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { MEMBERSHIP_ROLE_LABELS, memberTenantBySlug } from "@/lib/tenants";
-import { revokeInviteAction, selectTenantAction } from "../actions";
+import { revokeInviteAction, revokeShareLinkAction, selectTenantAction } from "../actions";
+import { CopyLinkButton } from "@/components/copy-link-button";
+import { joinedSummary, listShareLinks, shareLinkStatusLabel } from "@/lib/share-invites";
 import { InviteForm } from "./invite-form";
+import { ShareLinkForm } from "./share-link-form";
 
 /* Static on purpose: a title built from the slug could name someone else's tenant. */
 export const metadata = { title: "Tenant" };
@@ -37,7 +40,7 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
 
   const canManage = canInvite(tenant.role);
   const canChangeRoles = tenant.role === "owner" || isSuperAdmin(user.role);
-  const [currentTenantId, counts, managers, invites, members] = await Promise.all([
+  const [currentTenantId, counts, managers, invites, members, shareLinks] = await Promise.all([
     currentTenantIdFor(user.id),
     prisma.tenant.findUnique({
       where: { id: tenant.id },
@@ -61,6 +64,7 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
         user: { select: { id: true, name: true, email: true, image: true, role: true } },
       },
     }),
+    canManage ? listShareLinks(prisma, tenant.id) : [],
   ]);
   const ownerCount = members.filter((member) => member.role === "owner").length;
   const current = tenant.id === currentTenantId;
@@ -159,13 +163,77 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
 
       {canManage ? (
         <>
-          <section aria-labelledby="invite-someone" className={card}>
-            <h2 id="invite-someone" className="text-base font-semibold text-slate-900">
-              Invite someone
+          <section aria-labelledby="share-link" className={card}>
+            <h2 id="share-link" className="text-base font-semibold text-slate-900">
+              Invite link
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              They join as a member. The link works once, only for the address you enter, and
-              expires after {INVITE_TTL_DAYS} days.
+              Share one link instead of typing each email. Anyone who opens it and signs in with Google
+              joins as a member — a new Google account is created if they don&apos;t have one, and this
+              organization is added to it. Pick how long the link lasts and how many people can use it.
+              Once that limit is reached, or you revoke the link, it stops working.
+            </p>
+            <ShareLinkForm tenantId={tenant.id} />
+            <ul className="mt-4 divide-y divide-slate-200 border-t border-slate-200">
+              {shareLinks.length === 0 ? (
+                <li className="pt-4 text-sm text-slate-600">No invite links yet.</li>
+              ) : (
+                shareLinks.map((link) => {
+                  const who = joinedSummary(link.joinedNames, link.useCount);
+                  const statusClass =
+                    link.state === "open"
+                      ? "bg-teal-50 text-teal-800 ring-1 ring-teal-200"
+                      : link.state === "revoked"
+                        ? "bg-red-50 text-red-700"
+                        : "bg-slate-100 text-slate-700";
+                  return (
+                    <li key={link.id} className="flex flex-wrap items-start gap-3 py-3">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900">
+                          <span className="truncate">{link.label || "Invite link"}</span>
+                          <Badge className={statusClass}>{shareLinkStatusLabel(link.state)}</Badge>
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {link.useCount} joined{link.maxUses != null ? ` of ${link.maxUses}` : ""}
+                          {who ? ` · ${who}` : ""}
+                          {" · "}
+                          {link.state === "expired" ? "expired" : "expires"} <LocalTime date={link.expiresAt} />
+                          {" · "}
+                          {link.invitedByName}
+                        </p>
+                        {link.url ? (
+                          <p className="truncate font-mono text-xs text-slate-600">{link.url}</p>
+                        ) : (
+                          <p className="text-xs text-slate-500">
+                            This link can&apos;t be shown. Revoke it and create another.
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {link.url ? <CopyLinkButton url={link.url} label="invite" /> : null}
+                        {link.state === "open" ? (
+                          <form action={revokeShareLinkAction}>
+                            <input type="hidden" name="linkId" value={link.id} />
+                            <Button type="submit" variant="danger-secondary" aria-label={`Revoke invite link${link.label ? ` ${link.label}` : ""}`}>
+                              Revoke
+                            </Button>
+                          </form>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                })
+              )}
+            </ul>
+          </section>
+
+          <section aria-labelledby="invite-someone" className={card}>
+            <h2 id="invite-someone" className="text-base font-semibold text-slate-900">
+              Invite by email
+            </h2>
+            <p className="mt-1 text-sm text-slate-600">
+              For one person. The link works once, only for the address you enter, and expires after{" "}
+              {INVITE_TTL_DAYS} days. To invite several people at once, create an invite link above.
             </p>
             <InviteForm tenantId={tenant.id} />
           </section>
@@ -175,7 +243,7 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
               id="pending-invites"
               className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6"
             >
-              Pending invites
+              Pending email invites
             </h2>
             {invites.length === 0 ? (
               <p className="px-4 py-4 text-sm text-slate-600 sm:px-6">No invites waiting to be accepted.</p>

@@ -8,6 +8,7 @@ function fakeTx(claimedCount: number) {
       deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
     user: { update: vi.fn().mockResolvedValue({}) },
+    agentApiKey: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
   };
 }
 
@@ -41,10 +42,20 @@ describe("consumeResetToken", () => {
     expect(tx.user.update.mock.calls[0][0].data.sessionVersion).toEqual({ increment: 1 });
   });
 
+  it("revokes every live agent key the account owns (#513)", async () => {
+    const tx = fakeTx(1);
+    await consumeResetToken(tx as never, args);
+    expect(tx.agentApiKey.updateMany).toHaveBeenCalledWith({
+      where: { revokedAt: null, agent: { ownerUserId: "u1" } },
+      data: { revokedAt: now },
+    });
+  });
+
   it("changes nothing when another request already claimed the token", async () => {
     const tx = fakeTx(0);
     await expect(consumeResetToken(tx as never, args)).resolves.toBe(false);
     expect(tx.user.update).not.toHaveBeenCalled();
     expect(tx.passwordResetToken.deleteMany).not.toHaveBeenCalled();
+    expect(tx.agentApiKey.updateMany).not.toHaveBeenCalled();
   });
 });

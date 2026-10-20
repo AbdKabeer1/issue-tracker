@@ -44,6 +44,7 @@ vi.mock("@/lib/auth-helpers", () => ({
 
 vi.mock("@/lib/roles", () => ({
   isAdmin: vi.fn((role) => role === "admin" || role === "super_admin"),
+  isSuperAdmin: vi.fn((role) => role === "super_admin"),
 }));
 
 vi.mock("@/lib/ticket-deletion", () => ({
@@ -96,6 +97,8 @@ vi.mock("@/lib/platforms", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     bug: { findUnique: vi.fn() },
+    membership: { findUnique: vi.fn().mockResolvedValue({ role: "member", userId: "user-123" }) },
+    redesignProposal: { findMany: vi.fn().mockResolvedValue([]) },
     user: { findMany: vi.fn() },
     category: { findMany: vi.fn().mockResolvedValue([]) },
     bugActivity: {
