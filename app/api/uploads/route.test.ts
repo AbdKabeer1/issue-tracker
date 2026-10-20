@@ -25,15 +25,17 @@ const session = vi.mocked(resolveSessionUserId) as unknown as ReturnType<typeof 
 const limit = vi.mocked(consumeRateLimit) as unknown as ReturnType<typeof vi.fn>;
 const create = vi.mocked(prisma.attachment.create) as unknown as ReturnType<typeof vi.fn>;
 
-function makeUploadRequest(file?: File | string | null) {
+function makeUploadRequest(file?: File | string | null, contentLength?: number) {
   const formData = new FormData();
   if (file !== undefined && file !== null) {
     formData.append("file", file as unknown as Blob);
   }
-  return new NextRequest("http://localhost:3000/api/uploads", {
+  const request = new NextRequest("http://localhost:3000/api/uploads", {
     method: "POST",
     body: formData,
   });
+  if (contentLength !== undefined) request.headers.set("content-length", String(contentLength));
+  return request;
 }
 
 describe("POST /api/uploads", () => {
@@ -58,6 +60,33 @@ describe("POST /api/uploads", () => {
     const res = await POST(req);
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual({ error: "Too many uploads. Slow down." });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized request before parsing its multipart body", async () => {
+    const req = makeUploadRequest(
+      new File(["content"], "test.txt", { type: "text/plain" }),
+      40 * 1024 * 1024,
+    );
+    const formData = vi.fn();
+    req.formData = formData;
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "File is too large (max 5 MB)." });
+    expect(formData).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("returns 413 when a file exceeds 5 MB without a content-length header", async () => {
+    const oversized = new Uint8Array(5 * 1024 * 1024 + 1);
+    oversized.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+    const res = await POST(makeUploadRequest(new File([oversized], "large.png", { type: "image/png" })));
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "File is too large (max 5 MB)." });
     expect(create).not.toHaveBeenCalled();
   });
 

@@ -47,6 +47,7 @@ import {
   type FormatAction,
 } from "@/lib/markdown-toolbar";
 import { applyTextChange } from "@/lib/editor-dom";
+import { MAX_ATTACHMENT_BYTES, formatBytes } from "@/lib/attachments";
 import {
   filesFrom,
   isFileDrag,
@@ -404,7 +405,20 @@ export const MarkdownEditor = forwardRef<
   const uploadFiles = (files: File[], pasted: boolean) => {
     if (files.length === 0 || disabled) return;
     setUploadError(null);
-    const jobs = files.map((file) => ({
+    const tooLarge = files.filter((file) => file.size > MAX_ATTACHMENT_BYTES);
+    if (tooLarge.length) {
+      setUploadError(
+        tooLarge
+          .map(
+            (file) =>
+              `${file.name}: ${formatBytes(file.size)} is over the ${formatBytes(MAX_ATTACHMENT_BYTES)} limit`,
+          )
+          .join(" "),
+      );
+    }
+    const valid = files.filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
+    if (valid.length === 0) return;
+    const jobs = valid.map((file) => ({
       file,
       name: pasted ? nameForPasted(file) : file.name,
       token: Math.random().toString(36).slice(2, 10),
