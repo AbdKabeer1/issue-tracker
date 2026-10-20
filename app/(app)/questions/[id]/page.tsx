@@ -33,14 +33,16 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
         </Link>
       ) : null}
       <div className="space-y-2 rounded border border-slate-200 bg-white p-5">
-        <h2 className="font-medium">Your answer</h2>
+        <h2 id="your-answer-heading" className="font-medium">
+          Your answer
+        </h2>
         {question.answeredAt ? (
           <>
             <p className="whitespace-pre-wrap">{question.answer}</p>
             <LocalTime date={question.answeredAt} className="text-xs text-slate-500" />
           </>
         ) : (
-          <AnswerForm questionId={question.id} />
+          <AnswerForm questionId={question.id} labelledBy="your-answer-heading" />
         )}
       </div>
     </article>
