@@ -138,45 +138,59 @@ export async function submitTestVerdict(
     }
   }
 
-  return prisma.$transaction(async (tx) => {
-    const existing = await tx.testVerdict.findFirst({
-      where: { bugId: bug.id, agentId: agent.agentId },
-      select: { id: true },
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.testVerdict.findFirst({
+        where: { bugId: bug.id, agentId: agent.agentId },
+        select: { id: true },
+      });
+      if (existing) {
+        return {
+          status: 409 as const,
+          error: "already_verdicted" as const,
+          message: "This agent has already reported a verdict on this issue.",
+        };
+      }
+
+      const verdict = await tx.testVerdict.create({
+        data: {
+          bugId: bug.id,
+          agentId: agent.agentId,
+          onBehalfOfUserId,
+          goodToMerge: body.goodToMerge,
+          notes: body.notes || null,
+        },
+        select: { id: true, goodToMerge: true, notes: true, onBehalfOfUserId: true },
+      });
+
+      await audit(
+        agent,
+        "issue.test_verdict",
+        `bug:${bug.id}`,
+        { verdictId: verdict.id, goodToMerge: body.goodToMerge, onBehalfOfUserId },
+        { bugId: bug.id, db: tx },
+      );
+      await publish(tx, {
+        tenantId: bug.tenantId,
+        type: "issue.test_verdict",
+        payload: { issueId: bug.id, verdictId: verdict.id, goodToMerge: body.goodToMerge, onBehalfOfUserId },
+        actorAgentId: agent.agentId,
+        bugId: bug.id,
+      });
+
+      return { status: 201 as const, verdict };
     });
-    if (existing) {
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
       return {
         status: 409 as const,
         error: "already_verdicted" as const,
         message: "This agent has already reported a verdict on this issue.",
       };
     }
-
-    const verdict = await tx.testVerdict.create({
-      data: {
-        bugId: bug.id,
-        agentId: agent.agentId,
-        onBehalfOfUserId,
-        goodToMerge: body.goodToMerge,
-        notes: body.notes || null,
-      },
-      select: { id: true, goodToMerge: true, notes: true, onBehalfOfUserId: true },
-    });
-
-    await audit(
-      agent,
-      "issue.test_verdict",
-      `bug:${bug.id}`,
-      { verdictId: verdict.id, goodToMerge: body.goodToMerge, onBehalfOfUserId },
-      { bugId: bug.id, db: tx },
-    );
-    await publish(tx, {
-      tenantId: bug.tenantId,
-      type: "issue.test_verdict",
-      payload: { issueId: bug.id, verdictId: verdict.id, goodToMerge: body.goodToMerge, onBehalfOfUserId },
-      actorAgentId: agent.agentId,
-      bugId: bug.id,
-    });
-
-    return { status: 201 as const, verdict };
-  });
+    throw error;
+  }
 }
