@@ -7,6 +7,7 @@ vi.mock("@/lib/auth-helpers", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    membership: { findUnique: vi.fn() },
     attachment: {
       findUnique: vi.fn(),
     },
@@ -19,6 +20,7 @@ import { GET } from "./route";
 
 const userMock = vi.mocked(requireUser) as unknown as ReturnType<typeof vi.fn>;
 const findUnique = vi.mocked(prisma.attachment.findUnique) as unknown as ReturnType<typeof vi.fn>;
+const membershipFindUnique = vi.mocked(prisma.membership.findUnique) as unknown as ReturnType<typeof vi.fn>;
 
 function makeRequest(id: string) {
   return GET(new NextRequest(`http://localhost:3000/api/attachments/${id}`), {
@@ -109,5 +111,20 @@ describe("GET /api/attachments/[id]", () => {
     const res = await makeRequest("att-3");
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("image/webp");
+  });
+
+  it("serves a proposal mockup only to members of its tenant", async () => {
+    userMock.mockResolvedValue({ id: "user-3", role: "user" });
+    findUnique.mockResolvedValue({
+      uploaderId: "user-2", filename: "mockup.png", contentType: "image/png", size: 50,
+      data: Buffer.from("png-bytes"), bug: null, redesignProposal: { tenantId: "tenant-1" },
+    });
+    membershipFindUnique.mockResolvedValue({ userId: "user-3" });
+    expect((await makeRequest("att-proposal")).status).toBe(200);
+    expect(membershipFindUnique).toHaveBeenCalledWith({
+      where: { tenantId_userId: { tenantId: "tenant-1", userId: "user-3" } }, select: { userId: true },
+    });
+    membershipFindUnique.mockResolvedValueOnce(null);
+    expect((await makeRequest("att-proposal")).status).toBe(404);
   });
 });
