@@ -52,6 +52,15 @@ export async function watchersFor(
   return resolveWatchers(defaults, rows);
 }
 
+/** People who explicitly muted this issue, so reply planners can skip them (#738). */
+export async function mutedUsersFor(db: Db, bugId: string): Promise<string[]> {
+  const rows = await db.issueWatch.findMany({
+    where: { bugId },
+    select: { userId: true, watching: true },
+  });
+  return rows.filter((row) => !row.watching).map((row) => row.userId);
+}
+
 /**
  * Start watching for people who just got involved (reported, were assigned,
  * commented). Never overrides an explicit "Unwatch".
