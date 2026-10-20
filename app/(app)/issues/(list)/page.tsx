@@ -636,7 +636,9 @@ export default async function BugsPage({
         )}
 
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <p>
+            {/* #690: announce the result count so screen readers hear
+                "N results" after a search lands. */}
+            <p role="status" aria-live="polite">
               {resultCountText(totalCount, statusWhere !== undefined ? statusParam ?? null : null)} · sorted by{" "}
               {bugSortDescriptions[currentSort]}
               {hiddenDuplicates > 0 || showDuplicates ? (

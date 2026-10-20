@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { severities, statuses } from "@/lib/validations/issue";
 import { severityLabel, statusLabel } from "@/lib/labels";
@@ -90,6 +90,9 @@ export function IssueFilters({
 }) {
   const router = useRouter();
   const params = useSearchParams();
+  // #690: while a navigation kicked off from this control is in flight, expose
+  // a busy state so typing/searching gets visible + announced feedback.
+  const [isSearching, startSearchTransition] = useTransition();
   const listId = useId();
   const filterPanelId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -173,8 +176,10 @@ export function IssueFilters({
       return;
     }
     const href = hrefWithChanges(params, changes);
-    if (replace) router.replace(href);
-    else router.push(href);
+    startSearchTransition(() => {
+      if (replace) router.replace(href);
+      else router.push(href);
+    });
   }
 
   function update(key: string, value: string) {
@@ -197,8 +202,9 @@ export function IssueFilters({
   const [active, setActive] = useState(-1);
   const [issueSuggestions, setIssueSuggestions] = useState<IssueSuggestion[]>([]);
   const [suggestedFor, setSuggestedFor] = useState("");
-  // Enter or leaving the box applies the query at once; the debounced
-  // navigation must not also fire and duplicate it.
+  // Enter or the Search button applies the query at once; the debounced
+  // navigation must not also fire and duplicate it (#690: leaving the box no
+  // longer commits the search).
   const skipLiveRef = useRef<string | null>(null);
   // The real search before the current typing session. Picking a tag is a
   // filter choice, not text to search for, so it puts this back (#671).
@@ -221,14 +227,16 @@ export function IssueFilters({
         return;
       }
       const href = hrefWithChanges(new URLSearchParams(paramsString), { q: trimmed });
-      if (livePushedRef.current) router.replace(href);
-      else {
-        livePushedRef.current = true;
-        router.push(href);
-      }
+      startSearchTransition(() => {
+        if (livePushedRef.current) router.replace(href);
+        else {
+          livePushedRef.current = true;
+          router.push(href);
+        }
+      });
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [text, currentQuery, paramsString, router]);
+  }, [text, currentQuery, paramsString, router, startSearchTransition]);
 
   // Matching issue titles for the dropdown (#671), also debounced.
   useEffect(() => {
@@ -375,7 +383,11 @@ export function IssueFilters({
           <label htmlFor="q" className="mb-1 block text-xs font-medium text-slate-600">
             Search
           </label>
-          <div className="relative">
+          <div
+            className="relative"
+            aria-busy={isSearching}
+            data-testid="search-box"
+          >
             <input
               ref={inputRef}
               id="q"
@@ -424,9 +436,10 @@ export function IssueFilters({
                 }
               }}
               onBlur={() => {
+                // #690: leaving the box must not commit the search — only
+                // Enter, the Search button, or the debounce may navigate.
                 setOpen(false);
                 setActive(-1);
-                applyQueryNow();
               }}
             />
             {!text && shortcutsEnabled ? (
@@ -477,6 +490,39 @@ export function IssueFilters({
             ) : null}
           </div>
         </div>
+
+        {/* Explicit Search submit (#690): Enter also works, but a visible
+            control makes the commit point obvious and keeps Tab-out inert. */}
+        <button
+          type="button"
+          onClick={applyQueryNow}
+          disabled={isSearching}
+          className="inline-flex h-[38px] shrink-0 items-center gap-1.5 rounded-lg border border-teal-700 bg-teal-700 px-3 text-sm font-medium text-white shadow-xs transition-colors hover:bg-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 disabled:cursor-default disabled:opacity-70"
+        >
+          {isSearching ? (
+            <svg
+              className="h-4 w-4 animate-spin"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+            </svg>
+          ) : (
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z" />
+            </svg>
+          )}
+          <span>Search</span>
+        </button>
 
         {/* Unified Filter Button & Popover (#762) */}
         <div className="relative shrink-0">
