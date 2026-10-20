@@ -22,6 +22,10 @@ vi.mock("@/app/actions/auth", () => ({
   logoutAction: vi.fn(),
 }));
 
+vi.mock("@/app/actions/settings", () => ({
+  setThemeAction: vi.fn(),
+}));
+
 const switchRole = vi.mocked(switchActiveRoleAction);
 
 afterEach(() => cleanup());
@@ -67,5 +71,24 @@ describe("account menu role switch", () => {
     await user.click(screen.getByRole("radio", { name: /normal user/i }));
 
     expect(switchRole).toHaveBeenCalledWith("user", `${window.location.pathname}${window.location.search}`);
+  });
+});
+
+describe("theme toggle in header (#659)", () => {
+  it("renders the theme toggle button in the header toolbar", () => {
+    renderHeader();
+    const toggle = screen.getByTestId("theme-toggle");
+    expect(toggle).toBeTruthy();
+    expect(toggle.getAttribute("aria-label")).toMatch(/switch to (dark|light) mode/i);
+  });
+
+  it("renders the theme options in the account menu", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    await user.click(screen.getByRole("button", { name: /account menu/i }));
+
+    expect(screen.getByRole("group", { name: /theme preference/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Dark" })).toBeTruthy();
   });
 });

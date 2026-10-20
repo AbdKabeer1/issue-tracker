@@ -19,6 +19,7 @@ import {
 import { isAdmin, type AppRole } from "@/lib/roles";
 import { FOCUSABLE, wrapFocusIndex } from "@/lib/focus-trap";
 import { Avatar } from "@/components/avatar";
+import { ThemeToggle, AccountThemeSelector } from "@/components/theme-toggle";
 
 /** Closes a popover on outside click or Escape, returning focus to its trigger. */
 function useDismiss(
@@ -284,6 +285,8 @@ export function AppHeader({
             active={isNavItemActive(pathname, "/notifications")}
           />
 
+          <ThemeToggle />
+
           <Link
             href="/issues/new"
             aria-current={onNewIssue ? "page" : undefined}
@@ -334,6 +337,7 @@ export function AppHeader({
                   </div>
                 ) : null}
                 <div className="border-t border-slate-100 pt-1.5">
+                  <AccountThemeSelector />
                   {isAdmin(effectiveRole) ? (
                     <MenuLink
                       href="/admin/dashboard"
@@ -448,6 +452,7 @@ export function AppHeader({
               </div>
             ) : null}
             <div className="border-t border-slate-200 p-2">
+              <AccountThemeSelector />
               <SignOutButton userId={userId} className={linkFocus} />
             </div>
           </div>
