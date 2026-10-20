@@ -11,6 +11,7 @@ const db = vi.hoisted(() => ({
   membership: { findUnique: vi.fn() }, issueWatch: { upsert: vi.fn() }, bugActivity: { create: vi.fn() },
   idempotencyKey: { findUnique: vi.fn(), deleteMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   issueType: { findUnique: vi.fn() }, user: { findMany: vi.fn() }, $queryRaw: vi.fn(), $transaction: vi.fn(),
+  attachment: { updateMany: vi.fn() },
 }));
 const budget = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
@@ -430,5 +431,51 @@ describe("agent comments and issues notify people (#533)", () => {
     expect(notifyLater).toHaveBeenCalledWith(expect.objectContaining({
       kind: "mentioned", place: "description", recipientIds: ["bob"], bugId: issue.id, actorId: "owner-a", actorName: "Agent A",
     }));
+  });
+});
+
+describe("agents attach files to issues and comments (#645)", () => {
+  it("links the named uploads to a new comment, as the owner's own unlinked files", async () => {
+    db.attachment.updateMany.mockResolvedValue({ count: 2 });
+    const response = await comment(request("POST", { body: "Screenshot and HAR attached.", attachmentIds: ["att-1", "att-2"] }), context);
+    expect(response.status).toBe(201);
+    expect(db.attachment.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["att-1", "att-2"] }, uploaderId: "owner-a", bugId: null, commentId: null },
+      data: { bugId: issue.id, commentId: "comment-a" },
+    });
+  });
+
+  it("refuses the write when a named upload can't be claimed", async () => {
+    db.attachment.updateMany.mockResolvedValue({ count: 1 });
+    const response = await comment(request("POST", { body: "Two files.", attachmentIds: ["att-1", "someone-elses"] }), context);
+    expect(response.status).toBe(422);
+    expect((await response.json()).error).toMatch(/attachmentIds/);
+    expect(db.agentEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("links uploads named on a new issue", async () => {
+    db.attachment.updateMany.mockResolvedValue({ count: 1 });
+    const response = await create(request("POST", { ...validBody, attachmentIds: ["att-9"] }));
+    expect(response.status).toBe(201);
+    expect(db.attachment.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["att-9"] }, uploaderId: "owner-a", bugId: null, commentId: null },
+      data: { bugId: issue.id, commentId: null },
+    });
+  });
+
+  it("caps attachmentIds at 5", async () => {
+    const response = await comment(request("POST", { body: "Too many.", attachmentIds: ["a", "b", "c", "d", "e", "f"] }), context);
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(db.attachment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("returns attachment metadata, never bytes, when reading an issue", async () => {
+    await read(request(), context);
+    const select = db.bug.findFirst.mock.calls.at(-1)?.[0]?.select;
+    expect(select.attachments).toEqual({
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true, filename: true, contentType: true, size: true, commentId: true, createdAt: true },
+    });
+    expect(select.attachments.select).not.toHaveProperty("data");
   });
 });
