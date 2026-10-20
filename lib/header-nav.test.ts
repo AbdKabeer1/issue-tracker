@@ -23,8 +23,22 @@ describe("SWITCH_TENANT_LINK (#444)", () => {
 });
 
 describe("headerNavItems", () => {
-  it("shows Issues, Projects and Milestones to normal users", () => {
-    expect(headerNavItems("user").map((i) => i.label)).toEqual(["Issues", "Projects", "Milestones"]);
+  it("shows Issues, Projects, Milestones, Questions, and Redesigns to normal users by default", () => {
+    expect(headerNavItems("user").map((i) => i.label)).toEqual([
+      "Issues",
+      "Projects",
+      "Milestones",
+      "Questions",
+      "Redesigns",
+    ]);
+  });
+
+  it("shows only Issues, Projects, and Milestones when agent platform is explicitly disabled", () => {
+    expect(headerNavItems("user", { agentPlatform: false }).map((i) => i.label)).toEqual([
+      "Issues",
+      "Projects",
+      "Milestones",
+    ]);
   });
 
   it("includes Questions and Redesigns when agent platform is enabled (#627)", () => {
@@ -42,6 +56,8 @@ describe("headerNavItems", () => {
       "Issues",
       "Projects",
       "Milestones",
+      "Questions",
+      "Redesigns",
       "Platforms",
       "Types",
     ]);
@@ -52,6 +68,8 @@ describe("headerNavItems", () => {
       "Issues",
       "Projects",
       "Milestones",
+      "Questions",
+      "Redesigns",
       "Platforms",
       "Types",
       "Admins",
