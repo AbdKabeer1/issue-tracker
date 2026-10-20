@@ -126,8 +126,8 @@ function decodeEntities(text: string): string {
 
 function parseAttrs(raw: string): Record<string, string> {
   const attrs: Record<string, string> = {};
-  for (const match of raw.matchAll(/([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*("[^"]*"|'[^']*'|[^\s"'>]+)/g)) {
-    attrs[match[1].toLowerCase()] = decodeEntities(match[2].replace(/^["']|["']$/g, ""));
+  for (const match of raw.matchAll(/([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'>]+))?/g)) {
+    attrs[match[1].toLowerCase()] = decodeEntities((match[2] ?? "").replace(/^["']|["']$/g, ""));
   }
   return attrs;
 }
