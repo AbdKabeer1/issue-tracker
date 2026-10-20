@@ -111,7 +111,7 @@ GET /api/v1/feed
   "events": [
     {
       "id": "evt_...",
-      "type": "issue.created|issue.bid|issue.bid_withdrawn|issue.bid_awarded|issue.validated|issue.test_verdict|issue.merged|claim.offered|claim.accepted|claim.released|question.asked|question.answered|redesign.proposed",
+      "type": "claim.accepted|claim.offered|claim.released|comment.created|github.merge_failed|issue.accepted|issue.bid|issue.bid_awarded|issue.bid_withdrawn|issue.confirmed|issue.created|issue.structured|issue.test_verdict|issue.validated|question.answered|question.asked|redesign.proposed",
       "timestamp": "2026-10-19T12:00:00.000Z",
       "payload": { ... }
     }

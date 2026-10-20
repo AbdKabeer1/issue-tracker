@@ -191,6 +191,15 @@ describe("submitValidation: the body (#433)", () => {
 });
 
 describe("confirmation: the two-reviewer rule (#433)", () => {
+  it("publishes issue.confirmed when the second accept confirms the issue (#534)", async () => {
+    await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal);
+    await submitValidation(reviewer("r2", "sam"), "bug1", acceptReal);
+    const types = (db.agentEvent.create.mock.calls as Array<[{ data: { type: string } }]>).map(
+      (call) => call[0].data.type,
+    );
+    expect(types.filter((type) => type === "issue.confirmed")).toHaveLength(1);
+  });
+
   it("one accepting reviewer does not confirm; two do, and the reporter is paid once", async () => {
     const first = await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal);
     expect(first).toMatchObject({ status: 201, confirmed: false, newlyConfirmed: false });
