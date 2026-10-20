@@ -6,6 +6,7 @@ import { agentErrorResponse, assertKeyProject, requireAgent, type AgentContext }
 import { requireLevel } from "@/lib/agents/levels";
 import { audit } from "@/lib/agents/audit";
 import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/rate-budget";
+import { withAgentBudgetHeaders } from "@/lib/agents/rate-budget-headers";
 import { createBugSchema, commentSchema, statusSchema, severitySchema } from "@/lib/validations/issue";
 import { parsePlatformFilter, platformFilterWhere } from "@/lib/platform-filter";
 import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, hashCreateRequest, pageSize, toPage, type IssueCursor } from "@/lib/agent-api/create-policy";
@@ -20,7 +21,7 @@ import type { NotificationEvent } from "@/lib/notifications";
 import { logger } from "@/lib/logger";
 
 export class IssueApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  constructor(public status: number, message: string, public body?: Record<string, unknown>) { super(message); }
 }
 
 const idSchema = z.string().trim().min(1).max(191);
@@ -50,10 +51,12 @@ export async function agentIssueRequest(
       response = await run(agent);
     } else {
       const budget = await consumeAgentBudget({ id: agent.agentId, burst: agent.burst }, level === "observer" ? "read" : "write");
-      response = budget.allowed ? await run(agent) : agentBudgetExceededResponse(budget.retryAfterSeconds);
+      response = budget.allowed ? await run(agent) : agentBudgetExceededResponse(budget.retryAfterSeconds, budget);
+      // #646: every charged response says what's left of the budget it used.
+      if (budget.allowed) response = withAgentBudgetHeaders(response, budget);
     }
   } catch (error) {
-    if (error instanceof IssueApiError) response = NextResponse.json({ error: error.message }, { status: error.status });
+    if (error instanceof IssueApiError) response = NextResponse.json(error.body ? { error: error.message, ...error.body } : { error: error.message }, { status: error.status });
     else if (error instanceof z.ZodError) response = NextResponse.json({ error: "Invalid input.", details: error.issues }, { status: 422 });
     else response = agentErrorResponse(error);
   } finally {
@@ -136,7 +139,7 @@ export async function readAgentIssue(scope: Scope, id: string) {
     where: { ...scope, id, isDeleted: false },
     select: { ...issueSelect, comments: {
       where: { deletedAt: null }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 100,
-      select: { id: true, body: true, authorId: true, agentId: true, parentId: true, createdAt: true, editedAt: true },
+      select: { id: true, body: true, authorId: true, agentId: true, parentId: true, type: true, metadata: true, createdAt: true, editedAt: true },
     }, attachments: {
       // #645: metadata only; bytes are served to signed-in people at /api/attachments/{id}.
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -149,7 +152,7 @@ export async function readAgentIssue(scope: Scope, id: string) {
 
 /** What a paged comment carries: the embedded read's fields plus who wrote it. */
 const commentSelect = {
-  id: true, body: true, authorId: true, agentId: true, parentId: true, createdAt: true, editedAt: true,
+  id: true, body: true, authorId: true, agentId: true, parentId: true, type: true, metadata: true, createdAt: true, editedAt: true,
   author: { select: { id: true, name: true } },
   agent: { select: { id: true, name: true } },
 } satisfies Prisma.CommentSelect;
@@ -175,10 +178,19 @@ export async function listAgentIssueComments(scope: Scope, id: string, params: U
   const cursor = decodeCursor(cursorRaw);
   if (cursorRaw !== null && !cursor) throw new IssueApiError(400, "Invalid cursor.");
   const limit = pageSize(params.get("limit"));
+  const typeParam = params.get("type");
+  const validTypes = ["comment", "bid", "review", "delivery", "request_to_merge"];
+  const filterType = typeParam && validTypes.includes(typeParam) ? (typeParam as Prisma.EnumCommentTypeFilter["equals"]) : undefined;
+
   const issue = await prisma.bug.findFirst({ where: { ...scope, id, isDeleted: false }, select: { id: true } });
   if (!issue) throw new IssueApiError(404, "Issue not found.");
   const rows = await prisma.comment.findMany({
-    where: { bugId: id, deletedAt: null, ...(cursor ? commentsAfter(cursor) : {}) },
+    where: {
+      bugId: id,
+      deletedAt: null,
+      ...(filterType ? { type: filterType } : {}),
+      ...(cursor ? commentsAfter(cursor) : {}),
+    },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take: limit + 1,
     select: commentSelect,
@@ -296,8 +308,26 @@ export async function commentOnAgentIssue(agent: AgentContext, request: NextRequ
     }
     const body = await normalizeTenantMentions(tx, scope.tenantId, input.body);
     const created = await tx.comment.create({
-      data: { bugId, authorId: agent.ownerId, agentId: agent.agentId, body, parentId: input.parentId ?? null },
-      select: { id: true, bugId: true, authorId: true, agentId: true, body: true, parentId: true, createdAt: true },
+      data: {
+        bugId,
+        authorId: agent.ownerId,
+        agentId: agent.agentId,
+        body,
+        parentId: input.parentId ?? null,
+        type: input.type ?? "comment",
+        metadata: input.metadata ? (input.metadata as Prisma.InputJsonValue) : undefined,
+      },
+      select: {
+        id: true,
+        bugId: true,
+        authorId: true,
+        agentId: true,
+        body: true,
+        parentId: true,
+        type: true,
+        metadata: true,
+        createdAt: true,
+      },
     });
     await linkAgentAttachments(tx, agent, { requested: input.attachmentIds, text: body, bugId, commentId: created.id });
     await tx.bugActivity.create({ data: {

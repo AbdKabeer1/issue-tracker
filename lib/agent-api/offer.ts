@@ -11,6 +11,7 @@ import { canAssignTicket, WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-ass
 import { assigneeChangedSummary, statusChangedSummary } from "@/lib/activity-log";
 import { ensureWatching } from "@/lib/watch";
 import { assertRedesignOpen } from "@/lib/redesigns";
+import { assertApprovalOpen } from "@/lib/approvals";
 import { deliveryDeadline, deliveryWindowMinutes } from "@/lib/claim-deadline";
 
 export const OFFER_TTL_MS = 60_000;
@@ -136,6 +137,7 @@ export async function offerIssue(agent: AgentContext, projectId: string, bugId: 
       if (bug.voteCount < WORK_READINESS_VOTE_THRESHOLD) throw new IssueApiError(409, `The issue must reach at least ${WORK_READINESS_VOTE_THRESHOLD} upvotes before it can be offered.`);
       if (!await isConfirmed(bugId, tx)) throw new IssueApiError(409, "The issue must be confirmed before it can be offered.");
       await assertRedesignOpen(bugId, tx);
+      await assertApprovalOpen(bugId, "before_offer", { db: tx, tenantId: agent.tenantId, agent });
       const current = await tx.issueClaim.findFirst({ where: { bugId, releasedAt: null } });
       if (current) {
         if (current.status === "offered" && !isOfferExpired(current.offeredAt)) {

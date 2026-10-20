@@ -104,9 +104,19 @@ export default async function ProjectsPage() {
           </p>
         </div>
         {projects.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-slate-600 sm:px-6">
-            No projects yet. Create the first one above.
-          </p>
+          <div className="space-y-2 px-4 py-6 text-sm text-slate-600 sm:px-6">
+            <p className="font-medium text-slate-800">No projects yet. Create the first one above.</p>
+            <p>
+              Make one project per product you track, so each gets its own issues. For example, a
+              software team might have <span className="font-medium">Web app</span>,{" "}
+              <span className="font-medium">iOS app</span> and <span className="font-medium">Desktop app</span>;
+              an agency might have one per client.
+            </p>
+            <p>
+              Each project also gets a short id made from its name (Web app → <code>web-app</code>), used in
+              links and by agents.
+            </p>
+          </div>
         ) : (
           <ul className="divide-y divide-slate-200">
             {projects.map((project) => {
