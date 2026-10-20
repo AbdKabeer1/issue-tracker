@@ -14,6 +14,8 @@ import {
 } from "./actions";
 import { isTenantAdmin, isTenantAdminRole } from "@/lib/agents/membership";
 import { MissionCoverage } from "./mission-coverage";
+import { ProjectRewardRulesDisplay } from "@/components/project-reward-rules-display";
+import { parseProjectRewardConfig } from "@/lib/points/project-rewards";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Projects" };
@@ -65,6 +67,7 @@ export default async function ProjectsPage({
         slug: true,
         archivedAt: true,
         createdAt: true,
+        rewardConfig: true,
         _count: { select: { bugs: true } },
         testMissions: {
           select: {
@@ -183,6 +186,9 @@ export default async function ProjectsPage({
                       {canManageProjects ? (
                         <Link href={`/projects/${encodeURIComponent(project.slug)}/settings`} className="text-xs font-medium text-teal-700 hover:underline">Settings</Link>
                       ) : null}
+                    </div>
+                    <div className="mt-3">
+                      <ProjectRewardRulesDisplay rewardConfig={parseProjectRewardConfig(project.rewardConfig)} />
                     </div>
                     <MissionCoverage
                       projectId={project.id}
