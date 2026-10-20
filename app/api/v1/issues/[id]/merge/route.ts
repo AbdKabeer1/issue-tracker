@@ -19,7 +19,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return agentErrorResponse(error);
   }
 
-  const budget = await consumeAgentBudget({ id: agent.agentId, burst: agent.burst }, "write");
+  const budget = await consumeAgentBudget(
+    { id: agent.agentId, burst: agent.burst, burstUntil: agent.burstUntil ?? null },
+    "write",
+  );
   if (!budget.allowed) return agentBudgetExceededResponse(budget.retryAfterSeconds, budget);
 
   const { id } = await params;

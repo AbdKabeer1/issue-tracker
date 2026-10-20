@@ -40,6 +40,7 @@ import { IssueAgentActivity, type AgentDecision } from "@/components/issue-agent
 import { IssueEscalations, type TicketEscalation } from "@/components/issue-escalations";
 import { listBugEscalations } from "@/lib/agent-questions";
 import { IssueBids } from "@/components/issue-bids";
+import { GoalBudgetSection } from "@/components/goal-budgets";
 import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { WatchButton } from "@/components/watch-button";
@@ -225,15 +226,18 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   const access = await currentTenantAccess(user.id, user.role);
   const canTriage = access.admin;
   const canDelete = canDeleteTicket(user.role, access.membershipRole);
+  const userTenantId = await currentTenantIdFor(userId);
   // #289: open milestones for the triage panel (admins only). Started here,
   // alongside the issue query, and awaited where the form needs them.
   const milestoneOptionsPromise: Promise<{ id: string; title: string; isClosed: boolean }[]> = canTriage
     ? loadOptional("milestones", [], () =>
-        prisma.milestone.findMany({
-          where: { isClosed: false },
-          select: { id: true, title: true, isClosed: true },
-          orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { title: "asc" }],
-        }),
+        userTenantId
+          ? prisma.milestone.findMany({
+              where: { isClosed: false, tenantId: userTenantId },
+              select: { id: true, title: true, isClosed: true },
+              orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { title: "asc" }],
+            })
+          : Promise.resolve([]),
       )
     : Promise.resolve([]);
 
@@ -388,7 +392,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             select: { id: true, name: true },
           }))
         : Promise.resolve([]),
-      canTriage ? loadOptional("types", [], () => getActiveIssueTypesCached()) : Promise.resolve([]),
+      canTriage ? loadOptional("types", [], () => getActiveIssueTypesCached(bug.tenantId)) : Promise.resolve([]),
       loadOptional("votes", createEmptyVoterSummary(), () => fetchVoterSummary(id)),
       loadOptional("activity", [] as ActivityEntry[], () =>
         prisma.bugActivity.findMany({
@@ -595,12 +599,11 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
 
   const resolution = currentResolution(bug.status, latestStatusChange);
 
+  // Workflow badges that are always visible: status and severity. Anything
+  // else (boost, volunteers) is supplementary and folds into the mobile +N
+  // control, so status/severity never hide behind it (#687).
   const extraBadgeCount =
-    (bug.isBoosted && !bug.isDeleted ? 1 : 0) +
-    (bug.type ? 1 : 0) +
-    (bug.category ? 1 : 0) +
-    1 +
-    (volunteerCount > 0 ? 1 : 0);
+    (bug.isBoosted && !bug.isDeleted ? 1 : 0) + (volunteerCount > 0 ? 1 : 0);
 
   const headerActions = (
     <>
@@ -785,6 +788,9 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 {headerActions}
               </div>
 
+              {/* Row 1 — workflow state, which must outrank taxonomy (#687).
+                  Status and severity stay visible at every width; boost and
+                  volunteer counts fold into the mobile +N control (#698). */}
               <div className="flex flex-wrap items-center gap-2">
                 {bug.isDeleted ? (
                   <span className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-900 shadow-2xs">
@@ -797,6 +803,11 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 <Badge className={severityClass[bug.severity]}>
                   {severityLabels[bug.severity]}
                 </Badge>
+                {bug.isBoosted && !bug.isDeleted ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900 shadow-2xs">
+                    ⚡ Boosted
+                  </span>
+                ) : null}
                 {extraBadgeCount > 0 ? (
                   <details className="group sm:contents">
                     <summary
@@ -806,28 +817,6 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                       +{extraBadgeCount}
                     </summary>
                     <span className="contents">
-                      {bug.isBoosted && !bug.isDeleted ? (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900 shadow-2xs">
-                          ⚡ Boosted
-                        </span>
-                      ) : null}
-                      {bug.type ? (
-                        <span
-                          className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getIssueTypeBadgeClass(
-                            bug.type.name,
-                          )}`}
-                        >
-                          {bug.type.name}
-                        </span>
-                      ) : null}
-                      {bug.category ? (
-                        <Badge className="border border-teal-200 bg-teal-50 text-teal-950">
-                          {bug.category.name}
-                        </Badge>
-                      ) : null}
-                      <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-                        {bug.voteCount} score ({voterSummary.likes.count} like{voterSummary.likes.count === 1 ? "" : "s"}, {voterSummary.dislikes.count} dislike{voterSummary.dislikes.count === 1 ? "" : "s"})
-                      </span>
                       {volunteerCount > 0 ? (
                         <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 border border-indigo-200">
                           {volunteerCount} {volunteerCount === 1 ? "agent volunteered" : "agents volunteered"}
@@ -837,6 +826,18 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                   </details>
                 ) : null}
               </div>
+
+              {/* Row 2 — taxonomy, on its own muted line so its colours are not
+                  mistaken for workflow state (#687). */}
+              {bug.type || bug.category ? (
+                <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-slate-500">
+                  {bug.type ? <span>{bug.type.name}</span> : null}
+                  {bug.type && bug.category ? (
+                    <span aria-hidden="true">·</span>
+                  ) : null}
+                  {bug.category ? <span>{bug.category.name}</span> : null}
+                </p>
+              ) : null}
             </div>
 
             {/* Reactions and larger avatars sitting under the title */}
@@ -858,7 +859,9 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         </div>
 
         <div className="hidden sm:block">
-          <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6 print:hidden">
+          {/* #687: the back-link sits above the title, so actions must offset
+              past it to share the title's top edge (36px ≈ sm:pt-9). */}
+          <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-9 print:hidden">
             {headerActions}
           </div>
         </div>
@@ -1015,6 +1018,10 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       />
 
       <IssueEscalations escalations={escalations} />
+
+      <Suspense fallback={null}>
+        <GoalBudgetSection tenantId={bug.tenantId} projectId={bug.projectId} bugId={bug.id} />
+      </Suspense>
 
       <IssueAgentActivity decisions={agentDecisions} />
 

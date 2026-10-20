@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth-helpers";
-import { viewInvite } from "@/lib/invites";
+import { openInvitesFor, viewInvite } from "@/lib/invites";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdmin } from "@/lib/roles";
 import { currentTenantIdFor } from "@/lib/tenant-context";
@@ -14,6 +14,7 @@ import {
 } from "@/lib/tenants";
 import { selectTenantAction, setTenantArchivedAction } from "./actions";
 import { CreateTenantForm } from "./create-tenant-form";
+import { AcceptInviteForm } from "./accept-invite-form";
 import { InviteCard } from "./invite-card";
 import { InviteLinkForm } from "./invite-link-form";
 import { ZeduOwnerForm } from "./zedu-owner-form";
@@ -28,7 +29,8 @@ const card = "rounded-xl border border-slate-200 bg-white p-4 sm:p-6";
 
 /**
  * Where a person picks the tenant to work in, creates one, or accepts an
- * invite (#444). It lists only the tenants they belong to.
+ * invite (#444). Memberships are listed under Your tenants. An invite that
+ * is still open for this account is listed above them, with a join button.
  */
 export default async function TenantsPage({
   searchParams,
@@ -50,12 +52,14 @@ export default async function TenantsPage({
   const error = typeof errorParam === "string" ? errorParam : "";
   const notice = typeof noticeParam === "string" ? noticeParam : "";
 
-  const [tenants, currentTenantId, invite, zeduOwnerNeeded] = await Promise.all([
+  const [tenants, currentTenantId, invite, zeduOwnerNeeded, openInvites] = await Promise.all([
     tenantsForUser(prisma, user.id),
     currentTenantIdFor(user.id),
     inviteId ? viewInvite(prisma, { inviteId }, user) : null,
     isSuperAdmin(user.role) ? zeduNeedsOwner(prisma) : false,
+    openInvitesFor(prisma, user),
   ]);
+  const listedInvites = openInvites.filter((row) => row.id !== inviteId);
   const activeTenants = tenants.filter((tenant) => !tenant.archivedAt);
   const archivedTenants = tenants.filter(
     (tenant) => tenant.archivedAt && tenant.role === "owner",
@@ -99,6 +103,30 @@ export default async function TenantsPage({
 
       {inviteId ? (
         <InviteCard invite={invite} accept={{ inviteId }} accountEmail={user.email} />
+      ) : null}
+
+      {listedInvites.length > 0 ? (
+        <section aria-labelledby="your-invites" className="overflow-hidden rounded-xl border border-teal-200 bg-white">
+          <h2
+            id="your-invites"
+            className="border-b border-teal-200 bg-teal-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6"
+          >
+            Invitations
+          </h2>
+          <ul className="divide-y divide-slate-200">
+            {listedInvites.map((row) => (
+              <li key={row.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">{row.tenant.name}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {row.invitedByName} invited you · expires <LocalTime date={row.expiresAt} />
+                  </p>
+                </div>
+                <AcceptInviteForm inviteId={row.id} tenantName={row.tenant.name} />
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       {joinRequests.length > 0 ? (

@@ -111,6 +111,7 @@ vi.mock("@/lib/prisma", () => ({
     attachment: { findMany: vi.fn().mockResolvedValue([]) },
     bugRevision: { findFirst: vi.fn().mockResolvedValue(null) },
     milestone: { findMany: vi.fn().mockResolvedValue([]) },
+    goal: { findMany: vi.fn().mockResolvedValue([]) },
     issueValidation: { findMany: vi.fn().mockResolvedValue([]) },
     issueClaim: { findMany: vi.fn().mockResolvedValue([]) },
     testVerdict: { findMany: vi.fn().mockResolvedValue([]) },
@@ -141,7 +142,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
     );
     // Find the header action bar container
     const headerActionBlockMatch = pageSourceFresh.match(
-      /<div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6 print:hidden">([\s\S]*?)<\/div>/,
+      /<div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-9 print:hidden">([\s\S]*?)<\/div>/,
     );
     expect(headerActionBlockMatch).toBeTruthy();
     const headerActionBlock = headerActionBlockMatch![1];

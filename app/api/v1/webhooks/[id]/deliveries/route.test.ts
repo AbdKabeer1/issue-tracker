@@ -52,7 +52,7 @@ describe("GET /api/v1/webhooks/{id}/deliveries (#644)", () => {
     const response = await deliveries(request("/webhooks/sub-1/deliveries?status=dead&limit=5"), sub);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ items: [], nextCursor: null });
-    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false }, "read");
+    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false, burstUntil: null }, "read");
     expect(db.webhookDelivery.findMany.mock.calls[0][0]).toMatchObject({ where: { subscriptionId: "sub-1", status: "dead" }, take: 6 });
   });
 
@@ -80,7 +80,7 @@ describe("POST /api/v1/webhooks/{id}/deliveries/{deliveryId}/retry (#644)", () =
     const response = await retry(request("/webhooks/sub-1/deliveries/d3/retry", "POST"), one);
     expect(response.status).toBe(200);
     expect((await response.json()).delivery).toMatchObject({ id: "d3", status: "pending", eventType: "issue.created" });
-    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false }, "write");
+    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false, burstUntil: null }, "write");
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ action: "webhooks.retryDelivery", target: "d3" }),
     });

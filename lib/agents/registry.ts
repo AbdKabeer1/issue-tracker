@@ -62,7 +62,9 @@ export async function insertAgentWithKey(
   const agent = await db.agent.create({
     data: {
       ...agentInput,
-      apiKeys: { create: { keyHash: key.hash, prefix: key.prefix, projectId } },
+      apiKeys: {
+        create: { keyHash: key.hash, prefix: key.prefix, projectId, sealedKey: sealSecret(key.raw) },
+      },
     },
     select: { id: true, name: true },
   });
@@ -259,34 +261,71 @@ export async function setAgentAreaPreferences(
 }
 
 /**
- * Turns the higher write budget on or off (#440). A workspace admin or a
- * site admin may do this. An owner who is not an admin cannot.
+ * Turns the higher write budget on or off (#440), optionally until a time
+ * (#596). A workspace admin or a site admin may do this. An owner who is not
+ * an admin cannot.
+ *
+ * `burst` stays the enabled flag; `burstUntil` only limits it. Disabling
+ * clears the expiry, so turning it back on cannot inherit a stale window.
+ * The budget helper treats an expired time as the standard budget, so no
+ * scheduled job is needed.
  */
-export async function setAgentBurst(actor: Actor, agentId: string, burst: boolean): Promise<ManageResult> {
+export async function setAgentBurst(
+  actor: Actor,
+  agentId: string,
+  burst: boolean,
+  burstUntil: Date | null = null,
+  now = new Date(),
+): Promise<ManageResult> {
   const managed = await managedAgent(actor, agentId);
   if (!managed) return { ok: false, error: NOT_FOUND };
   if (!managed.isTenantAdmin && !isAdmin(actor.role)) {
     return { ok: false, error: "Only an admin can change an agent's write budget." };
   }
   if (managed.agent.revokedAt) return { ok: false, error: "That agent is revoked." };
-  const before = await prisma.agent.findUniqueOrThrow({ where: { id: agentId }, select: { burst: true } });
-  if (before.burst === burst) return { ok: true };
-  await prisma.$transaction(async (tx) => {
-    await tx.agent.update({ where: { id: agentId }, data: { burst } });
-    await audit(
-      { agentId, tenantId: managed.agent.tenantId },
-      "agent.burst_changed",
-      `agent:${agentId}`,
-      { from: before.burst, to: burst, by: "admin" },
-      { actorUserId: actor.id, db: tx },
-    );
+
+  const nextUntil = burst ? burstUntil : null;
+  if (nextUntil && (!Number.isFinite(nextUntil.getTime()) || nextUntil.getTime() <= now.getTime())) {
+    return { ok: false, error: "Choose an expiry time in the future." };
+  }
+
+  const before = await prisma.agent.findUniqueOrThrow({
+    where: { id: agentId },
+    select: { burst: true, burstUntil: true },
   });
+  const beforeUntil = before.burstUntil?.getTime() ?? null;
+  const nextTime = nextUntil?.getTime() ?? null;
+  // Re-saving the same state is harmless and does not add a misleading audit row.
+  if (before.burst === burst && beforeUntil === nextTime) return { ok: true };
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.agent.update({ where: { id: agentId }, data: { burst, burstUntil: nextUntil } });
+      await audit(
+        { agentId, tenantId: managed.agent.tenantId },
+        "agent.burst_changed",
+        `agent:${agentId}`,
+        {
+          from: before.burst,
+          to: burst,
+          fromUntil: before.burstUntil?.toISOString() ?? null,
+          toUntil: nextUntil?.toISOString() ?? null,
+          by: "admin",
+        },
+        { actorUserId: actor.id, db: tx },
+      );
+    });
+  } catch {
+    // The transaction rolled back, so the old budget still applies. Never
+    // report success when the change was not persisted.
+    return { ok: false, error: "Couldn't change the write budget. Try again." };
+  }
   return { ok: true };
 }
 
 /**
  * The agent replaces the key it called with. Same agent, name and owner; the
- * old key stops working and the new one is shown once.
+ * old key stops working. The new one is sealed so the owner can copy it again.
  */
 export async function rotateKey(agent: AgentContext, now = new Date()): Promise<IssuedKey> {
   const key = generateApiKey();
@@ -297,18 +336,13 @@ export async function rotateKey(agent: AgentContext, now = new Date()): Promise<
     });
     // Two rotations racing with the same key: only the first gets a new one.
     if (revoked.count !== 1) throw new Error("This key was already rotated or revoked.");
-    const personal = await tx.agent.findUnique({
-      where: { id: agent.agentId },
-      select: { defaultProjectId: true },
-    });
-    const reseal = personal?.defaultProjectId != null && personal.defaultProjectId === agent.projectId;
     await tx.agentApiKey.create({
       data: {
         agentId: agent.agentId,
         keyHash: key.hash,
         prefix: key.prefix,
         projectId: agent.projectId ?? null,
-        ...(reseal ? { sealedKey: sealSecret(key.raw) } : {}),
+        sealedKey: sealSecret(key.raw),
       },
     });
     await audit(agent, "agent.key_rotated", `agent:${agent.agentId}`, { prefix: key.prefix, projectId: agent.projectId ?? null }, { db: tx });
@@ -322,8 +356,8 @@ export type RegenerateKeyResult =
 
 /**
  * The owner or a tenant admin replaces every live key without the old secret
- * (#572). The agent, its level and its history stay. The new key is shown once
- * and is limited to the project they choose.
+ * (#572). The agent, its level and its history stay. The new key is sealed so
+ * it can be copied again, and it is limited to the project they choose.
  */
 export async function regenerateKey(
   actor: Actor,
@@ -338,7 +372,6 @@ export async function regenerateKey(
   if (!project) return { ok: false, error: "Choose a project in this workspace.", field: "projectId" };
 
   const key = generateApiKey();
-  const reseal = managed.agent.defaultProjectId === project.id;
   await prisma.$transaction(async (tx) => {
     await tx.agentApiKey.updateMany({ where: { agentId, revokedAt: null }, data: { revokedAt: now } });
     await tx.agentApiKey.create({
@@ -347,7 +380,7 @@ export async function regenerateKey(
         keyHash: key.hash,
         prefix: key.prefix,
         projectId: project.id,
-        ...(reseal ? { sealedKey: sealSecret(key.raw) } : {}),
+        sealedKey: sealSecret(key.raw),
       },
     });
     await audit(
