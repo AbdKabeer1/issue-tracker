@@ -203,8 +203,10 @@ model IssueType {
 
 model Bug {
   id                String             @id @default(cuid())
-  /// Human-readable reference (#1, #2, ...), assigned by a Postgres sequence.
-  number            Int                @unique @default(autoincrement())
+  /// Human-readable reference (#1, #2, ...), counted per tenant (#517). The
+  /// database trigger `Bug_assign_tenant_number` replaces the sequence value
+  /// with `Tenant.nextIssueNumber`, so each organisation starts at #1.
+  number            Int                @default(autoincrement())
   title             String
   description       String
   severity          Severity           @default(medium)
@@ -267,6 +269,8 @@ model Bug {
   agentEvents       AgentEvent[]
   auditEvents       AgentAuditEvent[]
 
+  /// #517: issue numbers are per tenant, so two tenants can both have a #1.
+  @@unique([tenantId, number])
   @@index([tenantId, projectId])
   @@index([beneficiaryUserId])
   @@index([createdByAgentId])
@@ -473,6 +477,9 @@ model Tenant {
   id            String             @id @default(cuid())
   slug          String             @unique
   name          String
+  /// #517: the next issue number this tenant hands out. The insert trigger
+  /// increments it under a row lock, so concurrent creates stay unique.
+  nextIssueNumber Int             @default(1)
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   projects      Project[]
