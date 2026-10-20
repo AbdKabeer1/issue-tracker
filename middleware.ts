@@ -35,6 +35,11 @@ export function isPublicPath(
     isPasswordResetPage ||
     isIssuePreview ||
     pathWithoutBase.startsWith("/session-expired") ||
+    // Shareable invite links (#444). Guests must see the organization and
+    // sign in with Google before the link is used; the page itself never
+    // spends a use.
+    pathWithoutBase === "/join" ||
+    pathWithoutBase.startsWith("/join/") ||
     pathWithoutBase.startsWith("/api/auth") ||
     pathWithoutBase.startsWith("/api/health") ||
     // The agent API (#427) authenticates every call with an agent key, not a

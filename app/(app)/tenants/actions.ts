@@ -10,12 +10,12 @@ import {
   acceptInvite,
   createInvite,
   deliverInvite,
-  invitePath,
+  destinationForInviteInput,
   inviteUrl,
-  parseInviteLink,
   revokeInvite,
   type InviteDelivery,
 } from "@/lib/invites";
+import { acceptShareLink, createShareLink, revokeShareLink } from "@/lib/share-invites";
 import { prisma } from "@/lib/prisma";
 import { setActiveProjectCookie } from "@/lib/project-context";
 import { RATE_LIMIT_MESSAGE, consumeRateLimit } from "@/lib/rate-limit";
@@ -136,6 +136,56 @@ export async function createInviteAction(
   };
 }
 
+export type CreateShareLinkActionResult =
+  | { ok: true; url: string }
+  | { ok: false; error: string; field?: string };
+
+/** An owner or admin creates a link anyone can use, within the limits they set. */
+export async function createShareLinkAction(
+  _previous: CreateShareLinkActionResult | undefined,
+  formData: FormData,
+): Promise<CreateShareLinkActionResult> {
+  const user = await requireUser();
+  if (!(await consumeRateLimit(`tenant-share:${user.id}`, CREATE_INVITE_RATE_LIMIT)).allowed) {
+    return { ok: false, error: RATE_LIMIT_MESSAGE };
+  }
+
+  const result = await createShareLink(prisma, user, {
+    tenantId: String(formData.get("tenantId") ?? ""),
+    expiresDays: formData.get("expiresDays"),
+    maxUses: formData.get("maxUses"),
+    label: formData.get("label"),
+  });
+  if (!result.ok) return result;
+
+  revalidatePath(`/tenants/${result.tenantSlug}`);
+  return { ok: true, url: result.url };
+}
+
+/** Turn off a share link that hasn't been revoked yet. */
+export async function revokeShareLinkAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const result = await revokeShareLink(prisma, user, String(formData.get("linkId") ?? ""));
+  if (result.ok) revalidatePath(`/tenants/${result.tenantSlug}`);
+}
+
+/**
+ * Join via a share link. Called from the join page after Google sign-in, or
+ * from the Join button if the person is already signed in.
+ */
+export async function acceptShareLinkAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const token = String(formData.get("token") ?? "");
+  const back = `/join/${token}`;
+  if (!(await consumeRateLimit(`tenant-share-accept:${user.id}`, ACCEPT_INVITE_RATE_LIMIT)).allowed) {
+    redirect(`${back}?error=rate`);
+  }
+
+  const result = await acceptShareLink(prisma, token, user);
+  if (!result.ok) redirect(`${back}?error=${result.reason}`);
+  return enterTenant(result.tenant.id);
+}
+
 /** Withdraw a link that hasn't been used. */
 export async function revokeInviteAction(formData: FormData): Promise<void> {
   const user = await requireUser();
@@ -174,11 +224,11 @@ export async function openInviteLinkAction(
   formData: FormData,
 ): Promise<TenantFormResult> {
   await requireUser();
-  const token = parseInviteLink(String(formData.get("link") ?? ""));
-  if (!token) {
+  const destination = destinationForInviteInput(String(formData.get("link") ?? ""));
+  if (!destination) {
     return fieldError("link", "That isn't a Ziki invite link. Paste the whole link from the invite.");
   }
-  redirect(invitePath(token));
+  redirect(destination);
 }
 
 /** The site's super admin makes an existing Zedu member its first owner. */

@@ -166,6 +166,8 @@ model User {
   auditActions          AgentAuditEvent[]    @relation("AuditActorUser")
   agentQuestions        AgentQuestion[]
   tenantInvitesSent     TenantInvite[]
+  shareLinksSent        TenantShareLink[]
+  shareRedemptions      TenantShareRedemption[]
 }
 
 /// Single-use password reset tokens (~30 min TTL). Store only the SHA-256 hash.
@@ -461,6 +463,7 @@ model Tenant {
   pointEntries  PointEntry[]
   pointDisputes PointDispute[]
   invites       TenantInvite[]
+  shareLinks    TenantShareLink[]
   events        AgentEvent[]
 }
 
@@ -773,6 +776,43 @@ model TenantInvite {
 
   @@index([tenantId])
   @@index([email])
+}
+
+/// A shareable invite link for a tenant. Not tied to one email address.
+/// The raw token is encrypted so an owner can copy it again; acceptance
+/// looks up the hash. maxUses null means anyone can join until it expires
+/// or is revoked. A redemption is one person, so the same account cannot
+/// use a seat twice.
+model TenantShareLink {
+  id             String                  @id @default(cuid())
+  tenantId       String
+  tokenHash      String                  @unique
+  tokenEncrypted String
+  /// Optional note so an owner can tell links apart. Never shown to guests.
+  label          String?
+  expiresAt      DateTime
+  maxUses        Int?
+  useCount       Int                     @default(0)
+  revokedAt      DateTime?
+  invitedById    String
+  createdAt      DateTime                @default(now())
+  tenant         Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedBy      User                    @relation(fields: [invitedById], references: [id], onDelete: Cascade)
+  redemptions    TenantShareRedemption[]
+
+  @@index([tenantId, createdAt])
+}
+
+model TenantShareRedemption {
+  id        String          @id @default(cuid())
+  linkId    String
+  userId    String
+  createdAt DateTime        @default(now())
+  link      TenantShareLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([linkId, userId])
+  @@index([userId])
 }
 
 /// One create per agent per Idempotency-Key (#441).

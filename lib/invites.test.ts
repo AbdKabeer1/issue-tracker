@@ -21,6 +21,7 @@ import {
   inviteEmail,
   inviteState,
   maskEmail,
+  destinationForInviteInput,
   parseInviteLink,
   pendingInvites,
   revokeInvite,
@@ -222,10 +223,14 @@ describe("invite tokens (#444)", () => {
     const { raw } = generateInviteToken();
     expect(parseInviteLink(`https://ziki.dev/tenants/invite/${raw}`)).toBe(raw);
     expect(parseInviteLink(`  /tenants/invite/${raw}?utm=mail  `)).toBe(raw);
+    expect(parseInviteLink(`https://ziki.dev/join/${raw}`)).toBe(raw);
     expect(parseInviteLink(raw)).toBe(raw);
     expect(parseInviteLink("https://ziki.dev/tenants/acme")).toBeNull();
     expect(parseInviteLink("/tenants/invite/short")).toBeNull();
     expect(parseInviteLink("")).toBeNull();
+    expect(destinationForInviteInput(`https://ziki.dev/join/${raw}`)).toBe(`/join/${raw}`);
+    expect(destinationForInviteInput(`/tenants/invite/${raw}`)).toBe(`/tenants/invite/${raw}`);
+    expect(destinationForInviteInput(raw)).toBe(`/tenants/invite/${raw}`);
   });
 
   it("knows a pending, an accepted and an expired invite apart", () => {
