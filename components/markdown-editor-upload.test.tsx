@@ -15,10 +15,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** Renders a controlled editor and records every emitted value for limit assertions. */
 function renderEditor(initial: string, maxLength: number) {
   // Every value the editor ever handed back, so a silent over-limit step
   // cannot hide behind a later correction.
   const seen: string[] = [];
+  /** Keeps the editor value in React state as a parent form would. */
   function Harness() {
     const [value, setValue] = useState(initial);
     return (
@@ -38,6 +40,7 @@ function renderEditor(initial: string, maxLength: number) {
   return { seen, textarea };
 }
 
+/** Dispatches a synthetic PNG drop to exercise the editor's upload handler in jsdom. */
 function dropScreenshot(textarea: HTMLTextAreaElement) {
   const file = new File(["png-bytes"], "shot.png", { type: "image/png" });
   // jsdom has no DragEvent/DataTransfer; a plain event carrying the two
