@@ -725,6 +725,8 @@ model PointDispute {
   userId       String
   pointEntryId String?
   bugId        String
+  /// The award a "missing" dispute asked for. Empty when the dispute is about an existing entry.
+  requestedRole PointRole?
   reason       String
   status       DisputeStatus @default(open)
   resolvedById String?

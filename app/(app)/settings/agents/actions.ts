@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { isAgentLevel } from "@/lib/agents/levels";
 import { consumePairingLimit } from "@/lib/agents/rate-limit";
 import { approvePairing, findPendingPairing } from "@/lib/agents/pairing";
-import { createAgent, revokeAgent, setAgentLevel } from "@/lib/agents/registry";
+import { createAgent, revokeAgent, setAgentBurst, setAgentLevel } from "@/lib/agents/registry";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 
 /** The settings page's agent actions (#427). Every one acts as the signed-in person. */
@@ -43,6 +43,16 @@ export async function setAgentLevelAction(agentId: unknown, level: unknown): Pro
   if (typeof agentId !== "string" || !isAgentLevel(level)) return { ok: false, error: "Invalid level." };
   const user = await requireUser();
   const result = await setAgentLevel(user, agentId, level);
+  if (result.ok) revalidatePath("/settings/agents");
+  return result;
+}
+
+export async function setAgentBurstAction(agentId: unknown, burst: unknown): Promise<AgentActionResult> {
+  if (typeof agentId !== "string" || typeof burst !== "boolean") {
+    return { ok: false, error: "Invalid budget." };
+  }
+  const user = await requireUser();
+  const result = await setAgentBurst(user, agentId, burst);
   if (result.ok) revalidatePath("/settings/agents");
   return result;
 }

@@ -2,7 +2,7 @@
 
 import type { AgentLevel } from "@prisma/client";
 import { useState, useTransition } from "react";
-import { revokeAgentAction, setAgentLevelAction } from "./actions";
+import { revokeAgentAction, setAgentBurstAction, setAgentLevelAction } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -15,16 +15,23 @@ export function AgentControls({
   agentName,
   level,
   levels,
+  burst = false,
+  canSetBurst = false,
 }: {
   agentId: string;
   agentName: string;
   level: AgentLevel;
   /** The levels this person may set. */
   levels: AgentLevel[];
+  /** Whether this agent uses the higher hourly write budget. */
+  burst?: boolean;
+  /** Admins may raise the budget. */
+  canSetBurst?: boolean;
 }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [current, setCurrent] = useState(level);
+  const [burstOn, setBurstOn] = useState(burst);
   const [pending, startTransition] = useTransition();
 
   function changeLevel(next: AgentLevel) {
@@ -55,6 +62,25 @@ export function AgentControls({
     });
   }
 
+  function toggleBurst(next: boolean) {
+    const previous = burstOn;
+    setBurstOn(next);
+    startTransition(async () => {
+      const result = await setAgentBurstAction(agentId, next);
+      if (result.ok) {
+        toast(
+          next
+            ? `${agentName} can now make 400 writes an hour.`
+            : `${agentName} is back to 30 writes an hour.`,
+          "success",
+        );
+      } else {
+        setBurstOn(previous);
+        toast(result.error, "error");
+      }
+    });
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <label htmlFor={`level-${agentId}`} className="sr-only">
@@ -74,6 +100,19 @@ export function AgentControls({
           </option>
         ))}
       </Select>
+      {canSetBurst ? (
+        <label className="flex items-center gap-1.5 text-xs text-slate-600">
+          <input
+            type="checkbox"
+            checked={burstOn}
+            disabled={pending}
+            onChange={(event) => toggleBurst(event.target.checked)}
+          />
+          Higher write budget
+        </label>
+      ) : burstOn ? (
+        <span className="text-xs text-slate-500">Higher write budget</span>
+      ) : null}
       <Button type="button" variant="danger-secondary" onClick={revoke} disabled={pending}>
         Revoke
       </Button>

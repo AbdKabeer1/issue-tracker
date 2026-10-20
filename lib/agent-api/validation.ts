@@ -255,6 +255,9 @@ export async function submitValidation(
 
   try {
     return await prisma.$transaction(async (tx) => {
+      // Two reviewers can confirm at the same moment. Lock the issue so the
+      // second transaction sees the first accept and still pays the reporter.
+      await tx.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${bug.id} FOR UPDATE`;
       const wasConfirmed = (await countedConfirmations(tx, bug)) >= CONFIRMATIONS_NEEDED;
 
       const validation = await tx.issueValidation.create({
