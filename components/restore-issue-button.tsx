@@ -5,10 +5,16 @@ import { restoreBugAction } from "@/app/actions/issues";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
+import {
+  restoreSummary,
+  type TicketDeletionCounts,
+} from "@/lib/ticket-deletion";
 
 type RestoreBugButtonProps = {
   bugId: string;
   bugTitle: string;
+  /** Shown in the confirm text so it matches the page. */
+  counts?: TicketDeletionCounts;
   variant?: "primary" | "secondary" | "ghost";
   size?: "sm" | "md";
   label?: string;
@@ -18,6 +24,7 @@ type RestoreBugButtonProps = {
 export function RestoreIssueButton({
   bugId,
   bugTitle,
+  counts,
   variant = "primary",
   size = "md",
   label = "Restore issue",
@@ -43,7 +50,7 @@ export function RestoreIssueButton({
           event.stopPropagation();
           const confirmed = await confirm({
             title: `Restore "${bugTitle}"?`,
-            body: "The issue will become visible again to all users.",
+            body: restoreSummary(counts),
             confirmLabel: "Restore issue",
           });
           if (!confirmed) return;
