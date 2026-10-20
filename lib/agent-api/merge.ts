@@ -35,6 +35,7 @@ const mergeBugSelect = {
   id: true,
   tenantId: true,
   pullRequestUrl: true,
+  pullRequestHeadSha: true,
   severity: true,
   status: true,
   assigneeId: true,
@@ -128,11 +129,13 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
       // earlier PR, or with none, says nothing about this code.
       where: { bugId: bug.id, goodToMerge: true, pullRequestUrl: bug.pullRequestUrl ?? "" },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      select: { id: true, onBehalfOfUserId: true, agent: { select: { id: true, ownerUserId: true } } },
+      select: { id: true, headSha: true, onBehalfOfUserId: true, agent: { select: { id: true, ownerUserId: true } } },
     });
 
     const owners = new Set<string>();
     const reviewers: string[] = [];
+    // #489: the acceptance is bound to the code the reviewers signed off on.
+    let acceptedHeadSha: string | null = bug.pullRequestHeadSha ?? null;
     for (const verdict of verdicts) {
       // Checked again now, not only when submitted: a claim taken since, or a
       // verdict from the claim holder's own side, no longer counts.
@@ -143,6 +146,8 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
       if (owners.has(verdict.agent.ownerUserId)) continue;
       owners.add(verdict.agent.ownerUserId);
       reviewers.push(verdict.onBehalfOfUserId);
+      // The last counted verdict names the commit that may merge.
+      if (verdict.headSha) acceptedHeadSha = verdict.headSha;
     }
 
     if (reviewers.length < MERGE_VERDICTS_NEEDED) {
@@ -204,13 +209,27 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
       agent,
       "issue.accepted",
       `bug:${bug.id}`,
-      { solverUserId, rewardedReviewerUserIds },
+      // #489: record which pull request and head commit were accepted, so a
+      // different PR (or new commits) can't merge afterwards.
+      {
+        solverUserId,
+        rewardedReviewerUserIds,
+        pullRequestUrl: bug.pullRequestUrl,
+        headSha: acceptedHeadSha,
+      },
       { bugId: bug.id, db: tx },
     );
     await publish(tx, {
       tenantId: bug.tenantId,
       type: "issue.accepted",
-      payload: { issueId: bug.id, solverUserId, rewardedReviewerUserIds, status: "resolved" },
+      payload: {
+        issueId: bug.id,
+        solverUserId,
+        rewardedReviewerUserIds,
+        pullRequestUrl: bug.pullRequestUrl,
+        headSha: acceptedHeadSha,
+        status: "resolved",
+      },
       actorAgentId: agent.agentId,
       bugId: bug.id,
     });
