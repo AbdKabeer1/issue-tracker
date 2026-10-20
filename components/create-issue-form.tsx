@@ -105,6 +105,9 @@ export function CreateIssueForm({
     },
   );
   const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
+  const [editorUploading, setEditorUploading] = useState(false);
+  const [pickerUploading, setPickerUploading] = useState(false);
+  const isUploading = editorUploading || pickerUploading;
   const [error, setError] = useState<string | null>(null);
   // True when the request itself failed (network / server error), so the
   // person can simply retry; validation errors from the server aren't retryable.
@@ -120,6 +123,7 @@ export function CreateIssueForm({
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
+        if (pending || isUploading) return;
         setError(null);
         setCanRetry(false);
         errs.clear();
@@ -253,6 +257,7 @@ export function CreateIssueForm({
           placeholder="Steps to reproduce, expected vs actual, environment…"
           value={values.description}
           onChange={(val) => setValue("description", val)}
+          onUploadingChange={setEditorUploading}
           users={mentionUsers}
           {...errs.attrs("description")}
           footer={
@@ -295,7 +300,12 @@ export function CreateIssueForm({
           Optional. No GitHub account needed: attach a screenshot, console log
           or recording export straight to the report.
         </p>
-        <AttachmentPicker name="attachmentIdsPicker" onChange={setAttachmentIds} />
+        <AttachmentPicker
+          name="attachmentIdsPicker"
+          onChange={setAttachmentIds}
+          onUploadingChange={setPickerUploading}
+          disabled={pending}
+        />
       </fieldset>
       {isAdmin ? (
         <div className="grid gap-4 sm:grid-cols-2">
@@ -362,7 +372,7 @@ export function CreateIssueForm({
           {canRetry ? (
             <button
               type="button"
-              disabled={pending}
+              disabled={pending || isUploading}
               onClick={() => formRef.current?.requestSubmit()}
               className="text-sm font-medium text-teal-700 underline-offset-2 hover:underline disabled:opacity-50"
             >
@@ -371,8 +381,8 @@ export function CreateIssueForm({
           ) : null}
         </div>
       ) : null}
-      <Button type="submit" disabled={pending}>
-        {pending ? "Creating…" : "Create issue"}
+      <Button type="submit" disabled={pending || isUploading}>
+        {pending ? "Creating…" : isUploading ? "Uploading…" : "Create issue"}
       </Button>
     </form>
   );
