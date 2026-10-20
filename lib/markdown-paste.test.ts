@@ -13,8 +13,17 @@ describe("hasRichFormatting", () => {
 });
 
 describe("htmlToMarkdown", () => {
-  it.each(["&#x110000;", "&#1114112;", "&#xFFFFFFFFFF;", "&#999999999999999999999;"])(
-    "preserves an out-of-range numeric entity %s without throwing (#750)",
+  it.each([
+    "&#x110000;",
+    "&#1114112;",
+    "&#xFFFFFFFFFF;",
+    "&#999999999999999999999;",
+    "&#xD800;",
+    "&#xDFFF;",
+    "&#55296;",
+    "&#57343;",
+  ])(
+    "preserves an out-of-range numeric or surrogate entity %s without throwing (#750)",
     (entity) => {
       expect(htmlToMarkdown(`<b>${entity}</b>`)).toBe(`**${entity}**`);
       expect(pasteToMarkdown({ text: "Safe fallback", html: `<b>${entity}</b>` })).toBe(`**${entity}**`);

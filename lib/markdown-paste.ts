@@ -109,17 +109,22 @@ const ENTITIES: Record<string, string> = {
   ndash: "–",
 };
 
+function isValidCodePoint(code: number): boolean {
+  // Reject non-finite, out of range, and UTF-16 surrogate halves (0xD800 - 0xDFFF)
+  return Number.isFinite(code) && code >= 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff);
+}
+
 function decodeEntities(text: string): string {
   return text.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (match, entity: string) => {
     const key = entity.toLowerCase();
     if (ENTITIES[key]) return ENTITIES[key];
     if (key.startsWith("#x")) {
       const code = Number.parseInt(key.slice(2), 16);
-      return Number.isFinite(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
+      return isValidCodePoint(code) ? String.fromCodePoint(code) : match;
     }
     if (key.startsWith("#")) {
       const code = Number.parseInt(key.slice(1), 10);
-      return Number.isFinite(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
+      return isValidCodePoint(code) ? String.fromCodePoint(code) : match;
     }
     return match;
   });
