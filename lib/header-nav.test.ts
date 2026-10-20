@@ -31,6 +31,7 @@ describe("headerNavItems (#761)", () => {
       "Manage Project",
       "Escalations",
       "Redesigns",
+      "API Docs",
     ]);
     const manageProject = items.find((i) => i.label === "Manage Project");
     expect(manageProject?.children?.map((c) => c.label)).toEqual([
@@ -44,6 +45,7 @@ describe("headerNavItems (#761)", () => {
       "Issues",
       "Team",
       "Manage Project",
+      "API Docs",
     ]);
   });
 
@@ -54,6 +56,7 @@ describe("headerNavItems (#761)", () => {
       "Manage Project",
       "Escalations",
       "Redesigns",
+      "API Docs",
     ]);
   });
 
@@ -74,6 +77,7 @@ describe("headerNavItems (#761)", () => {
       "Manage Project",
       "Escalations",
       "Redesigns",
+      "API Docs",
     ]);
     const manageProject = items.find((i) => i.label === "Manage Project");
     expect(manageProject?.children?.map((c) => c.label)).toEqual([
@@ -101,6 +105,7 @@ describe("headerNavItems (#761)", () => {
       "Manage Project",
       "Escalations",
       "Redesigns",
+      "API Docs",
       "Admins",
     ]);
   });
