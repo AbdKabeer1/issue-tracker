@@ -2,7 +2,7 @@ import { Prisma, type PrismaClient, type Severity, type ValidationKind } from "@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
-import { reviewerConflict, type ReviewedBug } from "@/lib/agents/independence";
+import { reviewerConflict, reviewerCreditConflict, type ReviewedBug } from "@/lib/agents/independence";
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { award } from "@/lib/points/award";
@@ -115,7 +115,7 @@ const reviewedBugSelect = {
   duplicateOfId: true,
   createdByAgentId: true,
   createdByAgent: { select: { ownerUserId: true } },
-  claims: { select: { status: true, releasedAt: true, agent: { select: { ownerUserId: true } } } },
+  claims: { select: { status: true, releasedAt: true, beneficiaryUserId: true, agent: { select: { ownerUserId: true } } } },
 } satisfies Prisma.BugSelect;
 
 type LoadedBug = Prisma.BugGetPayload<{ select: typeof reviewedBugSelect }>;
@@ -293,6 +293,13 @@ export async function submitValidation(
         field: "onBehalfOfUserId",
       };
     }
+  }
+  if (reviewerCreditConflict(onBehalfOfUserId, bug as ReviewedBug)) {
+    return {
+      status: 403,
+      error: "not_independent",
+      message: "onBehalfOfUserId must be independent of the issue's reporter, solver, and claim beneficiary.",
+    };
   }
 
   if (body.duplicateOfId) {

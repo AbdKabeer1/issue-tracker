@@ -131,6 +131,25 @@ describe("submitTestVerdict: who may verdict (#434)", () => {
       error: "not_independent",
     });
   });
+
+  it("rejects verdicts credited to the reporter, assigned solver, or claim beneficiary (#495)", async () => {
+    for (const bug of [
+      bugRow({ reporterId: "reporter", beneficiaryUserId: "beneficiary" }),
+      bugRow({ reporterId: "reporter", beneficiaryUserId: "beneficiary", assigneeId: "solver" }),
+      bugRow({ reporterId: "reporter", beneficiaryUserId: "beneficiary", claims: [
+        { status: "active", releasedAt: null, agentId: "worker-agent", beneficiaryUserId: "claimant", agent: { ownerUserId: "worker" } },
+      ] }),
+    ]) {
+      db.bug.findFirst.mockResolvedValueOnce(bug);
+    }
+    for (const creditedUser of ["reporter", "solver", "claimant"]) {
+      expect(await submitTestVerdict(reviewer("r1", "rob"), "bug1", { ...good, onBehalfOfUserId: creditedUser })).toMatchObject({
+        status: 403,
+        error: "not_independent",
+      });
+    }
+    expect(state.verdicts).toHaveLength(0);
+  });
 });
 
 describe("submitTestVerdict: the body and record (#434)", () => {
