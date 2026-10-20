@@ -468,7 +468,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
               createdAt: true,
               deliverBy: true,
               extendedAt: true,
-              agent: { select: { name: true } },
+              waitingOnOwnerSince: true,
+              agent: { select: { name: true, owner: { select: { name: true } } } },
               beneficiary: { select: { name: true } },
             },
           }),
@@ -506,6 +507,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             personName: c.beneficiary.name,
             deliverBy: bug.pullRequestUrl ? null : c.deliverBy,
             extendedAt: c.extendedAt,
+            waitingOnName: c.waitingOnOwnerSince ? c.agent.owner.name : null,
           })),
           ...verdicts.map<AgentDecision>((v) => ({
             id: `verdict-${v.id}`,

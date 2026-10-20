@@ -7,13 +7,13 @@ const db = vi.hoisted(() => ({
   webhookSubscription: { findMany: vi.fn() }, webhookDelivery: { createMany: vi.fn() },
   project: { findFirst: vi.fn() }, category: { findMany: vi.fn(), findFirst: vi.fn() },
   projectArea: { findMany: vi.fn(), findFirst: vi.fn() },
-  bug: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+  bug: { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
   comment: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
   membership: { findUnique: vi.fn() }, issueWatch: { upsert: vi.fn() }, bugActivity: { create: vi.fn() },
   idempotencyKey: { findUnique: vi.fn(), deleteMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   issueType: { findUnique: vi.fn() }, user: { findMany: vi.fn() }, $queryRaw: vi.fn(), $transaction: vi.fn(),
   attachment: { updateMany: vi.fn() },
-  bugRevision: { findMany: vi.fn() },
+  bugRevision: { findMany: vi.fn(), findFirst: vi.fn() },
   issueValidation: { findMany: vi.fn() },
 }));
 const budget = vi.hoisted(() => vi.fn());
@@ -76,6 +76,7 @@ beforeEach(() => {
   db.issueValidation.findMany.mockResolvedValue([]);
   db.agentAuditEvent.findMany.mockResolvedValue([]);
   db.bug.findFirst.mockResolvedValue(issue);
+  db.bug.findUnique.mockResolvedValue(null);
   db.bug.create.mockResolvedValue({ id: issue.id });
   db.membership.findUnique.mockResolvedValue({ userId: "beneficiary-a" });
   db.idempotencyKey.findUnique.mockResolvedValue(null);
@@ -576,5 +577,114 @@ describe("agents attach files to issues and comments (#645)", () => {
       select: { id: true, filename: true, contentType: true, size: true, commentId: true, createdAt: true },
     });
     expect(select.attachments.select).not.toHaveProperty("data");
+  });
+});
+
+describe("issue read confirmation", () => {
+  function reviewedBug() {
+    return {
+      id: issue.id,
+      tenantId: "tenant-a",
+      projectId: "project-a",
+      title: issue.title,
+      status: "open",
+      assigneeId: null,
+      voteCount: 0,
+      severity: "medium",
+      reporterId: "ada",
+      beneficiaryUserId: "ada",
+      duplicateOfId: null,
+      createdByAgentId: null,
+      createdByAgent: null,
+      claims: [],
+    };
+  }
+
+  function accept(id: string, agentId: string, ownerUserId: string) {
+    return { id, agentId, agent: { id: agentId, ownerUserId } };
+  }
+
+  function validation(id: string, createdAt: string, extra: Record<string, unknown> = {}) {
+    return {
+      id,
+      kind: "real",
+      verdict: "accept",
+      severity: "high",
+      duplicateOfId: null,
+      agentId: "r1",
+      onBehalfOfUserId: "rob",
+      createdAt: new Date(createdAt),
+      ...extra,
+    };
+  }
+
+  beforeEach(() => {
+    db.bug.findUnique.mockResolvedValue(reviewedBug());
+    db.bugRevision.findFirst.mockResolvedValue(null);
+  });
+
+  async function readIssue() {
+    const response = await read(request(), context);
+    expect(response.status).toBe(200);
+    return (await response.json()).issue as { confirmed: boolean; validations: Array<{ id: string; createdAt: string }> };
+  }
+
+  it("returns validations newest-first and confirmed false with no accepts", async () => {
+    const older = validation("v-old", "2026-10-19T10:00:00Z", { kind: "format", severity: null });
+    const newer = validation("v-new", "2026-10-19T12:00:00Z");
+    db.bug.findFirst.mockResolvedValue({ ...issue, validations: [newer, older] });
+    db.issueValidation.findMany.mockResolvedValue([]);
+
+    const body = await readIssue();
+    expect(body.confirmed).toBe(false);
+    expect(body.validations.map((row) => row.id)).toEqual(["v-new", "v-old"]);
+    expect(body.validations[0]?.createdAt).toBe(newer.createdAt.toISOString());
+
+    const select = db.bug.findFirst.mock.calls.at(-1)?.[0]?.select;
+    expect(select.validations).toEqual({
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        kind: true,
+        verdict: true,
+        severity: true,
+        duplicateOfId: true,
+        agentId: true,
+        onBehalfOfUserId: true,
+        createdAt: true,
+      },
+    });
+  });
+
+  it("stays unconfirmed with a single accept", async () => {
+    db.issueValidation.findMany.mockResolvedValue([accept("v1", "r1", "rob")]);
+    expect((await readIssue()).confirmed).toBe(false);
+  });
+
+  it("is confirmed once two distinct owners have accepted", async () => {
+    db.issueValidation.findMany.mockResolvedValue([
+      accept("v1", "r1", "rob"),
+      accept("v2", "r2", "sam"),
+    ]);
+    expect((await readIssue()).confirmed).toBe(true);
+  });
+
+  it("does not confirm when both accepts belong to the same owner", async () => {
+    db.issueValidation.findMany.mockResolvedValue([
+      accept("v1", "r1", "rob"),
+      accept("v2", "r2", "rob"),
+    ]);
+    expect((await readIssue()).confirmed).toBe(false);
+  });
+
+  it("leaves the list response without validations or confirmed", async () => {
+    const response = await list(request());
+    expect(response.status).toBe(200);
+    const select = db.bug.findMany.mock.calls.at(-1)?.[0]?.select;
+    expect(select.validations).toBeUndefined();
+    expect(select).not.toHaveProperty("confirmed");
+    const body = await response.json();
+    expect(body.items[0]).not.toHaveProperty("confirmed");
+    expect(body.items[0]).not.toHaveProperty("validations");
   });
 });
