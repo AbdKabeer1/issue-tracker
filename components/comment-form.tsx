@@ -10,6 +10,7 @@ import {
 import { MentionText } from "@/components/comment-body";
 import { AttachmentPicker } from "@/components/attachment-picker";
 import { clearDraft, draftKey, readDraft, writeDraft } from "@/lib/comment-draft";
+import { useToast } from "@/components/ui/toast";
 import type { CommentType } from "@/lib/validations/issue";
 
 type UserOption = { id: string; name: string };
@@ -38,7 +39,10 @@ export function CommentForm({
   const [error, setError] = useState<string | null>(null);
   // Remounts the file picker after a successful post, clearing it (#215).
   const [pickerKey, setPickerKey] = useState(0);
+  const toast = useToast();
   const [commentType, setCommentType] = useState<CommentType>("comment");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [isSettling, setIsSettling] = useState(false);
   const [pending, startTransition] = useTransition();
   const isReply = Boolean(parentId);
   const key = draftKey(bugId, parentId);
@@ -67,6 +71,7 @@ export function CommentForm({
     (next: string) => {
       setBody(next);
       setRestored(false);
+      setStatusMessage("");
       writeDraft(localStorage, key, next);
     },
     [key],
@@ -77,30 +82,67 @@ export function CommentForm({
       ref={formRef}
       className="space-y-3"
       onSubmit={(event) => {
-        if (pending || isUploading) {
+        if (pending || isSettling || isUploading) {
           event.preventDefault();
         }
       }}
       action={(formData) => {
-        if (pending || isUploading) return;
+        if (pending || isSettling || isUploading) return;
         setError(null);
         setBodyInvalid(false);
+        setStatusMessage("");
+        setIsSettling(true);
         startTransition(async () => {
-          const result = await addCommentAction(bugId, formData);
-          if (result.error) {
-            setError(result.error);
-            // The only field is the body, so a field error is about it (#309).
-            if (result.field) {
-              setBodyInvalid(true);
-              document.getElementById(bodyId)?.focus();
+          try {
+            const result = await addCommentAction(bugId, formData);
+            if (result.error) {
+              setError(result.error);
+              // The only field is the body, so a field error is about it (#309).
+              if (result.field) {
+                setBodyInvalid(true);
+                document.getElementById(bodyId)?.focus();
+              }
+            } else {
+              setBody("");
+              setRestored(false);
+              clearDraft(localStorage, key);
+              formRef.current?.reset();
+              setPickerKey((k) => k + 1);
+              const message = isReply ? "Reply posted." : "Comment posted.";
+              setStatusMessage(message);
+              toast(message);
+
+              if (result.commentId && typeof window !== "undefined") {
+                const targetId = `comment-${result.commentId}`;
+                window.history.replaceState(null, "", `#${targetId}`);
+                const scrollToComment = (attempts = 0) => {
+                  const el = document.getElementById(targetId);
+                  if (el) {
+                    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                    const article = el.querySelector("article");
+                    if (article) {
+                      article.classList.add("ring-2", "ring-teal-500", "ring-offset-2");
+                      setTimeout(() => {
+                        article.classList.remove("ring-2", "ring-teal-500", "ring-offset-2");
+                      }, 2000);
+                    }
+                    const focusTarget =
+                      el.querySelector<HTMLElement>("a[href^='#comment-']") ?? el;
+                    if (!focusTarget.hasAttribute("tabindex") && focusTarget === el) {
+                      focusTarget.setAttribute("tabindex", "-1");
+                    }
+                    focusTarget.focus();
+                  } else if (attempts < 5) {
+                    setTimeout(() => scrollToComment(attempts + 1), 100);
+                  }
+                };
+                requestAnimationFrame(() => scrollToComment(0));
+              }
+
+              onSuccess?.();
             }
-          } else {
-            setBody("");
-            setRestored(false);
-            clearDraft(localStorage, key);
-            formRef.current?.reset();
-            setPickerKey((k) => k + 1);
-            onSuccess?.();
+          } finally {
+            setIsSettling(false);
           }
         });
       }}
@@ -187,9 +229,14 @@ export function CommentForm({
           </button>
         </p>
       ) : null}
+      {statusMessage ? (
+        <p role="status" aria-live="polite" className="text-xs text-emerald-700 font-medium">
+          {statusMessage}
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={pending || !body.trim() || isUploading}>
-          {pending
+        <Button type="submit" disabled={pending || isSettling || !body.trim() || isUploading}>
+          {pending || isSettling
             ? isReply
               ? "Replying…"
               : "Posting…"
@@ -203,7 +250,7 @@ export function CommentForm({
           <Button
             type="button"
             variant="ghost"
-            disabled={pending}
+            disabled={pending || isSettling}
             onClick={onCancel}
             // The draft stays saved: cancelling a reply is usually "not now",
             // and re-opening it restores what was typed.
