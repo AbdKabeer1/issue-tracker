@@ -32,6 +32,7 @@ const db = vi.hoisted(() => ({
   agentEvent: { create: vi.fn() },
   webhookSubscription: { findMany: vi.fn() },
   webhookDelivery: { createMany: vi.fn() },
+  projectWorkflow: { findUnique: vi.fn() },
   $queryRaw: vi.fn(),
   $transaction: vi.fn(),
 }));
@@ -44,6 +45,7 @@ vi.mock("@/lib/redesigns", () => ({
 }));
 
 import { isConfirmed, submitValidation } from "./validation";
+import { resetWorkflowCache } from "@/lib/workflow";
 
 /** An issue Ada filed herself, with no agent and no claim. */
 function bugRow(overrides: Record<string, unknown> = {}) {
@@ -75,6 +77,7 @@ const acceptReal = { kind: "real", verdict: "accept", severity: "high" };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetWorkflowCache();
   state.validations = [];
   state.agents = {};
   db.$transaction.mockImplementation((fn: (tx: unknown) => unknown) => fn(db));
@@ -93,6 +96,7 @@ beforeEach(() => {
   db.agentEvent.create.mockResolvedValue({ id: "evt1" });
   db.webhookSubscription.findMany.mockResolvedValue([]);
   db.webhookDelivery.createMany.mockResolvedValue({ count: 0 });
+  db.projectWorkflow.findUnique.mockResolvedValue(null);
   promotion.promoteEarnedReviewer.mockResolvedValue({ ok: true, changed: false, standing: 1 });
   db.bugRevision.findFirst.mockResolvedValue(null);
   db.issueValidation.findMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
@@ -130,6 +134,26 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe("submitValidation: project confirmation count (#595)", () => {
+  it("requires three independent accepts when the project asks for three", async () => {
+    db.projectWorkflow.findUnique.mockResolvedValue({ confirmationsNeeded: 3 });
+
+    expect(await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal)).toMatchObject({
+      status: 201,
+      confirmed: false,
+    });
+    expect(await submitValidation(reviewer("r2", "sam"), "bug1", acceptReal)).toMatchObject({
+      status: 201,
+      confirmed: false,
+    });
+    expect(await submitValidation(reviewer("r3", "kim"), "bug1", acceptReal)).toMatchObject({
+      status: 201,
+      confirmed: true,
+      newlyConfirmed: true,
+    });
+  });
 });
 
 describe("submitValidation: who may validate (#433)", () => {

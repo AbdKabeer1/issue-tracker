@@ -4,6 +4,7 @@ import type { AgentContext } from "@/lib/agents/require-agent";
 import { IssueApiError } from "@/lib/agent-api/issues";
 import { publish } from "@/lib/agent-api/events";
 import { deliveryWindowMinutes, extendDeadline, isDeliveryOverdue } from "@/lib/claim-deadline";
+import { workflowFor } from "@/lib/workflow";
 
 const id = z.string().trim().min(1).max(191);
 
@@ -45,11 +46,8 @@ export async function extendClaim(agent: AgentContext, projectId: string, bugId:
       throw new IssueApiError(409, "The delivery deadline has passed.");
     }
 
-    const project = await tx.project.findUnique({
-      where: { id: claim.bug.projectId },
-      select: { deliveryWindowMinutes: true },
-    });
-    const minutes = deliveryWindowMinutes(claim.bug.severity, project?.deliveryWindowMinutes);
+    const { deliveryMinutes } = await workflowFor(claim.bug.projectId, tx);
+    const minutes = deliveryWindowMinutes(claim.bug.severity, deliveryMinutes);
     const deliverBy = extendDeadline(claim.deliverBy, minutes);
 
     await tx.issueClaim.update({

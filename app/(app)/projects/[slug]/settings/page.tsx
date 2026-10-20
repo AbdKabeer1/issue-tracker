@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { ProjectSettingsForm } from "./settings-form";
 import { ProjectAreasManager } from "./areas-manager";
 import { ProjectApprovalRulesSection } from "./approval-rules";
+import { WorkflowSettingsForm } from "./workflow-settings-form";
+import { workflowValues } from "@/lib/workflow-config";
 
 export const metadata = { title: "Project settings" };
 
@@ -25,9 +27,13 @@ export default async function ProjectSettingsPage({
   const { slug } = await params;
   const project = await prisma.project.findFirst({
     where: { tenantId, slug },
-    select: { id: true, slug: true, name: true, goal: true, repoUrl: true, stagingUrl: true, githubInstallationId: true, rewardConfig: true },
+    select: {
+      id: true, slug: true, name: true, goal: true, repoUrl: true, stagingUrl: true,
+      githubInstallationId: true, rewardConfig: true, workflow: true,
+    },
   });
   if (!project) notFound();
+  const workflow = workflowValues(project.workflow);
   const areas = await prisma.projectArea.findMany({
     where: { projectId: project.id },
     orderBy: [{ name: "asc" }, { id: "asc" }],
@@ -71,6 +77,15 @@ export default async function ProjectSettingsPage({
             <Button type="submit">{project.githubInstallationId ? "Change installation" : "Connect GitHub App"}</Button>
           </form>
         </div>
+      </section>
+      <section className="space-y-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="workflow-heading">
+        <div>
+          <h2 id="workflow-heading" className="text-base font-semibold text-slate-900">Workflow</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            The gates agents work under in this project. Changes are audited.
+          </p>
+        </div>
+        <WorkflowSettingsForm slug={project.slug} workflow={workflow} />
       </section>
       <section className="space-y-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <ProjectApprovalRulesSection

@@ -7,6 +7,7 @@ const db = vi.hoisted(() => ({
   agentEvent: { create: vi.fn() },
   webhookSubscription: { findMany: vi.fn() },
   webhookDelivery: { createMany: vi.fn() },
+  projectWorkflow: { findUnique: vi.fn() },
   $transaction: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
@@ -23,6 +24,7 @@ import {
   sameRepo,
   type GitHubClient,
 } from "./merge-pr";
+import { resetWorkflowCache } from "@/lib/workflow";
 
 const agent = {
   agentId: "m1",
@@ -39,6 +41,7 @@ function bugRow(overrides: Record<string, unknown> = {}) {
     id: "bug1",
     title: "Fix the thing",
     tenantId: "t1",
+    projectId: "project-1",
     pullRequestUrl: "https://github.com/zedu/web/pull/7",
     assigneeId: "ada",
     project: { repoUrl: "https://github.com/zedu/web", githubInstallationId: "12345" },
@@ -80,6 +83,8 @@ beforeEach(() => {
   db.agentAuditEvent.create.mockResolvedValue({});
   db.agentEvent.create.mockResolvedValue({ id: "event-1" });
   db.webhookSubscription.findMany.mockResolvedValue([]);
+  db.projectWorkflow.findUnique.mockResolvedValue(null);
+  resetWorkflowCache();
 });
 
 describe("parseGitHubRepoUrl (#452)", () => {
@@ -240,6 +245,17 @@ describe("mergeAcceptedFix gates (#452)", () => {
     expect(notify.notifyMergeFailed).toHaveBeenCalledWith(
       expect.objectContaining({ recipientId: "ada", bugId: "bug1" }),
     );
+  });
+
+  it("skips GitHub when the project turned automatic merging off (#595)", async () => {
+    db.projectWorkflow.findUnique.mockResolvedValue({ autoMerge: false });
+    const client = fakeClient();
+
+    const result = await mergeAcceptedFix(agent, "bug1", { client });
+
+    expect(result).toMatchObject({ status: 409, reason: "auto_merge_disabled" });
+    expect(client.getPullRequest).not.toHaveBeenCalled();
+    expect(client.mergePullRequest).not.toHaveBeenCalled();
   });
 
   it("does not merge without permission to merge the repo", async () => {
