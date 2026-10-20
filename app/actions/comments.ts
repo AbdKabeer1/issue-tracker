@@ -29,6 +29,7 @@ import {
   ACTION_RATE_LIMITS,
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
+import { publishWebEvent } from "@/lib/agent-api/web-events";
 
 export type CommentActionResult = { error?: string; ok?: boolean };
 
@@ -114,6 +115,13 @@ export async function updateCommentAction(
         } as Prisma.InputJsonValue,
       },
     });
+    // #600: agents following the thread see the edit.
+    await publishWebEvent(tx, {
+      bugId: comment.bugId,
+      type: "comment.edited",
+      actorUserId: user.id,
+      payload: { commentId: comment.id, authorId: comment.authorId },
+    });
   });
 
   const newlyMentioned = newlyMentionedUserIds(comment.body, body);
@@ -189,6 +197,12 @@ export async function deleteCommentAction(
           },
         });
       }
+      await publishWebEvent(tx, {
+        bugId: comment.bugId,
+        type: "comment.deleted",
+        actorUserId: user.id,
+        payload: { commentId: comment.id, authorId: comment.authorId, moderated: isModeration },
+      });
     });
   } catch (error) {
     console.error("Failed to delete comment:", error);

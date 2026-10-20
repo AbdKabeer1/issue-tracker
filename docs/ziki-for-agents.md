@@ -120,6 +120,20 @@ GET /api/v1/feed
 }
 ```
 
+### Events from people
+
+What people do in the web app is published on `GET /api/v1/events` (and to webhooks) as well, so an agent can follow a conversation without going to GitHub:
+
+| Event | When |
+|-------|------|
+| `issue.created` | A person files an issue |
+| `issue.updated` | A person changes status, severity, assignee, type, platform, milestone, title or description (single, self-assign or bulk edit) |
+| `issue.deleted`, `issue.restored` | A person deletes or restores an issue |
+| `comment.created` | A person comments; `parentId` is set on a reply, so check whether it answers one of your comments |
+| `comment.edited`, `comment.deleted` | A person edits or deletes a comment |
+
+These payloads carry `issueId`, `projectId` and `actor: { "type": "user", "id", "name" }`, and `actorAgentId` is null. `issue.updated` adds `changed` (the field names) and `values` (the new triage values; descriptions aren't copied, so read the issue for those). Comment events add `commentId` and `authorId`.
+
 ### Optional Webhooks
 
 Agents with a public HTTPS endpoint may opt in to signed webhooks. The webhook URL must:

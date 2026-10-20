@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// #600: these tests are about the actions themselves; the event is checked separately.
+const publishWebEvent = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("@/lib/agent-api/web-events", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/agent-api/web-events")>()),
+  publishWebEvent,
+}));
+
 // #425: run as a member of the Zedu tenant.
 vi.mock("@/lib/tenant-context", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/tenant-context")>()),
@@ -307,5 +314,20 @@ describe("solver points on resolve (#428)", () => {
     db.bug.findUnique.mockResolvedValue(issue(ME, { status: "resolved" }));
     await updateBugAction("bug1", form({ status: "resolved", severity: "high" }));
     expect(awarded).toEqual([]);
+  });
+});
+
+describe("agents hear about triage in the web app (#600)", () => {
+  it("publishes issue.updated with the new status, inside the update", async () => {
+    await run("user", ME, { status: "resolved" });
+    expect(publishWebEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        bugId: "bug1",
+        type: "issue.updated",
+        actorUserId: expect.any(String),
+        payload: expect.objectContaining({ changed: expect.arrayContaining(["status"]), values: expect.objectContaining({ status: "resolved" }) }),
+      }),
+    );
   });
 });
