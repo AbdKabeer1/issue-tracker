@@ -258,5 +258,45 @@ describe("CreateBugForm optimistic submission", () => {
       global.fetch = originalFetch;
     }
   });
+
+  it("supports simplified human report intake mode without technical fields (#764)", async () => {
+    mockedCreateBug.mockImplementationOnce((formData) => {
+      capturedFormData = formData;
+      return Promise.resolve({ ok: true });
+    });
+
+    renderForm();
+
+    // Technical fields are visible in detailed mode
+    expect(screen.getByLabelText("Platform")).toBeDefined();
+    expect(screen.getByLabelText("Type")).toBeDefined();
+    expect(screen.getByLabelText("Proof links (GitHub)")).toBeDefined();
+
+    // Switch to Quick report mode
+    await user.click(screen.getByRole("button", { name: "Quick report" }));
+
+    // Technical fields should now be omitted from view
+    expect(screen.queryByLabelText("Platform")).toBeNull();
+    expect(screen.queryByLabelText("Type")).toBeNull();
+    expect(screen.queryByLabelText("Proof links (GitHub)")).toBeNull();
+
+    // Describe the issue in plain words
+    await user.clear(descriptionTextarea());
+    await user.type(
+      descriptionTextarea(),
+      "When clicking on profile settings on mobile, the screen flashes white and logs out.",
+    );
+
+    await user.click(submitButton());
+    await waitFor(() => expect(mockedCreateBug).toHaveBeenCalledTimes(1));
+
+    expect(capturedFormData?.get("isReport")).toBe("true");
+    expect(capturedFormData?.get("description")).toBe(
+      "When clicking on profile settings on mobile, the screen flashes white and logs out.",
+    );
+    expect(capturedFormData?.get("typeId")).toBeFalsy();
+    expect(capturedFormData?.get("categoryId")).toBeFalsy();
+    expect(capturedFormData?.get("proofLinks")).toBeFalsy();
+  });
 });
 

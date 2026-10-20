@@ -80,4 +80,34 @@ describe("VoteButton interactive optimistic updates (#219)", () => {
       expect(screen.getByText("You cannot vote on your own issue.")).toBeInTheDocument();
     });
   });
+
+  it("displays upvote readiness gate progress and unlocks at 3 upvotes (#764)", async () => {
+    mockToggle.mockResolvedValueOnce({
+      voteCount: 3,
+      likeCount: 3,
+      dislikeCount: 0,
+      userVote: 1,
+    });
+
+    const user = userEvent.setup();
+    render(
+      <VoteButton
+        bugId="bug-1"
+        voteCount={2}
+        likeCount={2}
+        dislikeCount={0}
+        userVote={0}
+        size="md"
+      />
+    );
+
+    const indicator = screen.getByTestId("readiness-gate-indicator");
+    expect(indicator).toHaveTextContent("Upvote (2/3 votes to unlock work)");
+
+    const likeButton = screen.getByRole("button", { name: /^like, 2 likes/i });
+    await user.click(likeButton);
+
+    // Optimistically updates to 3 votes and unlocks work
+    expect(indicator).toHaveTextContent("Work unlocked (3/3 votes)");
+  });
 });
