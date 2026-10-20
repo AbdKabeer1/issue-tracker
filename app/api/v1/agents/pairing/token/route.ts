@@ -13,7 +13,7 @@ const NO_STORE = { "Cache-Control": "no-store" };
  * answer is `authorization_pending`; after, the key comes back exactly once.
  */
 export async function POST(req: NextRequest) {
-  const retryAfter = await consumePairingLimit("collect", clientRateLimitKey(req.headers));
+  const retryAfter = await consumePairingLimit("collect", clientRateLimitKey(req));
   if (retryAfter) {
     return NextResponse.json(
       { error: "slow_down", message: RATE_LIMIT_MESSAGE },

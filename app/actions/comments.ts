@@ -142,6 +142,7 @@ export async function updateCommentAction(
       bugId: comment.bugId,
       bugTitle: comment.bug.title,
       place: "comment",
+      commentId: comment.id,
       recipientIds: newlyMentioned,
       excerpt: commentPreview(body),
     });

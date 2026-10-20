@@ -11,6 +11,8 @@
  * internals (database host, file paths) and could show one user's error to
  * another (#118).
  */
+import { logger, sanitizeString } from "./logger";
+
 export function describeAuthError(error: unknown): { type?: string; detail: string } {
   const err = error as {
     name?: string;
@@ -31,9 +33,9 @@ export function describeAuthError(error: unknown): { type?: string; detail: stri
 
 export function recordAuthError(error: unknown) {
   const { type, detail } = describeAuthError(error);
-  console.error("[auth:diagnostic] Captured auth error:", {
+  logger.error("[auth:diagnostic] Captured auth error:", {
     type,
-    detail,
+    detail: sanitizeString(detail),
     timestamp: new Date().toISOString(),
   });
 }

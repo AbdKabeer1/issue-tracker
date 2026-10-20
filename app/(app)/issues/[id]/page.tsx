@@ -60,11 +60,10 @@ import { dueDateValue } from "@/lib/milestones";
 import { canEditTicket } from "@/lib/ticket-editing";
 import { DeleteIssueButton } from "@/components/delete-issue-button";
 import { RestoreIssueButton } from "@/components/restore-issue-button";
-import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { canAssignTicket } from "@/lib/ticket-assignment";
 import { SelfAssignButton } from "@/components/self-assign-button";
-import { CopyLinkButton } from "@/components/copy-link-button";
 import { EditableIssueDescription } from "@/components/editable-issue-description";
+import { EditableProofLinks } from "@/components/editable-proof-links";
 import { withCurrentOption } from "@/lib/triage-options";
 import { issueTenantHintFor } from "@/lib/issue-tenant-hint";
 import { IssueTenantSwitch } from "@/components/issue-tenant-hint";
@@ -353,7 +352,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   );
   const canAwardBid = bug.status === "open" && !bug.isDeleted && (bug.reporterId === user.id || canChooseRedesign);
 
-  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions, escalations] =
+  const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions, escalations, volunteerCount] =
     await Promise.all([
       canTriage
         ? loadOptional("users", [], () =>
@@ -438,6 +437,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             select: {
               id: true,
               createdAt: true,
+              deliverBy: true,
+              extendedAt: true,
               agent: { select: { name: true } },
               beneficiary: { select: { name: true } },
             },
@@ -474,6 +475,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             kind: "claimed",
             agentName: c.agent.name,
             personName: c.beneficiary.name,
+            deliverBy: bug.pullRequestUrl ? null : c.deliverBy,
+            extendedAt: c.extendedAt,
           })),
           ...verdicts.map<AgentDecision>((v) => ({
             id: `verdict-${v.id}`,
@@ -493,6 +496,11 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       }),
       loadOptional<TicketEscalation[]>("escalations", [], () =>
         tenantId ? listBugEscalations(id, tenantId) : Promise.resolve([]),
+      ),
+      loadOptional<number>("volunteers", 0, () =>
+        prisma.issueInterest.count({
+          where: { bugId: id, withdrawnAt: null },
+        }),
       ),
     ]);
   const issueAttachments: AttachmentView[] = attachments.filter((a) => !a.commentId);
@@ -694,6 +702,11 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
                   {bug.voteCount} score ({voterSummary.likes.count} like{voterSummary.likes.count === 1 ? "" : "s"}, {voterSummary.dislikes.count} dislike{voterSummary.dislikes.count === 1 ? "" : "s"})
                 </span>
+                {volunteerCount > 0 ? (
+                  <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 border border-indigo-200">
+                    {volunteerCount} {volunteerCount === 1 ? "agent volunteered" : "agents volunteered"}
+                  </span>
+                ) : null}
               </div>
             </div>
 
@@ -716,9 +729,6 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6 print:hidden">
-          {/* The canonical URL from the configured site, not the browser's
-              current one, which may carry a query string or a #comment. */}
-          <CopyLinkButton url={absoluteUrl(`/issues/${bug.id}`)} label="issue" />
           {!bug.isDeleted ? (
             <WatchButton
               bugId={bug.id}
@@ -728,13 +738,6 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           {canTriage && !bug.isDeleted && !bug.duplicateOf ? (
             <MarkDuplicateButton bugId={bug.id} />
           ) : null}
-          {canTriage && !bug.isDeleted ? (
-            <BoostTicketButton
-              bugId={bug.id}
-              isBoosted={bug.isBoosted}
-              size="sm"
-            />
-          ) : null}
           {!bug.isDeleted && userId && (bug.reporterId === userId || bug.assigneeId === userId) ? (
             <Link
               href={`/points/disputes/new?bug=${bug.number}`}
@@ -743,22 +746,6 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             >
               Dispute award
             </Link>
-          ) : null}
-          {canDelete ? (
-            bug.isDeleted ? (
-              <RestoreIssueButton
-                bugId={bug.id}
-                bugTitle={bug.title}
-                size="sm"
-              />
-            ) : (
-              <DeleteIssueButton
-                bugId={bug.id}
-                bugTitle={bug.title}
-                variant="danger-secondary"
-                size="sm"
-              />
-            )
           ) : null}
         </div>
       </div>
@@ -862,43 +849,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         </section>
       ) : null}
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Proof links
-        </h2>
-        {proofLinks.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500">
-            No proof links attached to this report.
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-2">
-            {proofLinks.map((url, index) => (
-              <li key={`${index}-${url}`}>
-                <a
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 break-all text-sm font-medium text-teal-700 hover:underline"
-                >
-                  <svg
-                    className="h-4 w-4 shrink-0 text-slate-600"
-                    fill="currentColor"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      clipRule="evenodd"
-                      d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
-                    />
-                  </svg>
-                  <span>{url}</span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <EditableProofLinks bugId={bug.id} initialLinks={proofLinks} canEdit={canEdit} />
 
       {canUpdateStatus && !bug.isDeleted ? (
         <UpdateIssueForm
@@ -941,11 +892,12 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       <IssueAgentActivity decisions={agentDecisions} />
 
       <section
-        id="comments"
+        id="conversation"
         className="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-4 sm:p-6"
       >
+        <span id="comments" className="sr-only" aria-hidden="true" />
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Comments ({comments.visibleCount})
+          Conversation ({comments.visibleCount})
         </h2>
         {comments.hiddenThreads > 0 ? (
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600 print:hidden">

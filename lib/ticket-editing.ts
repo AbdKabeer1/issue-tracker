@@ -50,6 +50,31 @@ export function getChangedEditFields(
   return fields;
 }
 
+export type ProofLinkChanges = {
+  added: string[];
+  removed: string[];
+};
+
+/** The proof links an edit adds and removes (#737). Order is ignored. */
+export function getProofLinkChanges(existing: string[], updated: string[]): ProofLinkChanges {
+  const before = new Set(existing);
+  const after = new Set(updated);
+  return {
+    added: updated.filter((url) => !before.has(url)),
+    removed: existing.filter((url) => !after.has(url)),
+  };
+}
+
+/** e.g. "added 2 proof links", "removed a proof link", "added a proof link and removed a proof link". */
+export function formatProofLinkSummary({ added, removed }: ProofLinkChanges): string {
+  const count = (n: number) => (n === 1 ? "a proof link" : `${n} proof links`);
+  const parts: string[] = [];
+  if (added.length > 0) parts.push(`added ${count(added.length)}`);
+  if (removed.length > 0) parts.push(`removed ${count(removed.length)}`);
+  if (parts.length === 0) return "edited the proof links";
+  return parts.join(" and ");
+}
+
 /**
  * Returns formatted human-readable summary for activity log.
  * e.g. "edited the title and description", "edited the title", "edited the description"

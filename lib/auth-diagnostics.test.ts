@@ -28,4 +28,15 @@ describe("recordAuthError", () => {
     expect(log).toHaveBeenCalledOnce();
     expect(Object.keys(diagnostics).sort()).toEqual(["describeAuthError", "recordAuthError"]);
   });
+
+  it("redacts sensitive data in error message", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    recordAuthError(new Error("failed postgresql://user:supersecretpass@db:5432/main"));
+    expect(log).toHaveBeenCalledWith(
+      "[auth:diagnostic] Captured auth error:",
+      expect.objectContaining({
+        detail: "failed postgresql://user:[REDACTED]@db:5432/main",
+      }),
+    );
+  });
 });
