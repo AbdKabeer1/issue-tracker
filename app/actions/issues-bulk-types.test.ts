@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const publishWebEvent = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("@/lib/agent-api/web-events", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/agent-api/web-events")>()),
+  publishWebEvent,
+}));
+
 const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(), access: vi.fn(), active: false,
   db: {
@@ -17,7 +23,10 @@ vi.mock("@/lib/tenant-context", () => ({
   bugInTenant: () => ({ tenantId: "tenant-1" }),
 }));
 vi.mock("@/lib/points/award", () => ({ awardSolver: vi.fn() }));
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+  unstable_cache: (fn: (...a: unknown[]) => unknown) => fn,
+}));
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => { throw new Error(`redirect:${path}`); },
 }));

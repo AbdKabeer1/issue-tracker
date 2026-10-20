@@ -10,6 +10,7 @@ import {
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { publish } from "@/lib/agent-api/events";
+import { handleTestVerdictSubmitted } from "@/lib/agent-api/review-offer";
 
 /**
  * Reviewer agents reporting whether a fix is good to merge (#434). A verdict
@@ -85,7 +86,7 @@ export type SubmitTestVerdictResult =
   | { status: 400; error: "invalid_request"; message: string; field?: string }
   | { status: 403; error: "insufficient_level" | "fixer_cannot_verdict" | "not_independent"; message: string }
   | { status: 404; error: "not_found"; message: string }
-  | { status: 409; error: "no_pull_request" | "already_accepted"; message: string };
+  | { status: 409; error: "no_pull_request" | "already_accepted" | "already_verdicted"; message: string };
 
 export async function submitTestVerdict(
   agent: AgentContext,
@@ -175,83 +176,99 @@ export async function submitTestVerdict(
     changedAt: true,
   } as const;
 
-  return prisma.$transaction(async (tx) => {
-    const existing = await tx.testVerdict.findFirst({
-      where: { bugId: bug.id, agentId: agent.agentId },
-      orderBy: { createdAt: "asc" },
-      select: verdictSelect,
-    });
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.testVerdict.findFirst({
+        where: { bugId: bug.id, agentId: agent.agentId },
+        orderBy: { createdAt: "asc" },
+        select: verdictSelect,
+      });
 
-    if (existing) {
-      // #529: replace this agent's verdict. The audit row keeps the old one.
-      const verdict = await tx.testVerdict.update({
-        where: { id: existing.id },
+      if (existing) {
+        // #529: replace this agent's verdict. The audit row keeps the old one.
+        const verdict = await tx.testVerdict.update({
+          where: { id: existing.id },
+          data: {
+            goodToMerge: body.goodToMerge,
+            notes: body.notes || null,
+            onBehalfOfUserId,
+            pullRequestUrl,
+            changedAt: new Date(),
+          },
+          select: verdictSelect,
+        });
+        await audit(
+          agent,
+          "issue.test_verdict_changed",
+          `bug:${bug.id}`,
+          {
+            verdictId: verdict.id,
+            from: { goodToMerge: existing.goodToMerge, pullRequestUrl: existing.pullRequestUrl },
+            to: { goodToMerge: body.goodToMerge, pullRequestUrl },
+            onBehalfOfUserId,
+          },
+          { bugId: bug.id, db: tx },
+        );
+        await publish(tx, {
+          tenantId: bug.tenantId,
+          type: "issue.test_verdict",
+          payload: {
+            issueId: bug.id,
+            verdictId: verdict.id,
+            goodToMerge: body.goodToMerge,
+            onBehalfOfUserId,
+            pullRequestUrl,
+            changed: true,
+            previousGoodToMerge: existing.goodToMerge,
+          },
+          actorAgentId: agent.agentId,
+          bugId: bug.id,
+        });
+        await handleTestVerdictSubmitted(tx, { bugId: bug.id, agentId: agent.agentId, tenantId: bug.tenantId, pullRequestUrl }).catch(() => null);
+        return { status: 200 as const, verdict, changed: true as const };
+      }
+
+      const verdict = await tx.testVerdict.create({
         data: {
+          bugId: bug.id,
+          agentId: agent.agentId,
+          onBehalfOfUserId,
           goodToMerge: body.goodToMerge,
           notes: body.notes || null,
-          onBehalfOfUserId,
           pullRequestUrl,
-          changedAt: new Date(),
         },
         select: verdictSelect,
       });
+
       await audit(
         agent,
-        "issue.test_verdict_changed",
+        "issue.test_verdict",
         `bug:${bug.id}`,
-        {
-          verdictId: verdict.id,
-          from: { goodToMerge: existing.goodToMerge, pullRequestUrl: existing.pullRequestUrl },
-          to: { goodToMerge: body.goodToMerge, pullRequestUrl },
-          onBehalfOfUserId,
-        },
+        { verdictId: verdict.id, goodToMerge: body.goodToMerge, onBehalfOfUserId, pullRequestUrl },
         { bugId: bug.id, db: tx },
       );
       await publish(tx, {
         tenantId: bug.tenantId,
         type: "issue.test_verdict",
-        payload: {
-          issueId: bug.id,
-          verdictId: verdict.id,
-          goodToMerge: body.goodToMerge,
-          onBehalfOfUserId,
-          pullRequestUrl,
-          changed: true,
-          previousGoodToMerge: existing.goodToMerge,
-        },
+        payload: { issueId: bug.id, verdictId: verdict.id, goodToMerge: body.goodToMerge, onBehalfOfUserId, pullRequestUrl },
         actorAgentId: agent.agentId,
         bugId: bug.id,
       });
-      return { status: 200 as const, verdict, changed: true as const };
+
+      await handleTestVerdictSubmitted(tx, { bugId: bug.id, agentId: agent.agentId, tenantId: bug.tenantId, pullRequestUrl }).catch(() => null);
+      return { status: 201 as const, verdict };
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return {
+        status: 409 as const,
+        error: "already_verdicted" as const,
+        message: "This agent has already reported a verdict on this issue.",
+      };
     }
-
-    const verdict = await tx.testVerdict.create({
-      data: {
-        bugId: bug.id,
-        agentId: agent.agentId,
-        onBehalfOfUserId,
-        goodToMerge: body.goodToMerge,
-        notes: body.notes || null,
-        pullRequestUrl,
-      },
-      select: verdictSelect,
-    });
-
-    await audit(
-      agent,
-      "issue.test_verdict",
-      `bug:${bug.id}`,
-      { verdictId: verdict.id, goodToMerge: body.goodToMerge, onBehalfOfUserId, pullRequestUrl },
-      { bugId: bug.id, db: tx },
-    );
-    await publish(tx, {
-      tenantId: bug.tenantId,
-      type: "issue.test_verdict",
-      payload: { issueId: bug.id, verdictId: verdict.id, goodToMerge: body.goodToMerge, onBehalfOfUserId, pullRequestUrl },
-      actorAgentId: agent.agentId,
-      bugId: bug.id,
-    });
-
-    return { status: 201 as const, verdict };
-  });
+    throw error;
+  }
 }

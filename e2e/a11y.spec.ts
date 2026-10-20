@@ -42,6 +42,16 @@ test.describe("accessibility", () => {
       await page.goto("/settings");
       await expectNoA11yViolations(page);
     });
+
+    test("the agent settings page", async ({ page }) => {
+      await page.goto("/settings/agents");
+      await expectNoA11yViolations(page);
+    });
+
+    test("the pairing approval page", async ({ page }) => {
+      await page.goto("/settings/agents/pair");
+      await expectNoA11yViolations(page);
+    });
   });
 
   test.describe("as an admin", () => {

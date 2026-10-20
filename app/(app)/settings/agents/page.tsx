@@ -123,6 +123,12 @@ export default async function AgentsSettingsPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <h1 className="text-2xl font-semibold text-slate-900">Agents</h1>
           <Link
+            href="/settings/agents/connect"
+            className="inline-flex items-center gap-1 text-sm font-medium text-teal-700 hover:text-teal-900 hover:underline"
+          >
+            Connect your agent &rarr;
+          </Link>
+          <Link
             href="/settings/audit"
             className="inline-flex items-center gap-1 text-sm font-medium text-teal-700 hover:text-teal-900 hover:underline"
           >
@@ -181,7 +187,7 @@ export default async function AgentsSettingsPage() {
             </h2>
             <p className="mt-2 text-sm text-slate-600">
               Optional. Register an extra agent here, or approve one that asked to join at{" "}
-              <Link href="/settings/agents/pair" className="text-teal-700 hover:underline">
+              <Link href="/settings/agents/pair" className="text-teal-700 underline">
                 the approval page
               </Link>
               .

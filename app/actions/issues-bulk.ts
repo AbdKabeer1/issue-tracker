@@ -17,7 +17,11 @@ import {
 import { validateBulk } from "@/lib/bulk-actions";
 import { awardSolver } from "@/lib/points/award";
 import { solverAwardForBulkChange } from "@/lib/points/bulk-award";
+import { ensureWatching } from "@/lib/watch";
+import { notifyLater } from "@/lib/notify";
+import type { NotificationEvent } from "@/lib/notifications";
 import type { Severity, Status } from "@prisma/client";
+import { issueChangePayload, publishWebEvent } from "@/lib/agent-api/web-events";
 
 export type BulkResult = {
   error?: string;
@@ -85,6 +89,8 @@ export async function bulkUpdateBugsAction(
     select: {
       id: true,
       tenantId: true,
+      title: true,
+      reporterId: true,
       isDeleted: true,
       status: true,
       severity: true,
@@ -170,8 +176,15 @@ export async function bulkUpdateBugsAction(
       // A bulk status change used to skip the award the single-issue edit writes.
       for (const bug of changing) {
         if (!changedIds.includes(bug.id)) continue;
+        if (change.assigneeId && change.assigneeId !== bug.assigneeId) {
+          await ensureWatching(tx, bug.id, [change.assigneeId]);
+        }
         const target = solverAwardForBulkChange(bug, change);
         if (target) await awardSolver(tx, target);
+      }
+      // #600: one issue.updated per changed issue, as a single edit would publish.
+      for (const id of changedIds) {
+        await publishWebEvent(tx, { bugId: id, type: "issue.updated", actorUserId: user.id, payload: issueChangePayload(change) });
       }
     });
   } catch (error) {
@@ -187,6 +200,18 @@ export async function bulkUpdateBugsAction(
     // rather than leaving the caller to guess what landed.
     return { error: "Could not apply the change. Nothing was modified." };
   }
+
+  const events: NotificationEvent[] = [];
+  for (const bug of changing) {
+    const actor = { actorId: user.id, actorName: user.name ?? "Someone", bugId: bug.id, bugTitle: bug.title };
+    if (change.assigneeId !== undefined && change.assigneeId !== bug.assigneeId) {
+      events.push({ ...actor, kind: "assignee_changed", fromUserId: bug.assigneeId, toUserId: change.assigneeId });
+    }
+    if (change.status && change.status !== bug.status) {
+      events.push({ ...actor, kind: "status_changed", reporterId: bug.reporterId, from: bug.status, to: change.status as Status });
+    }
+  }
+  if (events.length > 0) notifyLater(...events);
 
   revalidatePath("/issues");
   revalidatePath("/bugs");

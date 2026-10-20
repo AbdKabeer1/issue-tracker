@@ -39,7 +39,7 @@ export const metadata: Metadata = {
 };
 
 /**
- * #277: the signed-in user's choice (so it follows them across devices),
+ * #277, #659: the signed-in user's choice (so it follows them across devices),
  * else this device's last choice, else the device's own setting. Rendered
  * on <html> by the server, so the first paint is already right.
  */
@@ -63,7 +63,14 @@ export default async function RootLayout({
 }>) {
   const theme = await currentTheme();
   return (
-    <html lang="en" data-theme={themeAttribute(theme)}>
+    <html lang="en" data-theme={themeAttribute(theme)} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("theme");if(t&&!document.documentElement.hasAttribute("data-theme")){if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen antialiased`}
       >

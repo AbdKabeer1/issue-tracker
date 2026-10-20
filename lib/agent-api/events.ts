@@ -15,7 +15,18 @@ import { z } from "zod";
  */
 
 export const EVENT_MAX_WAIT_SECONDS = 25;
-export const EVENT_POLL_INTERVAL_MS = 500; // check DB every 500 ms during long poll
+export const EVENT_POLL_INTERVAL_MS = 500; // first check; later ones back off (#545)
+export const EVENT_MAX_POLL_INTERVAL_MS = 4_000;
+
+/**
+ * Delay before the next long-poll query (#545). Starts at 500 ms so a waiter
+ * still learns about a new event quickly, then doubles up to 4 s: a client
+ * waiting the full 25 s makes ~8 queries instead of 50.
+ */
+export function nextPollDelayMs(attempt: number, maxMs = EVENT_MAX_POLL_INTERVAL_MS): number {
+  if (!Number.isFinite(attempt) || attempt < 0) return EVENT_POLL_INTERVAL_MS;
+  return Math.min(maxMs, EVENT_POLL_INTERVAL_MS * 2 ** Math.min(Math.floor(attempt), 10));
+}
 
 // ---------------------------------------------------------------------------
 // Publish
@@ -31,6 +42,8 @@ export const AGENT_EVENT_TYPES = [
   "claim.offered",
   "claim.released",
   "comment.created",
+  "comment.deleted",
+  "comment.edited",
   "github.merge_failed",
   "issue.accepted",
   "issue.bid",
@@ -38,12 +51,17 @@ export const AGENT_EVENT_TYPES = [
   "issue.bid_withdrawn",
   "issue.confirmed",
   "issue.created",
+  "issue.deleted",
+  "issue.restored",
   "issue.structured",
   "issue.test_verdict",
+  "issue.updated",
   "issue.validated",
   "question.answered",
   "question.asked",
   "redesign.proposed",
+  "review.completed",
+  "review.requested",
 ] as const;
 
 export type AgentEventType = (typeof AGENT_EVENT_TYPES)[number];
@@ -79,7 +97,9 @@ export async function publish(
   });
   const subscriptions = await db.webhookSubscription.findMany({
     where: { enabled: true, agent: { tenantId: params.tenantId, revokedAt: null,
-      owner: { memberships: { some: { tenantId: params.tenantId } } } } },
+      owner: { memberships: { some: { tenantId: params.tenantId } } } },
+      // Empty filter = every event; otherwise only the subscribed types (#512).
+      OR: [{ events: { isEmpty: true } }, { events: { has: params.type } }] },
     select: { id: true },
   });
   if (subscriptions.length) await db.webhookDelivery.createMany({
@@ -214,12 +234,15 @@ export async function pollEvents(
   const wait = Number.isFinite(waitSeconds) ? Math.max(0, Math.min(waitSeconds, EVENT_MAX_WAIT_SECONDS)) : 0;
   const deadline = Date.now() + wait * 1000;
 
-  for (;;) {
+  for (let attempt = 0; ; attempt += 1) {
     const rows = await listEvents(agent, cursor);
     if (rows.length > 0 || Date.now() >= deadline) return rows;
     // Sleep for one interval, but don't overshoot the deadline.
     const remaining = deadline - Date.now();
     if (remaining <= 0) return rows;
-    await new Promise((resolve) => setTimeout(resolve, Math.min(pollIntervalMs, remaining)));
+    const delay = pollIntervalMs === EVENT_POLL_INTERVAL_MS
+      ? nextPollDelayMs(attempt)
+      : pollIntervalMs;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(delay, remaining)));
   }
 }

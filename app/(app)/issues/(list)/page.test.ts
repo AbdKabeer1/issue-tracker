@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 
 const count = vi.hoisted(() => vi.fn());
 const findMany = vi.hoisted(() => vi.fn());
+const projectFindFirst = vi.hoisted(() => vi.fn(async () => null));
 const currentTenantIdFor = vi.hoisted(() => vi.fn());
 
 vi.mock("@/auth", () => ({ auth: vi.fn(async () => ({ user: { id: "dave" } })) }));
@@ -17,6 +18,7 @@ vi.mock("@/lib/tenant-context", async (importOriginal) => ({
 }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    project: { findFirst: projectFindFirst },
     bug: { count, findMany, groupBy: vi.fn(async () => []) },
     milestone: { findMany: vi.fn(async () => []) },
   },

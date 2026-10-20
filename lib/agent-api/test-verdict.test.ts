@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Prisma } from "@prisma/client";
 
 type Row = {
   id: string;
@@ -161,6 +162,23 @@ describe("submitTestVerdict: the body and record (#434)", () => {
     expect(changed).toMatchObject({ status: 200, changed: true, verdict: { goodToMerge: false, notes: "Regresses the Safari login" } });
     expect(state.verdicts).toHaveLength(1);
     expect(state.verdicts[0]).toMatchObject({ goodToMerge: false, changedAt: expect.any(Date) });
+  });
+
+  it("handles concurrent inserts deterministically when unique constraint is hit (#712)", async () => {
+    const rob = reviewer("r1", "rob");
+    db.testVerdict.findFirst.mockResolvedValueOnce(null);
+    db.testVerdict.create.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "6.0.0",
+      }),
+    );
+    const result = await submitTestVerdict(rob, "bug1", good);
+    expect(result).toMatchObject({
+      status: 409,
+      error: "already_verdicted",
+      message: "This agent has already reported a verdict on this issue.",
+    });
   });
 
   it("audits and publishes every verdict", async () => {

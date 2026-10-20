@@ -120,14 +120,39 @@ function deploy() {
   console.log("[db:migrate] Migrations applied.");
 }
 
+let firstDeployFailed = false;
 try {
   deploy();
 } catch (error) {
+  firstDeployFailed = true;
   console.error(
     "[db:migrate] prisma migrate deploy encountered error:",
     error instanceof Error ? error.message : String(error),
   );
 }
+
+// A normal container start runs `migrate deploy` only (#581). The repair
+// steps below exist to unstick databases from an earlier incident; leave them
+// available but opt-in, and say so in the log when they do run.
+if (process.env.MIGRATION_REPAIR !== "1") {
+  if (firstDeployFailed) {
+    if (stopOnFailure()) {
+      console.error(
+        "[db:migrate] Not starting the server. Fix the migration, or set ALLOW_START_WITH_FAILED_MIGRATION=true to start anyway.",
+      );
+      process.exit(1);
+    }
+    console.warn("[db:migrate] Continuing outside production.");
+  } else {
+    console.log(
+      "[db:migrate] Repair steps skipped (set MIGRATION_REPAIR=1 to run the legacy repairs once).",
+    );
+  }
+  process.exit(0);
+}
+console.log(
+  "[db:migrate] MIGRATION_REPAIR=1: running legacy repair steps; every action below is logged.",
+);
 
 // migrate deploy can stop on an earlier failure and never reach the reference
 // number migration. db push is not used here: without --accept-data-loss it

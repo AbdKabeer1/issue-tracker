@@ -159,3 +159,53 @@ describe("IssueFilters live search (#671)", () => {
     expect(nav.replace).toHaveBeenCalledWith("/issues?q=crash&tags=design");
   });
 });
+
+describe("IssueFilters unified Filter button popover (#762)", () => {
+  beforeEach(() => {
+    nav.params = new URLSearchParams();
+    nav.push.mockReset();
+    nav.replace.mockReset();
+  });
+  afterEach(cleanup);
+
+  it("renders a Filter trigger button next to search", () => {
+    render(<IssueFilters tagTypes={tagTypes} />);
+    const filterBtn = screen.getByRole("button", { name: /^filter/i });
+    expect(filterBtn).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Filter issues" })).not.toBeInTheDocument();
+  });
+
+  it("displays active filter count on the Filter button when filters are active", () => {
+    nav.params = new URLSearchParams("status=open&severity=high");
+    render(<IssueFilters tagTypes={tagTypes} />);
+    const filterBtn = screen.getByRole("button", { name: /filter \(2 active\)/i });
+    expect(filterBtn).toBeInTheDocument();
+    expect(filterBtn).toHaveTextContent("2");
+  });
+
+  it("toggles the filter popover and allows changing filters", () => {
+    render(<IssueFilters tagTypes={tagTypes} />);
+    const filterBtn = screen.getByRole("button", { name: /^filter/i });
+
+    // Open popover
+    fireEvent.click(filterBtn);
+    const dialog = screen.getByRole("dialog", { name: "Filter issues" });
+    expect(dialog).toBeInTheDocument();
+
+    // Select Status in popover
+    const statusSelect = within(dialog).getByLabelText("Status");
+    fireEvent.change(statusSelect, { target: { value: "open" } });
+    expect(nav.push).toHaveBeenCalledWith("/issues?status=open");
+  });
+
+  it("closes popover on Escape key", () => {
+    render(<IssueFilters tagTypes={tagTypes} />);
+    const filterBtn = screen.getByRole("button", { name: /^filter/i });
+
+    fireEvent.click(filterBtn);
+    expect(screen.getByRole("dialog", { name: "Filter issues" })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Filter issues" })).not.toBeInTheDocument();
+  });
+});

@@ -66,7 +66,8 @@ export async function processDelivery(deliveryId: string, now = new Date()): Pro
   const { subscription, event } = delivery;
   const agent = subscription.agent;
   if (!subscription.enabled || agent.revokedAt || agent.tenantId !== event.tenantId ||
-      !agent.owner.memberships.some((membership) => membership.tenantId === event.tenantId)) {
+      !agent.owner.memberships.some((membership) => membership.tenantId === event.tenantId) ||
+      (subscription.events.length > 0 && !subscription.events.includes(event.type))) {
     await prisma.webhookDelivery.updateMany({ where: { id: deliveryId, nextAttemptAt: lease }, data: { status: "dead", nextAttemptAt: null } });
     return;
   }

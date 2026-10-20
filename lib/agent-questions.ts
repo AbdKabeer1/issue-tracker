@@ -70,6 +70,7 @@ export async function askAgentQuestion(agent: AgentContext, input: AskAgentQuest
   notifyAgentQuestion({
     id: question.id,
     body: question.body,
+    tenantId: agent.tenantId,
     ownerUserId: agent.ownerId,
     agent: { name: agent.name },
     bugId: question.bugId,
@@ -143,10 +144,90 @@ export async function listOwnerQuestions(userId: string, tenantId: string) {
       answeredAt: true,
       bugId: true,
       createdAt: true,
-      agent: { select: { name: true } },
-      bug: { select: { title: true } },
+      agent: { select: { id: true, name: true } },
+      bug: { select: { id: true, title: true } },
     },
   });
+}
+
+/** Count unresolved / pending escalations for an owner in the workspace (#763). */
+export async function countPendingEscalations(userId: string, tenantId: string): Promise<number> {
+  return prisma.agentQuestion.count({
+    where: {
+      ownerUserId: userId,
+      answeredAt: null,
+      agent: { tenantId },
+    },
+  });
+}
+
+/** Escalations linked to a specific issue/ticket (#763). */
+export async function listBugEscalations(bugId: string, tenantId: string) {
+  return prisma.agentQuestion.findMany({
+    where: {
+      bugId,
+      agent: { tenantId },
+    },
+    orderBy: [{ answeredAt: { sort: "asc", nulls: "first" } }, { createdAt: "desc" }, { id: "desc" }],
+    select: {
+      id: true,
+      body: true,
+      answer: true,
+      answeredAt: true,
+      createdAt: true,
+      agent: { select: { id: true, name: true } },
+    },
+  });
+}
+
+export type EscalationType =
+  | "Blocker"
+  | "Work Authorization"
+  | "Question"
+  | "Scope Expansion"
+  | "Human Approval";
+
+/**
+ * Classifies an agent escalation into a standard human-actionable type (#763).
+ */
+export function classifyEscalation(body: string): EscalationType {
+  const lower = body.toLowerCase();
+  if (
+    lower.includes("block") ||
+    lower.includes("stuck") ||
+    lower.includes("impediment") ||
+    lower.startsWith("[blocker]")
+  ) {
+    return "Blocker";
+  }
+  if (
+    lower.includes("authoriz") ||
+    lower.includes("permission") ||
+    lower.includes("start work") ||
+    lower.includes("bid") ||
+    lower.startsWith("[work authorization]")
+  ) {
+    return "Work Authorization";
+  }
+  if (
+    lower.includes("scope") ||
+    lower.includes("expand") ||
+    lower.includes("out of scope") ||
+    lower.includes("refactor") ||
+    lower.startsWith("[scope expansion]")
+  ) {
+    return "Scope Expansion";
+  }
+  if (
+    lower.includes("approv") ||
+    lower.includes("sign off") ||
+    lower.includes("confirm") ||
+    lower.includes("review") ||
+    lower.startsWith("[human approval]")
+  ) {
+    return "Human Approval";
+  }
+  return "Question";
 }
 
 /** One question for its owner, or `null` so the page can 404 anyone else. */

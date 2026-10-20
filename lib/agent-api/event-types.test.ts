@@ -11,16 +11,16 @@ function walk(dir: string): string[] {
   });
 }
 
-/** Every literal `type` passed to `publish()` in production code. */
+/** Every literal `type` passed to `publish()` or `publishWebEvent()` in production code. */
 function publishedTypes(): Set<string> {
   const types = new Set<string>();
   for (const file of [...walk("lib"), ...walk("app")]) {
     const source = readFileSync(file, "utf8");
     for (const call of source.matchAll(
-      /publish\(\s*(?:tx|db|prisma)?\s*,\s*\{([\s\S]{0,700}?)\}\s*\)/g,
+      /(?:publish|publishWebEvent)\(\s*(?:tx|db|prisma)?\s*,\s*\{([\s\S]{0,700}?)\}\s*\)/g,
     )) {
-      const type = /type:\s*"([a-z._]+)"/.exec(call[1]!);
-      if (type) types.add(type[1]!);
+      const type = /(?:[{,]\s*|\n\s*)type:\s*"([a-z._]+)"/.exec(call[1]!);
+      if (type && type[1] !== "user") types.add(type[1]!);
     }
   }
   return types;
