@@ -501,6 +501,10 @@ export async function updateBugAction(
     };
   }
 
+  if (!admin && isSelfAssigning && targetAssigneeId !== existing.assigneeId) {
+    return { error: TICKET_ASSIGN_ERRORS.needsAgentClaim };
+  }
+
   if (targetAssigneeId !== undefined && targetAssigneeId !== existing.assigneeId) {
     if (
       !canAssignTicket({
@@ -557,6 +561,14 @@ export async function updateBugAction(
     parsed.data.status !== existing.status
   ) {
     return { error: TICKET_ASSIGN_ERRORS.statusNeedsAssignment };
+  }
+
+  if (!admin && parsed.data.status && parsed.data.status !== existing.status) {
+    const claim = await prisma.issueClaim.findFirst({
+      where: { bugId: existing.id, beneficiaryUserId: userId, status: "active", releasedAt: null },
+      select: { id: true },
+    });
+    if (!claim) return { error: TICKET_ASSIGN_ERRORS.needsAgentClaim };
   }
 
   // #316: an optional note, only for a change into resolved or closed.
@@ -1737,6 +1749,10 @@ export async function selfAssignBugAction(
   }
 
   const targetAssigneeId = assign ? userId : null;
+
+  if (assign && existing.assigneeId !== userId) {
+    return { error: TICKET_ASSIGN_ERRORS.needsAgentClaim };
+  }
 
   if (
     !canAssignTicket({

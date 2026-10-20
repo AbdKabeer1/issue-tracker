@@ -21,7 +21,8 @@ const bodySchema = z
 
 /**
  * POST /api/v1/issues/{id}/github — link the pull request that fixes this
- * issue (#452). A contributor or above may attach the URL, which is audited.
+ * issue (#452). The calling agent must hold the active claim. A contributor
+ * or above may attach the URL, which is audited.
  *
  * When the fix has already been accepted (#434), the same call tries to merge
  * the pull request through the project's GitHub App installation; the merge is
@@ -51,6 +52,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       },
     });
     if (!bug) return NextResponse.json({ error: "No such issue." }, { status: 404 });
+
+    const claim = await prisma.issueClaim.findFirst({
+      where: { bugId: bug.id, agentId: agent.agentId, status: "active", releasedAt: null },
+      select: { id: true },
+    });
+    if (!claim) {
+      return NextResponse.json(
+        { error: "Accept an offer or have your bid awarded before linking a fix." },
+        { status: 409 },
+      );
+    }
 
     const repo = parseGitHubRepoUrl(bug.project?.repoUrl);
     if (repo && !sameRepo(ref, repo)) {
