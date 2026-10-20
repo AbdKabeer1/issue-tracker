@@ -93,7 +93,6 @@ export async function createTestMissionAction(
     ? { message: `Added ${result.count} test mission${result.count === 1 ? "" : "s"}.` }
     : { message: "Those route, role, and viewport missions already exist." };
 }
-}
 
 /**
  * Create a project in the current tenant and make it active (#426).

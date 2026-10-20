@@ -230,5 +230,3 @@ describe("updateProjectAction (#608)", () => {
     expect(vi.mocked(prisma.$transaction)).not.toHaveBeenCalled();
   });
 });
-  });
-});
