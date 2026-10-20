@@ -22,7 +22,11 @@ import { publish } from "@/lib/agent-api/events";
  *   owner as the filer, the issue's own beneficiary, or the claim holder's
  *   owner.
  * - One verdict per agent per issue, so one agent can never satisfy the gate
- *   on its own.
+ *   on its own. Reporting again replaces that agent's verdict (#529), so a
+ *   reviewer who finds a regression can take back "good to merge" until the
+ *   fix is accepted. The audit log keeps every change.
+ * - A verdict needs a linked pull request and records which one it tested
+ *   (#526). Linking a different PR means the old verdicts no longer count.
  */
 
 export const TEST_VERDICT_NOTES_MAX = 2000;
@@ -40,6 +44,8 @@ export type TestVerdictBody = z.infer<typeof testVerdictBodySchema>;
 const reviewedBugSelect = {
   id: true,
   tenantId: true,
+  status: true,
+  pullRequestUrl: true,
   severity: true,
   beneficiaryUserId: true,
   createdByAgentId: true,
@@ -62,20 +68,23 @@ function activeClaimAgent(bug: LoadedBug): string | null {
   return claim?.agentId ?? null;
 }
 
+type StoredVerdict = {
+  id: string;
+  goodToMerge: boolean;
+  notes: string | null;
+  onBehalfOfUserId: string;
+  pullRequestUrl: string | null;
+  changedAt: Date | null;
+};
+
 export type SubmitTestVerdictResult =
-  | {
-      status: 201;
-      verdict: {
-        id: string;
-        goodToMerge: boolean;
-        notes: string | null;
-        onBehalfOfUserId: string;
-      };
-    }
+  | { status: 201; verdict: StoredVerdict }
+  /** The agent had a verdict on this issue already, and it was replaced (#529). */
+  | { status: 200; verdict: StoredVerdict; changed: true }
   | { status: 400; error: "invalid_request"; message: string; field?: string }
   | { status: 403; error: "insufficient_level" | "fixer_cannot_verdict" | "not_independent"; message: string }
   | { status: 404; error: "not_found"; message: string }
-  | { status: 409; error: "already_verdicted"; message: string };
+  | { status: 409; error: "no_pull_request" | "already_accepted"; message: string };
 
 export async function submitTestVerdict(
   agent: AgentContext,
@@ -108,6 +117,24 @@ export async function submitTestVerdict(
   });
   if (!bug) return { status: 404, error: "not_found", message: "No such issue in this agent's tenant." };
 
+  // #526: "good to merge" has to be about some code.
+  if (!bug.pullRequestUrl) {
+    return {
+      status: 409,
+      error: "no_pull_request",
+      message: "Link the fix's pull request (POST /api/v1/issues/{id}/github) before reporting a test verdict.",
+    };
+  }
+  // #529: verdicts can change until the fix is accepted, not after.
+  if (bug.status === "resolved" || bug.status === "closed") {
+    return {
+      status: 409,
+      error: "already_accepted",
+      message: "This fix has already been accepted, so its verdicts can't change.",
+    };
+  }
+  const pullRequestUrl = bug.pullRequestUrl;
+
   if (activeClaimAgent(bug) === agent.agentId) {
     return {
       status: 403,
@@ -138,17 +165,63 @@ export async function submitTestVerdict(
     }
   }
 
+  const verdictSelect = {
+    id: true,
+    goodToMerge: true,
+    notes: true,
+    onBehalfOfUserId: true,
+    pullRequestUrl: true,
+    changedAt: true,
+  } as const;
+
   return prisma.$transaction(async (tx) => {
     const existing = await tx.testVerdict.findFirst({
       where: { bugId: bug.id, agentId: agent.agentId },
-      select: { id: true },
+      orderBy: { createdAt: "asc" },
+      select: verdictSelect,
     });
+
     if (existing) {
-      return {
-        status: 409 as const,
-        error: "already_verdicted" as const,
-        message: "This agent has already reported a verdict on this issue.",
-      };
+      // #529: replace this agent's verdict. The audit row keeps the old one.
+      const verdict = await tx.testVerdict.update({
+        where: { id: existing.id },
+        data: {
+          goodToMerge: body.goodToMerge,
+          notes: body.notes || null,
+          onBehalfOfUserId,
+          pullRequestUrl,
+          changedAt: new Date(),
+        },
+        select: verdictSelect,
+      });
+      await audit(
+        agent,
+        "issue.test_verdict_changed",
+        `bug:${bug.id}`,
+        {
+          verdictId: verdict.id,
+          from: { goodToMerge: existing.goodToMerge, pullRequestUrl: existing.pullRequestUrl },
+          to: { goodToMerge: body.goodToMerge, pullRequestUrl },
+          onBehalfOfUserId,
+        },
+        { bugId: bug.id, db: tx },
+      );
+      await publish(tx, {
+        tenantId: bug.tenantId,
+        type: "issue.test_verdict",
+        payload: {
+          issueId: bug.id,
+          verdictId: verdict.id,
+          goodToMerge: body.goodToMerge,
+          onBehalfOfUserId,
+          pullRequestUrl,
+          changed: true,
+          previousGoodToMerge: existing.goodToMerge,
+        },
+        actorAgentId: agent.agentId,
+        bugId: bug.id,
+      });
+      return { status: 200 as const, verdict, changed: true as const };
     }
 
     const verdict = await tx.testVerdict.create({
@@ -158,21 +231,22 @@ export async function submitTestVerdict(
         onBehalfOfUserId,
         goodToMerge: body.goodToMerge,
         notes: body.notes || null,
+        pullRequestUrl,
       },
-      select: { id: true, goodToMerge: true, notes: true, onBehalfOfUserId: true },
+      select: verdictSelect,
     });
 
     await audit(
       agent,
       "issue.test_verdict",
       `bug:${bug.id}`,
-      { verdictId: verdict.id, goodToMerge: body.goodToMerge, onBehalfOfUserId },
+      { verdictId: verdict.id, goodToMerge: body.goodToMerge, onBehalfOfUserId, pullRequestUrl },
       { bugId: bug.id, db: tx },
     );
     await publish(tx, {
       tenantId: bug.tenantId,
       type: "issue.test_verdict",
-      payload: { issueId: bug.id, verdictId: verdict.id, goodToMerge: body.goodToMerge, onBehalfOfUserId },
+      payload: { issueId: bug.id, verdictId: verdict.id, goodToMerge: body.goodToMerge, onBehalfOfUserId, pullRequestUrl },
       actorAgentId: agent.agentId,
       bugId: bug.id,
     });

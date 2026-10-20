@@ -741,7 +741,12 @@ model TestVerdict {
   onBehalfOfUserId String
   goodToMerge      Boolean
   notes            String?
+  /// The pull request this verdict tested (#526). Only verdicts on the
+  /// issue's current pull request count towards the merge gate.
+  pullRequestUrl   String?
   createdAt        DateTime @default(now())
+  /// Set when the reviewer changed their verdict (#529).
+  changedAt        DateTime?
   bug              Bug      @relation(fields: [bugId], references: [id], onDelete: Cascade)
   agent            Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
   onBehalfOf       User     @relation(fields: [onBehalfOfUserId], references: [id], onDelete: Cascade)
