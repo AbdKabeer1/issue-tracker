@@ -1,7 +1,7 @@
 import { isAdmin, isSuperAdmin, type AppRole } from "@/lib/roles";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 
-export type HeaderNavItem = { href: string; label: string };
+export type HeaderNavItem = { href: string; label: string; badge?: number };
 
 /** #444: pick another tenant, create one, or accept an invite. */
 export const SWITCH_TENANT_LINK: HeaderNavItem = { href: "/tenants", label: "Switch tenant" };
@@ -9,7 +9,7 @@ export const SWITCH_TENANT_LINK: HeaderNavItem = { href: "/tenants", label: "Swi
 /** Links shown in the header for the role the user is currently viewing as. */
 export function headerNavItems(
   role?: AppRole | null,
-  options?: { agentPlatform?: boolean; managePlatforms?: boolean },
+  options?: { agentPlatform?: boolean; managePlatforms?: boolean; pendingEscalations?: number },
 ): HeaderNavItem[] {
   const items: HeaderNavItem[] = [
     { href: "/issues", label: "Issues" },
@@ -20,7 +20,13 @@ export function headerNavItems(
   ];
   if (options?.agentPlatform ?? isAgentPlatformEnabled()) {
     items.push(
-      { href: "/questions", label: "Questions" },
+      {
+        href: "/escalations",
+        label: "Escalations",
+        ...(typeof options?.pendingEscalations === "number" && options.pendingEscalations > 0
+          ? { badge: options.pendingEscalations }
+          : {}),
+      },
       { href: "/redesigns", label: "Redesigns" },
     );
   }
@@ -52,6 +58,14 @@ export function isNavItemActive(pathname: string | null, href: string): boolean 
       ((path.startsWith("/issues/") || path.startsWith("/bugs/")) &&
         path !== "/issues/new" &&
         path !== "/bugs/new")
+    );
+  }
+  if (href === "/escalations" || href === "/questions") {
+    return (
+      path === "/escalations" ||
+      path.startsWith("/escalations/") ||
+      path === "/questions" ||
+      path.startsWith("/questions/")
     );
   }
   return path === href || path.startsWith(`${href}/`);

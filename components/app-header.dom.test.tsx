@@ -31,7 +31,7 @@ beforeEach(() => {
   switchRole.mockResolvedValue({ error: "refused" });
 });
 
-function renderHeader() {
+function renderHeader(props?: Partial<Parameters<typeof AppHeader>[0]>) {
   return render(
     <AppHeader
       {...{
@@ -41,6 +41,7 @@ function renderHeader() {
         isRealAdmin: true,
         projects: [{ id: "p1", name: "Ziki", slug: "ziki" }],
         activeProjectId: "p1",
+        ...props,
       }}
     />,
   );
@@ -67,5 +68,13 @@ describe("account menu role switch", () => {
     await user.click(screen.getByRole("radio", { name: /normal user/i }));
 
     expect(switchRole).toHaveBeenCalledWith("user", `${window.location.pathname}${window.location.search}`);
+  });
+
+  it("renders Escalations navigation tab with pending count badge (#763)", () => {
+    renderHeader({ pendingEscalationsCount: 5 });
+    const escalationsLink = screen.getAllByRole("link", { name: /escalations/i })[0];
+    expect(escalationsLink).toBeTruthy();
+    expect(escalationsLink.getAttribute("href")).toBe("/escalations");
+    expect(screen.getByLabelText("5 pending")).toBeTruthy();
   });
 });
