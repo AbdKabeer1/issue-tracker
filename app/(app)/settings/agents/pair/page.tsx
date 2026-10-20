@@ -5,6 +5,7 @@ import { findPendingPairing } from "@/lib/agents/pairing";
 import { projectContextFor } from "@/lib/project-context";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { PairForm } from "./pair-form";
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 
 export const metadata = { title: "Approve an agent" };
 
@@ -15,6 +16,17 @@ export default async function PairAgentPage({
   searchParams: Promise<{ code?: string | string[] }>;
 }) {
   const user = await requireUser();
+  if (!isAgentPlatformEnabled()) {
+    // #505: nothing to approve while the platform is off.
+    return (
+      <div className="mx-auto max-w-2xl space-y-6">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold text-slate-900">Approve an agent</h1>
+          <p className="text-sm text-slate-600">The agent platform feature is not enabled in this environment.</p>
+        </div>
+      </div>
+    );
+  }
   const tenantId = await currentTenantIdFor(user.id);
   const context = await projectContextFor(prisma, tenantId);
   const { code } = await searchParams;
