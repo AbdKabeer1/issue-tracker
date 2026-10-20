@@ -96,6 +96,17 @@ describe("htmlToMarkdown", () => {
 });
 
 describe("pasteToMarkdown", () => {
+  it("preserves a standalone rich-text link destination (#752)", () => {
+    expect(pasteToMarkdown({
+      text: "Read guide",
+      html: '<a href="https://example.com/guide">Read guide</a>',
+    })).toBe("[Read guide](https://example.com/guide)");
+  });
+
+  it.each(["javascript:alert(1)", "data:text/html,unsafe"])("keeps unsafe link %s out of pasted Markdown", (href) => {
+    expect(pasteToMarkdown({ text: "Read guide", html: `<a href="${href}">Read guide</a>` })).toBe("Read guide");
+  });
+
   it("prefers converted markdown for rich sources", () => {
     expect(
       pasteToMarkdown({

@@ -69,6 +69,7 @@ const BLOCK_TAGS = new Set([
 ]);
 
 const FORMATTING_TAGS = new Set([
+  "a",
   "b",
   "blockquote",
   "code",
