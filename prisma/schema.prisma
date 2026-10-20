@@ -149,6 +149,9 @@ model User {
   notifyStatusChanges   Boolean              @default(true)
   /// #287: site-wide keyboard shortcuts; per user so it follows them.
   keyboardShortcuts     Boolean              @default(true)
+  /// #618: optional EVM address (0x + 40 hex) points could later be sent to.
+  /// Set only by the person themselves; read only by them and tenant admins.
+  walletAddress         String?
   /// Bumped on password reset; JWTs carrying an older value are rejected (#208).
   sessionVersion        Int                  @default(0)
   createdAt             DateTime             @default(now())
