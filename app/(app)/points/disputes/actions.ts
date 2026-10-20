@@ -5,13 +5,16 @@ import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { currentTenantIdFor, NO_TENANT_MESSAGE } from "@/lib/tenant-context";
 import { isTenantAdmin } from "@/lib/agents/membership";
+import { isAdmin } from "@/lib/roles";
 import {
   correctEntry,
+  creditMissingAwards,
   disputeInputSchema,
   grantMissingAward,
   NOT_IN_WORKSPACE,
   NO_ENTRY_ON_THIS_DISPUTE,
   openDispute,
+  parseIssueNumbers,
   rejectDispute,
 } from "@/lib/points/disputes";
 
@@ -87,7 +90,7 @@ export async function resolveDisputeAction(
   if (!tenantId || dispute.tenantId !== tenantId) {
     return { ok: false, error: NOT_IN_WORKSPACE };
   }
-  if (!(await isTenantAdmin(user, dispute.tenantId))) {
+  if (!(await canManagePoints(user, dispute.tenantId))) {
     return { ok: false, error: "Only a workspace admin can resolve disputes." };
   }
 
@@ -161,4 +164,55 @@ export async function resolveDisputeAction(
   }
 
   return { ok: false, error: "Unknown decision." };
+}
+
+/**
+ * Site admins were backfilled as ordinary members, so a workspace-admin check
+ * alone leaves nobody but a super admin able to repair the ledger.
+ */
+async function canManagePoints(
+  user: { id: string; role?: "user" | "admin" | "super_admin" | null },
+  tenantId: string,
+): Promise<boolean> {
+  return isAdmin(user.role) || isTenantAdmin(user, tenantId);
+}
+
+/** Credits solver or reporter awards for the issue numbers an admin names. */
+export async function creditAwardsAction(
+  _previous: DisputeActionResult | undefined,
+  formData: FormData,
+): Promise<DisputeActionResult> {
+  const user = await requireUser();
+  const tenantId = await currentTenantIdFor(user.id);
+  if (!tenantId) return { ok: false, error: NO_TENANT_MESSAGE };
+  if (!(await canManagePoints(user, tenantId))) {
+    return { ok: false, error: "Only a workspace admin can credit awards." };
+  }
+
+  const role = formData.get("role");
+  if (role !== "solver" && role !== "reporter") {
+    return { ok: false, error: "Pick which award to credit.", field: "role" };
+  }
+  const numbers = parseIssueNumbers(String(formData.get("numbers") ?? ""));
+  if (numbers.length === 0) {
+    return { ok: false, error: "Enter at least one issue number.", field: "numbers" };
+  }
+
+  const result = await creditMissingAwards(prisma, { tenantId, numbers, role });
+  revalidatePath("/points/disputes");
+  revalidatePath("/points");
+
+  const parts: string[] = [];
+  if (result.credited.length > 0) {
+    parts.push(`Credited ${role} points on ${result.credited.map((n) => `#${n}`).join(", ")}.`);
+  }
+  if (result.already.length > 0) {
+    parts.push(`Already credited: ${result.already.map((n) => `#${n}`).join(", ")}.`);
+  }
+  if (result.skipped.length > 0) {
+    parts.push(
+      `Skipped ${result.skipped.map((item) => `#${item.number} (${item.reason})`).join(", ")}.`,
+    );
+  }
+  return { ok: true, message: parts.join(" ") };
 }

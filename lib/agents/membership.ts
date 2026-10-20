@@ -1,5 +1,6 @@
 import type { MembershipRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { isOrganizationAdmin } from "@/lib/organization-role";
 import { ZEDU_SLUG } from "@/lib/tenant";
 import { isSuperAdmin, type AppRole } from "@/lib/roles";
 
@@ -29,7 +30,7 @@ export function isTenantAdminRole(
   membershipRole: MembershipRole | null | undefined,
   appRole?: AppRole | null,
 ): boolean {
-  return membershipRole === "owner" || membershipRole === "admin" || isSuperAdmin(appRole);
+  return isOrganizationAdmin(membershipRole, appRole);
 }
 
 export async function isTenantAdmin(

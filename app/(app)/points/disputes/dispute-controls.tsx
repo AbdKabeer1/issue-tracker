@@ -45,7 +45,12 @@ export function DisputeControls({ dispute }: { dispute: DisputeView }) {
             <label htmlFor={`role-${dispute.id}`} className="sr-only">
               Which award to grant
             </label>
-            <Select id={`role-${dispute.id}`} name="role" defaultValue="solver" className="w-auto">
+            <Select
+              id={`role-${dispute.id}`}
+              name="role"
+              defaultValue={dispute.requestedRole ?? "solver"}
+              className="w-auto"
+            >
               <option value="solver">Solver award</option>
               <option value="reporter">Reporter award</option>
             </Select>

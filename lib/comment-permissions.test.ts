@@ -22,12 +22,13 @@ describe("canDeleteComment", () => {
     expect(canDeleteComment("me", "user", mine)).toBe(true);
   });
 
-  it("lets admins and super admins delete anyone's comment", () => {
-    expect(canDeleteComment("me", "admin", theirs)).toBe(true);
+  it("lets an organization admin and the site super admin delete anyone's comment", () => {
+    expect(canDeleteComment("me", "user", theirs, true)).toBe(true);
     expect(canDeleteComment("me", "super_admin", theirs)).toBe(true);
   });
 
-  it("stops regular users deleting other people's comments", () => {
+  it("stops a site-wide admin who is only a member from deleting other people's comments", () => {
+    expect(canDeleteComment("me", "admin", theirs)).toBe(false);
     expect(canDeleteComment("me", "user", theirs)).toBe(false);
   });
 

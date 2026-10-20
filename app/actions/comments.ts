@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { commentInTenant, currentTenantIdFor } from "@/lib/tenant-context";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { attachmentIdsInMarkdown, linkAttachments } from "@/lib/attachment-link";
 import { requireUser } from "@/lib/auth-helpers";
 import { commentSchema } from "@/lib/validations/issue";
@@ -148,7 +149,8 @@ export async function deleteCommentAction(
   if (!comment) return { error: COMMENT_ERRORS.notFound };
   if (comment.bug.isDeleted) return { error: COMMENT_ERRORS.issueDeleted };
   if (comment.deletedAt) return { error: COMMENT_ERRORS.deleted };
-  if (!canDeleteComment(user.id, user.role, comment)) {
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!canDeleteComment(user.id, user.role, comment, access.admin)) {
     return { error: COMMENT_ERRORS.cannotDelete };
   }
 

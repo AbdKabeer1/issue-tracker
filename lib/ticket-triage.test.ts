@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { canChangeTicketStatus } from "@/lib/ticket-triage";
 
 describe("canChangeTicketStatus", () => {
-  it("allows an admin regardless of assignment", () => {
+  it("allows an organization admin regardless of assignment", () => {
     expect(
       canChangeTicketStatus({
         actorId: "admin-1",
-        actorRole: "admin",
+        actorRole: "user",
+        membershipRole: "admin",
         currentAssigneeId: null,
       }),
     ).toBe(true);
@@ -14,9 +15,21 @@ describe("canChangeTicketStatus", () => {
       canChangeTicketStatus({
         actorId: "admin-1",
         actorRole: "super_admin",
+        membershipRole: "member",
         currentAssigneeId: "someone-else",
       }),
     ).toBe(true);
+  });
+
+  it("denies a site-wide admin who is only a member of this organization", () => {
+    expect(
+      canChangeTicketStatus({
+        actorId: "admin-1",
+        actorRole: "admin",
+        membershipRole: "member",
+        currentAssigneeId: null,
+      }),
+    ).toBe(false);
   });
 
   it("allows the current assignee", () => {

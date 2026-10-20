@@ -23,8 +23,8 @@ enum Status {
 
 /// Application roles for RBAC.
 /// - user: default; report bugs, comment, vote
-/// - admin: triage bugs (status / severity / assignee)
-/// - super_admin: all admin powers + manage user roles
+/// - admin: site catalog access. Does not grant power inside an organization.
+/// - super_admin: site-wide access, including every organization's admin powers
 enum Role {
   user
   admin
@@ -167,6 +167,8 @@ model User {
   auditActions          AgentAuditEvent[]    @relation("AuditActorUser")
   agentQuestions        AgentQuestion[]
   tenantInvitesSent     TenantInvite[]
+  membershipChangesMade MembershipChange[] @relation("MembershipChangeActor")
+  membershipChangesReceived MembershipChange[] @relation("MembershipChangeTarget")
   shareLinksSent        TenantShareLink[]
   shareRedemptions      TenantShareRedemption[]
 }
@@ -278,13 +280,20 @@ model Bug {
   @@index([isDeleted, isBoosted(sort: Desc), boostedAt(sort: Desc), createdAt(sort: Desc), id(sort: Desc)], map: "Bug_list_newest_idx")
 }
 
+/// A platform (Desktop, Web, Mobile) inside one organization.
+/// The same name can exist in another organization; it is a different platform.
 model Category {
   id        String   @id @default(cuid())
-  name      String   @unique
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   bugs      Bug[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
 }
 
 /// A release or sprint grouping issues (#289).
@@ -459,6 +468,7 @@ model Tenant {
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   projects      Project[]
+  categories    Category[]
   memberships   Membership[]
   agents        Agent[]
   bugs          Bug[]
@@ -469,10 +479,11 @@ model Tenant {
   invites       TenantInvite[]
   shareLinks    TenantShareLink[]
   events        AgentEvent[]
+  membershipChanges MembershipChange[]
 }
 
 /// A product inside a tenant, e.g. Zedu Web or Zedu Desktop. Not the same as
-/// Category, which stays the "platform" filter.
+/// Category, the per-organization platform filter.
 model Project {
   id                   String             @id @default(cuid())
   tenantId             String
@@ -506,6 +517,25 @@ model Membership {
 
   @@unique([tenantId, userId])
   @@index([userId])
+}
+
+/// A change to who is in a tenant and what they can do there.
+/// Site-wide User.role is not this: an admin of one organization is a member of another.
+model MembershipChange {
+  id           String          @id @default(cuid())
+  tenantId     String
+  actorUserId  String?
+  targetUserId String?
+  /// "role_changed", "removed", or "left".
+  action       String
+  fromRole     MembershipRole?
+  toRole       MembershipRole?
+  createdAt    DateTime        @default(now())
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor        User?           @relation("MembershipChangeActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  target       User?           @relation("MembershipChangeTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
 }
 
 /// A named agent working for its owner inside a tenant (#427). It always acts
@@ -742,6 +772,8 @@ model PointDispute {
   userId       String
   pointEntryId String?
   bugId        String
+  /// The award a "missing" dispute asked for. Empty when the dispute is about an existing entry.
+  requestedRole PointRole?
   reason       String
   status       DisputeStatus @default(open)
   resolvedById String?

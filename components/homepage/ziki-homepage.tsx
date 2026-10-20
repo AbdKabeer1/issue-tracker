@@ -488,8 +488,8 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
                 Transparent Contribution Rewards
               </h2>
               <p className="mt-4 text-base text-slate-600 leading-relaxed">
-                Points are tracked in an append-only, tamper-evident ledger with idempotent source keys.
-                Contributors earn standing towards reviewer status with every verified action.
+                Points are tracked in an append-only ledger. Three roles are paid, and the same award
+                is never written twice.
               </p>
             </div>
 
@@ -506,46 +506,22 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-mono text-xs">
                     <tr className="hover:bg-slate-50/50">
-                      <td className="px-6 py-3.5 font-sans font-medium text-slate-900">Create Issue</td>
-                      <td className="px-6 py-3.5 font-bold text-teal-700">+25 pts</td>
-                      <td className="px-6 py-3.5 text-slate-500">create:&#123;tenant&#125;:&#123;key&#125;</td>
-                      <td className="px-6 py-3.5 font-sans text-slate-600">Accepted by triage review</td>
+                      <td className="px-6 py-3.5 font-sans font-medium text-slate-900">Solver</td>
+                      <td className="px-6 py-3.5 font-bold text-teal-700">15 / 25 / 40 / 60</td>
+                      <td className="px-6 py-3.5 text-slate-500">solver:&#123;bugId&#125;:&#123;userId&#125;</td>
+                      <td className="px-6 py-3.5 font-sans text-slate-600">Assigned issue marked resolved, by severity</td>
                     </tr>
                     <tr className="hover:bg-slate-50/50">
-                      <td className="px-6 py-3.5 font-sans font-medium text-slate-900">Comment on Claim</td>
+                      <td className="px-6 py-3.5 font-sans font-medium text-slate-900">Reporter</td>
                       <td className="px-6 py-3.5 font-bold text-teal-700">+5 pts</td>
-                      <td className="px-6 py-3.5 text-slate-500">comment:&#123;commentId&#125;</td>
-                      <td className="px-6 py-3.5 font-sans text-slate-600">Active claim investigation</td>
+                      <td className="px-6 py-3.5 text-slate-500">reporter:&#123;bugId&#125;:&#123;userId&#125;</td>
+                      <td className="px-6 py-3.5 font-sans text-slate-600">Two independent reviewers accept it as real</td>
                     </tr>
                     <tr className="hover:bg-slate-50/50">
-                      <td className="px-6 py-3.5 font-sans font-medium text-slate-900">Claim Ticket</td>
+                      <td className="px-6 py-3.5 font-sans font-medium text-slate-900">Reviewer</td>
                       <td className="px-6 py-3.5 font-bold text-teal-700">+10 pts</td>
-                      <td className="px-6 py-3.5 text-slate-500">claim:&#123;issueId&#125;:&#123;agentId&#125;</td>
-                      <td className="px-6 py-3.5 font-sans text-slate-600">Lease becomes active</td>
-                    </tr>
-                    <tr className="hover:bg-slate-50/50">
-                      <td className="px-6 py-3.5 font-sans font-medium text-slate-900">Independent Validation</td>
-                      <td className="px-6 py-3.5 font-bold text-teal-700">+15 pts</td>
-                      <td className="px-6 py-3.5 text-slate-500">validate:&#123;valId&#125;</td>
-                      <td className="px-6 py-3.5 font-sans text-slate-600">Independent standing validation</td>
-                    </tr>
-                    <tr className="hover:bg-slate-50/50">
-                      <td className="px-6 py-3.5 font-sans font-medium text-slate-900">Test Verdict (Pass)</td>
-                      <td className="px-6 py-3.5 font-bold text-teal-700">+20 pts</td>
-                      <td className="px-6 py-3.5 text-slate-500">test-verdict:&#123;verdictId&#125;</td>
-                      <td className="px-6 py-3.5 font-sans text-slate-600">All automated test suites pass</td>
-                    </tr>
-                    <tr className="hover:bg-slate-50/50">
-                      <td className="px-6 py-3.5 font-sans font-medium text-slate-900">Merge Fix</td>
-                      <td className="px-6 py-3.5 font-bold text-teal-700">+30 pts</td>
-                      <td className="px-6 py-3.5 text-slate-500">merge:&#123;issueId&#125;</td>
-                      <td className="px-6 py-3.5 font-sans text-slate-600">PR merged into main branch</td>
-                    </tr>
-                    <tr className="hover:bg-slate-50/50">
-                      <td className="px-6 py-3.5 font-sans font-medium text-slate-900">Redesign Proposal</td>
-                      <td className="px-6 py-3.5 font-bold text-teal-700">+15 pts</td>
-                      <td className="px-6 py-3.5 text-slate-500">redesign:&#123;redesignId&#125;</td>
-                      <td className="px-6 py-3.5 font-sans text-slate-600">Accepted by tenant reviewer</td>
+                      <td className="px-6 py-3.5 text-slate-500">reviewer:&#123;bugId&#125;:&#123;userId&#125;</td>
+                      <td className="px-6 py-3.5 font-sans text-slate-600">Merger accepts the fix after two good-to-merge verdicts</td>
                     </tr>
                   </tbody>
                 </table>

@@ -1,7 +1,7 @@
 import type { AgentLevel, Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import type { AppRole } from "@/lib/roles";
+import { isAdmin, type AppRole } from "@/lib/roles";
 import { audit } from "@/lib/agents/audit";
 import { generateApiKey } from "@/lib/agents/keys";
 import { CREATION_LEVELS, DEFAULT_AGENT_LEVEL, canSetLevel } from "@/lib/agents/levels";
@@ -174,6 +174,32 @@ export async function setAgentLevel(actor: Actor, agentId: string, level: AgentL
       "agent.level_changed",
       `agent:${agentId}`,
       { from: before.level, to: level, by: managed.isOwner ? "owner" : "tenant_admin" },
+      { actorUserId: actor.id, db: tx },
+    );
+  });
+  return { ok: true };
+}
+
+/**
+ * Turns the higher write budget on or off (#440). A workspace admin or a
+ * site admin may do this. An owner who is not an admin cannot.
+ */
+export async function setAgentBurst(actor: Actor, agentId: string, burst: boolean): Promise<ManageResult> {
+  const managed = await managedAgent(actor, agentId);
+  if (!managed) return { ok: false, error: NOT_FOUND };
+  if (!managed.isTenantAdmin && !isAdmin(actor.role)) {
+    return { ok: false, error: "Only an admin can change an agent's write budget." };
+  }
+  if (managed.agent.revokedAt) return { ok: false, error: "That agent is revoked." };
+  const before = await prisma.agent.findUniqueOrThrow({ where: { id: agentId }, select: { burst: true } });
+  if (before.burst === burst) return { ok: true };
+  await prisma.$transaction(async (tx) => {
+    await tx.agent.update({ where: { id: agentId }, data: { burst } });
+    await audit(
+      { agentId, tenantId: managed.agent.tenantId },
+      "agent.burst_changed",
+      `agent:${agentId}`,
+      { from: before.burst, to: burst, by: "admin" },
       { actorUserId: actor.id, db: tx },
     );
   });

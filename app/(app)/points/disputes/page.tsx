@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { isTenantAdmin } from "@/lib/agents/membership";
+import { isAdmin } from "@/lib/roles";
 import {
   disputesForMember,
   entriesForMember,
@@ -14,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LocalTime } from "@/components/local-time";
 import { DisputeControls } from "./dispute-controls";
+import { CreditAwardsForm } from "./credit-awards-form";
 
 export const metadata = { title: "Points disputes" };
 
@@ -37,6 +39,11 @@ function DisputeCard({ dispute, children }: { dispute: DisputeView; children?: R
         <Badge className="bg-slate-100 text-slate-700">
           {dispute.kind === "wrong" ? "Wrong entry" : "Missing award"}
         </Badge>
+        {dispute.kind === "missing" && dispute.requestedRole ? (
+          <Badge className="bg-slate-100 text-slate-700">
+            Requested: {dispute.requestedRole === "solver" ? "Solver" : "Reporter"}
+          </Badge>
+        ) : null}
         <Link
           href={`/issues/${dispute.bugId}`}
           className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 hover:underline"
@@ -85,7 +92,7 @@ export default async function PointsDisputesPage() {
     );
   }
 
-  const admin = await isTenantAdmin(user, tenantId);
+  const admin = isAdmin(user.role) || (await isTenantAdmin(user, tenantId));
   const [mine, queue, entries] = await Promise.all([
     disputesForMember(prisma, { tenantId, userId: user.id }),
     admin ? openDisputes(prisma, tenantId) : Promise.resolve([]),
@@ -108,6 +115,18 @@ export default async function PointsDisputesPage() {
           </Button>
         </Link>
       </div>
+
+      {admin ? (
+        <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+          <h2 className="text-lg font-semibold text-slate-900">Credit missing awards</h2>
+          <p className="text-sm text-slate-600">
+            Solver points are written when an assigned issue is marked resolved. Reporter points
+            are written when two independent reviewers accept the issue as real. Use this when
+            that award is missing.
+          </p>
+          <CreditAwardsForm />
+        </section>
+      ) : null}
 
       {admin ? (
         <section className="space-y-3">

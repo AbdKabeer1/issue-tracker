@@ -5,6 +5,10 @@ vi.mock("@/lib/auth-helpers", () => ({
   requireUser: vi.fn(async () => ({ id: "u1", role: "user" })),
 }));
 
+vi.mock("@/lib/tenant-context", () => ({
+  currentTenantIdFor: vi.fn(async () => "tenant-ziki"),
+}));
+
 vi.mock("@/lib/lookups", () => ({
   getActivePlatforms: vi.fn(),
   getActiveIssueTypesCached: vi.fn(),
@@ -74,6 +78,8 @@ describe("report form lookups", () => {
     );
     expect(formProps(page)).toMatchObject({
       users: [{ id: "u1", name: "Ada", role: "user", image: null }],
+      categories: [{ id: "c1", name: "Web" }],
     });
+    expect(getActivePlatforms).toHaveBeenCalledWith("tenant-ziki");
   });
 });

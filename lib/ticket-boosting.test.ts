@@ -6,12 +6,17 @@ import {
 } from "./ticket-boosting";
 
 describe("canBoostTicket", () => {
-  it("allows admins to boost tickets", () => {
-    expect(canBoostTicket("admin")).toBe(true);
+  it("allows an owner or admin of the organization to boost tickets", () => {
+    expect(canBoostTicket("user", "owner")).toBe(true);
+    expect(canBoostTicket("user", "admin")).toBe(true);
   });
 
   it("allows super admins to boost tickets", () => {
     expect(canBoostTicket("super_admin")).toBe(true);
+  });
+
+  it("denies a site-wide admin who is only a member", () => {
+    expect(canBoostTicket("admin", "member")).toBe(false);
   });
 
   it("denies regular users from boosting tickets", () => {
@@ -27,7 +32,7 @@ describe("canBoostTicket", () => {
 describe("TICKET_BOOST_ERRORS", () => {
   it("has clear and descriptive messages for all failure states", () => {
     expect(TICKET_BOOST_ERRORS.unauthorized).toBe(
-      "Only admins can boost issues",
+      "Only an owner or admin of this organization can boost issues",
     );
     expect(TICKET_BOOST_ERRORS.invalidId).toBe("Invalid issue ID");
     expect(TICKET_BOOST_ERRORS.notFound).toBe("Issue not found");

@@ -1,4 +1,4 @@
-import { isAdmin, type AppRole } from "@/lib/roles";
+import { isSuperAdmin, type AppRole } from "@/lib/roles";
 
 export const COMMENT_ERRORS = {
   notFound: "Comment not found",
@@ -17,12 +17,17 @@ export function canEditComment(actorId: string | undefined, comment: CommentLike
   return Boolean(actorId) && !comment.deletedAt && comment.authorId === actorId;
 }
 
-/** The author or an admin/super admin may delete a comment that isn't already deleted. */
+/**
+ * The author may delete their own comment. An owner or admin of the
+ * organization, or the site super admin, may delete someone else's.
+ * `tenantAdmin` is that organization check, already resolved by the caller.
+ */
 export function canDeleteComment(
   actorId: string | undefined,
   actorRole: AppRole | null | undefined,
   comment: CommentLike,
+  tenantAdmin = false,
 ): boolean {
   if (!actorId || comment.deletedAt) return false;
-  return comment.authorId === actorId || isAdmin(actorRole);
+  return comment.authorId === actorId || tenantAdmin || isSuperAdmin(actorRole);
 }

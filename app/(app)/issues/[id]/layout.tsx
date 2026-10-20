@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { viewerBugScope } from "@/lib/tenant-viewer";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
+import { currentTenantAccess } from "@/lib/tenant-access";
 
 /**
  * Decides 404 before anything streams (#291).
@@ -33,8 +34,10 @@ export default async function IssueLayout({
     // Deleted issues are visible to those who can restore them, and a 404 to
     // everyone else — the same rule the page applies.
     const session = await auth();
-    const role = session?.user ? (await requireUser()).role : null;
-    if (!canDeleteTicket(role)) notFound();
+    if (!session?.user) notFound();
+    const user = await requireUser();
+    const access = await currentTenantAccess(user.id, user.role);
+    if (!canDeleteTicket(user.role, access.membershipRole)) notFound();
   }
 
   return children;

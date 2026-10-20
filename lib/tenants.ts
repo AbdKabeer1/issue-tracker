@@ -307,6 +307,11 @@ export async function createTenant(
           name,
           memberships: { create: { userId: creator.id, role: "owner" } },
           projects: { create: { slug: slugFromName(projectName, "project"), name: projectName } },
+          // Same three names as DEFAULT_PLATFORMS. Inlined so this file does not
+          // import lib/categories, which reads the active tenant from here.
+          categories: {
+            create: (["Desktop", "Web", "Mobile"] as const).map((name) => ({ name, isActive: true })),
+          },
         },
         select: { id: true, slug: true, name: true, projects: { select: { id: true } } },
       });

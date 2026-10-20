@@ -10,7 +10,17 @@ vi.mock("@/lib/tenant-context", async (importOriginal) => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth-helpers", () => ({
-  requireAdmin: vi.fn().mockResolvedValue({ id: "admin-1", role: "admin" }),
+  requireUser: vi.fn().mockResolvedValue({ id: "admin-1", role: "user" }),
+}));
+
+vi.mock("@/lib/tenant-access", () => ({
+  currentTenantAccess: vi.fn(async () => ({
+    tenantId: "tenant-zedu",
+    tenantName: "Zedu",
+    tenantSlug: "zedu",
+    membershipRole: "admin",
+    admin: true,
+  })),
 }));
 
 const tx = {

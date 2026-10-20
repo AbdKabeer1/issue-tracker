@@ -18,12 +18,21 @@ vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/notify", () => ({ notifyLater: vi.fn() }));
 vi.mock("@/lib/session-user", () => ({ resolveSessionUserId: vi.fn() }));
 vi.mock("@/lib/auth-helpers", () => ({ requireUser: vi.fn() }));
+vi.mock("@/lib/tenant-access", () => ({
+  currentTenantAccess: vi.fn(async (_id: string, role: string) => ({
+    tenantId: "tenant-zedu",
+    tenantName: "Zedu",
+    tenantSlug: "zedu",
+    membershipRole: role === "admin" || role === "super_admin" ? "admin" : "member",
+    admin: role === "admin" || role === "super_admin",
+  })),
+}));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     bug: { findUnique: vi.fn() },
     user: { findUnique: vi.fn() },
     issueType: { findUnique: vi.fn() },
-    category: { findUnique: vi.fn() },
+    category: { findUnique: vi.fn(), findFirst: vi.fn() },
     milestone: { findUnique: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -31,6 +40,7 @@ vi.mock("@/lib/prisma", () => ({
 
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { notifyLater } from "@/lib/notify";
 import { TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
 import { TICKET_TRIAGE_ERRORS } from "@/lib/ticket-triage";
@@ -40,7 +50,7 @@ const db = prisma as unknown as {
   bug: { findUnique: ReturnType<typeof vi.fn> };
   user: { findUnique: ReturnType<typeof vi.fn> };
   issueType: { findUnique: ReturnType<typeof vi.fn> };
-  category: { findUnique: ReturnType<typeof vi.fn> };
+  category: { findUnique: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
   milestone: { findUnique: ReturnType<typeof vi.fn> };
   $transaction: ReturnType<typeof vi.fn>;
 };
@@ -93,7 +103,7 @@ beforeEach(() => {
   awarded = [];
   db.user.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({ name: where.id }));
   db.issueType.findUnique.mockResolvedValue({ id: "t1", name: "Fix", isActive: true });
-  db.category.findUnique.mockResolvedValue({ id: "c1", name: "Web" });
+  db.category.findFirst.mockResolvedValue({ id: "c1", name: "Web", tenantId: "tenant-zedu" });
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
     fn({
       bug: { update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => (written = data)) },
@@ -233,6 +243,25 @@ describe("milestones in triage (#289)", () => {
     mockUser.mockResolvedValue({ id: ME, name: "Me", role: "admin" });
     db.bug.findUnique.mockResolvedValue(withMilestone("m1", "v2.4"));
     expect(await updateBugAction("bug1", form({ milestoneId: "m1" }))).toEqual({ ok: true });
+    expect(written).toBeNull();
+  });
+});
+
+describe("organization role, not the site-wide admin role (#504)", () => {
+  it("denies triage to a site admin who is only a member of this organization", async () => {
+    vi.mocked(currentTenantAccess).mockResolvedValueOnce({
+      tenantId: "tenant-zedu",
+      tenantName: "Zedu",
+      tenantSlug: "zedu",
+      membershipRole: "member",
+      admin: false,
+    });
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "admin" });
+    db.bug.findUnique.mockResolvedValue(issue(null));
+
+    const result = await updateBugAction("bug1", form({ status: "resolved" }));
+
+    expect(result).toEqual({ error: TICKET_TRIAGE_ERRORS.statusUnauthorized });
     expect(written).toBeNull();
   });
 });
