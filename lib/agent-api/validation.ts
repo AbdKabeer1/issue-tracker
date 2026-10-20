@@ -6,7 +6,7 @@ import { reviewerConflict, reviewerCreditConflict, type ReviewedBug } from "@/li
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { award } from "@/lib/points/award";
-import { pointSourceKey } from "@/lib/points/rules";
+import { confirmationReviewerSourceKey, CONFIRMATION_REVIEWER_POINTS, pointSourceKey } from "@/lib/points/rules";
 import {
   calculateReporterPoints,
   getProjectRewardConfig,
@@ -49,7 +49,8 @@ function severityRank(severity: string | null): number {
  * - An issue is confirmed once the project's required number of independent
  *   reviewers, with different owners, have accepted it as real. When that
  *   first happens the reporter earns their points through `award()` (#428),
- *   once.
+ *   once, and each of those reviewers earns confirmation points on a
+ *   separate key.
  */
 
 export const VALIDATION_KINDS = ["real", "format", "duplicate", "fix"] as const satisfies readonly ValidationKind[];
@@ -124,8 +125,11 @@ const reviewedBugSelect = {
 
 type LoadedBug = Prisma.BugGetPayload<{ select: typeof reviewedBugSelect }>;
 
-/** Accepts of kind `real` that count toward confirming `bug`. */
-async function countedConfirmations(db: Db, bug: LoadedBug): Promise<number> {
+/**
+ * People credited for accepts of kind `real` that still count, oldest first.
+ * One per owner: a second agent of the same person does not add a credit.
+ */
+async function countedConfirmationReviewers(db: Db, bug: LoadedBug): Promise<string[]> {
   const dbDelegates = db as unknown as OptionalDbDelegates;
   const latestRevision = await dbDelegates.bugRevision?.findFirst?.({
     where: { bugId: bug.id },
@@ -133,7 +137,7 @@ async function countedConfirmations(db: Db, bug: LoadedBug): Promise<number> {
     select: { editedAt: true },
   });
 
-  if (!dbDelegates.issueValidation?.findMany) return 0;
+  if (!dbDelegates.issueValidation?.findMany) return [];
 
   const accepts = await db.issueValidation.findMany({
     where: {
@@ -142,8 +146,10 @@ async function countedConfirmations(db: Db, bug: LoadedBug): Promise<number> {
       verdict: "accept",
       ...(latestRevision?.editedAt ? { createdAt: { gt: latestRevision.editedAt } } : {}),
     },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: {
       id: true,
+      onBehalfOfUserId: true,
       agentId: true,
       agent: { select: { id: true, ownerUserId: true } },
     },
@@ -165,16 +171,24 @@ async function countedConfirmations(db: Db, bug: LoadedBug): Promise<number> {
   );
   const reviewed: ReviewedBug = bug;
   const owners = new Set<string>();
-  for (const { id, agent } of accepts) {
+  const credited: string[] = [];
+  for (const { id, onBehalfOfUserId, agent } of accepts) {
     // Checked again now, not only when submitted: a claim taken since can
     // make an earlier reviewer no longer independent.
     if (agent.id === bug.createdByAgentId) continue;
     if (reviewerConflict({ id: agent.id, ownerUserId: agent.ownerUserId }, reviewed)) continue;
     // An undone validation no longer counts toward confirming the issue.
     if (undoneValidationIds.has(id)) continue;
+    if (owners.has(agent.ownerUserId)) continue;
     owners.add(agent.ownerUserId);
+    credited.push(onBehalfOfUserId);
   }
-  return owners.size;
+  return credited;
+}
+
+/** Accepts of kind `real` that count toward confirming `bug`. */
+async function countedConfirmations(db: Db, bug: LoadedBug): Promise<number> {
+  return (await countedConfirmationReviewers(db, bug)).length;
 }
 
 /** True once the project's required independent reviewers accepted the issue as real (#434 uses this). */
@@ -375,6 +389,17 @@ export async function submitValidation(
           points,
           sourceKey: pointSourceKey("reporter", bug.id, userId),
         });
+        const reviewers = (await countedConfirmationReviewers(tx, bug)).slice(0, confirmationsNeeded);
+        for (const reviewerUserId of reviewers) {
+          await award(tx, {
+            tenantId: bug.tenantId,
+            userId: reviewerUserId,
+            bugId: bug.id,
+            role: "reviewer",
+            points: CONFIRMATION_REVIEWER_POINTS,
+            sourceKey: confirmationReviewerSourceKey(bug.id, reviewerUserId),
+          });
+        }
       }
 
       await audit(

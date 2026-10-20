@@ -20,6 +20,7 @@ import { changePasswordAction, setKeyboardShortcutsAction, setWalletAddressActio
 
 const update = prisma.user.update as unknown as ReturnType<typeof vi.fn>;
 const findUnique = prisma.user.findUnique as unknown as ReturnType<typeof vi.fn>;
+// bcryptjs's callback overloads make vi.mocked() expect a void return.
 const compareMock = compare as unknown as ReturnType<typeof vi.fn>;
 const hashMock = hash as unknown as ReturnType<typeof vi.fn>;
 const form = (name: string) => {

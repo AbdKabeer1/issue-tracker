@@ -8,6 +8,7 @@ const db = vi.hoisted(() => ({
   project: { findFirst: vi.fn(), findUnique: vi.fn() },
   issueClaim: { findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), count: vi.fn(), create: vi.fn(), groupBy: vi.fn() },
   membership: { findMany: vi.fn() },
+  agentQuestion: { findFirst: vi.fn(), updateMany: vi.fn() },
   bug: { updateMany: vi.fn(), findFirst: vi.fn() }, $queryRaw: vi.fn(), $transaction: vi.fn(),
 }));
 const mocks = vi.hoisted(() => ({ admin: vi.fn(), budget: vi.fn(), demote: vi.fn(), notifyLater: vi.fn(), workflow: vi.fn() }));
@@ -215,7 +216,7 @@ describe("stale claim release", () => {
 
   it("limits candidates to stale active claims in the project, excluding offers", async () => {
     await releaseStaleClaims("project");
-    expect(db.issueClaim.findMany).toHaveBeenCalledWith({ where: { status: "active", releasedAt: null, bug: { projectId: "project", tenantId: "tenant", isDeleted: false, status: "in_progress" }, OR: [{ lastHeartbeatAt: { lt: cutoff } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff } }, { deliverBy: { lt: now }, bug: { pullRequestUrl: null } }] }, select: { id: true, bugId: true } });
+    expect(db.issueClaim.findMany).toHaveBeenCalledWith({ where: { status: "active", releasedAt: null, waitingOnOwnerSince: null, bug: { projectId: "project", tenantId: "tenant", isDeleted: false, status: "in_progress" }, OR: [{ lastHeartbeatAt: { lt: cutoff } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff } }, { deliverBy: { lt: now }, bug: { pullRequestUrl: null } }] }, select: { id: true, bugId: true } });
     expect(db.issueClaim.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         bug: { projectId: "project", tenantId: "tenant", isDeleted: false, status: "in_progress" },
@@ -265,7 +266,7 @@ describe("scheduled stale-claim sweep (#524)", () => {
     // The scheduler acts without a person, so the sweep's audit row has no actor user.
     const sweeps = db.agentAuditEvent.create.mock.calls.filter(([call]) => call.data.action === "claim.released");
     for (const [call] of sweeps) expect(call.data.actorUserId).toBeNull();
-    expect(db.issueClaim.findMany).toHaveBeenCalledWith({ where: { status: "active", releasedAt: null,
+    expect(db.issueClaim.findMany).toHaveBeenCalledWith({ where: { status: "active", releasedAt: null, waitingOnOwnerSince: null,
       bug: { isDeleted: false, status: "in_progress" },
       OR: [{ lastHeartbeatAt: { lt: cutoff } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff } }, { deliverBy: { lt: now }, bug: { pullRequestUrl: null } }] },
       orderBy: { createdAt: "asc" }, take: 50,
@@ -293,5 +294,78 @@ describe("scheduled stale-claim sweep (#524)", () => {
     db.issueClaim.create.mockRejectedValueOnce(new Error("should not reach claim creation with no candidates"));
     expect(await sweepStaleClaims()).toEqual({ released: 1, offered: 0 });
     expect(db.issueClaim.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("claims waiting on the owner's answer (#606)", () => {
+  const minutesAgo = (minutes: number) => new Date(now.getTime() - minutes * 60_000);
+  function waiting(since: Date, cap = 240) {
+    return { id: "claim", bugId: "issue", agentId: "agent", waitingOnOwnerSince: since,
+      bug: { tenantId: "tenant", projectId: "project", project: { ownerWaitCapMinutes: cap } } };
+  }
+  function freshWaiting(since: Date, cap = 240) {
+    return { ...claim, waitingOnOwnerSince: since, deliverBy: minutesAgo(60),
+      bug: { pullRequestUrl: null, project: { ownerWaitCapMinutes: cap } } };
+  }
+
+  it("leaves waiting claims out of the silence and deadline query", async () => {
+    db.issueClaim.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    await sweepStaleClaims();
+    expect(db.issueClaim.findMany.mock.calls[0][0].where.waitingOnOwnerSince).toBeNull();
+    expect(db.issueClaim.findMany.mock.calls[1][0].where).toMatchObject({ status: "active", releasedAt: null, waitingOnOwnerSince: { not: null } });
+  });
+
+  it("keeps a silent, overdue claim while its agent waits, up to the cap", async () => {
+    db.issueClaim.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([waiting(minutesAgo(239))]);
+    db.agentQuestion.findFirst.mockResolvedValue(null);
+    expect(await sweepStaleClaims()).toEqual({ released: 0, offered: 0 });
+    expect(db.issueClaim.update).not.toHaveBeenCalled();
+    expect(db.agentEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("does not release a claim that started waiting after it was picked as stale", async () => {
+    db.issueClaim.findMany.mockResolvedValueOnce([{ id: "claim", bugId: "issue", bug: { tenantId: "tenant", projectId: "project" } }]).mockResolvedValueOnce([]);
+    db.issueClaim.findFirst.mockResolvedValueOnce(freshWaiting(minutesAgo(1)));
+    expect(await sweepStaleClaims()).toEqual({ released: 0, offered: 0 });
+    expect(db.issueClaim.update).not.toHaveBeenCalled();
+  });
+
+  it("releases at the cap for owner_unresponsive, without a reputation penalty", async () => {
+    db.issueClaim.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([waiting(minutesAgo(240))]);
+    db.issueClaim.findFirst.mockResolvedValueOnce(freshWaiting(minutesAgo(240)));
+    expect(await sweepStaleClaims()).toEqual({ released: 1, offered: 0 });
+    expect(db.issueClaim.update).toHaveBeenCalledWith({ where: { id: "claim" }, data: { status: "released", releasedAt: now, releaseReason: "owner_unresponsive" } });
+    expect(db.agentEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      type: "claim.released", payload: expect.objectContaining({ reason: "owner_unresponsive" }) }) }));
+    expect(mocks.demote).not.toHaveBeenCalled();
+  });
+
+  it("uses the project's cap", async () => {
+    db.issueClaim.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([waiting(minutesAgo(61), 60)]);
+    db.issueClaim.findFirst.mockResolvedValueOnce(freshWaiting(minutesAgo(61), 60));
+    expect(await sweepStaleClaims()).toEqual({ released: 1, offered: 0 });
+    expect(db.issueClaim.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ releaseReason: "owner_unresponsive" }) }));
+  });
+
+  it("reminds the owner once the question is 30 minutes old, and only once", async () => {
+    db.issueClaim.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([waiting(minutesAgo(31))]);
+    db.agentQuestion.findFirst.mockResolvedValueOnce({ id: "q1", body: "Which API?", ownerUserId: "owner",
+      agent: { name: "Agent", tenantId: "tenant" }, bug: { title: "Bug" } });
+    db.agentQuestion.updateMany.mockResolvedValueOnce({ count: 1 });
+    await sweepStaleClaims();
+    expect(db.agentQuestion.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { agentId: "agent", bugId: "issue", answeredAt: null, remindedAt: null, createdAt: { lte: minutesAgo(30) } } }));
+    expect(db.agentQuestion.updateMany).toHaveBeenCalledWith({ where: { id: "q1", remindedAt: null }, data: { remindedAt: now } });
+    expect(mocks.notifyLater).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "agent_question", questionId: "q1", recipientId: "owner", reminder: true, bugId: "issue" }));
+
+    // Another sweep won the race to remind: no second notification.
+    mocks.notifyLater.mockClear();
+    db.issueClaim.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([waiting(minutesAgo(31))]);
+    db.agentQuestion.findFirst.mockResolvedValueOnce({ id: "q1", body: "Which API?", ownerUserId: "owner",
+      agent: { name: "Agent", tenantId: "tenant" }, bug: { title: "Bug" } });
+    db.agentQuestion.updateMany.mockResolvedValueOnce({ count: 0 });
+    await sweepStaleClaims();
+    expect(mocks.notifyLater).not.toHaveBeenCalled();
   });
 });
