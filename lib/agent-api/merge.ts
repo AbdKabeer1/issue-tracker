@@ -77,7 +77,7 @@ export type AcceptFixResult =
   | {
       status: 409;
       error: "not_ready";
-      missing: "already_accepted" | "redesign" | "confirmation" | "verdicts";
+      missing: "already_accepted" | "redesign" | "confirmation" | "verdicts" | "claim" | "pull_request";
       message: string;
     };
 
@@ -109,6 +109,22 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
   }
 
   const claim = activeClaim(bug);
+  if (!claim) {
+    return {
+      status: 409,
+      error: "not_ready",
+      missing: "claim",
+      message: "This issue needs an active claim before its fix can be accepted.",
+    };
+  }
+  if (!bug.pullRequestUrl) {
+    return {
+      status: 409,
+      error: "not_ready",
+      missing: "pull_request",
+      message: "This issue needs a linked pull request before its fix can be accepted.",
+    };
+  }
   const reviewed: ReviewedBug = bug;
 
   return prisma.$transaction(async (tx) => {
