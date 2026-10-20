@@ -296,13 +296,21 @@ export const TOOLS: readonly ToolDef[] = [
     method: "POST",
     route: "/issues/{id}/test-results",
     projectScoped: true,
-    body: ["goodToMerge", "notes", "onBehalfOfUserId"],
+    body: ["goodToMerge", "notes", "onBehalfOfUserId", "headSha"],
     input: {
       id: issueId,
       projectId,
       goodToMerge: z.boolean().describe("true if the fix is good to merge."),
       notes: z.string().trim().max(2000).optional().describe("What you tested and where, at most 2000 characters."),
       onBehalfOfUserId: z.string().optional().describe("Defaults to the agent's owner."),
+      headSha: z
+        .string()
+        .trim()
+        .regex(/^[0-9a-f]{7,64}$/i, "headSha must be a hexadecimal commit SHA.")
+        .optional()
+        .describe(
+          "The commit you tested (7-64 hex characters). Defaults to the SHA recorded when the pull request was linked.",
+        ),
     },
   },
   {
