@@ -4,6 +4,8 @@ const db = vi.hoisted(() => ({
   agentInboxItem: { findMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
+const markMessagesRead = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/agent-messages", () => ({ markMessagesRead }));
 
 import { inboxRecipients, listInbox, markInboxRead, markInboxReadSchema, pollInbox, serializeInboxItem, writeInbox, type InboxEvent } from "./inbox";
 import { publish } from "./events";
@@ -157,6 +159,15 @@ describe("marking items read", () => {
     expect(db.agentInboxItem.updateMany.mock.calls[0][0].where).toEqual({ agentId: "agent-bob", readAt: null,
       OR: [{ createdAt: { lt: item.createdAt } }, { createdAt: item.createdAt, id: { lte: "item-1" } }] });
     expect(await markInboxRead({ agentId: "agent-bob" }, { upTo: "other-agents-item" })).toBeNull();
+  });
+
+  it("marks the owner's messages behind the items read (#605)", async () => {
+    db.agentInboxItem.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+    await markInboxRead({ agentId: "agent-bob" }, { ids: ["a"] });
+    const readAt = db.agentInboxItem.updateMany.mock.calls[0][0].data.readAt;
+    expect(markMessagesRead).toHaveBeenCalledWith("agent-bob", readAt);
+    await markInboxRead({ agentId: "agent-bob" }, { ids: ["b"] });
+    expect(markMessagesRead).toHaveBeenCalledTimes(1);
   });
 
   it("accepts ids or upTo, not both or neither", () => {
