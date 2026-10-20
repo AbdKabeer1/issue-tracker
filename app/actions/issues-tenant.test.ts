@@ -29,7 +29,7 @@ vi.mock("@/lib/tenant-access", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     bug: { findUnique: vi.fn(), create: vi.fn() },
-    user: { findUnique: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
+    user: { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
     $transaction: vi.fn(),
     $executeRaw: vi.fn(),
   },

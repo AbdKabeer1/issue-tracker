@@ -357,6 +357,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       canTriage
         ? loadOptional("users", [], () =>
             prisma.user.findMany({
+              where: { memberships: { some: { tenantId: bug.tenantId } } },
               orderBy: { name: "asc" },
               select: { id: true, name: true, role: true, image: true },
             }),

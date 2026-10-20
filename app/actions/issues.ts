@@ -234,13 +234,20 @@ export async function createBugAction(
       ? parsed.data.typeId
       : null;
 
+  // #425: the issue goes into the reporter's tenant. No membership, no issue.
+  const tenantId = await currentTenantIdFor(userId);
+  const projectId = tenantId ? await defaultProjectIdFor(prisma, tenantId) : null;
+  if (!tenantId || !projectId) {
+    return { error: NO_TENANT_MESSAGE };
+  }
+
   if (assigneeId) {
-    const assignee = await prisma.user.findUnique({
-      where: { id: assigneeId },
+    const assignee = await prisma.user.findFirst({
+      where: { id: assigneeId, memberships: { some: { tenantId } } },
       select: { id: true },
     });
     if (!assignee) {
-      return fieldError("assigneeId", "Assignee not found");
+      return fieldError("assigneeId", "Assignee not found in this workspace");
     }
   }
 
@@ -261,13 +268,6 @@ export async function createBugAction(
     parsed.data.categoryId && parsed.data.categoryId.length > 0
       ? parsed.data.categoryId
       : null;
-
-  // #425: the issue goes into the reporter's tenant. No membership, no issue.
-  const tenantId = await currentTenantIdFor(userId);
-  const projectId = tenantId ? await defaultProjectIdFor(prisma, tenantId) : null;
-  if (!tenantId || !projectId) {
-    return { error: NO_TENANT_MESSAGE };
-  }
 
   if (categoryId) {
     const category = await prisma.category.findFirst({
@@ -413,8 +413,9 @@ export async function updateBugAction(
   const access = await currentTenantAccess(userId, user.role);
   const admin = access.admin;
 
+  const tenantId = await currentTenantIdFor(userId);
   const existing = await prisma.bug.findUnique({
-    where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
+    where: { id: bugId, ...bugInTenant(tenantId) },
     include: {
       assignee: { select: { id: true, name: true } },
       category: { select: { id: true, name: true } },
@@ -606,12 +607,12 @@ export async function updateBugAction(
   ) {
     let toName: string | null = null;
     if (data.assigneeId) {
-      const nextAssignee = await prisma.user.findUnique({
-        where: { id: data.assigneeId },
+      const nextAssignee = await prisma.user.findFirst({
+        where: { id: data.assigneeId, memberships: { some: { tenantId: existing.tenantId } } },
         select: { name: true },
       });
       if (!nextAssignee) {
-        return { error: "Assignee not found" };
+        return { error: "Assignee not found in this workspace" };
       }
       toName = nextAssignee.name ?? null;
     }

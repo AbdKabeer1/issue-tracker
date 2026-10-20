@@ -37,7 +37,7 @@ vi.mock("@/lib/tenant-access", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     bug: { findUnique: vi.fn() },
-    user: { findUnique: vi.fn() },
+    user: { findUnique: vi.fn(), findFirst: vi.fn() },
     issueType: { findUnique: vi.fn() },
     category: { findUnique: vi.fn(), findFirst: vi.fn() },
     milestone: { findUnique: vi.fn() },
@@ -55,7 +55,7 @@ import { updateBugAction } from "./issues";
 
 const db = prisma as unknown as {
   bug: { findUnique: ReturnType<typeof vi.fn> };
-  user: { findUnique: ReturnType<typeof vi.fn> };
+  user: { findUnique: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
   issueType: { findUnique: ReturnType<typeof vi.fn> };
   category: { findUnique: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
   milestone: { findUnique: ReturnType<typeof vi.fn> };
@@ -111,6 +111,7 @@ beforeEach(() => {
   awarded = [];
   claimReleases = [];
   db.user.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({ name: where.id }));
+  db.user.findFirst.mockImplementation(async ({ where }: { where: { id: string } }) => ({ name: where.id }));
   db.issueType.findUnique.mockResolvedValue({ id: "t1", name: "Fix", isActive: true });
   db.category.findFirst.mockResolvedValue({ id: "c1", name: "Web", tenantId: "tenant-zedu" });
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
@@ -162,9 +163,30 @@ describe("updateBugAction authorization (#218)", () => {
       } else {
         expect(result).toEqual({ ok: true });
         expect(written).toEqual(data);
+        if (data?.assigneeId) {
+          expect(db.user.findFirst).toHaveBeenCalledWith({
+            where: { id: data.assigneeId, memberships: { some: { tenantId: "tenant-zedu" } } },
+            select: { name: true },
+          });
+        }
       }
     },
   );
+
+  it("rejects an assignee who is not a member of the issue tenant", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "admin" });
+    db.bug.findUnique.mockResolvedValue(issue(null));
+    db.user.findFirst.mockResolvedValue(null);
+
+    await expect(updateBugAction("bug1", form({ assigneeId: SOMEONE }))).resolves.toEqual({
+      error: "Assignee not found in this workspace",
+    });
+    expect(db.user.findFirst).toHaveBeenCalledWith({
+      where: { id: SOMEONE, memberships: { some: { tenantId: "tenant-zedu" } } },
+      select: { name: true },
+    });
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
 
   it("refuses to update a deleted issue", async () => {
     mockUser.mockResolvedValue({ id: ME, name: "Me", role: "admin" });
