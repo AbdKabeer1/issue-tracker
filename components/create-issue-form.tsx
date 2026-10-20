@@ -53,12 +53,14 @@ export function CreateIssueForm({
   types = [],
   isAdmin,
   currentUserId,
+  projectId,
 }: {
   users: UserOption[];
   categories?: CategoryOption[];
   types?: TypeOption[];
   isAdmin: boolean;
   currentUserId?: string;
+  projectId?: string | null;
 }) {
   const defaultTypeId =
     types.find((t) => t.name.toLowerCase() === "fix")?.id ?? types[0]?.id ?? "";
@@ -89,6 +91,7 @@ export function CreateIssueForm({
   const draftKey = buildDraftKey({
     userId: currentUserId,
     formType: "create-bug",
+    projectId,
   });
 
   const { values, setValue, isRestored, clearDraft, discardDraft } = useFormDraft(
