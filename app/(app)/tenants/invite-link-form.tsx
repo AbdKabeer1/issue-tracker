@@ -35,7 +35,7 @@ export function InviteLinkForm() {
           name="link"
           value={link}
           onChange={(event) => setLink(event.target.value)}
-          placeholder="https://ziki.dev/tenants/invite/…"
+          placeholder="https://ziki.dev/join/…"
           autoComplete="off"
           spellCheck={false}
           required

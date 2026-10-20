@@ -219,6 +219,9 @@ describe("the other tenant actions (#444)", () => {
     expect(
       await redirectedTo(() => openInviteLinkAction(undefined, form({ link: `https://ziki.dev/tenants/invite/${TOKEN}` }))),
     ).toBe(`/tenants/invite/${TOKEN}`);
+    expect(
+      await redirectedTo(() => openInviteLinkAction(undefined, form({ link: `https://ziki.dev/join/${TOKEN}` }))),
+    ).toBe(`/join/${TOKEN}`);
     expect(await openInviteLinkAction(undefined, form({ link: "https://ziki.dev/tenants/zedu" }))).toMatchObject({
       field: "link",
     });
