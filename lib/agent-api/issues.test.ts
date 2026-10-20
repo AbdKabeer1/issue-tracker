@@ -344,7 +344,7 @@ describe("agent comments", () => {
 
   it("records the person and agent with activity, watching, and audit", async () => {
     expect((await comment(request("POST", { body: "A helpful comment" }), context)).status).toBe(201);
-    expect(db.comment.create).toHaveBeenCalledWith(expect.objectContaining({ data: { bugId: issue.id, authorId: "owner-a", agentId: "agent-a", body: "A helpful comment", parentId: null } }));
+    expect(db.comment.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ bugId: issue.id, authorId: "owner-a", agentId: "agent-a", body: "A helpful comment", parentId: null }) }));
     expect(db.bugActivity.create).toHaveBeenCalled();
     expect(db.agentEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       type: "comment.created", bugId: issue.id, payload: { commentId: "comment-a", issueId: issue.id, authorId: "owner-a" },

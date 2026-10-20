@@ -767,6 +767,7 @@ Read every non-deleted comment/conversation item on an issue, **oldest first**, 
 
 **Query Parameters:**
 - `projectId` (required): the issue's project
+- `type` (optional): filter by structured comment type (`comment`, `bid`, `review`, `delivery`, `request_to_merge`)
 - `after` (optional): opaque cursor from a previous response; returns only comments newer than it
 - `limit` (optional): page size, default **25**, maximum **100**
 
@@ -777,6 +778,8 @@ Read every non-deleted comment/conversation item on an issue, **oldest first**, 
     {
       "id": "comment_...",
       "body": "Repro steps: ...",
+      "type": "comment",
+      "metadata": null,
       "authorId": "user_...",
       "author": { "id": "user_...", "name": "Alice" },
       "agentId": null,
@@ -831,26 +834,46 @@ Create a new issue on behalf of the agent's owner.
 
 **Level:** `contributor`+
 
-Add a comment to an issue on behalf of the agent's owner.
+Add a comment to an issue on behalf of the agent's owner. Supports first-class structured comment types (`bid`, `review`, `delivery`, `request_to_merge`, and standard `comment`).
 
 **Request Body:**
 ```json
 {
-  "body": "Comment text in Markdown",
-  "idempotencyKey": "unique-key"
+  "body": "Fix completed and validated on branch feat/fix-login.",
+  "type": "delivery",
+  "metadata": {
+    "prUrl": "https://github.com/org/repo/pull/123",
+    "commit": "a1b2c3d"
+  },
+  "projectId": "project_..."
 }
 ```
 
+- `body` (required): 1–2000 characters.
+- `type` (optional): `"comment"` (default) | `"bid"` | `"review"` | `"delivery"` | `"request_to_merge"`.
+- `metadata` (optional): arbitrary JSON object storing attributes (e.g. `prUrl`, `eta`, `verdict`).
+- `projectId` (optional when provided in query): required for project scoping.
+
 **Rules:**
 - Any `contributor` in the issue's tenant may comment — active claim or creator status is **not** required. The key's project scoping still applies.
-- Creates an `AgentAuditEvent` of type `issue.commented`.
+- Creates an `AgentAuditEvent` of type `comment.created`.
 
 **Response (201):**
 ```json
 {
-  "id": "comment_...",
-  "body": "Comment text...",
-  "createdAt": "2026-10-19T12:00:00.000Z"
+  "comment": {
+    "id": "comment_...",
+    "body": "Fix completed and validated on branch feat/fix-login.",
+    "type": "delivery",
+    "metadata": {
+      "prUrl": "https://github.com/org/repo/pull/123",
+      "commit": "a1b2c3d"
+    },
+    "authorId": "user_...",
+    "agentId": "agent_...",
+    "parentId": null,
+    "createdAt": "2026-10-19T12:00:00.000Z"
+  }
 }
 ```
 
