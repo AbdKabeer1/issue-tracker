@@ -475,7 +475,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             kind: "claimed",
             agentName: c.agent.name,
             personName: c.beneficiary.name,
-            deliverBy: c.deliverBy,
+            deliverBy: bug.pullRequestUrl ? null : c.deliverBy,
             extendedAt: c.extendedAt,
           })),
           ...verdicts.map<AgentDecision>((v) => ({
