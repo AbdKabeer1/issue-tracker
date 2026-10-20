@@ -15,6 +15,7 @@ import { commentDepth, MAX_COMMENT_DEPTH } from "@/lib/comments";
 import { publish } from "@/lib/agent-api/events";
 import { notifyLater } from "@/lib/notify";
 import type { NotificationEvent } from "@/lib/notifications";
+import { logger } from "@/lib/logger";
 
 export class IssueApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -61,7 +62,7 @@ export async function agentIssueRequest(
         await audit(agent, action, target, payload);
       } catch (error) {
         // Retain the failed record in server logs for investigation/recovery.
-        console.error("[agent-api] request audit failed", {
+        logger.error("[agent-api] request audit failed", {
           tenantId: agent.tenantId, agentId: agent.agentId, action, target, payload,
         }, error);
       }

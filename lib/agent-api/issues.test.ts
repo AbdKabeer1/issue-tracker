@@ -326,7 +326,7 @@ describe("agent comments", () => {
     expect(log).toHaveBeenCalledWith("[agent-api] request audit failed", {
       tenantId: "tenant-a", agentId: "agent-a", action: "comments.create",
       target: issue.id, payload: { status: 201, request: true },
-    }, error);
+    }, expect.objectContaining({ message: error.message }));
   });
 
   it("keeps transactional domain audit failures fatal (#755)", async () => {
