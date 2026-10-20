@@ -10,6 +10,7 @@ const db = vi.hoisted(() => {
       findUniqueOrThrow: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
+      deleteMany: vi.fn(),
     },
     agent: { create: vi.fn(), delete: vi.fn(), count: vi.fn(async () => 0) },
     agentApiKey: { create: vi.fn() },
@@ -23,7 +24,15 @@ const db = vi.hoisted(() => {
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 
 import { hashSecret, normalizeUserCode } from "./keys";
-import { PAIRING_TTL_MS, approvePairing, collectPairing, materializeApprovedPairings, pairingApprovalPath, startPairing } from "./pairing";
+import {
+  PAIRING_TTL_MS,
+  approvePairing,
+  cleanupExpiredPairings,
+  collectPairing,
+  materializeApprovedPairings,
+  pairingApprovalPath,
+  startPairing,
+} from "./pairing";
 import { MAX_ACTIVE_AGENTS_PER_OWNER } from "./registry-limits";
 
 const NOW = new Date("2026-10-19T12:00:00Z");
@@ -32,6 +41,7 @@ const DEVICE = "d".repeat(43);
 beforeEach(() => {
   vi.clearAllMocks();
   db.$transaction.mockImplementation((fn: (tx: unknown) => unknown) => fn(db));
+  db.agentPairing.deleteMany.mockResolvedValue({ count: 0 });
   db.membership.findMany.mockResolvedValue([{ tenantId: "tenant_zedu", role: "member", tenant: { slug: "zedu" } }]);
   db.project.findFirst.mockResolvedValue({ id: "project_zedu" });
   db.agent.create.mockResolvedValue({ id: "agent9", name: "Ada's Claude" });
@@ -234,5 +244,37 @@ describe("collectPairing (#427)", () => {
     expect(await collectPairing(undefined, NOW)).toEqual({ status: "invalid" });
     expect(await collectPairing("short", NOW)).toEqual({ status: "invalid" });
     expect(db.agentPairing.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe("cleanupExpiredPairings (#673)", () => {
+  it("deletes unapproved and unconsumed pairings that have expired", async () => {
+    db.agentPairing.deleteMany.mockResolvedValue({ count: 5 });
+    const result = await cleanupExpiredPairings(NOW);
+    expect(result).toEqual({ count: 5 });
+    expect(db.agentPairing.deleteMany).toHaveBeenCalledWith({
+      where: {
+        expiresAt: { lt: NOW },
+        approvedAt: null,
+        consumedAt: null,
+      },
+    });
+  });
+
+  it("triggers cleanup on startPairing and approvePairing", async () => {
+    db.agentPairing.deleteMany.mockResolvedValue({ count: 2 });
+    db.agentPairing.updateMany.mockResolvedValue({ count: 1 });
+    db.agentPairing.findUnique.mockResolvedValue({
+      id: "p1",
+      proposedName: "Ada's Claude",
+      proposedModel: null,
+    });
+
+    await startPairing({ name: "Sweep Agent" }, NOW);
+    expect(db.agentPairing.deleteMany).toHaveBeenCalled();
+
+    db.agentPairing.deleteMany.mockClear();
+    await approvePairing({ id: "ada" }, "KX7P-2MQD", NOW, "project_zedu");
+    expect(db.agentPairing.deleteMany).toHaveBeenCalled();
   });
 });

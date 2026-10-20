@@ -40,6 +40,32 @@ describe("RichText ordered list start attribute (#137)", () => {
   });
 });
 
+describe("RichText adjacent mixed-marker lists (#725)", () => {
+  // Inline text is wrapped in bare <span>s; drop them to compare list structure.
+  const renderLists = (content: string) => render(content).replace(/<\/?span>/g, "");
+
+  it("renders an ordered item followed by a bullet as ol then ul", () => {
+    const html = renderLists("1. first\n- second");
+    expect(html).toContain("<ol start=\"1\"><li>first</li></ol><ul><li>second</li></ul>");
+  });
+
+  it("renders a bullet followed by an ordered item as ul then ol", () => {
+    const html = renderLists("- first\n1. second");
+    expect(html).toContain("<ul><li>first</li></ul><ol start=\"1\"><li>second</li></ol>");
+  });
+
+  it("splits mixed markers inside nested lists too", () => {
+    const html = renderLists("- parent\n  1. one\n  - two");
+    expect(html).toContain("<li>parent<ol start=\"1\"><li>one</li></ol><ul><li>two</li></ul></li>");
+  });
+
+  it("keeps a same-marker run as a single list", () => {
+    const html = render("- a\n- b\n- c");
+    expect(html.match(/<ul>/g)).toHaveLength(1);
+    expect(html).not.toContain("<ol");
+  });
+});
+
 describe("RichText nested inline formatting (#136)", () => {
   it("renders mentions inside bold, italic, and strikethrough", () => {
     const mockRenderMentions = (text: string) => {

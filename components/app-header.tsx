@@ -189,17 +189,22 @@ export function AppHeader({
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [manageProjectOpen, setManageProjectOpen] = useState(false);
 
   const accountRef = useRef<HTMLDivElement>(null);
   const accountButtonRef = useRef<HTMLButtonElement>(null);
+  const manageProjectRef = useRef<HTMLDivElement>(null);
+  const manageProjectButtonRef = useRef<HTMLButtonElement>(null);
   const headerRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLDivElement>(null);
 
   const closeAccount = () => setAccountOpen(false);
   const closeMenu = () => setMenuOpen(false);
+  const closeManageProject = () => setManageProjectOpen(false);
   useDismiss(accountOpen, closeAccount, accountRef, accountButtonRef);
   useDismiss(menuOpen, closeMenu, headerRef, menuButtonRef);
+  useDismiss(manageProjectOpen, closeManageProject, manageProjectRef, manageProjectButtonRef);
   useMenuFocusTrap(menuOpen, headerRef, menuPanelRef, menuButtonRef);
 
   // Close menus when the page changes (state adjusted during render, not in an effect).
@@ -208,6 +213,7 @@ export function AppHeader({
     setLastPath(pathname);
     setMenuOpen(false);
     setAccountOpen(false);
+    setManageProjectOpen(false);
   }
 
   const items = headerNavItems(role, {
@@ -256,6 +262,71 @@ export function AppHeader({
           className="hidden h-full min-w-0 flex-1 items-stretch gap-1 overflow-x-auto md:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {items.map((item) => {
+            if (item.children && item.children.length > 0) {
+              const active = item.children.some((sub) => isNavItemActive(pathname, sub.href));
+              return (
+                <div key={item.label} ref={manageProjectRef} className="relative flex items-stretch">
+                  <button
+                    ref={manageProjectButtonRef}
+                    type="button"
+                    aria-haspopup="menu"
+                    aria-expanded={manageProjectOpen}
+                    aria-controls="manage-project-menu"
+                    onClick={() => setManageProjectOpen((open) => !open)}
+                    className={`relative inline-flex items-center gap-1 rounded-sm px-2.5 text-sm transition-colors ${linkFocus} ${
+                      active
+                        ? "font-medium text-slate-900 after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-teal-700"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <span>{item.label}</span>
+                    <svg
+                      className={`h-4 w-4 text-slate-500 transition-transform ${manageProjectOpen ? "rotate-180" : ""}`}
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </button>
+                  {manageProjectOpen ? (
+                    <div
+                      id="manage-project-menu"
+                      role="menu"
+                      aria-label={item.label}
+                      className="absolute left-0 top-full z-50 mt-1 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg ring-1 ring-black/5"
+                    >
+                      {item.children.map((sub) => {
+                        const subActive = isNavItemActive(pathname, sub.href);
+                        return (
+                          <Link
+                            key={sub.href}
+                            href={sub.href}
+                            role="menuitem"
+                            onClick={() => setManageProjectOpen(false)}
+                            className={`flex flex-col rounded-lg px-3 py-2 text-sm transition-colors ${linkFocus} ${
+                              subActive
+                                ? "bg-teal-50 font-medium text-teal-900"
+                                : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                            }`}
+                          >
+                            <span className="font-medium">{sub.label}</span>
+                            {sub.description ? (
+                              <span className="text-xs text-slate-500 font-normal">{sub.description}</span>
+                            ) : null}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
+
             const active = isNavItemActive(pathname, item.href);
             return (
               <Link
@@ -427,17 +498,40 @@ export function AppHeader({
             </div>
           ) : null}
           <nav aria-label="Main" className="flex flex-col py-1">
-            {items.map((item) => (
-              <MenuLink
-                key={item.href}
-                href={item.href}
-                active={isNavItemActive(pathname, item.href)}
-                badge={item.badge}
-                large
-              >
-                {item.label}
-              </MenuLink>
-            ))}
+            {items.map((item) => {
+              if (item.children && item.children.length > 0) {
+                return (
+                  <div key={item.label} className="py-1">
+                    <div className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      {item.label}
+                    </div>
+                    <div className="pl-2 space-y-0.5">
+                      {item.children.map((sub) => (
+                        <MenuLink
+                          key={sub.href}
+                          href={sub.href}
+                          active={isNavItemActive(pathname, sub.href)}
+                          large
+                        >
+                          {sub.label}
+                        </MenuLink>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <MenuLink
+                  key={item.href}
+                  href={item.href}
+                  active={isNavItemActive(pathname, item.href)}
+                  badge={item.badge}
+                  large
+                >
+                  {item.label}
+                </MenuLink>
+              );
+            })}
             {isAdmin(effectiveRole) ? (
               <MenuLink
                 href="/admin/dashboard"

@@ -39,10 +39,11 @@ async function withWatchers(event: NotificationEvent): Promise<NotificationEvent
 }
 
 /** Writes the in-app feed rows (#216). Always, whatever the email settings. */
-async function recordInApp(event: NotificationEvent, planned: PlannedNotification[]) {
+async function recordInApp(event: NotificationEvent, planned: PlannedNotification[], tenantId: string | null) {
   await prisma.notification.createMany({
     data: planned.map((n) => ({
       userId: n.userId,
+      tenantId,
       bugId: event.bugId ?? null,
       kind: n.kind,
       title: n.title,
@@ -161,21 +162,23 @@ async function sendEmails(planned: PlannedNotification[]) {
 
 /** Deliver one event: in-app feed for everyone it concerns, plus email. */
 export async function deliverNotifications(event: NotificationEvent): Promise<void> {
+  let tenantId = "tenantId" in event ? event.tenantId ?? null : null;
   // The issue may have been deleted between the action and delivery. Agent
   // and platform events (#443) need not be about an issue at all.
   if (event.bugId) {
     const bug = await prisma.bug.findUnique({
       where: { id: event.bugId },
-      select: { isDeleted: true },
+      select: { isDeleted: true, tenantId: true },
     });
     if (!bug || bug.isDeleted) return;
+    tenantId = bug.tenantId;
   }
 
   const planned = planNotifications(await withWatchers(event), getSiteUrl());
   if (planned.length === 0) return;
 
   try {
-    await recordInApp(event, planned);
+    await recordInApp(event, planned, tenantId);
   } catch (error) {
     // The feed failing must not stop the emails.
     console.error("[notify] failed to record in-app notifications", error);

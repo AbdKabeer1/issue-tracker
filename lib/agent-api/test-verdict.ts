@@ -10,6 +10,7 @@ import {
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { publish } from "@/lib/agent-api/events";
+import { handleTestVerdictSubmitted } from "@/lib/agent-api/review-offer";
 
 /**
  * Reviewer agents reporting whether a fix is good to merge (#434). A verdict
@@ -223,6 +224,7 @@ export async function submitTestVerdict(
           actorAgentId: agent.agentId,
           bugId: bug.id,
         });
+        await handleTestVerdictSubmitted(tx, { bugId: bug.id, agentId: agent.agentId, tenantId: bug.tenantId, pullRequestUrl }).catch(() => null);
         return { status: 200 as const, verdict, changed: true as const };
       }
 
@@ -253,6 +255,7 @@ export async function submitTestVerdict(
         bugId: bug.id,
       });
 
+      await handleTestVerdictSubmitted(tx, { bugId: bug.id, agentId: agent.agentId, tenantId: bug.tenantId, pullRequestUrl }).catch(() => null);
       return { status: 201 as const, verdict };
     });
   } catch (error) {

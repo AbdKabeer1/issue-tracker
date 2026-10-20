@@ -114,11 +114,15 @@ export function commentInTenant(tenantId: string | null): { bug: TenantScope } {
 }
 
 /**
- * Notifications about issues in `tenantId`. Notifications that aren't about
- * an issue (e.g. account changes) belong to the person, so they stay visible.
+ * Notifications in `tenantId`. Personal notifications without a workspace stay
+ * visible in each workspace; the feed can bypass this scope for all workspaces.
  */
-export function notificationInTenant(tenantId: string | null): Prisma.NotificationWhereInput {
-  return tenantId ? { OR: [{ bugId: null }, { bug: { tenantId } }] } : { bugId: null };
+export function notificationInTenant(
+  tenantId: string | null,
+  allWorkspaces = false,
+): Prisma.NotificationWhereInput {
+  if (allWorkspaces) return {};
+  return tenantId ? { OR: [{ tenantId: null }, { tenantId }] } : { tenantId: null };
 }
 
 /** Shown when someone without a tenant tries to file an issue. */

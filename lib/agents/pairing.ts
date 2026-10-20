@@ -51,6 +51,7 @@ export async function startPairing(input: { name?: unknown; model?: unknown }, n
       expiresAt,
     },
   });
+  cleanupExpiredPairings(now).catch((error: unknown) => console.error("[pairing] cleanup failed", error));
   return { ok: true, userCode, deviceCode, expiresAt };
 }
 
@@ -114,7 +115,7 @@ export async function approvePairing(
   if (!project) return { ok: false, error: PROJECT_REQUIRED };
 
   const codeHash = hashSecret(code);
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     // Checked before the pairing is claimed, so hitting the cap does not burn
     // the code the person already typed (#511).
     const active = await tx.agent.count({
@@ -140,6 +141,10 @@ export async function approvePairing(
     });
     return { ok: true, name: pairing.proposedName } as const;
   });
+  if (result.ok) {
+    cleanupExpiredPairings(now).catch((error: unknown) => console.error("[pairing] cleanup failed", error));
+  }
+  return result;
 }
 
 /**
@@ -301,4 +306,21 @@ async function projectForIssuedKey(tenantId: string, projectId: string | null): 
     select: { id: true },
   });
   return oldest?.id ?? null;
+}
+
+/**
+ * Deletes expired pairings that were never approved or consumed (#673).
+ *
+ * Removes unapproved pairing codes whose TTL has passed to prevent database
+ * bloat and eliminate stale pairing attempts.
+ */
+export async function cleanupExpiredPairings(now = new Date()): Promise<{ count: number }> {
+  const result = await prisma.agentPairing.deleteMany({
+    where: {
+      expiresAt: { lt: now },
+      approvedAt: null,
+      consumedAt: null,
+    },
+  });
+  return { count: result?.count ?? 0 };
 }

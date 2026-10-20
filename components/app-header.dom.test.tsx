@@ -81,6 +81,21 @@ describe("account menu role switch", () => {
     expect(escalationsLink.getAttribute("href")).toBe("/escalations");
     expect(screen.getByLabelText("5 pending")).toBeTruthy();
   });
+
+  it("renders Manage Project dropdown and displays grouped links (#761)", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    const manageBtn = screen.getByRole("button", { name: /manage project/i });
+    expect(manageBtn).toBeTruthy();
+
+    await user.click(manageBtn);
+
+    expect(screen.getByRole("menuitem", { name: /projects/i })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /milestones/i })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /platforms/i })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /types/i })).toBeTruthy();
+  });
 });
 
 describe("theme toggle in header (#659)", () => {

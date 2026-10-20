@@ -9,7 +9,7 @@ vi.mock("@/lib/mail", () => ({ sendMail: vi.fn(), canSendMail: vi.fn(() => true)
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: { findMany: vi.fn() },
-    bug: { findUnique: vi.fn(async () => ({ isDeleted: false, assigneeId: null })) },
+    bug: { findUnique: vi.fn(async () => ({ isDeleted: false, assigneeId: null, tenantId: "tenant-1" })) },
     notification: { createMany: vi.fn() },
     issueWatch: { findMany: vi.fn(async () => []) },
   },
@@ -76,8 +76,24 @@ describe("deliverNotifications", () => {
     expect(prisma.notification.createMany as unknown as ReturnType<typeof vi.fn>).toHaveBeenCalled();
     const call = (prisma.notification.createMany as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(call.data.map((row: { userId: string }) => row.userId)).toEqual(["bob"]);
+    expect(call.data.map((row: { tenantId: string }) => row.tenantId)).toEqual(["tenant-1"]);
     expect(send).toHaveBeenCalledOnce();
     expect(send.mock.calls[0][0].to).toBe("bob@x.dev");
+  });
+
+  it("stores the workspace for notifications without an issue link", async () => {
+    findMany.mockResolvedValue([]);
+    await deliverNotifications({
+      kind: "agent_question",
+      actorId: null,
+      actorName: "Claude",
+      recipientId: "bob",
+      tenantId: "tenant-2",
+      questionId: "question-1",
+    });
+
+    const call = (prisma.notification.createMany as unknown as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+    expect(call.data).toEqual([expect.objectContaining({ userId: "bob", tenantId: "tenant-2" })]);
   });
 
   it("only emails people who haven't opted out", async () => {
