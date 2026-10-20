@@ -120,6 +120,15 @@ describe("submitValidation: who may validate (#433)", () => {
     expect(state.validations).toHaveLength(0);
   });
 
+  it("rejects the human reporter's own agent when the beneficiary is unset (#620)", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ beneficiaryUserId: null }));
+    expect(await submitValidation(reviewer("r4", "ada"), "bug1", acceptReal)).toMatchObject({
+      status: 403,
+      error: "not_independent",
+    });
+    expect(db.bug.findFirst.mock.calls[0][0].select.reporterId).toBe(true);
+  });
+
   it("is 404 for an issue outside the agent's tenant or deleted", async () => {
     db.bug.findFirst.mockResolvedValue(null);
     expect(await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal)).toMatchObject({ status: 404 });
@@ -152,6 +161,41 @@ describe("submitValidation: the body (#433)", () => {
     await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal);
     expect(db.bug.update).toHaveBeenCalledWith({ where: { id: "bug1" }, data: { severity: "high" } });
     expect(state.validations[0]).toMatchObject({ severity: "high", previousSeverity: "medium" });
+  });
+
+  it("keeps the higher severity and records the disagreement (#528)", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ severity: "critical" }));
+    const result = await submitValidation(reviewer("r2", "sam"), "bug1", {
+      ...acceptReal,
+      severity: "low",
+    });
+    expect(result).toMatchObject({ status: 201 });
+    // The proposal is recorded on the validation, but the issue is not downgraded.
+    expect(state.validations[0]).toMatchObject({ severity: "low", previousSeverity: "critical" });
+    expect(db.bug.update).not.toHaveBeenCalled();
+    // The disagreement is visible in the audit trail.
+    const auditCalls = db.agentAuditEvent.create.mock.calls as Array<
+      [{ data: { action: string; payload?: Record<string, unknown> } }]
+    >;
+    const auditCall = auditCalls.find((call) => call[0].data.action === "issue.validated");
+    expect(auditCall?.[0].data.payload).toMatchObject({
+      severityDisagreement: true,
+      severity: "low",
+      previousSeverity: "critical",
+      effectiveSeverity: "critical",
+    });
+  });
+
+  it("escalates the severity when the reviewer picks a higher one (#528)", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ severity: "low" }));
+    await submitValidation(reviewer("r2", "sam"), "bug1", {
+      ...acceptReal,
+      severity: "critical",
+    });
+    expect(db.bug.update).toHaveBeenCalledWith({
+      where: { id: "bug1" },
+      data: { severity: "critical" },
+    });
   });
 
   it("lets a duplicate verdict point at the canonical issue in the same tenant", async () => {

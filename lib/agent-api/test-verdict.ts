@@ -42,6 +42,7 @@ const reviewedBugSelect = {
   tenantId: true,
   severity: true,
   beneficiaryUserId: true,
+  reporterId: true,
   createdByAgentId: true,
   createdByAgent: { select: { ownerUserId: true } },
   claims: {

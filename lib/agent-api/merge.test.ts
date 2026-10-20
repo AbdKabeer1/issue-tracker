@@ -23,6 +23,7 @@ const db = vi.hoisted(() => ({
   agentEvent: { create: vi.fn() },
   webhookSubscription: { findMany: vi.fn() },
   webhookDelivery: { createMany: vi.fn() },
+  issueClaim: { updateMany: vi.fn() },
   $transaction: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
@@ -161,6 +162,10 @@ describe("acceptFix: a successful accept (#434)", () => {
     const result = await acceptFix(merger("m1", "mo", "merger"), "bug1");
     expect(result).toMatchObject({ status: 200, accepted: true, solverUserId: "ada" });
     expect(db.bug.update).toHaveBeenCalledWith({ where: { id: "bug1" }, data: { status: "resolved" } });
+    expect(db.issueClaim.updateMany).toHaveBeenCalledWith({
+      where: { bugId: "bug1", status: "active", releasedAt: null },
+      data: { status: "released", releasedAt: expect.any(Date), releaseReason: "resolved" },
+    });
 
     const awards = db.pointEntry.createMany.mock.calls.map((call) => call[0].data[0]);
     expect(awards).toContainEqual({
@@ -177,6 +182,21 @@ describe("acceptFix: a successful accept (#434)", () => {
       target: "bug:bug1",
     });
     expect(db.agentEvent.create.mock.calls[0][0].data).toMatchObject({ type: "issue.accepted", bugId: "bug1" });
+  });
+
+  it("releases the active solver claim as resolved in the accept transaction", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({
+      claims: [{ status: "active", releasedAt: null, agentId: "solver-agent", beneficiaryUserId: "ada", agent: { ownerUserId: "ada" } }],
+    }));
+
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({ status: 200, accepted: true });
+    expect(db.issueClaim.updateMany).toHaveBeenCalledWith({
+      where: { bugId: "bug1", status: "active", releasedAt: null },
+      data: { status: "released", releasedAt: expect.any(Date), releaseReason: "resolved" },
+    });
   });
 
   it("pays up to two reviewers, each for the person they acted for", async () => {
