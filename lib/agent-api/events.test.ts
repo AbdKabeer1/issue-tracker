@@ -77,6 +77,17 @@ describe("event cursor encode/decode", () => {
     expect(decodeEventCursor(bad(["t", "12", ""]))).toBeNull();
     expect(decodeEventCursor(bad(["t", "1".repeat(20), "evt"]))).toBeNull();
   });
+
+  it("rejects a transaction cursor outside the Postgres bigint range", () => {
+    const bad = (value: unknown[]) => Buffer.from(JSON.stringify(value)).toString("base64url");
+    expect(decodeEventCursor(bad(["t", "9999999999999999999", "evt"]))).toBeNull();
+    expect(decodeEventCursor(bad(["t", "9223372036854775808", "evt"]))).toBeNull();
+    expect(decodeEventCursor(bad(["t", "-9223372036854775809", "evt"]))).toBeNull();
+    expect(decodeEventCursor(bad(["t", "9223372036854775807", "evt"]))).toEqual({
+      txid: BigInt("9223372036854775807"),
+      id: "evt",
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

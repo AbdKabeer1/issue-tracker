@@ -136,6 +136,9 @@ export function encodeEventCursor(cursor: EventCursor): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
+const PG_BIGINT_MIN = BigInt("-9223372036854775808");
+const PG_BIGINT_MAX = BigInt("9223372036854775807");
+
 /** Decode a cursor produced by `encodeEventCursor`. Returns `null` on invalid input. */
 export function decodeEventCursor(raw: string | null | undefined): EventCursor | null {
   if (!raw || raw.length > 300) return null;
@@ -145,7 +148,10 @@ export function decodeEventCursor(raw: string | null | undefined): EventCursor |
     if (value.length === 3 && value[0] === "t") {
       const [, txid, id] = value;
       if (typeof txid !== "string" || !/^-?\d{1,19}$/.test(txid) || typeof id !== "string" || !id.trim() || id.length > 191) return null;
-      return { txid: BigInt(txid), id };
+      // 19 digits can still overflow Postgres bigint; Prisma would throw a 500.
+      const parsed = BigInt(txid);
+      if (parsed < PG_BIGINT_MIN || parsed > PG_BIGINT_MAX) return null;
+      return { txid: parsed, id };
     }
     if (value.length !== 2) return null;
     const [iso, id] = value;
