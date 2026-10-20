@@ -11,8 +11,20 @@ import { INVITE_TTL_DAYS, canInvite, pendingInvites } from "@/lib/invites";
 import { prisma } from "@/lib/prisma";
 import { ZEDU_SLUG } from "@/lib/tenant";
 import { currentTenantIdFor } from "@/lib/tenant-context";
-import { MEMBERSHIP_ROLE_LABELS, memberTenantBySlug, tenantMembersFrom } from "@/lib/tenants";
-import { revokeInviteAction, revokeShareLinkAction, selectTenantAction } from "../actions";
+import {
+  MEMBERSHIP_ROLE_LABELS,
+  TENANT_NAME_MAX,
+  memberTenantBySlug,
+  tenantMembersFrom,
+} from "@/lib/tenants";
+import {
+  deleteTenantAction,
+  renameTenantAction,
+  revokeInviteAction,
+  revokeShareLinkAction,
+  selectTenantAction,
+  setTenantArchivedAction,
+} from "../actions";
 import { CopyLinkButton } from "@/components/copy-link-button";
 import { joinedSummary, listShareLinks, shareLinkStatusLabel } from "@/lib/share-invites";
 import { InviteForm } from "./invite-form";
@@ -54,15 +66,29 @@ async function loadTenantMembers(tenantId: string) {
  * One of the person's tenants (#444): who can invite, and for its owners and
  * admins, sending and withdrawing invites.
  */
-export default async function TenantPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function TenantPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ error?: string | string[]; notice?: string | string[] }>;
+}) {
   const user = await requireUser();
   const { slug } = await params;
+  const {
+    error: errorParam,
+    notice: noticeParam,
+  } = await searchParams;
+  const error = typeof errorParam === "string" ? errorParam : "";
+  const notice = typeof noticeParam === "string" ? noticeParam : "";
   const tenant = await memberTenantBySlug(prisma, user.id, slug);
   // Someone else's tenant looks exactly like no tenant: its name is never read.
   if (!tenant) notFound();
 
-  const canManage = canInvite(tenant.role);
-  const canChangeRoles = tenant.role === "owner" || isSuperAdmin(user.role);
+  const canManage = !tenant.archivedAt && canInvite(tenant.role);
+  const canChangeRoles =
+    !tenant.archivedAt && (tenant.role === "owner" || isSuperAdmin(user.role));
+  const canManageSettings = tenant.role === "owner" && !tenant.archivedAt;
   const [currentTenantId, counts, managers, invites, members, shareLinks, joinRequests] = await Promise.all([
     currentTenantIdFor(user.id),
     prisma.tenant.findUnique({
@@ -96,7 +122,9 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
         </Link>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="min-w-0 truncate text-2xl font-semibold text-slate-900">{tenant.name}</h1>
-          {current ? (
+          {tenant.archivedAt ? (
+            <Badge className="bg-amber-50 text-amber-800 ring-1 ring-amber-200">Archived</Badge>
+          ) : current ? (
             <Badge className="bg-teal-50 text-teal-800 ring-1 ring-teal-200">Current</Badge>
           ) : null}
         </div>
@@ -106,13 +134,125 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
             ? ` · ${plural(counts._count.memberships, "member")} · ${plural(counts._count.projects, "project")}`
             : null}
         </p>
-        {current ? null : (
+        {current || tenant.archivedAt ? null : (
           <form action={selectTenantAction}>
             <input type="hidden" name="tenantId" value={tenant.id} />
             <Button type="submit">Open {tenant.name}</Button>
           </form>
         )}
       </div>
+
+      {tenant.archivedAt ? (
+        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 sm:p-6">
+          <h2 className="text-base font-semibold text-amber-900">This tenant is archived</h2>
+          <p className="mt-1 text-sm text-amber-900">
+            Archived tenants are hidden from the switcher and can&apos;t be opened. Its issues and
+            members stay here, read-only, until an owner restores it.
+          </p>
+          {tenant.role === "owner" ? (
+            <form action={setTenantArchivedAction} className="mt-3">
+              <input type="hidden" name="tenantId" value={tenant.id} />
+              <input type="hidden" name="archived" value="false" />
+              <Button type="submit" variant="secondary">
+                Restore tenant
+              </Button>
+            </form>
+          ) : null}
+        </section>
+      ) : null}
+
+      {error ? (
+        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {error}
+        </p>
+      ) : null}
+      {notice ? (
+        <p className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+          {notice}
+        </p>
+      ) : null}
+
+      {canManageSettings ? (
+        <section aria-labelledby="tenant-settings" className={card}>
+          <h2 id="tenant-settings" className="text-base font-semibold text-slate-900">
+            Tenant settings
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Rename this tenant, archive it, or delete it permanently when it has no issues,
+            agents or other members.
+          </p>
+
+          <form action={renameTenantAction} className="mt-4 space-y-2">
+            <input type="hidden" name="tenantId" value={tenant.id} />
+            <label htmlFor="tenant-name" className="block text-sm font-medium text-slate-800">
+              Display name
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                id="tenant-name"
+                name="name"
+                defaultValue={tenant.name}
+                maxLength={TENANT_NAME_MAX}
+                required
+                className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-900"
+              />
+              <Button type="submit" variant="secondary">
+                Save name
+              </Button>
+            </div>
+            <p className="text-xs text-slate-500">
+              The tenant&apos;s URL stays the same, so existing links keep working.
+            </p>
+          </form>
+
+          <div className="mt-5 space-y-4 border-t border-slate-200 pt-4">
+            {tenant.slug === ZEDU_SLUG ? (
+              <p className="text-xs text-slate-500">
+                Zedu is the default workspace and can&apos;t be archived or deleted.
+              </p>
+            ) : (
+              <>
+                <form action={setTenantArchivedAction}>
+                  <input type="hidden" name="tenantId" value={tenant.id} />
+                  <input type="hidden" name="archived" value="true" />
+                  <Button type="submit" variant="secondary">
+                    Archive tenant
+                  </Button>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Archiving hides it from the switcher. You can restore it later.
+                  </p>
+                </form>
+
+                <form action={deleteTenantAction} className="space-y-2">
+                  <input type="hidden" name="tenantId" value={tenant.id} />
+                  <p className="text-sm font-medium text-slate-800">Delete tenant</p>
+                  <p className="text-xs text-slate-500">
+                    Deleting is permanent and only works when the tenant has no issues, agents or
+                    other members. Otherwise archive it instead.
+                  </p>
+                  <label htmlFor="confirm-tenant-name" className="block text-xs text-slate-600">
+                    Type <span className="font-semibold text-slate-800">{tenant.name}</span> to
+                    confirm
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      id="confirm-tenant-name"
+                      name="confirmName"
+                      placeholder={tenant.name}
+                      autoComplete="off"
+                      required
+                      className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-900"
+                    />
+                    <Button type="submit" variant="danger-secondary">
+                      Delete tenant
+                    </Button>
+                  </div>
+                </form>
+              </>
+            )}
+          </div>
+        </section>
+      ) : null}
 
       <section aria-labelledby="tenant-managers" className={card}>
         <h2 id="tenant-managers" className="text-base font-semibold text-slate-900">

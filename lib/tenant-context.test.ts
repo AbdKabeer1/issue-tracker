@@ -61,7 +61,11 @@ describe("tenant context (#425)", () => {
       const findMany = vi.fn().mockResolvedValue([zedu]);
       const db = { membership: { findMany } } as never;
       expect(await tenantIdForUser(db, "user-1")).toBe("tenant-zedu");
-      expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: "user-1" } }));
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: "user-1", tenant: { archivedAt: null } },
+        }),
+      );
     });
 
     it("has no tenant without a signed-in person, and doesn't query", async () => {

@@ -42,7 +42,7 @@ export async function tenantIdForUser(
   if (!userId) return null;
   try {
     const memberships = await db.membership.findMany({
-      where: { userId },
+      where: { userId, tenant: { archivedAt: null } },
       select: { tenantId: true, tenant: { select: { slug: true } } },
       orderBy: { createdAt: "asc" },
     });

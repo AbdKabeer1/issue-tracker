@@ -12,7 +12,7 @@ import {
   tenantsForUser,
   zeduNeedsOwner,
 } from "@/lib/tenants";
-import { selectTenantAction } from "./actions";
+import { selectTenantAction, setTenantArchivedAction } from "./actions";
 import { CreateTenantForm } from "./create-tenant-form";
 import { InviteCard } from "./invite-card";
 import { InviteLinkForm } from "./invite-link-form";
@@ -33,12 +33,22 @@ const card = "rounded-xl border border-slate-200 bg-white p-4 sm:p-6";
 export default async function TenantsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ invite?: string | string[] }>;
+  searchParams: Promise<{
+    invite?: string | string[];
+    error?: string | string[];
+    notice?: string | string[];
+  }>;
 }) {
   const user = await requireUser();
   // In-app invite notifications (#443) link here with the invite's id.
-  const { invite: inviteParam } = await searchParams;
+  const {
+    invite: inviteParam,
+    error: errorParam,
+    notice: noticeParam,
+  } = await searchParams;
   const inviteId = typeof inviteParam === "string" ? inviteParam : "";
+  const error = typeof errorParam === "string" ? errorParam : "";
+  const notice = typeof noticeParam === "string" ? noticeParam : "";
 
   const [tenants, currentTenantId, invite, zeduOwnerNeeded] = await Promise.all([
     tenantsForUser(prisma, user.id),
@@ -46,7 +56,11 @@ export default async function TenantsPage({
     inviteId ? viewInvite(prisma, { inviteId }, user) : null,
     isSuperAdmin(user.role) ? zeduNeedsOwner(prisma) : false,
   ]);
-  const hasTenants = tenants.length > 0;
+  const activeTenants = tenants.filter((tenant) => !tenant.archivedAt);
+  const archivedTenants = tenants.filter(
+    (tenant) => tenant.archivedAt && tenant.role === "owner",
+  );
+  const hasTenants = activeTenants.length > 0;
   const [discoverable, joinRequests] = await Promise.all([
     !hasTenants && !inviteId ? discoverableTenants(prisma, user.id) : Promise.resolve([]),
     requestsForUser(prisma, user.id),
@@ -64,6 +78,17 @@ export default async function TenantsPage({
             : "You're not in a tenant yet. Accept an invite from someone in one, or create a tenant of your own."}
         </p>
       </div>
+
+      {error ? (
+        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {error}
+        </p>
+      ) : null}
+      {notice ? (
+        <p className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+          {notice}
+        </p>
+      ) : null}
 
       {inviteId ? (
         <InviteCard invite={invite} accept={{ inviteId }} accountEmail={user.email} />
@@ -153,7 +178,7 @@ export default async function TenantsPage({
             Your tenants
           </h2>
           <ul className="divide-y divide-slate-200">
-            {tenants.map((tenant) => {
+            {activeTenants.map((tenant) => {
               const current = tenant.id === currentTenantId;
               return (
                 <li key={tenant.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
@@ -180,6 +205,46 @@ export default async function TenantsPage({
                 </li>
               );
             })}
+          </ul>
+        </section>
+      ) : null}
+
+      {archivedTenants.length > 0 ? (
+        <section
+          aria-labelledby="archived-tenants"
+          className="overflow-hidden rounded-xl border border-slate-200 bg-white"
+        >
+          <h2
+            id="archived-tenants"
+            className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6"
+          >
+            Archived tenants
+          </h2>
+          <p className="border-b border-slate-200 px-4 py-3 text-sm text-slate-600 sm:px-6">
+            Archived tenants are hidden from the switcher and can&apos;t be opened. Restore one
+            to work in it again.
+          </p>
+          <ul className="divide-y divide-slate-200">
+            {archivedTenants.map((tenant) => (
+              <li
+                key={tenant.id}
+                className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">{tenant.name}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Archived · {MEMBERSHIP_ROLE_LABELS[tenant.role]}
+                  </p>
+                </div>
+                <form action={setTenantArchivedAction}>
+                  <input type="hidden" name="tenantId" value={tenant.id} />
+                  <input type="hidden" name="archived" value="false" />
+                  <Button type="submit" variant="secondary">
+                    Restore {tenant.name}
+                  </Button>
+                </form>
+              </li>
+            ))}
           </ul>
         </section>
       ) : null}
