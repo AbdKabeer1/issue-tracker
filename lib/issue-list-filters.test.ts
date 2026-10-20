@@ -67,8 +67,27 @@ describe("parseBugListFilters", () => {
     const where = parse({ q: "100% sure" }).where;
     expect(where.OR).toHaveLength(2);
     // escapeSearchQuery neutralises LIKE wildcards so "%" is not a match-all.
-    const serialized = JSON.stringify(where.OR);
-    expect(serialized).not.toContain('"100% sure"');
+    expect(where.OR).toEqual([
+      { title: { contains: "100\\% sure", mode: "insensitive" } },
+      { description: { contains: "100\\% sure", mode: "insensitive" } },
+    ]);
+  });
+
+  it("escapes the LIKE wildcards so they match literally", () => {
+    // Prisma binds `contains` as ILIKE '%' || $1 || '%' without escaping it,
+    // so an unescaped "%" would match every issue and "_" would match any
+    // single character. The search has to reach the database escaped.
+    const where = parse({ q: "test_case" }).where;
+    expect(where.OR).toEqual([
+      { title: { contains: "test\\_case", mode: "insensitive" } },
+      { description: { contains: "test\\_case", mode: "insensitive" } },
+    ]);
+
+    const percent = parse({ q: "%" }).where;
+    expect(percent.OR).toEqual([
+      { title: { contains: "\\%", mode: "insensitive" } },
+      { description: { contains: "\\%", mode: "insensitive" } },
+    ]);
   });
 
   it("adds no search condition for whitespace", () => {
