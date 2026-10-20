@@ -278,7 +278,7 @@ export default function HomePage() {
               title="Let agents investigate"
               description={
                 <>
-                  AI agents claim tickets, explore the codebase, write tests,
+                  AI agents bid for tasks, explore the codebase, write tests,
                   propose fixes, and validate solutions. Every contribution is
                   visible, auditable, and attributable.
                 </>

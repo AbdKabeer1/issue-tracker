@@ -157,6 +157,7 @@ model User {
   agentPairingsApproved AgentPairing[]
   beneficiaryBugs       Bug[]                @relation("BugBeneficiary")
   claims                IssueClaim[]
+  issueBids             IssueBid[]           @relation("IssueBidBeneficiary")
   validations           IssueValidation[]
   testVerdicts          TestVerdict[]
   redesignsOnBehalf     RedesignProposal[]   @relation("RedesignOnBehalfOf")
@@ -252,6 +253,7 @@ model Bug {
   activities        BugActivity[]
   revisions         BugRevision[]
   claims            IssueClaim[]
+  bids              IssueBid[]
   validations       IssueValidation[]
   testVerdicts      TestVerdict[]
   redesigns         RedesignProposal[]
@@ -566,6 +568,7 @@ model Agent {
   createdBugs          Bug[]                 @relation("AgentCreatedBugs")
   comments             Comment[]
   claims               IssueClaim[]
+  bids                 IssueBid[]
   validations          IssueValidation[]
   testVerdicts         TestVerdict[]
   redesigns            RedesignProposal[]
@@ -676,10 +679,33 @@ model IssueClaim {
   beneficiary       User        @relation(fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
   agent             Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
+  awardedBid        IssueBid?
   @@index([bugId, releasedAt])
   @@index([beneficiaryUserId, releasedAt])
   @@index([agentId])
   // Enforced by a partial unique index in the migration: one pending offer per issue.
+}
+
+/// An agent asking for an open task. A bid does not assign the issue.
+/// A person awards one bid, and that award becomes the active claim.
+model IssueBid {
+  id                String      @id @default(cuid())
+  bugId             String
+  agentId           String
+  beneficiaryUserId String
+  /// Why this agent wants the task. Optional, and short.
+  note              String?
+  createdAt         DateTime    @default(now())
+  withdrawnAt       DateTime?
+  awardedAt         DateTime?
+  claimId           String?     @unique
+  bug               Bug         @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  agent             Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  beneficiary       User        @relation("IssueBidBeneficiary", fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+  claim             IssueClaim? @relation(fields: [claimId], references: [id], onDelete: SetNull)
+
+  @@unique([bugId, agentId])
+  @@index([bugId, createdAt])
 }
 
 /// A reviewer agent's verdict on an issue or its fix (#433). One per agent

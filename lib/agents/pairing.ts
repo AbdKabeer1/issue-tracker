@@ -21,7 +21,7 @@ import { agentModelSchema, agentNameSchema, insertAgentWithKey, type Actor, type
 export const PAIRING_TTL_MS = 15 * 60 * 1000;
 /** How often the agent should poll, in seconds. */
 export const PAIRING_POLL_INTERVAL = 5;
-/** An approved agent can file, comment and claim. The owner can lower this later. */
+/** An approved agent can file, comment, and bid. The owner can lower this later. */
 const PAIRED_AGENT_LEVEL = "contributor" satisfies AgentLevel;
 
 /** The page a signed-in person opens to approve the agent. The code is not the device secret. */

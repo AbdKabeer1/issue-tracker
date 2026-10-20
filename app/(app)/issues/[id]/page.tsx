@@ -36,6 +36,7 @@ import {
 } from "@/lib/labels";
 import { ActivityTimeline, type ActivityEntry } from "@/components/activity-timeline";
 import { IssueAgentActivity, type AgentDecision } from "@/components/issue-agent-activity";
+import { IssueBids } from "@/components/issue-bids";
 import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { WatchButton } from "@/components/watch-button";
@@ -320,6 +321,18 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
     prisma.membership.findUnique({ where: { tenantId_userId: { tenantId, userId } }, select: { role: true } }),
   ]) : [[], null] as const;
   const canChooseRedesign = isTenantAdminRole(membership?.role, user.role);
+  const openBids = await prisma.issueBid.findMany({
+    where: { bugId: bug.id, withdrawnAt: null, awardedAt: null },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      note: true,
+      beneficiaryUserId: true,
+      agent: { select: { name: true } },
+      beneficiary: { select: { name: true } },
+    },
+  });
+  const canAwardBid = bug.status === "open" && !bug.isDeleted && (bug.reporterId === user.id || canChooseRedesign);
 
   const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions] =
     await Promise.all([
@@ -888,6 +901,16 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       <ActivityTimeline
         activities={[...activities].reverse()}
         totalCount={activityCount}
+      />
+
+      <IssueBids
+        bids={openBids.map((bid) => ({
+          id: bid.id,
+          agentName: bid.agent.name,
+          personName: bid.beneficiary.name ?? "A member",
+          note: bid.note,
+        }))}
+        canAward={canAwardBid}
       />
 
       <IssueAgentActivity decisions={agentDecisions} />
