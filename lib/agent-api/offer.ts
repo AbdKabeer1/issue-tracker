@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { IssueApiError } from "@/lib/agent-api/issues";
@@ -53,33 +53,42 @@ async function offerNext(db: Db, caller: { agentId?: string; tenantId: string },
     ? [{ beneficiaryUserId: m.userId, agentId: m.user.agents[0].id }]
     : []);
   if (!people.length) return null;
-  // Serialize offer selection across issues so a person cannot accumulate
-  // simultaneous pending offers while their active-claim count is stale.
-  for (const userId of people.map((person) => person.beneficiaryUserId).sort()) {
-    await db.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR NO KEY UPDATE`;
-  }
-
   const active = await db.issueClaim.groupBy({
     by: ["beneficiaryUserId"],
     where: { beneficiaryUserId: { in: people.map((p) => p.beneficiaryUserId) }, releasedAt: null, status: "active", bug: { tenantId: caller.tenantId, projectId: bug.projectId } },
     _count: { _all: true },
   });
   const counts = new Map(active.map((row) => [row.beneficiaryUserId, row._count._all]));
-  const offers = await db.issueClaim.findMany({
+  const offers = await db.issueClaim.groupBy({
+    by: ["beneficiaryUserId"],
     where: { beneficiaryUserId: { in: people.map((p) => p.beneficiaryUserId) }, offeredAt: { not: null }, bug: { tenantId: caller.tenantId } },
-    orderBy: { offeredAt: "desc" }, select: { beneficiaryUserId: true, offeredAt: true },
+    _max: { offeredAt: true },
   });
-  const lastOffered = new Map<string, Date>();
-  for (const row of offers) if (row.offeredAt && !lastOffered.has(row.beneficiaryUserId)) lastOffered.set(row.beneficiaryUserId, row.offeredAt);
+  const lastOffered = new Map(offers.map((row) => [row.beneficiaryUserId, row._max.offeredAt]));
 
-  const pending = await db.issueClaim.findMany({ where: { beneficiaryUserId: { in: people.map((p) => p.beneficiaryUserId) }, status: "offered", releasedAt: null, bug: { tenantId: caller.tenantId } }, select: { beneficiaryUserId: true } });
+  const pending = await db.issueClaim.groupBy({
+    by: ["beneficiaryUserId"],
+    where: { beneficiaryUserId: { in: people.map((p) => p.beneficiaryUserId) }, status: "offered", releasedAt: null, bug: { tenantId: caller.tenantId } },
+  });
   const pendingPeople = new Set(pending.map((row) => row.beneficiaryUserId));
   const candidates: OfferCandidate[] = people.map((p) => ({
     ...p, activeClaims: counts.get(p.beneficiaryUserId) ?? 0,
     lastOfferedAt: lastOffered.get(p.beneficiaryUserId) ?? null,
     pendingOffer: pendingPeople.has(p.beneficiaryUserId),
   }));
-  const next = availableOfferCandidates(candidates)[0];
+  const eligible = availableOfferCandidates(candidates);
+  if (!eligible.length) return null;
+  // Lock only the highest-ranked available member. Under contention, skip that
+  // row and take the next ranked unlocked member in the same query.
+  const rankedIds = eligible.map((person) => person.beneficiaryUserId);
+  const locked = await db.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "User"
+    WHERE "id" IN (${Prisma.join(rankedIds)})
+    ORDER BY array_position(ARRAY[${Prisma.join(rankedIds)}]::text[], "id")
+    LIMIT 1 FOR NO KEY UPDATE SKIP LOCKED
+  `;
+  if (!locked.length) return null;
+  const next = eligible.find((person) => person.beneficiaryUserId === locked[0].id);
   if (!next) return null;
   const claim = await db.issueClaim.create({ data: {
     bugId: bug.id, beneficiaryUserId: next.beneficiaryUserId, agentId: next.agentId, status: "offered", offeredAt: new Date(),
