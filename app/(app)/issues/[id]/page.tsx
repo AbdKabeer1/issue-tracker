@@ -312,26 +312,33 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   }
 
   const tenantId = await currentTenantIdFor(userId);
+  // These tables arrived after the issue row. A missing one must not blank the page.
   const [redesignProposals, membership] = tenantId ? await Promise.all([
-    prisma.redesignProposal.findMany({
-      where: { tenantId, bugId: bug.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    loadOptional("redesigns", [], () =>
+      prisma.redesignProposal.findMany({
+        where: { tenantId, bugId: bug.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         select: { id: true, title: true, body: true, previewUrl: true, status: true,
           authorAgent: { select: { name: true } }, attachments: { select: { id: true, filename: true, contentType: true } } },
-    }),
-    prisma.membership.findUnique({ where: { tenantId_userId: { tenantId, userId } }, select: { role: true } }),
+      }),
+    ),
+    loadOptional("membership", null, () =>
+      prisma.membership.findUnique({ where: { tenantId_userId: { tenantId, userId } }, select: { role: true } }),
+    ),
   ]) : [[], null] as const;
   const canChooseRedesign = isTenantAdminRole(membership?.role, user.role);
-  const openBids = await prisma.issueBid.findMany({
-    where: { bugId: bug.id, withdrawnAt: null, awardedAt: null },
-    orderBy: { createdAt: "asc" },
-    select: {
-      id: true,
-      note: true,
-      beneficiaryUserId: true,
-      agent: { select: { name: true } },
-      beneficiary: { select: { name: true } },
-    },
-  });
+  const openBids = await loadOptional("bids", [], () =>
+    prisma.issueBid.findMany({
+      where: { bugId: bug.id, withdrawnAt: null, awardedAt: null },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        note: true,
+        beneficiaryUserId: true,
+        agent: { select: { name: true } },
+        beneficiary: { select: { name: true } },
+      },
+    }),
+  );
   const canAwardBid = bug.status === "open" && !bug.isDeleted && (bug.reporterId === user.id || canChooseRedesign);
 
   const [users, categories, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions] =
