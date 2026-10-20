@@ -5,6 +5,8 @@ import {
   pendingTenantJoinRequests,
   requestTenantMembership,
   reviewTenantMembershipRequest,
+  requestsForUser,
+  tenantSummary,
 } from "./tenant-join-requests";
 
 describe("tenant-join-requests", () => {
@@ -17,6 +19,7 @@ describe("tenant-join-requests", () => {
 
     const tenants = await discoverableTenants(db, "user-1");
     expect(tenants).toHaveLength(1);
+    expect(tenants[0]?.memberships).toEqual([]);
     expect(db.tenant.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { discoverable: true, memberships: { none: { userId: "user-1" } } },
@@ -24,20 +27,126 @@ describe("tenant-join-requests", () => {
     );
   });
 
-  it("lists pending join requests for a tenant", async () => {
+  it("names the owner without failing when that account is gone", async () => {
+    const db = {
+      tenant: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "t1",
+            name: "Zedu",
+            slug: "zedu",
+            description: null,
+            memberships: [{ userId: "ada" }, { userId: "gone" }],
+            joinRequests: [],
+          },
+          {
+            id: "t2",
+            name: "Empty",
+            slug: "empty",
+            description: null,
+            memberships: [{ userId: "gone" }],
+            joinRequests: [],
+          },
+        ]),
+      },
+      user: { findMany: vi.fn().mockResolvedValue([{ id: "ada", name: "Ada" }]) },
+    } as any;
+
+    const tenants = await discoverableTenants(db, "user-1");
+    expect(tenants.map((tenant) => tenant.memberships)).toEqual([[{ user: { name: "Ada" } }], []]);
+  });
+
+  it("lists pending join requests and skips a requester whose account is gone", async () => {
+    const requestedAt = new Date("2026-01-01T00:00:00Z");
     const db = {
       tenantJoinRequest: {
-        findMany: vi.fn().mockResolvedValue([{ id: "r1", status: "pending" }]),
+        findMany: vi.fn().mockResolvedValue([
+          { id: "r1", requestedAt, userId: "ada" },
+          { id: "r2", requestedAt, userId: "gone" },
+        ]),
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([{ id: "ada", name: "Ada", email: "ada@example.com" }]),
       },
     } as any;
 
     const requests = await pendingTenantJoinRequests(db, "t1");
-    expect(requests).toHaveLength(1);
+    expect(requests).toEqual([
+      { id: "r1", requestedAt, user: { id: "ada", name: "Ada", email: "ada@example.com" } },
+    ]);
     expect(db.tenantJoinRequest.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { tenantId: "t1", status: "pending" },
+        select: { id: true, requestedAt: true, userId: true },
       }),
     );
+  });
+
+  it("returns no join requests when that table is not migrated yet", async () => {
+    const db = {
+      tenantJoinRequest: {
+        findMany: vi.fn().mockRejectedValue({
+          code: "P2021",
+          meta: { table: "public.TenantJoinRequest" },
+          message: "The table `public.TenantJoinRequest` does not exist in the current database.",
+        }),
+      },
+    } as any;
+
+    await expect(pendingTenantJoinRequests(db, "t1")).resolves.toEqual([]);
+    await expect(requestsForUser(db, "ada")).resolves.toEqual([]);
+  });
+
+  it("does not hide an unrelated join-request failure", async () => {
+    const db = {
+      tenantJoinRequest: { findMany: vi.fn().mockRejectedValue(new Error("connection refused")) },
+    } as any;
+
+    await expect(pendingTenantJoinRequests(db, "t1")).rejects.toThrow(/connection refused/);
+  });
+
+  it("reads counts when discovery columns are missing and keeps them when they exist", async () => {
+    const missing = {
+      tenant: {
+        findUnique: vi
+          .fn()
+          .mockRejectedValueOnce({ code: "P2022", meta: { column: "Tenant.description" } })
+          .mockResolvedValueOnce({ _count: { memberships: 4, projects: 2 } }),
+      },
+    } as any;
+    await expect(tenantSummary(missing, "t1")).resolves.toEqual({
+      description: null,
+      discoverable: false,
+      memberships: 4,
+      projects: 2,
+    });
+
+    const present = {
+      tenant: {
+        findUnique: vi.fn().mockResolvedValue({
+          description: "Hi",
+          discoverable: true,
+          _count: { memberships: 1, projects: 1 },
+        }),
+      },
+    } as any;
+    await expect(tenantSummary(present, "t1")).resolves.toEqual({
+      description: "Hi",
+      discoverable: true,
+      memberships: 1,
+      projects: 1,
+    });
+  });
+
+  it("does not treat a query that mentions description as a missing discovery column", async () => {
+    const db = {
+      tenant: {
+        findUnique: vi.fn().mockRejectedValue(new Error('column "voteCount" does not exist')),
+      },
+    } as any;
+
+    await expect(tenantSummary(db, "t1")).rejects.toThrow(/voteCount/);
+    expect(db.tenant.findUnique).toHaveBeenCalledTimes(1);
   });
 
   it("rejects request if tenantId is missing or user already belongs", async () => {

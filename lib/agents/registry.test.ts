@@ -4,6 +4,8 @@ const db = vi.hoisted(() => {
   const mock = {
     agent: { create: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn(), count: vi.fn(async () => 0) },
     agentApiKey: { create: vi.fn(), updateMany: vi.fn() },
+    agentAreaPreference: { findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn() },
+    projectArea: { findMany: vi.fn() },
     agentAuditEvent: { create: vi.fn() },
     membership: { findMany: vi.fn(), findUnique: vi.fn() },
     project: { findFirst: vi.fn() },
@@ -18,7 +20,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: db }));
 
 import { hashSecret } from "./keys";
 import { openSecret } from "@/lib/secret-box";
-import { createAgent, regenerateKey, revokeAgent, rotateKey, setAgentBurst, setAgentLevel } from "./registry";
+import { createAgent, regenerateKey, revokeAgent, rotateKey, setAgentAreaPreferences, setAgentBurst, setAgentLevel } from "./registry";
 import { MAX_ACTIVE_AGENTS_PER_OWNER } from "./registry-limits";
 
 const ada = { id: "ada", role: "user" as const };
@@ -143,6 +145,34 @@ describe("setAgentBurst (#440)", () => {
     db.membership.findUnique.mockResolvedValue({ role: "member" });
     expect(await setAgentBurst(ada, "agent1", true)).toMatchObject({ ok: false });
     expect(db.agent.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("setAgentAreaPreferences (#609)", () => {
+  it("saves project-owned preferences and audits the change", async () => {
+    db.agent.findUnique.mockResolvedValue(agentRow);
+    db.agentAreaPreference.findMany.mockResolvedValue([]);
+    db.projectArea.findMany.mockResolvedValue([{ id: "area-web" }, { id: "area-ui" }]);
+    expect(await setAgentAreaPreferences(ada, "agent1", "project_web", ["area-ui", "area-web", "area-web"])).toEqual({ ok: true });
+    expect(db.agentAreaPreference.deleteMany).toHaveBeenCalledWith({ where: { agentId: "agent1", projectArea: { projectId: "project_web" } } });
+    expect(db.agentAreaPreference.createMany).toHaveBeenCalledWith({ data: [
+      { agentId: "agent1", projectAreaId: "area-ui" },
+      { agentId: "agent1", projectAreaId: "area-web" },
+    ] });
+    expect(db.agentAuditEvent.create.mock.calls.at(-1)?.[0].data).toMatchObject({
+      action: "agent.area_preferences_changed",
+      actorUserId: "ada",
+      payload: { projectId: "project_web", to: ["area-ui", "area-web"], by: "owner" },
+    });
+  });
+
+  it("rejects an area from another project and unauthorized actors", async () => {
+    db.agent.findUnique.mockResolvedValue(agentRow);
+    db.projectArea.findMany.mockResolvedValue([]);
+    expect(await setAgentAreaPreferences(ada, "agent1", "project_web", ["foreign-area"])).toMatchObject({ ok: false });
+    expect(db.agentAreaPreference.createMany).not.toHaveBeenCalled();
+    expect(await setAgentAreaPreferences({ id: "bob", role: "user" }, "agent1", "project_web", [])).toMatchObject({ ok: false });
+    expect(db.agentAreaPreference.deleteMany).not.toHaveBeenCalled();
   });
 });
 

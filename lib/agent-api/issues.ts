@@ -9,6 +9,7 @@ import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/ra
 import { withAgentBudgetHeaders } from "@/lib/agents/rate-budget-headers";
 import { createBugSchema, commentSchema, statusSchema, severitySchema } from "@/lib/validations/issue";
 import { parsePlatformFilter, platformFilterWhere } from "@/lib/platform-filter";
+import { parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
 import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, hashCreateRequest, pageSize, toPage, type IssueCursor } from "@/lib/agent-api/create-policy";
 import { createdSummary, commentedSummary, commentPreview } from "@/lib/activity-log";
 import { extractMentionedUserIds, normalizeMentions } from "@/lib/mentions";
@@ -27,9 +28,11 @@ export class IssueApiError extends Error {
 const idSchema = z.string().trim().min(1).max(191);
 /** Files uploaded with POST /api/v1/attachments, linked on save (#645). */
 const attachmentIdsSchema = z.array(idSchema).max(MAX_ATTACHMENTS_PER_ITEM).optional();
-const createSchema = createBugSchema.pick({ title: true, description: true, categoryId: true, proofLinks: true })
+export const createSchema = createBugSchema.pick({ title: true, description: true, categoryId: true, areaId: true, proofLinks: true })
   .extend({
-    projectId: idSchema.optional(), beneficiaryUserId: idSchema.optional(),
+    // #494: no beneficiaryUserId — an agent can't file issues in someone
+    // else's name. The reporter is always the agent's owner.
+    projectId: idSchema.optional(),
     typeId: z.unknown().optional(), severity: z.unknown().optional(), acknowledgeSimilar: z.unknown().optional(),
     attachmentIds: attachmentIdsSchema,
   }).strict();
@@ -107,7 +110,8 @@ type Scope = { tenantId: string; projectId: string };
 const issueSelect = {
   id: true, number: true, title: true, description: true, status: true, severity: true,
   categoryId: true, typeId: true, reporterId: true, assigneeId: true, beneficiaryUserId: true,
-  createdByAgentId: true, projectId: true, createdAt: true, updatedAt: true, proofLinks: true,
+  createdByAgentId: true, projectId: true, areaId: true, createdAt: true, updatedAt: true, proofLinks: true,
+  area: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.BugSelect;
 
 export async function listAgentIssues(scope: Scope, params: URLSearchParams) {
@@ -118,6 +122,10 @@ export async function listAgentIssues(scope: Scope, params: URLSearchParams) {
     where: { tenantId: scope.tenantId },
     select: { id: true, name: true },
   });
+  const requestedArea = params.get("area");
+  const areas = requestedArea
+    ? await prisma.projectArea.findMany({ where: { projectId: scope.projectId }, select: { id: true, name: true } })
+    : [];
   const cursorRaw = params.get("cursor");
   const cursor = decodeCursor(cursorRaw);
   if (cursorRaw !== null && !cursor) throw new IssueApiError(400, "Invalid cursor.");
@@ -128,6 +136,7 @@ export async function listAgentIssues(scope: Scope, params: URLSearchParams) {
     ...(severity ? { severity: severitySchema.parse(severity) } : {}),
     ...(assignee ? { assigneeId: assignee === "none" ? null : idSchema.parse(assignee) } : {}),
     ...platformFilterWhere(parsePlatformFilter(params.get("platform"), platforms)),
+    ...projectAreaFilterWhere(parseProjectAreaFilter(requestedArea, areas)),
     ...cursorWhere(cursor),
   };
   const rows = await prisma.bug.findMany({ where, orderBy: cursorOrderBy(), take: limit + 1, select: issueSelect });
@@ -209,14 +218,8 @@ async function normalizeTenantMentions(db: Prisma.TransactionClient, tenantId: s
 export async function createAgentIssue(agent: AgentContext, request: NextRequest) {
   const input = createSchema.parse(await issueJson(request));
   const scope = await issueProject(agent, request.nextUrl.searchParams, input.projectId);
-  // #494: an agent reports as its owner. Naming anyone else would file the
-  // issue (and earn reporter points) in a colleague's name without their say,
-  // and there is no way yet for a member to delegate that to someone's agent.
-  if (input.beneficiaryUserId !== undefined && input.beneficiaryUserId !== agent.ownerId) {
-    throw new IssueApiError(403, "beneficiary_not_owner", {
-      message: "An agent can only report issues as its owner. Leave beneficiaryUserId out (it defaults to your owner) or set it to your owner's id. To report for someone else, ask them to file it with their own agent.",
-    });
-  }
+  // #494: always the agent's owner. The create schema no longer accepts a
+  // beneficiary, so no request can put words in another person's mouth.
   const beneficiaryUserId = agent.ownerId;
   const requestHash = hashCreateRequest({
     projectId: scope.projectId,
@@ -230,6 +233,7 @@ export async function createAgentIssue(agent: AgentContext, request: NextRequest
     acknowledgeSimilar: input.acknowledgeSimilar ?? null,
     // Only when sent, so keys stored before #645 still replay.
     ...(input.attachmentIds?.length ? { attachmentIds: [...new Set(input.attachmentIds)].sort() } : {}),
+    ...(input.areaId ? { areaId: input.areaId } : {}),
   });
   const result = await createIssueWithPolicy({
     agent, projectId: scope.projectId, idempotencyKey: request.headers.get("Idempotency-Key"),
@@ -248,10 +252,18 @@ export async function createAgentIssue(agent: AgentContext, request: NextRequest
         });
         if (!category) throw new IssueApiError(422, "Platform not found or inactive.");
       }
+      const areaId = input.areaId || null;
+      if (areaId) {
+        const area = await tx.projectArea.findFirst({
+          where: { id: areaId, projectId: scope.projectId },
+          select: { id: true },
+        });
+        if (!area) throw new IssueApiError(422, "Area not found in this project.");
+      }
       const description = await normalizeTenantMentions(tx, scope.tenantId, input.description);
       const issue = await tx.bug.create({
         data: {
-          ...scope, ...policy, title: input.title, description, status: "open", categoryId,
+          ...scope, ...policy, title: input.title, description, status: "open", categoryId, areaId,
           reporterId: beneficiaryUserId, beneficiaryUserId, createdByAgentId: agent.agentId,
           proofLinks: input.proofLinks,
           watches: { create: { userId: beneficiaryUserId } },

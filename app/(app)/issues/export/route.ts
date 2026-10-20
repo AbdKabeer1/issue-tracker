@@ -29,6 +29,7 @@ const COLUMNS = [
   "severity",
   "type",
   "platform",
+  "area",
   "reporter",
   "assignee",
   "votes",
@@ -59,12 +60,15 @@ export async function GET(request: NextRequest) {
 
   const tenantId = await currentTenantIdFor(user.id);
   const projectId = await activeProjectIdFor(prisma, tenantId);
-  const [tagTypes, platforms, milestones] = await Promise.all([
+  const [tagTypes, platforms, milestones, areas] = await Promise.all([
     getIssueTypes(),
     // Every platform in this organization, active or not: a filter on a
     // platform that was since deactivated still has to resolve.
     getPlatforms(tenantId),
     prisma.milestone.findMany({ select: { id: true } }),
+    params.area && projectId
+      ? prisma.projectArea.findMany({ where: { projectId }, select: { id: true, name: true } })
+      : Promise.resolve([]),
   ]);
 
   const { where: filters, sort, mine } = parseBugListFilters({
@@ -75,6 +79,7 @@ export async function GET(request: NextRequest) {
     canSeeDeleted: canDeleteTicket(user.role, access.membershipRole),
     tagTypes,
     platforms,
+    areas,
     milestones,
   });
 
@@ -122,6 +127,7 @@ export async function GET(request: NextRequest) {
             updatedAt: true,
             type: { select: { name: true } },
             category: { select: { name: true } },
+            area: { select: { name: true } },
             reporter: { select: { name: true } },
             assignee: { select: { name: true } },
           },
@@ -138,6 +144,7 @@ export async function GET(request: NextRequest) {
               severity: bug.severity,
               type: bug.type?.name ?? null,
               platform: bug.category?.name ?? null,
+              area: bug.area?.name ?? null,
               reporter: bug.reporter.name,
               assignee: bug.assignee?.name ?? null,
               votes: bug.voteCount,
@@ -158,6 +165,7 @@ export async function GET(request: NextRequest) {
                 severityLabel[bug.severity],
                 bug.type?.name,
                 bug.category?.name,
+                bug.area?.name,
                 bug.reporter.name,
                 bug.assignee?.name,
                 bug.voteCount,

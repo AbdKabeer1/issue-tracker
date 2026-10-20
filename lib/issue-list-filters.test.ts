@@ -138,3 +138,18 @@ describe("platform filter", () => {
     expect(withPlatforms({}).where.categoryId).toBeUndefined();
   });
 });
+
+describe("project area filter (#609)", () => {
+  const areas = [{ id: "area-web", name: "Frontend" }];
+  const withAreas = (params: Record<string, string>) =>
+    parseBugListFilters({ params, userId: "u1", canSeeDeleted: false, areas });
+
+  it("filters an area belonging to the active project", () => {
+    expect(withAreas({ area: "area-web" }).where.areaId).toBe("area-web");
+  });
+
+  it("supports no area and ignores a stale area id", () => {
+    expect(withAreas({ area: "none" }).where.areaId).toBeNull();
+    expect(withAreas({ area: "area-deleted" }).where.areaId).toBeUndefined();
+  });
+});

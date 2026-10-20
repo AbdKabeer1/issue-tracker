@@ -22,6 +22,14 @@ describe("ticket offers", () => {
     expect(availableOfferCandidates(candidates).map((person) => person.beneficiaryUserId)).toEqual(["never", "old", "recent", "busy"]);
   });
 
+  it("prefers an agent whose configured area matches before workload tie-breaks", () => {
+    const candidates = [
+      { beneficiaryUserId: "matching", agentId: "a", activeClaims: 0, lastOfferedAt: new Date("2026-10-19T11:30:00Z"), areaMatch: true },
+      { beneficiaryUserId: "available", agentId: "b", activeClaims: 0, lastOfferedAt: null, areaMatch: false },
+    ];
+    expect(availableOfferCandidates(candidates).map((person) => person.beneficiaryUserId)).toEqual(["matching", "available"]);
+  });
+
   it("skips people at the active claim cap or with another pending offer", () => {
     const people = [
       { beneficiaryUserId: "full", agentId: "a", activeClaims: 2, lastOfferedAt: null },
