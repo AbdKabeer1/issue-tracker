@@ -32,7 +32,10 @@ export type ShortcutOptions = {
   dashboard?: boolean;
 };
 
-/** What the cheat sheet lists, in order. */
+/**
+ * What the cheat sheet lists, in order. The dashboard entry is omitted when
+ * the signed-in user isn't an admin, since the route redirects them away.
+ */
 export function shortcutGroups({
   dashboard = true,
 }: ShortcutOptions = {}): { title: string; items: ShortcutSpec[] }[] {
@@ -69,6 +72,8 @@ export const SEQUENCE_TIMEOUT_MS = 1200;
 
 export type KeyEventLike = {
   key: string;
+  /** Physical key, so Ctrl/Cmd+K also works on non-Latin layouts. */
+  code?: string;
   ctrlKey?: boolean;
   metaKey?: boolean;
   altKey?: boolean;
@@ -122,7 +127,10 @@ export function shortcutFor(
   if (isTypingTarget(target)) return { action: null, state: IDLE };
 
   if (event.ctrlKey || event.metaKey) {
-    if (event.key.toLowerCase() === "k") return { action: "focus-search", state: IDLE };
+    // `code` covers layouts where K isn't the letter produced (e.g. Cyrillic).
+    if (event.key.toLowerCase() === "k" || event.code === "KeyK") {
+      return { action: "focus-search", state: IDLE };
+    }
     return { action: null, state: IDLE };
   }
 

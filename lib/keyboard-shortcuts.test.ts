@@ -34,6 +34,9 @@ describe("shortcutFor (#287)", () => {
     expect(press("K", { ctrlKey: true }).action).toBe("focus-search");
     expect(press("k", { metaKey: true }).action).toBe("focus-search");
     expect(press("k", { ctrlKey: true, altKey: true }).action).toBeNull();
+    // Non-Latin layout: the produced character differs but the key is the
+    // same physically.
+    expect(press("л", { ctrlKey: true, code: "KeyK" }).action).toBe("focus-search");
   });
 
   it("handles g then i / d / n, within the timeout only", () => {
