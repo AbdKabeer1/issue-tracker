@@ -3,16 +3,20 @@ import { NextRequest } from "next/server";
 
 const db = vi.hoisted(() => ({
   agentApiKey: { findUnique: vi.fn() }, agentAuditEvent: { create: vi.fn() },
+  agentEvent: { create: vi.fn() }, webhookSubscription: { findMany: vi.fn() },
+  webhookDelivery: { createMany: vi.fn() },
   project: { findFirst: vi.fn(), findUnique: vi.fn() },
-  issueClaim: { findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), count: vi.fn() },
-  bug: { updateMany: vi.fn() }, $queryRaw: vi.fn(), $transaction: vi.fn(),
+  issueClaim: { findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), count: vi.fn(), create: vi.fn(), groupBy: vi.fn() },
+  membership: { findMany: vi.fn() },
+  bug: { updateMany: vi.fn(), findFirst: vi.fn() }, $queryRaw: vi.fn(), $transaction: vi.fn(),
 }));
-const mocks = vi.hoisted(() => ({ admin: vi.fn(), budget: vi.fn(), demote: vi.fn() }));
+const mocks = vi.hoisted(() => ({ admin: vi.fn(), budget: vi.fn(), demote: vi.fn(), notifyLater: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/lib/auth-helpers", () => ({ requireSuperAdmin: mocks.admin }));
 vi.mock("@/lib/agents/promotion", () => ({ demoteFromSilence: mocks.demote }));
 vi.mock("@/lib/agents/rate-budget", async (original) => ({ ...await original<typeof import("@/lib/agents/rate-budget")>(), consumeAgentBudget: mocks.budget }));
-import { releaseStaleClaims } from "./availability";
+vi.mock("@/lib/notify", () => ({ notifyLater: mocks.notifyLater }));
+import { releaseStaleClaims, sweepStaleClaims } from "./availability";
 import { POST } from "@/app/api/v1/issues/[id]/heartbeat/route";
 
 const now = new Date("2026-10-19T12:00:00Z");
@@ -25,16 +29,24 @@ function request(query = "?projectId=project", key = true) {
 }
 beforeEach(() => {
   vi.resetAllMocks();
-  vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(now);
+  // setTimeout is faked so the re-offer's expiry timer is armed but never fires.
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout"] }); vi.setSystemTime(now);
   db.agentApiKey.findUnique.mockResolvedValue({ id: "key", revokedAt: null, agent: { id: "agent", name: "Agent", ownerUserId: "owner", tenantId: "tenant", level: "contributor", burst: false, revokedAt: null, owner: { memberships: [{ tenantId: "tenant" }] } } });
   db.project.findFirst.mockResolvedValue({ id: "project" });
   db.project.findUnique.mockResolvedValue({ id: "project", tenantId: "tenant" });
   db.$queryRaw.mockResolvedValue([{ id: "issue" }]);
   db.$transaction.mockImplementation((run) => run(db));
   db.issueClaim.findFirst.mockResolvedValue(claim);
-  db.issueClaim.findMany.mockResolvedValue([{ id: "claim", bugId: "issue" }]);
+  db.issueClaim.findMany.mockResolvedValue([{ id: "claim", bugId: "issue", bug: { tenantId: "tenant", projectId: "project" } }]);
   db.issueClaim.update.mockResolvedValue({ ...claim, lastHeartbeatAt: now });
   db.issueClaim.count.mockResolvedValue(0);
+  db.issueClaim.create.mockResolvedValue({ id: "claim-next", bugId: "issue", offeredAt: now });
+  db.issueClaim.groupBy.mockResolvedValue([]);
+  db.membership.findMany.mockResolvedValue([]);
+  db.bug.updateMany.mockResolvedValue({ count: 1 });
+  db.bug.findFirst.mockResolvedValue({ id: "issue", projectId: "project", title: "Bug", assigneeId: null, status: "open" });
+  db.agentEvent.create.mockResolvedValue({ id: "evt" });
+  db.webhookSubscription.findMany.mockResolvedValue([]);
   mocks.admin.mockResolvedValue({ id: "admin" });
   mocks.budget.mockResolvedValue({ allowed: true });
   mocks.demote.mockResolvedValue({ ok: true, changed: false, releases: 1 });
@@ -86,9 +98,13 @@ describe("claim heartbeats", () => {
 });
 
 describe("stale claim release", () => {
-  it("releases a silent active claim and conditionally reopens its issue atomically with audit", async () => {
+  it("releases a silent active claim and conditionally reopens its issue atomically with audit and event", async () => {
     expect(await releaseStaleClaims("project")).toEqual({ released: 1 });
     expect(db.issueClaim.update).toHaveBeenCalledWith({ where: { id: "claim" }, data: { status: "released", releasedAt: now, releaseReason: "silence" } });
+    expect(db.agentEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      type: "claim.released",
+      payload: expect.objectContaining({ claimId: "claim", issueId: "issue", projectId: "project", beneficiaryUserId: "owner", reason: "silence" }),
+    }) }));
     expect(db.bug.updateMany).toHaveBeenCalledWith({ where: { id: "issue", projectId: "project", tenantId: "tenant", isDeleted: false, assigneeId: "owner", status: "in_progress" }, data: { assigneeId: null, status: "open" } });
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: "claim.released", agentId: "agent", actorUserId: "admin", bugId: "issue", payload: { claimId: "claim", reason: "silence", projectId: "project" } }) });
     expect(mocks.demote).toHaveBeenCalledWith("agent", db, now);
@@ -98,6 +114,14 @@ describe("stale claim release", () => {
     db.issueClaim.findFirst.mockResolvedValueOnce({ ...claim, lastHeartbeatAt });
     expect(await releaseStaleClaims("project")).toEqual({ released: 0 });
     expect(db.issueClaim.update).not.toHaveBeenCalled();
+    expect(db.agentEvent.create).not.toHaveBeenCalled();
+  });
+  it("publishes no event and no audit row when nothing was stale", async () => {
+    db.issueClaim.findMany.mockResolvedValue([{ id: "claim", bugId: "issue", bug: { tenantId: "tenant", projectId: "project" } }]);
+    db.issueClaim.findFirst.mockResolvedValueOnce({ ...claim, lastHeartbeatAt: now });
+    expect(await sweepStaleClaims()).toEqual({ released: 0, offered: 0 });
+    expect(db.agentEvent.create).not.toHaveBeenCalled();
+    expect(db.agentAuditEvent.create).not.toHaveBeenCalled();
   });
   it("starts the clock at activation when no heartbeat exists, never the offer time", async () => {
     db.issueClaim.findFirst.mockResolvedValueOnce({ ...claim, lastHeartbeatAt: null, claimedAt: cutoff, offeredAt: stale });
@@ -125,6 +149,7 @@ describe("stale claim release", () => {
     db.issueClaim.count.mockResolvedValueOnce(1);
     expect(await releaseStaleClaims("project")).toEqual({ released: 1 });
     expect(db.bug.updateMany).not.toHaveBeenCalled();
+    expect(db.issueClaim.create).not.toHaveBeenCalled();
     db.issueClaim.findFirst.mockResolvedValueOnce(null);
     expect(await releaseStaleClaims("project")).toEqual({ released: 0 });
   });
@@ -142,5 +167,48 @@ describe("stale claim release", () => {
   it("propagates audit failure so the transaction rolls back", async () => {
     db.agentAuditEvent.create.mockRejectedValueOnce(new Error("audit unavailable"));
     await expect(releaseStaleClaims("project")).rejects.toThrow("audit unavailable");
+  });
+});
+
+describe("scheduled stale-claim sweep (#524)", () => {
+  it("releases stale claims across every project, publishing and re-offering each", async () => {
+    db.issueClaim.findMany.mockResolvedValue([
+      { id: "claim", bugId: "issue", bug: { tenantId: "tenant", projectId: "project" } },
+      { id: "claim-2", bugId: "issue-2", bug: { tenantId: "tenant", projectId: "project-2" } },
+    ]);
+    db.issueClaim.findFirst
+      .mockResolvedValueOnce({ ...claim, bugId: "issue-2" })
+      .mockResolvedValueOnce({ ...claim });
+    expect(await sweepStaleClaims()).toEqual({ released: 2, offered: 0 });
+    // The scheduler acts without a person, so the sweep's audit row has no actor user.
+    const sweeps = db.agentAuditEvent.create.mock.calls.filter(([call]) => call.data.action === "claim.released");
+    for (const [call] of sweeps) expect(call.data.actorUserId).toBeNull();
+    expect(db.issueClaim.findMany).toHaveBeenCalledWith({ where: { status: "active", releasedAt: null,
+      bug: { isDeleted: false },
+      OR: [{ lastHeartbeatAt: { lt: cutoff } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff } }] },
+      orderBy: { createdAt: "asc" }, take: 50,
+      select: { id: true, bugId: true, bug: { select: { tenantId: true, projectId: true } } } });
+  });
+  it("rewrites the released issue to open and offers it to the next eligible agent", async () => {
+    db.membership.findMany.mockResolvedValue([{ userId: "next-owner", user: { agents: [{ id: "agent-next" }] } }]);
+    expect(await sweepStaleClaims()).toEqual({ released: 1, offered: 1 });
+    const events = db.agentEvent.create.mock.calls.map(([call]) => call.data);
+    expect(events.map((event: { type: string }) => event.type)).toEqual(["claim.released", "claim.offered"]);
+    expect(events[0].payload).toEqual({ claimId: "claim", issueId: "issue", projectId: "project", beneficiaryUserId: "owner", reason: "silence" });
+    expect(mocks.notifyLater).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "claim_offered", claimId: "claim-next", bugId: "issue", bugTitle: "Bug", recipientId: "next-owner",
+    }));
+  });
+  it("does not offer when a human reassigned or resolved the issue meanwhile", async () => {
+    db.bug.updateMany.mockResolvedValue({ count: 0 });
+    db.bug.findFirst.mockResolvedValue({ id: "issue", projectId: "project", title: "Bug", assigneeId: "someone-else", status: "in_progress" });
+    expect(await sweepStaleClaims()).toEqual({ released: 1, offered: 0 });
+    expect(db.issueClaim.create).not.toHaveBeenCalled();
+  });
+  it("does not offer when the reopened issue cannot be offered to anyone", async () => {
+    db.bug.findFirst.mockResolvedValue({ id: "issue", projectId: "project", title: "Bug", assigneeId: null, status: "open" });
+    db.issueClaim.create.mockRejectedValueOnce(new Error("should not reach claim creation with no candidates"));
+    expect(await sweepStaleClaims()).toEqual({ released: 1, offered: 0 });
+    expect(db.issueClaim.create).not.toHaveBeenCalled();
   });
 });
