@@ -15,6 +15,7 @@ export type AgentTemplates = {
   chatgpt: string;
   node: string;
   python: string;
+  mcp: string;
 };
 
 function cleanOrigin(origin: string): string {
@@ -382,6 +383,28 @@ if __name__ == "__main__":
 }
 
 /**
+ * Claude Desktop (MCP) config block (#612). Paste it into claude_desktop_config.json.
+ * The key is not in it: the server reads the pairing file the reference client saves.
+ */
+export function mcpConfigTemplate({ origin, projectId }: TemplateParams): string {
+  const env: Record<string, string> = { ZIKI_URL: cleanOrigin(origin) };
+  if (projectId) env.ZIKI_PROJECT_ID = projectId;
+  return JSON.stringify(
+    {
+      mcpServers: {
+        ziki: {
+          command: "node",
+          args: ["/ABSOLUTE/PATH/TO/issue-tracker/packages/mcp-server/dist/index.js"],
+          env,
+        },
+      },
+    },
+    null,
+    2,
+  );
+}
+
+/**
  * Returns all generated setup templates for the given origin and project.
  */
 export function getAgentTemplates(params: TemplateParams): AgentTemplates {
@@ -390,5 +413,6 @@ export function getAgentTemplates(params: TemplateParams): AgentTemplates {
     chatgpt: chatGptPromptTemplate(params),
     node: nodeScriptTemplate(params),
     python: pythonScriptTemplate(params),
+    mcp: mcpConfigTemplate(params),
   };
 }
