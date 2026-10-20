@@ -27,18 +27,29 @@ vi.mock("@/lib/notify", () => ({
   notifyLater: vi.fn(),
 }));
 
+const { txCommentUpdateMany, txAttachmentUpdateMany, txBugActivityUpdateMany } = vi.hoisted(() => ({
+  txCommentUpdateMany: vi.fn(),
+  txAttachmentUpdateMany: vi.fn(),
+  txBugActivityUpdateMany: vi.fn(),
+}));
+
 vi.mock("@/lib/prisma", () => {
   const tx = {
-    comment: { update: vi.fn() },
-    bugActivity: { updateMany: vi.fn() },
+    comment: { update: vi.fn(), updateMany: txCommentUpdateMany },
+    bugActivity: { updateMany: txBugActivityUpdateMany },
+    attachment: { deleteMany: vi.fn(), updateMany: txAttachmentUpdateMany },
   };
   return {
     prisma: {
       comment: {
         findUnique: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       user: {
         findMany: vi.fn(),
+      },
+      membership: {
+        findUnique: vi.fn().mockResolvedValue(null),
       },
       $transaction: vi.fn(async (fn: (client: typeof tx) => unknown) => fn(tx)),
     },
@@ -47,7 +58,9 @@ vi.mock("@/lib/prisma", () => {
 
 import { prisma } from "@/lib/prisma";
 import { notifyLater } from "@/lib/notify";
-import { updateCommentAction } from "./comments";
+import { COMMENT_ERRORS } from "@/lib/comment-permissions";
+import { resetRateLimits } from "@/lib/rate-limit";
+import { deleteCommentAction, updateCommentAction } from "./comments";
 
 const findCommentMock = vi.mocked(prisma.comment.findUnique) as unknown as ReturnType<typeof vi.fn>;
 const findUsersMock = vi.mocked(prisma.user.findMany) as unknown as ReturnType<typeof vi.fn>;
@@ -77,6 +90,9 @@ function edit(body: string) {
 describe("updateCommentAction mention notifications (#228)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetRateLimits();
+    txCommentUpdateMany.mockResolvedValue({ count: 1 });
+    txAttachmentUpdateMany.mockResolvedValue({ count: 0 });
     findUsersMock.mockResolvedValue([
       { id: bobId, name: "Bob" },
       { id: carolId, name: "Carol" },
@@ -132,6 +148,26 @@ describe("updateCommentAction mention notifications (#228)", () => {
 
     const blocked = await edit("One edit too many");
     expect(blocked).toEqual({ error: RATE_LIMIT_MESSAGE });
+  });
+
+  it("fails with deleted error and avoids side effects when comment was deleted concurrently (#721)", async () => {
+    findCommentMock.mockResolvedValue(existingComment("Initial comment"));
+    txCommentUpdateMany.mockResolvedValueOnce({ count: 0 });
+
+    const res = await edit("New body text that raced deletion ![screenshot](/api/attachments/att-1)");
+    expect(res).toEqual({ error: COMMENT_ERRORS.deleted });
+    expect(notifyMock).not.toHaveBeenCalled();
+    expect(txBugActivityUpdateMany).not.toHaveBeenCalled();
+    expect(txAttachmentUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("fails deleteCommentAction with deleted error when comment was deleted concurrently (#721)", async () => {
+    findCommentMock.mockResolvedValue(existingComment("Initial comment"));
+    txCommentUpdateMany.mockResolvedValueOnce({ count: 0 });
+
+    const res = await deleteCommentAction("comment-1");
+    expect(res).toEqual({ error: COMMENT_ERRORS.deleted });
+    expect(txBugActivityUpdateMany).not.toHaveBeenCalled();
   });
 });
 
