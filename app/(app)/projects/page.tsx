@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { CopyProjectIdButton } from "./copy-project-id";
 import { CreateProjectForm } from "./create-project-form";
 import { switchProjectAction } from "./actions";
-import { isTenantAdmin } from "@/lib/agents/membership";
+import { isTenantAdmin, isTenantAdminRole } from "@/lib/agents/membership";
+import { MissionCoverage } from "./mission-coverage";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Projects" };
@@ -37,7 +38,7 @@ export default async function ProjectsPage() {
   }
   const canManageProjects = await isTenantAdmin(user, tenantId);
 
-  const [tenant, projects, activeProjectId] = await Promise.all([
+  const [tenant, projects, activeProjectId, membership] = await Promise.all([
     prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { name: true },
@@ -50,11 +51,28 @@ export default async function ProjectsPage() {
         slug: true,
         createdAt: true,
         _count: { select: { bugs: true } },
+        testMissions: {
+          select: {
+            id: true,
+            routePattern: true,
+            brief: true,
+            role: true,
+            viewport: true,
+            lastCoveredAt: true,
+            issuesFiled: true,
+          },
+          orderBy: [{ routePattern: "asc" }, { role: "asc" }, { viewport: "asc" }],
+        },
       },
       orderBy: { createdAt: "asc" },
     }),
     activeProjectIdFor(prisma, tenantId),
+    prisma.membership.findUnique({
+      where: { tenantId_userId: { tenantId, userId: user.id } },
+      select: { role: true },
+    }),
   ]);
+  const canManageMissions = isTenantAdminRole(membership?.role, user.role);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -86,9 +104,19 @@ export default async function ProjectsPage() {
           </p>
         </div>
         {projects.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-slate-600 sm:px-6">
-            No projects yet. Create the first one above.
-          </p>
+          <div className="space-y-2 px-4 py-6 text-sm text-slate-600 sm:px-6">
+            <p className="font-medium text-slate-800">No projects yet. Create the first one above.</p>
+            <p>
+              Make one project per product you track, so each gets its own issues. For example, a
+              software team might have <span className="font-medium">Web app</span>,{" "}
+              <span className="font-medium">iOS app</span> and <span className="font-medium">Desktop app</span>;
+              an agency might have one per client.
+            </p>
+            <p>
+              Each project also gets a short id made from its name (Web app → <code>web-app</code>), used in
+              links and by agents.
+            </p>
+          </div>
         ) : (
           <ul className="divide-y divide-slate-200">
             {projects.map((project) => {
@@ -121,6 +149,14 @@ export default async function ProjectsPage() {
                         <Link href={`/projects/${encodeURIComponent(project.slug)}/settings`} className="text-xs font-medium text-teal-700 hover:underline">Settings</Link>
                       ) : null}
                     </div>
+                    <MissionCoverage
+                      projectId={project.id}
+                      canManage={canManageMissions}
+                      missions={project.testMissions.map((mission) => ({
+                        ...mission,
+                        lastCoveredAt: mission.lastCoveredAt?.toISOString() ?? null,
+                      }))}
+                    />
                   </div>
                   {active ? null : (
                     <form action={switchProjectAction}>

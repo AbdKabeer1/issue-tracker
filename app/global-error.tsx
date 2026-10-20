@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { logger } from "@/lib/logger";
 
 /**
  * Last-resort error page for failures in the root layout itself (#214).
@@ -15,7 +16,7 @@ export default function GlobalError({
   retry: () => void;
 }) {
   useEffect(() => {
-    console.error("[app:global-error]", error.digest ?? "", error);
+    logger.error("[app:global-error]", error.digest ?? "", error);
   }, [error]);
 
   return (

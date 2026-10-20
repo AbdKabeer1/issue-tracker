@@ -104,3 +104,113 @@ describe("GET /issues/export", () => {
     expect(findManyBugs.mock.calls[0][0].where).toMatchObject({ tenantId: "tenant-zedu" });
   });
 });
+
+describe("GET /issues/export?format=json (#664)", () => {
+  const countBugs = vi.mocked(prisma.bug.count) as unknown as ReturnType<typeof vi.fn>;
+
+  function bug(id: string) {
+    return {
+      id,
+      title: `Title with "quotes", commas\nand a newline ${id}`,
+      status: "in_progress",
+      severity: "high",
+      voteCount: 5,
+      isBoosted: true,
+      createdAt: new Date("2026-01-01T00:00:00Z"),
+      updatedAt: new Date("2026-01-02T00:00:00Z"),
+      type: { name: "Bug" },
+      category: null,
+      reporter: { name: "Alice" },
+      assignee: null,
+    };
+  }
+
+  async function exportJson(query = "format=json") {
+    const res = await GET(new NextRequest(`http://localhost:3000/issues/export?${query}`));
+    return { res, body: JSON.parse(await res.text()) };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authMock.mockResolvedValue({ user: { id: "u1" } });
+    requireUserMock.mockResolvedValue({ id: "u1", role: "user" });
+    findManyBugs.mockResolvedValue([]);
+    countBugs.mockResolvedValue(0);
+  });
+
+  it("returns a JSON file with the same fields as the CSV", async () => {
+    findManyBugs.mockResolvedValueOnce([bug("bug-1")]);
+    const { res, body } = await exportJson();
+
+    expect(res.headers.get("Content-Type")).toBe("application/json; charset=utf-8");
+    expect(res.headers.get("Content-Disposition")).toMatch(/filename="zedu-issues-\d{4}-\d{2}-\d{2}\.json"/);
+    expect(body).toEqual({
+      issues: [
+        {
+          id: "bug-1",
+          title: 'Title with "quotes", commas\nand a newline bug-1',
+          status: "in_progress",
+          severity: "high",
+          type: "Bug",
+          platform: null,
+          reporter: "Alice",
+          assignee: null,
+          votes: 5,
+          boosted: true,
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-02T00:00:00.000Z",
+        },
+      ],
+      truncated: false,
+    });
+  });
+
+  it("returns valid JSON with no issues", async () => {
+    const { body } = await exportJson();
+    expect(body).toEqual({ issues: [], truncated: false });
+  });
+
+  it("joins issues across batches into one valid array", async () => {
+    findManyBugs
+      .mockResolvedValueOnce(Array.from({ length: 500 }, (_, i) => bug(`bug-${i}`)))
+      .mockResolvedValueOnce([bug("bug-500")]);
+    const { body } = await exportJson();
+    expect(body.issues).toHaveLength(501);
+    expect(body.issues.at(-1).id).toBe("bug-500");
+  });
+
+  it("says when the export was cut off at the limit", async () => {
+    findManyBugs.mockImplementation(async () => Array.from({ length: 500 }, (_, i) => bug(`bug-${i}`)));
+    countBugs.mockResolvedValue(12_000);
+    const { body } = await exportJson();
+    expect(body.issues).toHaveLength(10_000);
+    expect(body.truncated).toBe(true);
+    expect(body.total).toBe(12_000);
+  });
+
+  it("stays valid JSON and reports an error when the export fails partway", async () => {
+    findManyBugs
+      .mockResolvedValueOnce(Array.from({ length: 500 }, (_, i) => bug(`bug-${i}`)))
+      .mockRejectedValueOnce(new Error("db down"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { body } = await exportJson();
+    expect(body.issues).toHaveLength(500);
+    expect(body.error).toBe("Export failed partway through. Please try again.");
+  });
+
+  it("applies the same filters and tenant scope as the CSV", async () => {
+    await exportJson("format=json&status=open");
+    expect(findManyBugs.mock.calls[0][0].where).toMatchObject({ tenantId: "tenant-zedu", status: "open" });
+  });
+
+  it("still returns 401 when not signed in", async () => {
+    authMock.mockResolvedValue(null);
+    const res = await GET(new NextRequest("http://localhost:3000/issues/export?format=json"));
+    expect(res.status).toBe(401);
+  });
+
+  it("falls back to CSV for any other format", async () => {
+    const res = await GET(new NextRequest("http://localhost:3000/issues/export?format=xml"));
+    expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8");
+  });
+});

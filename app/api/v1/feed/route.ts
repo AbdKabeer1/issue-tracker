@@ -3,6 +3,7 @@ import { agentErrorResponse, assertKeyProject, requireAgent, type AgentContext }
 import { requireLevel } from "@/lib/agents/levels";
 import { audit } from "@/lib/agents/audit";
 import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/rate-budget";
+import { withAgentBudgetHeaders, type AgentBudgetQuota } from "@/lib/agents/rate-budget-headers";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { prisma } from "@/lib/prisma";
@@ -13,13 +14,15 @@ export async function GET(request: NextRequest) {
   try {
     let tenantId: string | null;
     let agent: AgentContext | undefined;
+    let quota: AgentBudgetQuota = {};
     // A supplied bad key must not fall back to a valid browser session.
     if (request.headers.has("authorization")) {
       agent = await requireAgent(request);
       requireLevel(agent, "observer");
       const budget = await consumeAgentBudget({ id: agent.agentId, burst: agent.burst }, "read");
       await audit(agent, "feed.read", request.nextUrl.searchParams.get("projectId"));
-      if (!budget.allowed) return agentBudgetExceededResponse(budget.retryAfterSeconds);
+      if (!budget.allowed) return agentBudgetExceededResponse(budget.retryAfterSeconds, budget);
+      quota = budget;
       tenantId = agent.tenantId;
     } else {
       const session = await resolveSessionUserId();
@@ -36,9 +39,12 @@ export async function GET(request: NextRequest) {
       ? await prisma.projectArea.findMany({ where: { projectId: project.id }, select: { id: true, name: true } })
       : [];
     const area = parseProjectAreaFilter(requestedArea, areas);
-    return NextResponse.json(await readFeed(tenantId, project.id, cursor, area), {
-      headers: { "Cache-Control": "private, no-store" },
-    });
+    return withAgentBudgetHeaders(
+      NextResponse.json(await readFeed(tenantId, project.id, cursor, area), {
+        headers: { "Cache-Control": "private, no-store" },
+      }),
+      quota,
+    );
   } catch (error) {
     if (error instanceof FeedInputError) return NextResponse.json({ error: error.message }, { status: 400 });
     return agentErrorResponse(error);

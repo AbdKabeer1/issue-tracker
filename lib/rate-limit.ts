@@ -54,20 +54,25 @@ export function checkRateLimit(
   key: string,
   config: RateLimitConfig,
   now = Date.now(),
-): { allowed: boolean; retryAfterMs: number } {
+): RateLimitResult {
   const windowStart = now - config.windowMs;
   const timestamps = (tracker.get(key) ?? []).filter((t) => t > windowStart);
 
   if (timestamps.length >= config.max) {
     const oldest = timestamps[0] ?? now;
     const retryAfterMs = Math.max(0, oldest + config.windowMs - now);
-    return { allowed: false, retryAfterMs };
+    return { allowed: false, retryAfterMs, remaining: 0, resetAfterMs: retryAfterMs };
   }
 
   timestamps.push(now);
   tracker.set(key, timestamps);
   if (tracker.size > MAX_TRACKED_KEYS) pruneExpired(now);
-  return { allowed: true, retryAfterMs: 0 };
+  return {
+    allowed: true,
+    retryAfterMs: 0,
+    remaining: config.max - timestamps.length,
+    resetAfterMs: Math.max(0, (timestamps[0] ?? now) + config.windowMs - now),
+  };
 }
 
 export type RateLimitItem = {
@@ -223,12 +228,56 @@ export function isTrustedProxyIp(ip: string, list: string[]): boolean {
  * `CLIENT_IP_HEADER` (e.g. `cf-connecting-ip`) overrides this when the
  * platform sets a single header the client can't forge.
  */
-export function clientIpFrom(headers: { get(name: string): string | null }): string | null {
+export type HeadersLike = { get(name: string): string | null };
+export type RequestWithHeadersAndIp = {
+  headers: HeadersLike;
+  ip?: string | null;
+  socket?: { remoteAddress?: string | null };
+};
+
+/**
+ * The client IP as seen by the proxy we trust, for rate-limit keys (#507, #663, #675).
+ *
+ * When TRUSTED_PROXIES is configured, the connection IP is verified first:
+ * - If connection IP is from an untrusted client (not in TRUSTED_PROXIES),
+ *   X-Forwarded-For is ignored (spoofed) and the connection IP is returned.
+ * - If connection IP is from a trusted proxy, the X-Forwarded-For chain is evaluated
+ *   from right to left, stripping verified intermediate proxies to uncover the genuine
+ *   client IP.
+ * - Falls back to connection IP when all forwarded IPs are trusted or absent.
+ *
+ * Otherwise, the left-most `X-Forwarded-For` entry is whatever the client sent, so it
+ * can't be trusted: rotating it would hand out a fresh bucket per request.
+ * Each trusted proxy appends the address it received the request from, so
+ * the client is the entry `TRUSTED_PROXY_HOPS` places from the right.
+ * `CLIENT_IP_HEADER` (e.g. `cf-connecting-ip`) overrides this when the
+ * platform sets a single header the client can't forge.
+ */
+export function clientIpFrom(
+  headersOrRequest: HeadersLike | RequestWithHeadersAndIp,
+  connectionIp?: string | null,
+): string | null {
+  const headers = "headers" in headersOrRequest ? headersOrRequest.headers : headersOrRequest;
+  const directIp = validIp(
+    connectionIp ??
+      ("ip" in headersOrRequest
+        ? headersOrRequest.ip
+        : "socket" in headersOrRequest
+          ? headersOrRequest.socket?.remoteAddress
+          : undefined),
+  );
+
   const configured = process.env.CLIENT_IP_HEADER?.trim().toLowerCase();
-  if (configured) return validIp(headers.get(configured)?.split(",")[0]);
+  if (configured) return validIp(headers.get(configured)?.split(",")[0]) ?? directIp;
 
   const proxyList = trustedProxies();
   if (proxyList.length > 0) {
+    // If we have a direct connection IP from an untrusted source, do NOT trust
+    // headers sent by the client; return the connection IP directly (#663).
+    if (directIp && !isTrustedProxyIp(directIp, proxyList)) {
+      return directIp;
+    }
+
     const chain = (headers.get("x-forwarded-for") ?? "")
       .split(",")
       .map((entry) => entry.trim())
@@ -241,33 +290,40 @@ export function clientIpFrom(headers: { get(name: string): string | null }): str
           return candidate;
         }
       }
-      return null;
+      return directIp;
     }
-    return validIp(headers.get("x-real-ip"));
+    return validIp(headers.get("x-real-ip")) ?? directIp;
   }
 
   const hops = trustedProxyHops();
-  if (hops === 0) return null;
+  if (hops === 0) return directIp;
 
   const chain = (headers.get("x-forwarded-for") ?? "")
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
-  if (chain.length > 0) return validIp(chain[Math.max(0, chain.length - hops)]);
-  return validIp(headers.get("x-real-ip"));
+  if (chain.length > 0) {
+    const candidate = validIp(chain[Math.max(0, chain.length - hops)]);
+    return candidate ?? directIp;
+  }
+  return validIp(headers.get("x-real-ip")) ?? directIp;
 }
 
 let warnedNoClientIp = false;
 
 /**
- * A rate-limit key for one client (#509). With no usable IP, every caller
+ * A rate-limit key for one client (#509, #663). With no usable IP, every caller
  * used to share one "unknown" bucket, so a single client could lock everyone
  * else out. Those callers now get a bucket per browser/agent fingerprint
  * instead, and production logs once so the missing proxy header gets fixed.
  */
-export function clientRateLimitKey(headers: { get(name: string): string | null }): string {
-  const ip = clientIpFrom(headers);
+export function clientRateLimitKey(
+  headersOrRequest: HeadersLike | RequestWithHeadersAndIp,
+  connectionIp?: string | null,
+): string {
+  const ip = clientIpFrom(headersOrRequest, connectionIp);
   if (ip) return `ip:${ip}`;
+  const headers = "headers" in headersOrRequest ? headersOrRequest.headers : headersOrRequest;
   if (!warnedNoClientIp && process.env.NODE_ENV === "production") {
     warnedNoClientIp = true;
     console.warn(
@@ -289,7 +345,18 @@ export function clientRateLimitKey(headers: { get(name: string): string | null }
 // everyone and never to no limit at all.
 // ---------------------------------------------------------------------------
 
-export type RateLimitResult = { allowed: boolean; retryAfterMs: number };
+export type RateLimitResult = {
+  allowed: boolean;
+  retryAfterMs: number;
+  /**
+   * Attempts left in the window after this one (#646). Computed from the
+   * same read the check already does, so reporting it costs nothing extra.
+   * Optional: stores and test doubles that don't know it leave it out.
+   */
+  remaining?: number;
+  /** When the oldest counted attempt leaves the window, in ms from now (#646). */
+  resetAfterMs?: number;
+};
 
 export type RateLimitStore = {
   hit(key: string, config: RateLimitConfig, now: number): Promise<RateLimitResult>;

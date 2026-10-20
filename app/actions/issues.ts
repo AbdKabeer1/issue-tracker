@@ -36,6 +36,7 @@ import {
   commentSchema,
   createBugSchema,
   editBugContentSchema,
+  editProofLinksSchema,
   updateBugSchema,
 } from "@/lib/validations/issue";
 import {
@@ -59,7 +60,9 @@ import { publish } from "@/lib/agent-api/events";
 import {
   canEditTicket,
   formatEditSummary,
+  formatProofLinkSummary,
   getChangedEditFields,
+  getProofLinkChanges,
   TICKET_EDIT_ERRORS,
 } from "@/lib/ticket-editing";
 import { Prisma, type ActivityType } from "@prisma/client";
@@ -80,6 +83,9 @@ import {
 } from "@/lib/tenant-context";
 import { currentTenantAccess } from "@/lib/tenant-access";
 import { awardSolver } from "@/lib/points/award";
+import { isConfirmed } from "@/lib/agent-api/validation";
+import { correct } from "@/lib/points/correct";
+import { pointSourceKey } from "@/lib/points/rules";
 import {
   checkRateLimit,
   consumeRateLimit,
@@ -867,6 +873,8 @@ export async function editBugContentAction(
       title: true,
       description: true,
       reporterId: true,
+      beneficiaryUserId: true,
+      tenantId: true,
       isDeleted: true,
     },
   });
@@ -921,6 +929,51 @@ export async function editBugContentAction(
         editedById: userId,
       },
     });
+
+    // #713: Editing an issue invalidates confirmations and previous validations,
+    // and reverses any reporter points awarded for the replaced report.
+    type OptionalTxExtensions = {
+      pointEntry?: {
+        findFirst?: (args: unknown) => Promise<{ id: string; tenantId: string; userId: string; bugId: string | null; role: "solver" | "reporter" | "reviewer"; points: number } | null>;
+        update?: (args: unknown) => Promise<unknown>;
+      };
+      issueValidation?: {
+        deleteMany?: (args: unknown) => Promise<unknown>;
+      };
+    };
+    const txExtensions = tx as unknown as OptionalTxExtensions;
+
+    const wasConfirmed = await isConfirmed(bugId, tx);
+    if (wasConfirmed) {
+      const recipientId = existing.beneficiaryUserId ?? existing.reporterId;
+      const tenantId = existing.tenantId ?? (await currentTenantIdFor(userId));
+      if (recipientId && typeof txExtensions.pointEntry?.findFirst === "function") {
+        const entry = await txExtensions.pointEntry.findFirst({
+          where: {
+            tenantId,
+            sourceKey: pointSourceKey("reporter", bugId, recipientId),
+          },
+          select: { id: true, tenantId: true, userId: true, bugId: true, role: true, points: true },
+        });
+        if (entry) {
+          await correct(tx, { entry });
+          if (typeof txExtensions.pointEntry?.update === "function") {
+            await txExtensions.pointEntry.update({
+              where: { id: entry.id },
+              data: {
+                sourceKey: `${pointSourceKey("reporter", bugId, recipientId)}:invalidated:${entry.id}`,
+              },
+            });
+          }
+        }
+      }
+    }
+
+    if (typeof txExtensions.issueValidation?.deleteMany === "function") {
+      await txExtensions.issueValidation.deleteMany({
+        where: { bugId },
+      });
+    }
 
     await tx.bug.update({
       where: { id: bugId },
@@ -985,6 +1038,99 @@ export async function editBugContentAction(
   return { ok: true };
 }
 
+/**
+ * Lets the reporter or an admin add, correct, or remove an issue's proof
+ * links after filing (#737). Same rules as create: GitHub URLs, at most 20.
+ */
+export async function editProofLinksAction(
+  bugId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await requireUser();
+  const userId = user.id;
+
+  const limit = checkRateLimit(
+    `edit-bug:${userId}`,
+    ACTION_RATE_LIMITS.editBug,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
+
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
+    select: {
+      id: true,
+      proofLinks: true,
+      reporterId: true,
+      isDeleted: true,
+    },
+  });
+
+  if (!existing || existing.isDeleted) {
+    return { error: TICKET_EDIT_ERRORS.notFound };
+  }
+
+  if (
+    !canEditTicket({
+      actorId: userId,
+      actorRole: user.role,
+      membershipRole: (await currentTenantAccess(userId, user.role)).membershipRole,
+      reporterId: existing.reporterId,
+    })
+  ) {
+    return { error: TICKET_EDIT_ERRORS.unauthorized };
+  }
+
+  const parsed = editProofLinksSchema.safeParse({
+    proofLinks: formData.get("proofLinks") || "",
+  });
+
+  if (!parsed.success) {
+    return fromZodError(parsed.error);
+  }
+
+  const proofLinks = parsed.data.proofLinks;
+  const changes = getProofLinkChanges(existing.proofLinks ?? [], proofLinks);
+  if (changes.added.length === 0 && changes.removed.length === 0) {
+    return { ok: true };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.bug.update({
+      where: { id: bugId },
+      data: { proofLinks, updatedAt: new Date() },
+    });
+
+    await publishWebEvent(tx, {
+      bugId,
+      type: "issue.updated",
+      actorUserId: userId,
+      payload: issueChangePayload({ proofLinks }),
+    });
+
+    await tx.bugActivity.create({
+      data: {
+        bugId,
+        actorId: userId,
+        type: "edited",
+        summary: formatProofLinkSummary(changes),
+        metadata: {
+          fields: ["proofLinks"],
+          added: changes.added,
+          removed: changes.removed,
+        },
+      },
+    });
+  });
+
+  revalidatePath("/issues");
+  revalidatePath(`/issues/${bugId}`);
+  revalidatePath("/bugs");
+  revalidatePath(`/bugs/${bugId}`);
+  return { ok: true };
+}
+
 /** Adds a (possibly threaded) comment to a bug and records the activity. */
 export async function addCommentAction(
   bugId: string,
@@ -1000,9 +1146,21 @@ export async function addCommentAction(
     return { error: RATE_LIMIT_MESSAGE };
   }
 
+  let metadata: Record<string, unknown> | undefined;
+  const metadataRaw = formData.get("metadata");
+  if (typeof metadataRaw === "string" && metadataRaw.trim()) {
+    try {
+      metadata = JSON.parse(metadataRaw);
+    } catch {
+      // ignore invalid json metadata
+    }
+  }
+
   const parsed = commentSchema.safeParse({
     body: formData.get("body"),
     parentId: formData.get("parentId") || undefined,
+    type: formData.get("type") || undefined,
+    metadata,
   });
 
   if (!parsed.success) {
@@ -1059,6 +1217,8 @@ export async function addCommentAction(
         authorId: userId,
         body: normalizedBody,
         parentId: parentId ?? null,
+        type: parsed.data.type ?? "comment",
+        metadata: parsed.data.metadata ? (parsed.data.metadata as Prisma.InputJsonValue) : undefined,
       },
       select: { id: true },
     });
@@ -1280,6 +1440,9 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
           deletedAt: new Date(),
         },
       });
+      // Delete attachments associated with the issue to prevent storage bloat (#658)
+      await tx.attachment.deleteMany({ where: { bugId } });
+
       await publishWebEvent(tx, { bugId, type: "issue.deleted", actorUserId: user.id });
 
       await tx.bugActivity.create({
