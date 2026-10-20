@@ -86,7 +86,7 @@ export default async function NewBugPage() {
         </Link>
         <h1 className="text-2xl font-semibold text-slate-900">Report an issue</h1>
         <p className="text-sm text-slate-600">
-          Include a type, clear description, and optional GitHub proof links so the team
+          Include a type, clear description, and optional GitHub PR so the team
           can triage quickly.
         </p>
       </div>

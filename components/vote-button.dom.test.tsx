@@ -110,4 +110,32 @@ describe("VoteButton interactive optimistic updates (#219)", () => {
     // Optimistically updates to 3 votes and unlocks work
     expect(indicator).toHaveTextContent("Work unlocked (3/3 votes)");
   });
+
+  it("renders accessible error with icon, 12px minimum font, and aria-describedby linkage (#703)", async () => {
+    mockToggle.mockResolvedValueOnce({
+      error: "You cannot vote on your own issue.",
+    });
+
+    const user = userEvent.setup();
+    render(
+      <VoteButton
+        bugId="bug-1"
+        voteCount={5}
+        likeCount={5}
+        dislikeCount={0}
+        userVote={0}
+      />
+    );
+
+    const upvoteButton = screen.getByRole("button", { name: /^like this issue/i });
+    await user.click(upvoteButton);
+
+    await waitFor(() => {
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveAttribute("id", "vote-error-bug-1");
+      expect(alert).toHaveClass("text-xs");
+      expect(alert.querySelector("svg")).toBeInTheDocument();
+      expect(upvoteButton).toHaveAttribute("aria-describedby", "vote-error-bug-1");
+    });
+  });
 });

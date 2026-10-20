@@ -760,7 +760,7 @@ export default async function BugsPage({
                               )}
                               {(bug.proofLinks?.length ?? 0) > 0 ? (
                                 <span>
-                                  · {bug.proofLinks.length} proof link
+                                  · {bug.proofLinks.length} GitHub PR
                                   {bug.proofLinks.length === 1 ? "" : "s"}
                                 </span>
                               ) : null}

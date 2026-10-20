@@ -7,6 +7,11 @@ import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { addCommentAction } from "@/app/actions/issues";
 import { CommentForm } from "./comment-form";
 
+const mockToast = vi.fn();
+vi.mock("@/components/ui/toast", () => ({
+  useToast: () => mockToast,
+}));
+
 vi.mock("@/app/actions/issues", () => ({
   addCommentAction: vi.fn(),
 }));
@@ -46,6 +51,7 @@ describe("CommentForm optimistic update and rollback", () => {
   let user: ReturnType<typeof userEvent.setup>;
 
   beforeEach(() => {
+    mockToast.mockReset();
     mockedAddComment.mockReset();
     mockedAddComment.mockResolvedValue({ ok: true });
     user = userEvent.setup();
@@ -85,6 +91,8 @@ describe("CommentForm optimistic update and rollback", () => {
       expect(textarea.value).toBe("");
       expect(submitButton().textContent).toBe("Post to conversation");
       expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.getByRole("status").textContent).toBe("Comment posted.");
+      expect(mockToast).toHaveBeenCalledWith("Comment posted.");
       // Body was cleared, so the button stays disabled for the empty form.
       expect(submitButton().disabled).toBe(true);
     });
@@ -226,5 +234,40 @@ describe("CommentForm optimistic update and rollback", () => {
       global.fetch = originalFetch;
     }
   });
-});
 
+  it("provides settlement feedback: announces status, scrolls to comment, highlights, and focuses it (#703)", async () => {
+    mockedAddComment.mockResolvedValueOnce({ ok: true, commentId: "comm-456" });
+
+    const commentLi = document.createElement("li");
+    commentLi.id = "comment-comm-456";
+    const commentArticle = document.createElement("article");
+    const commentLink = document.createElement("a");
+    commentLink.href = "#comment-comm-456";
+    commentArticle.appendChild(commentLink);
+    commentLi.appendChild(commentArticle);
+    document.body.appendChild(commentLi);
+
+    const scrollIntoViewMock = vi.fn();
+    commentLi.scrollIntoView = scrollIntoViewMock;
+
+    try {
+      renderForm();
+      const textarea = bodyTextarea();
+      await user.type(textarea, "New comment content");
+      await user.click(submitButton());
+
+      await waitFor(() => {
+        expect(screen.getByRole("status").textContent).toBe("Comment posted.");
+        expect(mockToast).toHaveBeenCalledWith("Comment posted.");
+        expect(window.location.hash).toBe("#comment-comm-456");
+      });
+
+      await waitFor(() => {
+        expect(scrollIntoViewMock).toHaveBeenCalled();
+        expect(commentArticle.classList.contains("ring-2")).toBe(true);
+      });
+    } finally {
+      document.body.removeChild(commentLi);
+    }
+  });
+});
