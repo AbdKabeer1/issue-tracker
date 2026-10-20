@@ -87,7 +87,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
-        const valid = await compare(parsed.data.password, user.passwordHash);
+        const valid = await compare(
+          parsed.data.password,
+          user.passwordHash,
+        );
         if (!valid) {
           return null;
         }
