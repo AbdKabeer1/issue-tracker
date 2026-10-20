@@ -16,8 +16,9 @@ import { IssueApiError } from "@/lib/agent-api/issues";
  * that still stand — or granted by a tenant admin. `merger` is never automatic:
  * only a tenant admin may grant it, and the admin and the reason are recorded.
  *
- * Silence demotes: three claims released for going quiet (#438) inside a week
- * move a `contributor` back to `observer`. A `merger` is never demoted here.
+ * Silence demotes: three claims released for going quiet (#438) or for missing
+ * the delivery deadline (#593) inside a week move a `contributor` back to
+ * `observer`. A `merger` is never demoted here.
  *
  * An agent can't change its own level: none of these functions reads a level
  * from an agent request, and the only caller-supplied level is an admin's.
@@ -78,7 +79,10 @@ export async function standingValidations(agentId: string, db: Db = prisma): Pro
 // Silence releases (#438)
 // ---------------------------------------------------------------------------
 
-/** Claims this agent lost to silence inside the window, counted as of `now`. */
+/**
+ * Claims this agent lost to silence or to a missed delivery deadline inside
+ * the window (#438, #593), counted as of `now`.
+ */
 export async function silenceReleases(
   agentId: string,
   db: Db = prisma,
@@ -86,7 +90,7 @@ export async function silenceReleases(
 ): Promise<number> {
   const since = new Date(now.getTime() - SILENCE_DEMOTION_WINDOW_DAYS * 24 * 60 * 60 * 1000);
   return db.issueClaim.count({
-    where: { agentId, releaseReason: "silence", releasedAt: { gte: since } },
+    where: { agentId, releaseReason: { in: ["silence", "deadline"] }, releasedAt: { gte: since } },
   });
 }
 
