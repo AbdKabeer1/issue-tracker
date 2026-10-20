@@ -23,14 +23,13 @@ export function CreateProjectForm() {
           Project name
         </label>
         <p className="mt-0.5 text-xs text-slate-500">
-          A product or area inside your workspace, such as Zedu Web or Zedu
-          Desktop.
+          A product or area inside your workspace, such as a web app or iOS app.
         </p>
         <div className="mt-2 flex flex-col gap-2 sm:flex-row">
           <Input
             id="project-name"
             name="name"
-            placeholder="Zedu Web"
+            placeholder="Web app"
             required
             maxLength={PROJECT_NAME_MAX + 20}
             disabled={pending}
