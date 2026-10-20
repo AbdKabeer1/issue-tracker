@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   checkRateLimit,
   resetRateLimits,
@@ -84,10 +84,102 @@ describe("auth rate limits (#207)", () => {
 
   it("reads the client IP from proxy headers and ignores junk", async () => {
     const { clientIpFrom } = await import("./rate-limit");
-    expect(clientIpFrom(new Headers({ "x-forwarded-for": "203.0.113.7, 10.0.0.1" }))).toBe("203.0.113.7");
+    expect(clientIpFrom(new Headers({ "x-forwarded-for": "203.0.113.7" }))).toBe("203.0.113.7");
     expect(clientIpFrom(new Headers({ "x-real-ip": "2001:db8::1" }))).toBe("2001:db8::1");
     expect(clientIpFrom(new Headers({ "x-forwarded-for": "<script>" }))).toBeNull();
     expect(clientIpFrom(new Headers())).toBeNull();
+  });
+
+  describe("trusted proxy hops (#507)", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("takes the entry the trusted proxy appended, not the one the client sent", async () => {
+      const { clientIpFrom } = await import("./rate-limit");
+      // The client sent 1.2.3.4; Traefik appended the real address.
+      const headers = new Headers({ "x-forwarded-for": "1.2.3.4, 203.0.113.7" });
+      expect(clientIpFrom(headers)).toBe("203.0.113.7");
+    });
+
+    it("rotating the left-most value always yields the same client", async () => {
+      const { clientIpFrom } = await import("./rate-limit");
+      const seen = new Set(
+        Array.from({ length: 12 }, (_, i) =>
+          clientIpFrom(new Headers({ "x-forwarded-for": `10.0.0.${i}, 198.51.100.9` })),
+        ),
+      );
+      expect([...seen]).toEqual(["198.51.100.9"]);
+    });
+
+    it("honours TRUSTED_PROXY_HOPS=2 (CDN in front of the proxy)", async () => {
+      vi.stubEnv("TRUSTED_PROXY_HOPS", "2");
+      const { clientIpFrom } = await import("./rate-limit");
+      expect(clientIpFrom(new Headers({ "x-forwarded-for": "6.6.6.6, 203.0.113.7, 10.0.0.2" }))).toBe("203.0.113.7");
+      // A shorter chain than configured: the left-most entry came from a trusted hop.
+      expect(clientIpFrom(new Headers({ "x-forwarded-for": "203.0.113.7" }))).toBe("203.0.113.7");
+    });
+
+    it("trusts no forwarding header with TRUSTED_PROXY_HOPS=0", async () => {
+      vi.stubEnv("TRUSTED_PROXY_HOPS", "0");
+      const { clientIpFrom } = await import("./rate-limit");
+      expect(clientIpFrom(new Headers({ "x-forwarded-for": "203.0.113.7", "x-real-ip": "203.0.113.7" }))).toBeNull();
+    });
+
+    it("reads only CLIENT_IP_HEADER when it is set", async () => {
+      vi.stubEnv("CLIENT_IP_HEADER", "CF-Connecting-IP");
+      const { clientIpFrom } = await import("./rate-limit");
+      expect(
+        clientIpFrom(new Headers({ "cf-connecting-ip": "203.0.113.7", "x-forwarded-for": "1.2.3.4" })),
+      ).toBe("203.0.113.7");
+      expect(clientIpFrom(new Headers({ "x-forwarded-for": "1.2.3.4" }))).toBeNull();
+    });
+
+    it("falls back to the default for nonsense hop counts", async () => {
+      const { trustedProxyHops } = await import("./rate-limit");
+      vi.stubEnv("TRUSTED_PROXY_HOPS", "lots");
+      expect(trustedProxyHops()).toBe(1);
+      vi.stubEnv("TRUSTED_PROXY_HOPS", "-3");
+      expect(trustedProxyHops()).toBe(1);
+      vi.stubEnv("TRUSTED_PROXY_HOPS", "99");
+      expect(trustedProxyHops()).toBe(10);
+    });
+  });
+
+  describe("auth limits can't be dodged by rotating X-Forwarded-For (#508)", () => {
+    it("keeps counting the same IP across many emails", async () => {
+      const { checkAuthRateLimit, clientIpFrom, AUTH_RATE_LIMITS } = await import("./rate-limit");
+      const { max } = AUTH_RATE_LIMITS.login.ip;
+      const results = Array.from({ length: max + 1 }, (_, i) =>
+        checkAuthRateLimit(
+          "login",
+          {
+            email: `victim${i}@example.com`,
+            ip: clientIpFrom(new Headers({ "x-forwarded-for": `10.9.${i}.1, 198.51.100.20` })),
+          },
+          0,
+        ),
+      );
+      expect(results.slice(0, max).every((r) => r.allowed)).toBe(true);
+      expect(results[max]?.allowed).toBe(false);
+    });
+  });
+
+  describe("clientRateLimitKey (#509)", () => {
+    it("keys by IP when there is one", async () => {
+      const { clientRateLimitKey } = await import("./rate-limit");
+      expect(clientRateLimitKey(new Headers({ "x-forwarded-for": "203.0.113.7" }))).toBe("ip:203.0.113.7");
+    });
+
+    it("gives header-less clients separate buckets instead of one shared one", async () => {
+      const { clientRateLimitKey } = await import("./rate-limit");
+      const a = clientRateLimitKey(new Headers({ "user-agent": "agent-a/1.0" }));
+      const b = clientRateLimitKey(new Headers({ "user-agent": "agent-b/1.0" }));
+      expect(a).toMatch(/^anon:[0-9a-f]{32}$/);
+      expect(a).not.toBe(b);
+      expect(clientRateLimitKey(new Headers({ "user-agent": "agent-a/1.0" }))).toBe(a);
+      expect(a).not.toBe("unknown");
+    });
   });
 
   it("drops expired keys once it tracks many, so memory stays bounded", async () => {

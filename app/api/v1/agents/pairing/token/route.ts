@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { clientIpFrom, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { clientRateLimitKey, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { consumePairingLimit } from "@/lib/agents/rate-limit";
 import { collectPairing } from "@/lib/agents/pairing";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
@@ -13,7 +13,7 @@ const NO_STORE = { "Cache-Control": "no-store" };
  * answer is `authorization_pending`; after, the key comes back exactly once.
  */
 export async function POST(req: NextRequest) {
-  const retryAfter = await consumePairingLimit("collect", clientIpFrom(req.headers) ?? "unknown");
+  const retryAfter = await consumePairingLimit("collect", clientRateLimitKey(req.headers));
   if (retryAfter) {
     return NextResponse.json(
       { error: "slow_down", message: RATE_LIMIT_MESSAGE },
