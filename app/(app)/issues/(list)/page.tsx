@@ -222,41 +222,32 @@ export default async function BugsPage({
   }
 
   let totalCount = 0;
-  // Only a member, and only when the tenant column itself is missing, may see
-  // the pre-migration board. Anyone else keeps an empty scope (#439).
-  let unscopedBoard = false;
   try {
     totalCount = await prisma.bug.count({ where });
   } catch (error) {
     console.error("[bugs] list count failed", error);
     const missingColumn = isMissingTenantColumnError(error);
-    if (missingColumn && tenantId) {
-      unscopedBoard = true;
-      delete where.tenantId;
-      delete where.projectId;
-      try {
-        totalCount = await prisma.bug.count({ where });
-      } catch (retryError) {
-        console.error("[bugs] un-scoped list count failed", retryError);
-        const detail = retryError instanceof Error ? retryError.message : "Could not load issues";
-        return issuesQueryError(detail);
-      }
-    } else if (!tenantId) {
+    if (!tenantId) {
+      // No membership: nothing to show either way (#439).
       totalCount = 0;
       if (missingColumn) {
         delete where.tenantId;
         delete where.projectId;
         where.id = { in: [] };
       }
+    } else if (missingColumn) {
+      // #506: never retry without the tenant filter. That used to show every
+      // tenant's issues to anyone whose query error mentioned the column.
+      return issuesQueryError(
+        "The issue list is unavailable while the database finishes upgrading. Try again in a minute.",
+      );
     } else {
       const detail = error instanceof Error ? error.message : "Could not load issues";
       return issuesQueryError(detail);
     }
   }
 
-  const baseTenantWhere: Prisma.BugWhereInput = unscopedBoard
-    ? { isDeleted: isDeletedView }
-    : { ...bugInTenant(tenantId), isDeleted: isDeletedView };
+  const baseTenantWhere: Prisma.BugWhereInput = { ...bugInTenant(tenantId), isDeleted: isDeletedView };
 
   let statsTotal = 0;
   let statsOpen = 0;
@@ -496,8 +487,7 @@ export default async function BugsPage({
   let isFirstRun = false;
   if (totalCount === 0 && !isDeletedView) {
     try {
-      const scope = unscopedBoard ? {} : bugInTenant(tenantId);
-      isFirstRun = (await prisma.bug.count({ where: { ...scope, isDeleted: false } })) === 0;
+      isFirstRun = (await prisma.bug.count({ where: { ...bugInTenant(tenantId), isDeleted: false } })) === 0;
     } catch {
       isFirstRun = false;
     }

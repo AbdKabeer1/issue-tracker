@@ -9,8 +9,11 @@ import { existsSync } from "fs";
  * which silently drops columns/tables that schema.prisma no longer has.
  *
  * If deploy stops early, scripts/sql/ensure-bug-number.sql still adds the
- * missing issue reference column, and scripts/sql/ensure-bug-duplicates.sql
- * adds Bug.duplicateOfId. Neither drops anything.
+ * missing issue reference column, scripts/sql/ensure-bug-duplicates.sql adds
+ * Bug.duplicateOfId, and scripts/sql/ensure-agent-key-project-scope.sql adds
+ * AgentApiKey.projectId and AgentPairing.projectId. scripts/sql/ensure-shipped-agent-schema.sql
+ * adds the personal-agent columns, issue bids, and redesign preview columns.
+ * None of them drop anything.
  */
 
 let url = process.env.DATABASE_URL;
@@ -58,6 +61,11 @@ const userSettingsMigrations = [
   "20261020010000_theme_preference",
 ];
 const agentPlatformMigration = "20261021000000_agent_platform";
+const agentKeyProjectScopeMigration = "20261022120000_agent_key_project_scope";
+const redesignPreviewMigration = "20261022000000_redesign_mockups_and_choice";
+const disputeRequestedRoleMigration = "20261022120000_dispute_requested_role";
+const defaultProjectKeyMigration = "20261022150000_default_project_agent_key";
+const issueBidsMigration = "20261022160000_issue_bids";
 
 function runPrisma(args, inherit = false) {
   return execSync(`${prismaBin} ${args}`, {
@@ -65,6 +73,30 @@ function runPrisma(args, inherit = false) {
     encoding: "utf8",
     env: process.env,
   });
+}
+
+function recordApplied(name) {
+  try {
+    runPrisma(`migrate resolve --applied ${name}`, true);
+    console.log(`[db:migrate] Recorded ${name} as applied.`);
+  } catch (resolveError) {
+    const message = resolveError instanceof Error ? resolveError.message : String(resolveError);
+    console.log(`[db:migrate] ${name} was already recorded:`, message.split("\n")[0]);
+    if (/failed|P3018|P3009/i.test(message)) {
+      try {
+        runPrisma(`migrate resolve --rolled-back ${name}`, true);
+        runPrisma(`migrate resolve --applied ${name}`, true);
+        console.log(`[db:migrate] Recorded ${name} as applied.`);
+      } catch (retryResolveError) {
+        console.error(
+          `[db:migrate] Could not record ${name}:`,
+          retryResolveError instanceof Error
+            ? retryResolveError.message.split("\n")[0]
+            : retryResolveError,
+        );
+      }
+    }
+  }
 }
 
 function deploy() {
@@ -367,5 +399,109 @@ try {
   console.error(
     "[db:migrate] Could not add Agent platform schema:",
     agentPlatformError instanceof Error ? agentPlatformError.message : String(agentPlatformError),
+  );
+}
+
+// Pairing's insert returns AgentPairing.projectId (#742). If an earlier
+// migration is stuck, deploy never reaches 20261022120000_agent_key_project_scope
+// and POST /api/v1/agents/pairing returns 500 after the name is accepted.
+try {
+  console.log("[db:migrate] Ensuring agent key project columns exist...");
+  runPrisma(
+    "db execute --schema prisma/schema.prisma --file scripts/sql/ensure-agent-key-project-scope.sql",
+    true,
+  );
+  console.log("[db:migrate] AgentApiKey.projectId and AgentPairing.projectId are present.");
+  try {
+    runPrisma(`migrate resolve --applied ${agentKeyProjectScopeMigration}`, true);
+    console.log(`[db:migrate] Recorded ${agentKeyProjectScopeMigration} as applied.`);
+  } catch (resolveError) {
+    const message =
+      resolveError instanceof Error ? resolveError.message : String(resolveError);
+    console.log(
+      `[db:migrate] ${agentKeyProjectScopeMigration} was already recorded:`,
+      message.split("\n")[0],
+    );
+    if (/failed|P3018|P3009/i.test(message)) {
+      try {
+        runPrisma(`migrate resolve --rolled-back ${agentKeyProjectScopeMigration}`, true);
+        runPrisma(`migrate resolve --applied ${agentKeyProjectScopeMigration}`, true);
+        console.log(`[db:migrate] Recorded ${agentKeyProjectScopeMigration} as applied.`);
+      } catch (retryResolveError) {
+        console.error(
+          `[db:migrate] Could not record ${agentKeyProjectScopeMigration}:`,
+          retryResolveError instanceof Error
+            ? retryResolveError.message.split("\n")[0]
+            : retryResolveError,
+        );
+      }
+    }
+  }
+  try {
+    deploy();
+  } catch (retryError) {
+    console.error(
+      "[db:migrate] migrate deploy still failing after agent key project repair:",
+      retryError instanceof Error ? retryError.message : String(retryError),
+    );
+  }
+} catch (projectScopeError) {
+  console.error(
+    "[db:migrate] Could not add agent key project columns:",
+    projectScopeError instanceof Error ? projectScopeError.message : String(projectScopeError),
+  );
+}
+
+// Issue pages select RedesignProposal.previewUrl and IssueBid. The header
+// creates a personal agent, which writes Agent.defaultProjectId and
+// AgentApiKey.sealedKey. A stuck earlier migration never reaches those files,
+// and the signed-in app then crashes on the missing relation.
+try {
+  console.log("[db:migrate] Ensuring redesign status value exists...");
+  runPrisma(
+    "db execute --schema prisma/schema.prisma --file scripts/sql/ensure-redesign-status.sql",
+    true,
+  );
+} catch (enumError) {
+  console.error(
+    "[db:migrate] Could not add RedesignStatus superseded:",
+    enumError instanceof Error ? enumError.message.split("\n")[0] : enumError,
+  );
+}
+try {
+  console.log("[db:migrate] Ensuring personal agent columns, bids, and redesign preview exist...");
+  runPrisma(
+    "db execute --schema prisma/schema.prisma --file scripts/sql/ensure-shipped-agent-schema.sql",
+    true,
+  );
+  console.log("[db:migrate] Personal agent columns, bids, and redesign preview are present.");
+  for (const name of [redesignPreviewMigration, defaultProjectKeyMigration, issueBidsMigration]) {
+    recordApplied(name);
+  }
+  try {
+    deploy();
+  } catch (retryError) {
+    console.error(
+      "[db:migrate] migrate deploy still failing after shipped agent schema repair:",
+      retryError instanceof Error ? retryError.message : String(retryError),
+    );
+  }
+} catch (shippedSchemaError) {
+  console.error(
+    "[db:migrate] Could not add personal agent columns, bids, or redesign preview:",
+    shippedSchemaError instanceof Error ? shippedSchemaError.message : String(shippedSchemaError),
+  );
+}
+try {
+  console.log("[db:migrate] Ensuring PointDispute.requestedRole exists...");
+  runPrisma(
+    "db execute --schema prisma/schema.prisma --file scripts/sql/ensure-dispute-requested-role.sql",
+    true,
+  );
+  recordApplied(disputeRequestedRoleMigration);
+} catch (disputeRoleError) {
+  console.error(
+    "[db:migrate] Could not add PointDispute.requestedRole:",
+    disputeRoleError instanceof Error ? disputeRoleError.message : String(disputeRoleError),
   );
 }

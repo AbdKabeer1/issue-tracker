@@ -29,7 +29,7 @@ describe("admin page guards (#121)", () => {
       const source = readFileSync(page, "utf8");
       // Platforms belong to the open organization, so the page checks that
       // membership (and the site admin role) instead of requireAdmin alone.
-      if (name === "categories/page.tsx") {
+      if (name === path.join("categories", "page.tsx")) {
         expect(source).toMatch(/requireUser\(\)/);
         expect(source).toMatch(/platformScopeFor\(/);
         return;

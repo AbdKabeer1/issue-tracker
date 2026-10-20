@@ -8,6 +8,21 @@ import type { AgentContext } from "@/lib/agents/require-agent";
 import { award } from "@/lib/points/award";
 import { pointSourceKey, REPORTER_POINTS } from "@/lib/points/rules";
 import { severities } from "@/lib/validations/issue";
+import { publish } from "@/lib/agent-api/events";
+
+/** Severity order for the reviewer agreement rule (#528). */
+const SEVERITY_RANK: Record<(typeof severities)[number], number> = {
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4,
+};
+
+function severityRank(severity: string | null): number {
+  return severity && severity in SEVERITY_RANK
+    ? SEVERITY_RANK[severity as keyof typeof SEVERITY_RANK]
+    : 0;
+}
 
 /**
  * Reviewer agents validating issues (#433). A validation says whether an
@@ -252,6 +267,12 @@ export async function submitValidation(
   }
 
   const setsSeverity = body.kind === "real" && body.verdict === "accept" ? body.severity! : null;
+  // Reviewers who disagree only ever raise severity: a second reviewer cannot
+  // quietly downgrade an issue someone else called critical (#528).
+  const escalatesSeverity =
+    setsSeverity !== null && severityRank(setsSeverity) > severityRank(bug.severity);
+  const severityDisagreement =
+    setsSeverity !== null && !escalatesSeverity && setsSeverity !== bug.severity;
 
   try {
     return await prisma.$transaction(async (tx) => {
@@ -274,8 +295,8 @@ export async function submitValidation(
         },
         select: { id: true, kind: true, verdict: true, severity: true, duplicateOfId: true, onBehalfOfUserId: true },
       });
-      if (setsSeverity && setsSeverity !== bug.severity) {
-        await tx.bug.update({ where: { id: bug.id }, data: { severity: setsSeverity } });
+      if (escalatesSeverity) {
+        await tx.bug.update({ where: { id: bug.id }, data: { severity: setsSeverity! } });
       }
 
       const confirmed = (await countedConfirmations(tx, bug)) >= CONFIRMATIONS_NEEDED;
@@ -303,14 +324,46 @@ export async function submitValidation(
           kind: body.kind,
           verdict: body.verdict,
           onBehalfOfUserId,
-          ...(setsSeverity ? { severity: setsSeverity, previousSeverity: bug.severity } : {}),
+          ...(setsSeverity ? { severity: setsSeverity, previousSeverity: bug.severity, effectiveSeverity: escalatesSeverity ? setsSeverity : bug.severity } : {}),
+          ...(severityDisagreement ? { severityDisagreement: true } : {}),
           ...(body.duplicateOfId ? { duplicateOfId: body.duplicateOfId } : {}),
           ...(newlyConfirmed ? { confirmed: true } : {}),
         },
         { bugId: bug.id, db: tx },
       );
-      // TODO(#445): publish an "issue.validated" event here once
-      // lib/agent-api/events.ts exists.
+
+      // Publish "issue.validated" event to the agent event feed (#445)
+      await publish(tx, {
+        tenantId: bug.tenantId,
+        type: "issue.validated",
+        actorAgentId: agent.agentId,
+        bugId: bug.id,
+        payload: {
+          validationId: validation.id,
+          kind: body.kind,
+          verdict: body.verdict,
+          onBehalfOfUserId,
+          ...(setsSeverity ? { severity: setsSeverity, previousSeverity: bug.severity, effectiveSeverity: escalatesSeverity ? setsSeverity : bug.severity } : {}),
+          ...(severityDisagreement ? { severityDisagreement: true } : {}),
+          ...(body.duplicateOfId ? { duplicateOfId: body.duplicateOfId } : {}),
+          ...(newlyConfirmed ? { confirmed: true } : {}),
+        },
+      });
+
+      // Confirmation is its own feed/webhook event, so polling agents that
+      // only watch for confirmations do not have to parse every validation (#534).
+      if (newlyConfirmed) {
+        await publish(tx, {
+          tenantId: bug.tenantId,
+          type: "issue.confirmed",
+          actorAgentId: agent.agentId,
+          bugId: bug.id,
+          payload: {
+            issueId: bug.id,
+            validationId: validation.id,
+          },
+        });
+      }
 
       return { status: 201 as const, validation, confirmed, newlyConfirmed };
     });

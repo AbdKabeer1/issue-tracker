@@ -14,6 +14,7 @@ import {
   memberTenantById,
   memberTenantBySlug,
   promoteFirstZeduOwner,
+  tenantMembersFrom,
   readActiveTenantCookie,
   setActiveTenantCookie,
   slugFromName,
@@ -150,6 +151,21 @@ describe("the tenant picked on this device (#444)", () => {
       "tenant-acme",
       expect.objectContaining({ path: "/", httpOnly: true, sameSite: "lax" }),
     );
+  });
+
+  it("is Secure in production (#514)", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_URL", "https://ziki.dev/api/auth");
+    try {
+      await setActiveTenantCookie("tenant-acme");
+      expect(cookieSet).toHaveBeenLastCalledWith(
+        ACTIVE_TENANT_COOKIE,
+        "tenant-acme",
+        expect.objectContaining({ secure: true, httpOnly: true }),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("is read back, and is nothing without a cookie jar", async () => {
@@ -331,6 +347,21 @@ describe("Zedu's first owner (#444)", () => {
       error: "Zedu already has an owner.",
     });
     expect(db.membership.update).not.toHaveBeenCalled();
+  });
+
+  it("skips a membership whose user record is gone and orders owners first", () => {
+    const members = tenantMembersFrom(
+      [
+        { role: "member", createdAt: new Date("2026-01-02"), userId: "gone" },
+        { role: "admin", createdAt: new Date("2026-01-03"), userId: "bea" },
+        { role: "owner", createdAt: new Date("2026-01-01"), userId: "ada" },
+      ],
+      [
+        { id: "bea", name: "Bea" },
+        { id: "ada", name: "Ada" },
+      ],
+    );
+    expect(members.map((member) => member.user.id)).toEqual(["ada", "bea"]);
   });
 
   it("needs a valid email", async () => {

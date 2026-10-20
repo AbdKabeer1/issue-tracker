@@ -110,6 +110,9 @@ async function checkConfirmed(db: Db, bug: HistoricalBug): Promise<boolean> {
 /** Walks every ticket in id order and awards what it earns. */
 export async function backfillPoints(db: Db, options: BackfillOptions = {}): Promise<BackfillResult> {
   const { dryRun = false, onLine, batchSize = 500, cutoffDate = PLATFORM_CUTOFF_DATE } = options;
+  if (cutoffDate && Number.isNaN(cutoffDate.getTime())) {
+    throw new Error("Invalid cutoffDate provided to backfillPoints");
+  }
   const result: BackfillResult = { bugs: 0, planned: 0, written: 0, existing: 0 };
   let cursor: string | undefined;
 
@@ -151,15 +154,68 @@ export async function backfillPoints(db: Db, options: BackfillOptions = {}): Pro
       const already = new Set(present.map((p) => p.sourceKey));
 
       for (const entry of entries) {
-        const alreadyAwarded = already.has(entry.sourceKey);
         result.planned++;
+        let alreadyAwarded = already.has(entry.sourceKey);
+        // award() skips an existing key, so if a real award wins the race
+        // after the lookup above, the entry counts as existing, not lost.
+        if (!dryRun && !alreadyAwarded) {
+          if (await award(db, entry)) result.written++;
+          else alreadyAwarded = true;
+        }
         if (alreadyAwarded) result.existing++;
         onLine?.({ ...entry, alreadyAwarded });
-        // award() skips an existing key too, so a run racing a real award is still safe.
-        if (!dryRun && !alreadyAwarded && (await award(db, entry))) result.written++;
       }
     }
     if (bugs.length < batchSize) break;
   }
   return result;
+}
+
+export const BACKFILL_USAGE = "Usage: pnpm tsx scripts/backfill-points.ts [--dry-run] [--verbose] [--cutoff=<ISO date>]";
+
+/**
+ * The script's flags. Anything else is an error, checked before connecting:
+ * a mistyped `--dryrun` must never fall through to a real run that writes.
+ */
+export function parseBackfillArgs(
+  args: ReadonlyArray<string>,
+): { ok: true; dryRun: boolean; verbose: boolean; cutoffDate?: Date } | { ok: false; error: string } {
+  let cutoffDate: Date | undefined;
+  const unknown: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--dry-run" || arg === "--verbose") {
+      continue;
+    }
+    if (arg.startsWith("--cutoff=")) {
+      const raw = arg.slice("--cutoff=".length);
+      const parsed = new Date(raw);
+      if (Number.isNaN(parsed.getTime())) {
+        return { ok: false, error: `Invalid date for --cutoff: ${raw}\n${BACKFILL_USAGE}` };
+      }
+      cutoffDate = parsed;
+      continue;
+    }
+    if (arg === "--cutoff") {
+      const next = args[i + 1];
+      if (!next || next.startsWith("-")) {
+        return { ok: false, error: `Missing date argument for --cutoff\n${BACKFILL_USAGE}` };
+      }
+      const parsed = new Date(next);
+      if (Number.isNaN(parsed.getTime())) {
+        return { ok: false, error: `Invalid date for --cutoff: ${next}\n${BACKFILL_USAGE}` };
+      }
+      cutoffDate = parsed;
+      i++;
+      continue;
+    }
+    unknown.push(arg);
+  }
+
+  if (unknown.length > 0) {
+    return { ok: false, error: `Unknown argument${unknown.length > 1 ? "s" : ""}: ${unknown.join(" ")}\n${BACKFILL_USAGE}` };
+  }
+  const dryRun = args.includes("--dry-run");
+  return { ok: true, dryRun, verbose: dryRun || args.includes("--verbose"), cutoffDate };
 }

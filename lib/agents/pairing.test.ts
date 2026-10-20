@@ -5,14 +5,16 @@ const db = vi.hoisted(() => {
     agentPairing: {
       create: vi.fn(),
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       findUnique: vi.fn(),
       findUniqueOrThrow: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
     },
-    agent: { create: vi.fn() },
+    agent: { create: vi.fn(), delete: vi.fn() },
+    agentApiKey: { create: vi.fn() },
     agentAuditEvent: { create: vi.fn() },
-    membership: { findMany: vi.fn() },
+    membership: { findMany: vi.fn(), findUnique: vi.fn() },
     project: { findFirst: vi.fn() },
     $transaction: vi.fn(),
   };
@@ -21,7 +23,7 @@ const db = vi.hoisted(() => {
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 
 import { hashSecret, normalizeUserCode } from "./keys";
-import { PAIRING_TTL_MS, approvePairing, collectPairing, startPairing } from "./pairing";
+import { PAIRING_TTL_MS, approvePairing, collectPairing, materializeApprovedPairings, pairingApprovalPath, startPairing } from "./pairing";
 
 const NOW = new Date("2026-10-19T12:00:00Z");
 const DEVICE = "d".repeat(43);
@@ -51,13 +53,24 @@ describe("startPairing (#427)", () => {
     expect(await startPairing({}, NOW)).toMatchObject({ ok: false });
     expect(db.agentPairing.create).not.toHaveBeenCalled();
   });
+
+  it("builds an approval link that carries the user code, not the device secret", () => {
+    expect(pairingApprovalPath("KX7P-2MQD")).toBe("/settings/agents/pair?code=KX7P-2MQD");
+  });
 });
 
 describe("approvePairing (#427)", () => {
   it("sets the approver as owner, only while nobody has approved it", async () => {
     db.agentPairing.updateMany.mockResolvedValue({ count: 1 });
-    db.agentPairing.findUniqueOrThrow.mockResolvedValue({ proposedName: "Ada's Claude" });
+    db.agentPairing.findUnique.mockResolvedValue({ id: "p1", proposedName: "Ada's Claude", proposedModel: "Claude" });
     expect(await approvePairing({ id: "ada" }, "abcd-2345", NOW, "project_zedu")).toEqual({ ok: true, name: "Ada's Claude" });
+    expect(db.agent.create.mock.calls[0][0].data).toMatchObject({
+      ownerUserId: "ada",
+      tenantId: "tenant_zedu",
+      name: "Ada's Claude",
+      level: "contributor",
+    });
+    expect(db.agent.create.mock.calls[0][0].data.apiKeys).toBeUndefined();
     const { where, data } = db.agentPairing.updateMany.mock.calls[0][0];
     expect(where).toEqual({
       codeHash: hashSecret("ABCD2345"),
@@ -72,6 +85,27 @@ describe("approvePairing (#427)", () => {
     db.agentPairing.updateMany.mockResolvedValue({ count: 0 });
     expect(await approvePairing({ id: "bob" }, "ABCD-2345", NOW, "project_zedu")).toMatchObject({ ok: false });
     expect(await approvePairing({ id: "bob" }, "nonsense", NOW, "project_zedu")).toMatchObject({ ok: false });
+  });
+
+  it("approves into the organization the person is in now", async () => {
+    db.membership.findUnique.mockResolvedValue({ tenantId: "tenant_ziki" });
+    db.agentPairing.updateMany.mockResolvedValue({ count: 1 });
+    db.agentPairing.findUnique.mockResolvedValue({ id: "p1", proposedName: "Ada's Claude", proposedModel: null });
+    expect(await approvePairing({ id: "ada" }, "ABCD-2345", NOW, "project_web", "tenant_ziki")).toEqual({
+      ok: true,
+      name: "Ada's Claude",
+    });
+    expect(db.project.findFirst).toHaveBeenCalledWith({
+      where: { id: "project_web", tenantId: "tenant_ziki" },
+      select: { id: true },
+    });
+    expect(db.agentPairing.updateMany.mock.calls[0][0].data.tenantId).toBe("tenant_ziki");
+  });
+
+  it("does not approve into an organization they are not in", async () => {
+    db.membership.findUnique.mockResolvedValue(null);
+    expect(await approvePairing({ id: "ada" }, "ABCD-2345", NOW, "project_web", "tenant_other")).toMatchObject({ ok: false });
+    expect(db.agentPairing.updateMany).not.toHaveBeenCalled();
   });
 
   it("refuses a project outside the workspace without using the code (#742)", async () => {
@@ -110,7 +144,16 @@ describe("collectPairing (#427)", () => {
     expect(await collectPairing(DEVICE, NOW)).toEqual({ status: "expired" });
   });
 
-  it("creates the agent for the approver, as an observer, and returns its key once", async () => {
+  it("adds the key to the agent created at approval, without creating another agent", async () => {
+    db.agentPairing.findUnique.mockResolvedValue({ ...approved, agentId: "agent9" });
+    db.agentPairing.updateMany.mockResolvedValue({ count: 1 });
+    const result = await collectPairing(DEVICE, NOW);
+    expect(result.status).toBe("issued");
+    expect(db.agent.create).not.toHaveBeenCalled();
+    expect(db.agentApiKey.create.mock.calls[0][0].data).toMatchObject({ agentId: "agent9", projectId: "project_zedu" });
+  });
+
+  it("creates the agent for the approver, as a contributor, and returns its key once", async () => {
     db.agentPairing.findUnique.mockResolvedValue(approved);
     db.agentPairing.updateMany.mockResolvedValue({ count: 1 });
     const result = await collectPairing(DEVICE, NOW);
@@ -120,7 +163,7 @@ describe("collectPairing (#427)", () => {
       ownerUserId: "ada",
       tenantId: "tenant_zedu",
       name: "Ada's Claude",
-      level: "observer",
+      level: "contributor",
       apiKeys: { create: { projectId: "project_zedu" } },
     });
     expect(db.agentPairing.update.mock.calls[0][0].data).toEqual({ agentId: "agent9" });
@@ -154,6 +197,27 @@ describe("collectPairing (#427)", () => {
     db.project.findFirst.mockResolvedValue(null);
     expect(await collectPairing(DEVICE, NOW)).toEqual({ status: "invalid" });
     expect(db.agentPairing.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("records an approved agent that was never created because the poll failed", async () => {
+    db.agentPairing.findMany.mockResolvedValue([{
+      id: "p1",
+      proposedName: "Otter",
+      proposedModel: "deepseek",
+      ownerUserId: "ada",
+      tenantId: "tenant_zedu",
+    }]);
+    db.agentPairing.updateMany.mockResolvedValue({ count: 1 });
+    await materializeApprovedPairings("ada", "tenant_zedu");
+    expect(db.agent.create.mock.calls[0][0].data).toMatchObject({
+      ownerUserId: "ada",
+      tenantId: "tenant_zedu",
+      name: "Otter",
+    });
+    expect(db.agentPairing.updateMany).toHaveBeenCalledWith({
+      where: { id: "p1", agentId: null },
+      data: { agentId: "agent9" },
+    });
   });
 
   it("rejects a missing or malformed device code without a lookup", async () => {

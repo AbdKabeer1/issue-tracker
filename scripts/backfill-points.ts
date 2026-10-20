@@ -9,7 +9,7 @@
  */
 import { PrismaClient } from "@prisma/client";
 import { cleanEnv } from "../lib/env-clean";
-import { backfillPoints, type BackfillLine } from "../lib/points/backfill";
+import { backfillPoints, parseBackfillArgs, type BackfillLine } from "../lib/points/backfill";
 
 function describe(line: BackfillLine): string {
   const state = line.alreadyAwarded ? "skip (already awarded)" : "award";
@@ -17,16 +17,13 @@ function describe(line: BackfillLine): string {
 }
 
 async function main() {
-  const dryRun = process.argv.includes("--dry-run");
-  const verbose = dryRun || process.argv.includes("--verbose");
-  const cutoffArg = process.argv.find((a) => a.startsWith("--cutoff="));
-  const cutoffIdx = process.argv.indexOf("--cutoff");
-  const cutoffStr = cutoffArg
-    ? cutoffArg.split("=")[1]
-    : cutoffIdx !== -1 && process.argv[cutoffIdx + 1] && !process.argv[cutoffIdx + 1].startsWith("-")
-      ? process.argv[cutoffIdx + 1]
-      : undefined;
-  const cutoffDate = cutoffStr ? new Date(cutoffStr) : undefined;
+  // Checked before connecting: an unknown flag (e.g. --dryrun) must not become a real run.
+  const args = parseBackfillArgs(process.argv.slice(2));
+  if (!args.ok) {
+    console.error(args.error);
+    process.exit(2);
+  }
+  const { dryRun, verbose, cutoffDate } = args;
   const url = cleanEnv(process.env.DATABASE_URL);
   const prisma = new PrismaClient(url ? { datasources: { db: { url } } } : undefined);
 

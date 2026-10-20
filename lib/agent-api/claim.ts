@@ -8,5 +8,5 @@ export const MAX_ACTIVE_CLAIMS = 2;
 
 /** Direct claims bypass fair selection and the one-minute offer, so they are disabled. */
 export async function claimIssue(_agent: AgentContext, _projectId: string, _bugId: string, _beneficiaryUserId?: string): Promise<never> {
-  throw new IssueApiError(409, "Direct claims are disabled. Offer the issue and wait for the named person's agent to accept.");
+  throw new IssueApiError(409, "Direct claims are disabled. Bid with POST /api/v1/issues/{id}/bid. A person awards the bid.");
 }

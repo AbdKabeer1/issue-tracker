@@ -5,13 +5,15 @@ import { Badge } from "@/components/ui/badge";
 import { LocalTime } from "@/components/local-time";
 import { RelativeTime } from "@/components/relative-time";
 import { AGENT_LEVEL_DESCRIPTIONS, AGENT_LEVEL_LABELS, AGENT_LEVELS, settableLevels } from "@/lib/agents/levels";
-import { isTenantAdminRole, tenantForOwner } from "@/lib/agents/membership";
-import { agentOnboardingPrompt } from "@/lib/agents/onboarding-prompt";
-import { projectsForTenant } from "@/lib/project-context";
-import { getSiteUrl } from "@/lib/site-url";
+import { isTenantAdminRole } from "@/lib/agents/membership";
+import { projectContextFor } from "@/lib/project-context";
+import { currentTenantIdFor } from "@/lib/tenant-context";
+import { AgentKeyCopyButton } from "@/components/agent-key-copy";
+import { ensureDefaultProjectKey } from "@/lib/agents/default-key";
+import { materializeApprovedPairings } from "@/lib/agents/pairing";
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 import { CreateAgentForm } from "./create-agent-form";
 import { AgentControls } from "./agent-controls";
-import { OnboardingPrompt } from "./onboarding-prompt";
 
 export const metadata = { title: "Agents" };
 
@@ -21,8 +23,6 @@ const levelBadge = "bg-slate-100 text-slate-700";
  * A person's agents and the team's (#427). Agents work issues for the person
  * who owns them; each has a level that says what it may do.
  */
-import { isAgentPlatformEnabled } from "@/lib/feature-flags";
-
 export default async function AgentsSettingsPage() {
   if (!isAgentPlatformEnabled()) {
     // Feature not enabled: show a safe message instead of the agents UI.
@@ -37,14 +37,43 @@ export default async function AgentsSettingsPage() {
   }
 
   const user = await requireUser();
-  const tenant = await tenantForOwner(user.id);
-  const isAdmin = isTenantAdminRole(tenant?.role, user.role);
+  // The organization open in the header, not the old Zedu membership.
+  const tenantId = await currentTenantIdFor(user.id);
+  const context = await projectContextFor(prisma, tenantId);
+  const membership = tenantId
+    ? await prisma.membership.findUnique({
+        where: { tenantId_userId: { tenantId, userId: user.id } },
+        select: { role: true },
+      })
+    : null;
+  const isAdmin = isTenantAdminRole(membership?.role, user.role);
+  const projects = context.projects;
 
-  const projects = tenant ? await projectsForTenant(prisma, tenant.tenantId) : [];
-  const [mine, members] = tenant
+  let personalKey: Awaited<ReturnType<typeof ensureDefaultProjectKey>> = null;
+  let personalProjectName: string | null = null;
+  if (tenantId && context.activeProjectId) {
+    try {
+      personalKey = await ensureDefaultProjectKey({
+        userId: user.id,
+        tenantId,
+        projectId: context.activeProjectId,
+      });
+      personalProjectName = projects.find((project) => project.id === context.activeProjectId)?.name ?? null;
+    } catch (error) {
+      console.error("[agents] default agent key failed", error);
+    }
+  }
+  if (tenantId) {
+    try {
+      await materializeApprovedPairings(user.id, tenantId);
+    } catch (error) {
+      console.error("[agents] approved agents were not listed", error);
+    }
+  }
+  const [mine, members] = tenantId
     ? await Promise.all([
         prisma.agent.findMany({
-          where: { ownerUserId: user.id, tenantId: tenant.tenantId },
+          where: { ownerUserId: user.id, tenantId },
           orderBy: [{ revokedAt: { sort: "desc", nulls: "first" } }, { createdAt: "desc" }],
           select: {
             id: true,
@@ -54,6 +83,7 @@ export default async function AgentsSettingsPage() {
             burst: true,
             createdAt: true,
             revokedAt: true,
+            defaultProjectId: true,
             apiKeys: {
               where: { revokedAt: null },
               select: { id: true, prefix: true, lastUsedAt: true, project: { select: { id: true, name: true } } },
@@ -61,7 +91,7 @@ export default async function AgentsSettingsPage() {
           },
         }),
         prisma.membership.findMany({
-          where: { tenantId: tenant.tenantId },
+          where: { tenantId },
           orderBy: { user: { name: "asc" } },
           select: {
             role: true,
@@ -70,7 +100,7 @@ export default async function AgentsSettingsPage() {
                 id: true,
                 name: true,
                 agents: {
-                  where: { tenantId: tenant.tenantId, revokedAt: null },
+                  where: { tenantId, revokedAt: null },
                   orderBy: { createdAt: "asc" },
                   select: { id: true, name: true, model: true, level: true, burst: true },
                 },
@@ -100,13 +130,15 @@ export default async function AgentsSettingsPage() {
           </Link>
         </div>
         <p className="text-sm text-slate-600">
-          Agents work issues for you. Each one acts as itself and in your name, and any points it
-          earns go to you. A key works in one project. Resetting your password signs you out and
-          revokes every agent key you own; the agents stay, and you can regenerate a key here.
+          Two ways to connect an agent. Copy Agent Key to send a key that is already an account, with
+          this site. Or copy only the site: the agent opens the approval page, you approve it while
+          signed in, and the key comes back to the agent. A key works in one project. Resetting your password
+          signs you out and revokes every agent key you own; the agents stay, and a new personal key
+          is ready the next time you open the app.
         </p>
       </div>
 
-      {!tenant ? (
+      {!tenantId ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
           <p>
             You aren&apos;t in a workspace yet, so you can&apos;t register agents. Join a workspace via an invite from your team, or create your own workspace to start managing agents.
@@ -122,29 +154,39 @@ export default async function AgentsSettingsPage() {
         </div>
       ) : (
         <>
-          <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="prompt-heading">
-            <h2 id="prompt-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Prompt for your agent
-            </h2>
-            <p className="mt-2 text-sm text-slate-600">
-              Paste this into Claude, Antigravity, Cursor, or another agent. It will ask what you want to
-              call it, then pair itself with this account. You approve the code it shows you.
-            </p>
-            <OnboardingPrompt prompt={agentOnboardingPrompt(getSiteUrl())} />
-          </section>
+          {personalKey ? (
+            <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="personal-key-heading">
+              <h2 id="personal-key-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Your agent key
+              </h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Copy sends the key and this site{personalProjectName ? ` for ${personalProjectName}` : ""}. Open the
+                details and choose Copy site if the agent should request access instead.
+              </p>
+              <div className="mt-3">
+                <AgentKeyCopyButton
+                  projectId={personalKey.projectId}
+                  projectName={personalProjectName}
+                  apiKey={personalKey.rawKey}
+                  keyPrefix={personalKey.prefix}
+                  keys={[{ prefix: personalKey.prefix, projectName: personalProjectName }]}
+                />
+              </div>
+            </section>
+          ) : null}
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="register-heading">
             <h2 id="register-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Register an agent
+              Another agent
             </h2>
             <p className="mt-2 text-sm text-slate-600">
-              Or let the agent ask to pair, then{" "}
+              Optional. Register an extra agent here, or approve one that asked to join at{" "}
               <Link href="/settings/agents/pair" className="text-teal-700 hover:underline">
-                enter the code it shows you
+                the approval page
               </Link>
               .
             </p>
-            <CreateAgentForm projects={projects} />
+            <CreateAgentForm projects={projects} activeProjectId={context.activeProjectId} />
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="mine-heading">
@@ -152,7 +194,9 @@ export default async function AgentsSettingsPage() {
               Your agents
             </h2>
             {mine.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-600">You haven&apos;t registered any agents yet.</p>
+              <p className="mt-3 text-sm text-slate-600">
+                Your personal agent is created when you open a project. Copy Agent Key to send it, or copy the site and approve the agent&apos;s request.
+              </p>
             ) : (
               <ul className="mt-3 divide-y divide-slate-100">
                 {mine.map((agent) => (
@@ -160,6 +204,7 @@ export default async function AgentsSettingsPage() {
                     <div className="min-w-0">
                       <p className="break-words font-medium text-slate-900">
                         {agent.name}
+                        {agent.defaultProjectId ? <span className="font-normal text-slate-500"> · personal</span> : null}
                         {agent.model ? <span className="font-normal text-slate-500"> · {agent.model}</span> : null}
                       </p>
                       <p className="mt-0.5 text-xs text-slate-500">

@@ -76,6 +76,8 @@ describe("IssueFilters clear all filters (#336)", () => {
       "status=open",
       "severity=high",
       "platform=none",
+      "milestone=m1",
+      "milestone=none",
       "sort=oldest",
     ]) {
       const html = await renderFilters(params);
@@ -89,7 +91,7 @@ describe("IssueFilters clear all filters (#336)", () => {
   });
 
   it("hides the button when a filter param is present but empty", async () => {
-    const html = await renderFilters("q=&tags=&status=");
+    const html = await renderFilters("q=&tags=&status=&milestone=");
     expect(html).not.toContain("Clear all filters");
   });
 });
