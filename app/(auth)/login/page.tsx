@@ -2,6 +2,7 @@ import { BrandLockup } from "@/components/brand-lockup";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { LoginForm } from "@/components/login-form";
 import { isPasswordAuthEnabled } from "@/lib/auth-mode";
+import { isGoogleOAuthConfigured } from "@/lib/google-oauth";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
@@ -25,6 +26,7 @@ export default async function LoginPage({
 }) {
   const params = await searchParams;
   const callbackUrl = safeCallbackUrl(params.callbackUrl);
+  const googleConfigured = isGoogleOAuthConfigured();
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4 py-16">
@@ -68,9 +70,28 @@ export default async function LoginPage({
               AUTH_PASSWORD_LOGIN=true) this page offered no way to sign in and
               /forgot-password + /reset-password were unreachable by link. */}
           {isPasswordAuthEnabled() ? (
-            <LoginForm callbackUrl={callbackUrl} googleEnabled />
-          ) : (
+            <LoginForm callbackUrl={callbackUrl} googleEnabled={googleConfigured} />
+          ) : googleConfigured ? (
             <GoogleSignInButton callbackUrl={callbackUrl} />
+          ) : (
+            <div className="rounded-lg bg-amber-50 p-4 text-sm text-amber-900" role="alert">
+              <p className="font-medium">Google sign-in is not configured.</p>
+              <p className="mt-1">
+                Set <code className="font-mono px-1 rounded bg-amber-100">GOOGLE_CLIENT_ID</code> and
+                <code className="font-mono px-1 rounded bg-amber-100">GOOGLE_CLIENT_SECRET</code>
+                in your environment to enable Google sign-in.
+              </p>
+              <p className="mt-2">
+                <a
+                  href="https://console.cloud.google.com/apis/credentials"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-teal-700 hover:underline"
+                >
+                  Configure in Google Cloud Console
+                </a>
+              </p>
+            </div>
           )}
         </div>
       </div>
