@@ -27,6 +27,7 @@ vi.mock("@/lib/github/merge-pr", async (original) => ({
 
 const db = vi.hoisted(() => ({
   bug: { findFirst: vi.fn(), update: vi.fn() },
+  issueClaim: { findFirst: vi.fn() },
   bugActivity: { create: vi.fn() },
   agentAuditEvent: { create: vi.fn() },
   agentEvent: { create: vi.fn() },
@@ -83,6 +84,7 @@ describe("POST /api/v1/issues/[id]/github (#452)", () => {
       project: { repoUrl: "https://github.com/zedu/web", githubInstallationId: null },
     });
     db.bug.update.mockResolvedValue({});
+    db.issueClaim.findFirst.mockResolvedValue({ id: "claim-1" });
     db.bugActivity.create.mockResolvedValue({});
     db.agentAuditEvent.create.mockResolvedValue({});
     db.agentEvent.create.mockResolvedValue({ id: "event-1" });
@@ -126,6 +128,14 @@ describe("POST /api/v1/issues/[id]/github (#452)", () => {
     });
     expect(mocks.merge).toHaveBeenCalledWith(agent, "bug1");
     expect(mocks.budget).toHaveBeenCalledWith({ id: "c1", burst: false, burstUntil: null }, "write");
+  });
+
+  it("refuses to link a pull request when this agent has no active claim", async () => {
+    db.issueClaim.findFirst.mockResolvedValue(null);
+    const response = await POST(request({ pullRequestUrl: PR_URL }), params);
+    expect(response.status).toBe(409);
+    expect(db.bug.update).not.toHaveBeenCalled();
+    expect(mocks.merge).not.toHaveBeenCalled();
   });
 
   it("links only, without merging, before the fix is accepted", async () => {

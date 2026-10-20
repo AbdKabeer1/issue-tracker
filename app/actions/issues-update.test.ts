@@ -47,6 +47,7 @@ vi.mock("@/lib/prisma", () => ({
     category: { findUnique: vi.fn(), findFirst: vi.fn() },
     projectArea: { findFirst: vi.fn() },
     milestone: { findUnique: vi.fn() },
+    issueClaim: { findFirst: vi.fn() },
     $transaction: vi.fn(),
   },
 }));
@@ -66,6 +67,7 @@ const db = prisma as unknown as {
   category: { findUnique: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
   projectArea: { findFirst: ReturnType<typeof vi.fn> };
   milestone: { findUnique: ReturnType<typeof vi.fn> };
+  issueClaim: { findFirst: ReturnType<typeof vi.fn> };
   $transaction: ReturnType<typeof vi.fn>;
 };
 const mockUser = requireUser as unknown as ReturnType<typeof vi.fn>;
@@ -127,6 +129,7 @@ beforeEach(() => {
   db.issueType.findUnique.mockResolvedValue({ id: "t1", name: "Fix", isActive: true });
   db.category.findFirst.mockResolvedValue({ id: "c1", name: "Web", tenantId: "tenant-zedu" });
   db.projectArea.findFirst.mockResolvedValue({ id: "area-web", name: "Frontend" });
+  db.issueClaim.findFirst.mockResolvedValue({ id: "claim-1" });
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
     fn({
       bug: {
@@ -161,10 +164,10 @@ describe("updateBugAction authorization (#218)", () => {
     // [who, current assignee, form, expected error or null, expected written data]
     ["user", null, { status: "resolved" }, TICKET_TRIAGE_ERRORS.statusUnauthorized, null],
     ["user", OTHER, { status: "resolved" }, TICKET_TRIAGE_ERRORS.statusUnauthorized, null],
-    ["user", null, { assigneeId: ME }, null, { assigneeId: ME }],
+    ["user", null, { assigneeId: ME }, TICKET_ASSIGN_ERRORS.needsAgentClaim, null],
     ["user", null, { assigneeId: ME, status: "resolved" }, TICKET_TRIAGE_ERRORS.statusUnauthorized, null],
     ["user", null, { assigneeId: ME, status: "open" }, TICKET_TRIAGE_ERRORS.statusUnauthorized, null],
-    ["user", OTHER, { assigneeId: ME }, TICKET_ASSIGN_ERRORS.unauthorized, null],
+    ["user", OTHER, { assigneeId: ME }, TICKET_ASSIGN_ERRORS.needsAgentClaim, null],
     ["user", ME, { status: "resolved" }, null, { status: "resolved" }],
     ["user", ME, { status: "in_progress", severity: "critical", typeId: "t1", categoryId: "c1" }, null, { status: "in_progress" }],
     ["user", ME, { assigneeId: OTHER }, TICKET_ASSIGN_ERRORS.unauthorized, null],
@@ -190,6 +193,13 @@ describe("updateBugAction authorization (#218)", () => {
       }
     },
   );
+
+  it("refuses a status change when the assignee has no active claim", async () => {
+    db.issueClaim.findFirst.mockResolvedValue(null);
+    const result = await run("user", ME, { status: "in_progress" });
+    expect(result).toEqual({ error: TICKET_ASSIGN_ERRORS.needsAgentClaim });
+    expect(written).toBeNull();
+  });
 
   it("rejects an assignee who is not a member of the issue tenant", async () => {
     mockUser.mockResolvedValue({ id: ME, name: "Me", role: "admin" });
