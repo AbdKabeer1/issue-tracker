@@ -3,6 +3,7 @@ import {
   nextProjectSlug,
   PROJECT_SLUG_MAX,
   projectNameSchema,
+  projectSettingsSchema,
   projectSlugBase,
 } from "./validation";
 
@@ -16,6 +17,20 @@ describe("projectNameSchema (#426)", () => {
   it("rejects blank and overlong names", () => {
     expect(projectNameSchema.safeParse({ name: " " }).success).toBe(false);
     expect(projectNameSchema.safeParse({ name: "x".repeat(61) }).success).toBe(false);
+  });
+});
+
+describe("projectSettingsSchema (#608)", () => {
+  const valid = { name: "Web", goal: "Ship a fast app", repoUrl: "https://github.com/acme/web", stagingUrl: "https://staging.acme.test" };
+  it("accepts valid project URLs and clears blank optional fields", () => {
+    expect(projectSettingsSchema.parse({ ...valid, goal: "  ", repoUrl: "", stagingUrl: "" })).toMatchObject({ goal: null, repoUrl: null, stagingUrl: null });
+    expect(projectSettingsSchema.parse(valid)).toMatchObject(valid);
+  });
+  it("rejects non-GitHub repositories, non-HTTPS staging URLs and oversized goals", () => {
+    expect(projectSettingsSchema.safeParse({ ...valid, repoUrl: "https://example.com/acme/web" }).success).toBe(false);
+    expect(projectSettingsSchema.safeParse({ ...valid, repoUrl: "https://github.com/acme" }).success).toBe(false);
+    expect(projectSettingsSchema.safeParse({ ...valid, stagingUrl: "http://staging.acme.test" }).success).toBe(false);
+    expect(projectSettingsSchema.safeParse({ ...valid, goal: "x".repeat(4001) }).success).toBe(false);
   });
 });
 

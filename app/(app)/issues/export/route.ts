@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
+import { activeProjectIdFor } from "@/lib/project-context";
 import { getIssueTypes, getPlatforms } from "@/lib/lookups";
 import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
@@ -49,6 +50,7 @@ export async function GET(request: NextRequest) {
   );
 
   const tenantId = await currentTenantIdFor(user.id);
+  const projectId = await activeProjectIdFor(prisma, tenantId);
   const [tagTypes, platforms, milestones] = await Promise.all([
     getIssueTypes(),
     // Every platform in this organization, active or not: a filter on a
@@ -69,7 +71,11 @@ export async function GET(request: NextRequest) {
   });
 
   // #425: only the viewer's tenant, exactly as on the list.
-  const where = { ...filters, ...bugInTenant(tenantId) };
+  const where = {
+    ...filters,
+    ...bugInTenant(tenantId),
+    ...(projectId ? { projectId } : {}),
+  };
   const orderBy = getBugOrderBy(sort, { boostFirst: mine !== "watching" });
 
   const encoder = new TextEncoder();

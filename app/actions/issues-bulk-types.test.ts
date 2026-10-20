@@ -23,7 +23,10 @@ vi.mock("@/lib/tenant-context", () => ({
   bugInTenant: () => ({ tenantId: "tenant-1" }),
 }));
 vi.mock("@/lib/points/award", () => ({ awardSolver: vi.fn() }));
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+  unstable_cache: (fn: (...a: unknown[]) => unknown) => fn,
+}));
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => { throw new Error(`redirect:${path}`); },
 }));

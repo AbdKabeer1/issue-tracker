@@ -66,6 +66,8 @@ import {
 import { TAGS_PARAM, parseTagFilter, serializeTags, tagTypeIds } from "@/lib/tag-filter";
 import { bugInTenant, currentTenantIdFor, isMissingTenantColumnError } from "@/lib/tenant-context";
 import { activeProjectIdFor } from "@/lib/project-context";
+import { RichText } from "@/components/rich-text";
+import { isOrganizationAdmin } from "@/lib/organization-role";
 import {
   PLATFORM_PARAM,
   parsePlatformFilter,
@@ -144,6 +146,9 @@ export default async function BugsPage({
   } catch (error) {
     console.error("[bugs] tenant/project resolution failed", error);
   }
+  const activeProject = tenantId && projectId
+    ? await prisma.project.findFirst({ where: { id: projectId, tenantId }, select: { slug: true, name: true, goal: true } }).catch(() => null)
+    : null;
 
   const canDelete = canDeleteTicket(effectiveRole, membershipRole);
   const canBoost = canBoostTicket(effectiveRole, membershipRole);
@@ -248,7 +253,11 @@ export default async function BugsPage({
     }
   }
 
-  const baseTenantWhere: Prisma.BugWhereInput = { ...bugInTenant(tenantId), isDeleted: isDeletedView };
+  const baseTenantWhere: Prisma.BugWhereInput = {
+    ...bugInTenant(tenantId),
+    ...(projectId ? { projectId } : {}),
+    isDeleted: isDeletedView,
+  };
 
   let statsTotal = 0;
   let statsOpen = 0;
@@ -555,6 +564,17 @@ export default async function BugsPage({
 
   const page = (
     <div className="space-y-6">
+      {activeProject?.goal ? (
+        <section aria-labelledby="project-goal-heading" className="rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 id="project-goal-heading" className="text-sm font-semibold text-slate-900">{activeProject.name} goal</h2>
+            {membershipRole && isOrganizationAdmin(membershipRole, effectiveRole) ? (
+              <Link href={`/projects/${encodeURIComponent(activeProject.slug)}/settings`} className="text-xs font-medium text-teal-800 underline">Edit project settings</Link>
+            ) : null}
+          </div>
+          <RichText content={activeProject.goal} className="mt-1 text-sm" />
+        </section>
+      ) : null}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">

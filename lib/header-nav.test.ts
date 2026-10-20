@@ -22,30 +22,33 @@ describe("SWITCH_TENANT_LINK (#444)", () => {
   });
 });
 
-describe("headerNavItems", () => {
-  it("shows Issues, Projects, Milestones, Escalations, and Redesigns to normal users by default", () => {
-    expect(headerNavItems("user").map((i) => i.label)).toEqual([
+describe("headerNavItems (#761)", () => {
+  it("shows Issues, Manage Project, Escalations, and Redesigns to normal users by default", () => {
+    const items = headerNavItems("user");
+    expect(items.map((i) => i.label)).toEqual([
       "Issues",
-      "Projects",
-      "Milestones",
+      "Manage Project",
       "Escalations",
       "Redesigns",
     ]);
-  });
-
-  it("shows only Issues, Projects, and Milestones when agent platform is explicitly disabled", () => {
-    expect(headerNavItems("user", { agentPlatform: false }).map((i) => i.label)).toEqual([
-      "Issues",
+    const manageProject = items.find((i) => i.label === "Manage Project");
+    expect(manageProject?.children?.map((c) => c.label)).toEqual([
       "Projects",
       "Milestones",
+    ]);
+  });
+
+  it("shows only Issues and Manage Project when agent platform is explicitly disabled", () => {
+    expect(headerNavItems("user", { agentPlatform: false }).map((i) => i.label)).toEqual([
+      "Issues",
+      "Manage Project",
     ]);
   });
 
   it("includes Escalations and Redesigns when agent platform is enabled (#627)", () => {
     expect(headerNavItems("user", { agentPlatform: true }).map((i) => i.label)).toEqual([
       "Issues",
-      "Projects",
-      "Milestones",
+      "Manage Project",
       "Escalations",
       "Redesigns",
     ]);
@@ -60,38 +63,39 @@ describe("headerNavItems", () => {
     expect(zeroItems.find((i) => i.href === "/escalations")?.badge).toBeUndefined();
   });
 
-  it("adds Platforms and Types for admins", () => {
-    expect(headerNavItems("admin").map((i) => i.label)).toEqual([
+  it("adds Platforms and Types under Manage Project for admins (#761)", () => {
+    const items = headerNavItems("admin");
+    expect(items.map((i) => i.label)).toEqual([
       "Issues",
-      "Projects",
-      "Milestones",
+      "Manage Project",
       "Escalations",
       "Redesigns",
+    ]);
+    const manageProject = items.find((i) => i.label === "Manage Project");
+    expect(manageProject?.children?.map((c) => c.label)).toEqual([
+      "Projects",
+      "Milestones",
       "Platforms",
       "Types",
     ]);
   });
 
-  it("shows Platforms to an organization owner who is not a site admin", () => {
-    expect(headerNavItems("user", { managePlatforms: true }).map((i) => i.label)).toEqual([
-      "Issues",
+  it("shows Platforms under Manage Project to an organization owner who is not a site admin (#761)", () => {
+    const items = headerNavItems("user", { managePlatforms: true });
+    const manageProject = items.find((i) => i.label === "Manage Project");
+    expect(manageProject?.children?.map((c) => c.label)).toEqual([
       "Projects",
       "Milestones",
-      "Escalations",
-      "Redesigns",
       "Platforms",
     ]);
   });
 
-  it("adds Admins for super admins", () => {
+  it("adds Admins for super admins (#761)", () => {
     expect(headerNavItems("super_admin").map((i) => i.label)).toEqual([
       "Issues",
-      "Projects",
-      "Milestones",
+      "Manage Project",
       "Escalations",
       "Redesigns",
-      "Platforms",
-      "Types",
       "Admins",
     ]);
   });
@@ -121,6 +125,17 @@ describe("isNavItemActive", () => {
     expect(isNavItemActive("/questions", "/escalations")).toBe(true);
     expect(isNavItemActive("/questions/q1", "/escalations")).toBe(true);
     expect(isNavItemActive("/issues", "/escalations")).toBe(false);
+  });
+
+  it("marks Manage Project active on grouped sub-routes (#761)", () => {
+    expect(isNavItemActive("/projects", "/manage-project")).toBe(true);
+    expect(isNavItemActive("/projects/p1", "/manage-project")).toBe(true);
+    expect(isNavItemActive("/milestones", "/manage-project")).toBe(true);
+    expect(isNavItemActive("/milestones/m1", "/manage-project")).toBe(true);
+    expect(isNavItemActive("/admin/categories", "/manage-project")).toBe(true);
+    expect(isNavItemActive("/admin/types", "/manage-project")).toBe(true);
+    expect(isNavItemActive("/issues", "/manage-project")).toBe(false);
+    expect(isNavItemActive("/escalations", "/manage-project")).toBe(false);
   });
 });
 

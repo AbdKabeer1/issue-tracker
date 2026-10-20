@@ -1,6 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { audit } from "@/lib/agents/audit";
 import { publish } from "@/lib/agent-api/events";
+import { isConfirmed } from "@/lib/agent-api/validation";
+import { offerNext } from "@/lib/agent-api/offer";
 
 /**
  * Hands back the work of an agent that is being revoked (#523).
@@ -17,7 +19,11 @@ import { publish } from "@/lib/agent-api/events";
 export async function releaseWorkOfRevokedAgent(
   tx: Prisma.TransactionClient,
   input: { agentId: string; tenantId: string; actorUserId: string; now: Date },
-): Promise<{ releasedClaims: number; withdrawnBids: number }> {
+): Promise<{
+  releasedClaims: number;
+  withdrawnBids: number;
+  offers: Array<{ id: string; bugId: string; bugTitle: string; beneficiaryUserId: string }>;
+}> {
   const { agentId, tenantId, actorUserId, now } = input;
   const open = await tx.issueClaim.findMany({
     where: { agentId, releasedAt: null, status: { in: ["offered", "active"] } },
@@ -26,6 +32,7 @@ export async function releaseWorkOfRevokedAgent(
   });
 
   let releasedClaims = 0;
+  const offers: Array<{ id: string; bugId: string; bugTitle: string; beneficiaryUserId: string }> = [];
   for (const candidate of open) {
     await tx.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${candidate.bugId} FOR NO KEY UPDATE`;
     // Re-read after locking: an expiry or another release may have won the race.
@@ -41,11 +48,13 @@ export async function releaseWorkOfRevokedAgent(
     const otherOpen = await tx.issueClaim.count({
       where: { bugId: claim.bugId, releasedAt: null, id: { not: claim.id } },
     });
+    let canReoffer = claim.status === "offered" && !otherOpen;
     if (!otherOpen && claim.status === "active") {
-      await tx.bug.updateMany({
+      const reopened = await tx.bug.updateMany({
         where: { id: claim.bugId, tenantId, isDeleted: false, assigneeId: claim.beneficiaryUserId, status: "in_progress" },
         data: { assigneeId: null, status: "open" },
       });
+      canReoffer = reopened.count > 0;
     }
     await publish(tx, {
       tenantId,
@@ -59,6 +68,16 @@ export async function releaseWorkOfRevokedAgent(
       bugId: claim.bugId,
       actorUserId,
     });
+    if (canReoffer && await isConfirmed(claim.bugId, tx)) {
+      const bug = await tx.bug.findFirst({
+        where: { id: claim.bugId, tenantId, isDeleted: false },
+        select: { id: true, projectId: true, title: true, status: true, assigneeId: true },
+      });
+      if (bug?.status === "open") {
+        const next = await offerNext(tx, { tenantId }, bug, [claim.beneficiaryUserId]);
+        if (next) offers.push({ id: next.claim.id, bugId: claim.bugId, bugTitle: next.bugTitle, beneficiaryUserId: next.beneficiaryUserId });
+      }
+    }
     releasedClaims++;
   }
 
@@ -67,5 +86,5 @@ export async function releaseWorkOfRevokedAgent(
     data: { withdrawnAt: now },
   });
 
-  return { releasedClaims, withdrawnBids: withdrawn.count };
+  return { releasedClaims, withdrawnBids: withdrawn.count, offers };
 }

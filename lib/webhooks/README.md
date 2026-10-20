@@ -32,6 +32,14 @@ if a process crashes. Failed attempts retry after 1, 2, 4, and 8 seconds (or the
 next scheduler invocation), then become dead. Five consecutive subscription
 failures also disable it and cancel its remaining queued deliveries.
 
+Filtering events (#512): an agent keeps at most 3 webhook subscriptions and
+each URL only once; exceeding either returns 409. Creating a subscription may
+pass an optional `events` array (trimmed, deduplicated event type names) to
+narrow deliveries to those types — omit it or send `[]` to receive every event.
+Filtering is applied both when `publish` queues a delivery and again when the
+dispatcher processes it, so a subscription whose filter is widened after
+creation will not retroactively receive events published in between.
+
 Each HTTPS attempt revalidates DNS and pins the connection to the checked IP,
 retaining TLS certificate verification for the original hostname. Redirects,
 private addresses, metadata, and non-global IP ranges are rejected. Network
@@ -45,3 +53,31 @@ constant time (the exported `verify` helper does both). Return a 2xx response
 after accepting the event, and deduplicate by event id: delivery is at least
 once. The webhook JSON uses the same event fields and ids as the poll response.
 Webhook failure never removes events from the poll feed.
+
+Retention (#546): nothing in this table set grows forever. Each scheduler
+tick has a 1-in-50 chance to also run a bounded sweep (`lib/agent-retention.ts`)
+that removes finished webhook deliveries (`delivered`/`dead`) after 30 days,
+events after 7 days (an event's deliveries go with it via the FK cascade, so
+finished deliveries never survive their event by long), expired pairings one
+day after expiry, and agent audit rows after 180 days — recent rows are always
+kept, so plausible undo targets survive. Each table loses at most 500 rows per
+sweep; a failing sweep never blocks delivery and is retried on the next run.
+
+## Scheduling
+
+Nothing is delivered until the dispatcher runs. Two supported schedulers:
+
+**Vercel Cron** — `vercel.json` schedules `/api/v1/webhooks/dispatch` every
+minute. Vercel calls it with `GET` and `Authorization: Bearer $CRON_SECRET`;
+set `CRON_SECRET` in the Vercel project (and in `.env` for local parity).
+
+**Coolify / any external cron** — call the route with `POST` and the
+dispatcher secret:
+
+```bash
+curl -fsS -X POST https://ziki.dev/api/v1/webhooks/dispatch \
+  -H "Authorization: Bearer $WEBHOOK_DISPATCH_SECRET"
+```
+
+Run it at least once a minute; retries and backoff live in `deliver.ts`, and
+repeated failures auto-disable the subscription.
