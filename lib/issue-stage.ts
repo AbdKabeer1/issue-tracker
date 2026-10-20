@@ -118,7 +118,7 @@ export async function openIssueStages(
   const undoneByBug = new Map<string, Set<string>>();
   for (const event of undone) {
     const validationId = (event.payload as { validationId?: string } | null)?.validationId;
-    if (!validationId) continue;
+    if (!validationId || !event.bugId) continue;
     const set = undoneByBug.get(event.bugId) ?? new Set<string>();
     set.add(validationId);
     undoneByBug.set(event.bugId, set);

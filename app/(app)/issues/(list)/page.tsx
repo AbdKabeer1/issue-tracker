@@ -708,6 +708,7 @@ export default async function BugsPage({
                       : 0;
                   const voterSummary =
                     voterSummaries.get(bug.id) ?? createEmptyVoterSummary();
+                  const stage = stages.get(bug.id);
                   return (
                     <li
                       key={bug.id}
@@ -809,15 +810,11 @@ export default async function BugsPage({
                                 ) : null}
                                 {statusLabels[bug.status]}
                               </Badge>
-                              {(() => {
-                                const stage = stages.get(bug.id);
-                                if (!stage) return null;
-                                return (
-                                  <Badge className={stageClass[stage]}>
-                                    {issueStageLabels[stage]}
-                                  </Badge>
-                                );
-                              })()}
+                              {stage ? (
+                                <Badge className={stageClass[stage]}>
+                                  {issueStageLabels[stage]}
+                                </Badge>
+                              ) : null}
                             </div>
 
                             <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-slate-500 pt-1">
