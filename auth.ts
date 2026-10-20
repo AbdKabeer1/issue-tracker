@@ -72,7 +72,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Shared across instances (#296).
         const limit = await consumeAuthRateLimit("login", {
           email: parsed.data.email,
-          ip: request?.headers ? clientIpFrom(request.headers) : null,
+          ip: request ? clientIpFrom(request) : null,
         });
         if (!limit.allowed) {
           console.warn("[auth] password sign-in rate limited", { email: parsed.data.email });
