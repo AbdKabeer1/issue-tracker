@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { clientIpFrom, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { consumePairingLimit } from "@/lib/agents/rate-limit";
 import { collectPairing } from "@/lib/agents/pairing";
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
+import { agentPlatformDisabledResponse } from "@/lib/agents/platform-gate";
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
@@ -19,6 +21,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // #505: switched off means switched off, not just hidden in Settings.
+  if (!isAgentPlatformEnabled()) return agentPlatformDisabledResponse();
   const body = (await req.json().catch(() => null)) as { device_code?: unknown } | null;
   const result = await collectPairing(body?.device_code);
   switch (result.status) {

@@ -8,6 +8,10 @@ import { approvePairing, findPendingPairing } from "@/lib/agents/pairing";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { createAgent, regenerateKey, revokeAgent, setAgentBurst, setAgentLevel } from "@/lib/agents/registry";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
+
+/** Shown when the platform is off (#505): no new agents or keys get issued. */
+const PLATFORM_OFF = "The agent platform is turned off on this site.";
 
 /** The settings page's agent actions (#427). Every one acts as the signed-in person. */
 
@@ -19,6 +23,7 @@ export async function createAgentAction(
   _previous: CreateAgentActionResult | undefined,
   formData: FormData,
 ): Promise<CreateAgentActionResult> {
+  if (!isAgentPlatformEnabled()) return { ok: false, error: PLATFORM_OFF };
   const user = await requireUser();
   const result = await createAgent(user, {
     name: formData.get("name") ?? "",
@@ -50,6 +55,7 @@ export async function regenerateAgentKeyAction(
   agentId: unknown,
   projectId: unknown,
 ): Promise<RegenerateKeyActionResult> {
+  if (!isAgentPlatformEnabled()) return { ok: false, error: PLATFORM_OFF };
   if (typeof agentId !== "string" || typeof projectId !== "string" || !projectId) {
     return { ok: false, error: "Choose a project in this workspace." };
   }
@@ -91,6 +97,7 @@ export async function pairAgentAction(
   _previous: PairingActionResult | undefined,
   formData: FormData,
 ): Promise<PairingActionResult> {
+  if (!isAgentPlatformEnabled()) return { ok: false, error: PLATFORM_OFF };
   const user = await requireUser();
   if (await consumePairingLimit("approve", user.id)) return { ok: false, error: RATE_LIMIT_MESSAGE };
 

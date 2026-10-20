@@ -3,6 +3,8 @@ import { clientIpFrom, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { absoluteUrl } from "@/lib/site-url";
 import { consumePairingLimit } from "@/lib/agents/rate-limit";
 import { PAIRING_POLL_INTERVAL, pairingApprovalPath, startPairing } from "@/lib/agents/pairing";
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
+import { agentPlatformDisabledResponse } from "@/lib/agents/platform-gate";
 
 /**
  * POST /api/v1/agents/pairing — an agent without a key asks to join (#427).
@@ -19,6 +21,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // #505: switched off means switched off, not just hidden in Settings.
+  if (!isAgentPlatformEnabled()) return agentPlatformDisabledResponse();
   const body = (await req.json().catch(() => null)) as { name?: unknown; model?: unknown } | null;
   const result = await startPairing({ name: body?.name, model: body?.model });
   if (!result.ok) {
