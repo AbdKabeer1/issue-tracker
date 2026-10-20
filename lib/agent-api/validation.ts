@@ -6,7 +6,11 @@ import { reviewerConflict, type ReviewedBug } from "@/lib/agents/independence";
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { award } from "@/lib/points/award";
-import { pointSourceKey, REPORTER_POINTS } from "@/lib/points/rules";
+import { pointSourceKey } from "@/lib/points/rules";
+import {
+  calculateReporterPoints,
+  getProjectRewardConfig,
+} from "@/lib/points/project-rewards";
 import { severities } from "@/lib/validations/issue";
 import { publish } from "@/lib/agent-api/events";
 import { promoteEarnedReviewer } from "@/lib/agents/promotion";
@@ -352,12 +356,14 @@ export async function submitValidation(
         // The person the issue is for earns the reporter points (#422), once:
         // the sourceKey makes a second award, or the backfill (#435), a no-op.
         const userId = bug.beneficiaryUserId ?? bug.reporterId;
+        const rewardConfig = await getProjectRewardConfig(tx, bug.projectId);
+        const points = calculateReporterPoints(rewardConfig);
         await award(tx, {
           tenantId: bug.tenantId,
           userId,
           bugId: bug.id,
           role: "reporter",
-          points: REPORTER_POINTS,
+          points,
           sourceKey: pointSourceKey("reporter", bug.id, userId),
         });
       }

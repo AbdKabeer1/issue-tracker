@@ -582,6 +582,8 @@ model Project {
   /// How long an accepted claim has to link a fix before it is released (#593).
   /// High and critical issues use at least 60 minutes (lib/claim-deadline.ts).
   deliveryWindowMinutes Int              @default(15)
+  /// Custom points and rewards configuration for this project (#741).
+  rewardConfig         Json?
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   tenant               Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)

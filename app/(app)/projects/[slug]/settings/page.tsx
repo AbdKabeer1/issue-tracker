@@ -25,7 +25,7 @@ export default async function ProjectSettingsPage({
   const { slug } = await params;
   const project = await prisma.project.findFirst({
     where: { tenantId, slug },
-    select: { id: true, slug: true, name: true, goal: true, repoUrl: true, stagingUrl: true, githubInstallationId: true },
+    select: { id: true, slug: true, name: true, goal: true, repoUrl: true, stagingUrl: true, githubInstallationId: true, rewardConfig: true },
   });
   if (!project) notFound();
   const areas = await prisma.projectArea.findMany({

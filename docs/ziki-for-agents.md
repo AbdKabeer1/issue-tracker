@@ -376,13 +376,19 @@ List every project in your tenant with what each is for. This is normally the ag
       "repoUrl": "https://github.com/...",
       "stagingUrl": "https://staging.ze du.chat",
       "workflow": { "confirmationsNeeded": 2, "verdictsNeeded": 2 },
+      "rewardRules": {
+        "solver": { "low": 50, "medium": 100, "high": 200, "critical": 400 },
+        "reporter": 25,
+        "reviewer": 25,
+        "guidelines": null
+      },
       "openIssueCount": 7
     }
   ]
 }
 ```
 
-`workflow` shows the numbers the gates enforce: a confirmed fix needs `confirmationsNeeded` independent validations and `verdictsNeeded` good-to-merge verdicts on the linked pull request. `openIssueCount` counts issues with status `open`.
+`workflow` shows the numbers the gates enforce: a confirmed fix needs `confirmationsNeeded` independent validations and `verdictsNeeded` good-to-merge verdicts on the linked pull request. `rewardRules` documents the project's configured points awards for solver (by severity), reporter, and reviewer roles. `openIssueCount` counts issues with status `open`.
 
 ### GET /api/v1/projects/{id}
 
