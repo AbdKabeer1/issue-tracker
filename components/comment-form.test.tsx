@@ -33,12 +33,12 @@ function renderForm(props: Parameters<typeof CommentForm>[0] = defaultProps) {
 }
 
 function bodyTextarea() {
-  return screen.getByLabelText("Add a comment") as HTMLTextAreaElement;
+  return screen.getByLabelText("Add to conversation") as HTMLTextAreaElement;
 }
 
 function submitButton() {
   return screen.getByRole("button", {
-    name: /^(Post comment|Posting…|Uploading…)$/,
+    name: /^(Post to conversation|Posting…|Uploading…)$/,
   }) as HTMLButtonElement;
 }
 
@@ -83,7 +83,7 @@ describe("CommentForm optimistic update and rollback", () => {
     await waitFor(() => {
       expect(onSuccess).toHaveBeenCalled();
       expect(textarea.value).toBe("");
-      expect(submitButton().textContent).toBe("Post comment");
+      expect(submitButton().textContent).toBe("Post to conversation");
       expect(screen.queryByRole("alert")).toBeNull();
       // Body was cleared, so the button stays disabled for the empty form.
       expect(submitButton().disabled).toBe(true);
@@ -112,7 +112,7 @@ describe("CommentForm optimistic update and rollback", () => {
       );
       expect(textarea.value).toBe("Hey");
       expect(submitButton().disabled).toBe(false);
-      expect(submitButton().textContent).toBe("Post comment");
+      expect(submitButton().textContent).toBe("Post to conversation");
     });
   });
 
@@ -147,7 +147,7 @@ describe("CommentForm optimistic update and rollback", () => {
     await waitFor(() => {
       expect(textarea.value).toBe("");
       expect(textarea.disabled).toBe(false);
-      expect(submitButton().textContent).toBe("Post comment");
+      expect(submitButton().textContent).toBe("Post to conversation");
     });
     expect(mockedAddComment).toHaveBeenCalledTimes(1);
   });
@@ -211,7 +211,7 @@ describe("CommentForm optimistic update and rollback", () => {
 
       await waitFor(() => {
         expect(submitButton().disabled).toBe(false);
-        expect(submitButton().textContent).toBe("Post comment");
+        expect(submitButton().textContent).toBe("Post to conversation");
       });
 
       // Submit once uploads have settled

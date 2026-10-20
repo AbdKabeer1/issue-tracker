@@ -12,6 +12,7 @@ import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 import { upsertGoogleUser } from "@/lib/google-user";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { isSuperAdminEmail } from "@/lib/super-admin";
+import { logger } from "@/lib/logger";
 
 /** Route handler that clears an invalid session (see app/session-expired/route.ts). */
 export const SESSION_EXPIRED_PATH = "/session-expired";
@@ -59,7 +60,7 @@ export async function requireUser(): Promise<SessionAppUser> {
       }
       userId = googleAccount.id;
     } catch (error) {
-      console.error("[auth] Google session could not be linked to a user", error);
+      logger.error("[auth] Google session could not be linked to a user", error);
       redirect(SESSION_EXPIRED_PATH);
     }
   } else {
@@ -96,7 +97,7 @@ export async function requireUser(): Promise<SessionAppUser> {
       });
       dbUser.role = "super_admin";
     } catch (error) {
-      console.error("[auth] super admin role update failed", error);
+      logger.error("[auth] super admin role update failed", error);
     }
   }
 

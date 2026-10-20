@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 enum Severity {
@@ -63,6 +64,17 @@ enum AgentLevel {
   contributor
   reviewer
   merger
+}
+
+enum MissionRole {
+  admin
+  member
+  signed_out
+}
+
+enum MissionViewport {
+  desktop
+  mobile_375
 }
 
 /// An offered claim becomes active when accepted (#449); either may be
@@ -148,6 +160,9 @@ model User {
   notifyStatusChanges   Boolean              @default(true)
   /// #287: site-wide keyboard shortcuts; per user so it follows them.
   keyboardShortcuts     Boolean              @default(true)
+  /// #618: optional EVM address (0x + 40 hex) points could later be sent to.
+  /// Set only by the person themselves; read only by them and tenant admins.
+  walletAddress         String?
   /// Bumped on password reset; JWTs carrying an older value are rejected (#208).
   sessionVersion        Int                  @default(0)
   createdAt             DateTime             @default(now())
@@ -168,6 +183,7 @@ model User {
   beneficiaryBugs       Bug[]                @relation("BugBeneficiary")
   claims                IssueClaim[]
   issueBids             IssueBid[]           @relation("IssueBidBeneficiary")
+  interests             IssueInterest[]      @relation("IssueInterestBeneficiary")
   validations           IssueValidation[]
   testVerdicts          TestVerdict[]
   reviewOffers          ReviewOffer[]
@@ -272,6 +288,7 @@ model Bug {
   revisions         BugRevision[]
   claims            IssueClaim[]
   bids              IssueBid[]
+  interests         IssueInterest[]
   validations       IssueValidation[]
   testVerdicts      TestVerdict[]
   reviewOffers      ReviewOffer[]
@@ -535,10 +552,35 @@ model Project {
   apiKeys              AgentApiKey[]
   pairings             AgentPairing[]
   defaultAgents        Agent[]            @relation("DefaultProjectAgent")
+  testMissions         TestMission[]
   auditEvents          ProjectAuditEvent[]
   jobs                 Job[]
 
   @@unique([tenantId, slug])
+}
+
+/// A route, role, and viewport slice for exploratory testing (#619).
+model TestMission {
+  id                  String          @id @default(cuid())
+  projectId           String
+  routePattern        String
+  brief               String
+  role                MissionRole
+  viewport            MissionViewport
+  lastCoveredAt       DateTime?
+  issuesFiled         Int             @default(0)
+  lastAssignedAt      DateTime?
+  lastAssignedOwnerId String?
+  leaseAgentId        String?
+  leaseOwnerId        String?
+  leaseExpiresAt      DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  project             Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, routePattern, role, viewport])
+  @@index([projectId, lastCoveredAt, lastAssignedAt])
+  @@index([leaseAgentId, leaseExpiresAt])
 }
 
 /// Human changes to project configuration, including GitHub App linking.
@@ -619,6 +661,7 @@ model Agent {
   comments             Comment[]
   claims               IssueClaim[]
   bids                 IssueBid[]
+  interests            IssueInterest[]
   validations          IssueValidation[]
   testVerdicts         TestVerdict[]
   reviewOffers         ReviewOffer[]
@@ -741,6 +784,7 @@ model IssueClaim {
   @@index([beneficiaryUserId, releasedAt])
   @@index([agentId])
   // Enforced by a partial unique index in the migration: one pending offer per issue.
+  // Enforced by a partial unique index in the migration: one active claim per issue (#662).
 }
 
 /// An agent asking for an open task. A bid does not assign the issue.
@@ -767,6 +811,25 @@ model IssueBid {
 
 /// A reviewer agent's verdict on an issue or its fix (#433). One per agent
 /// per issue per kind.
+/// An agent volunteering to work on a confirmed issue (#589).
+model IssueInterest {
+  id                String    @id @default(cuid())
+  bugId             String
+  agentId           String
+  beneficiaryUserId String
+  /// Optional note explaining interest (up to 500 chars).
+  note              String?
+  createdAt         DateTime  @default(now())
+  withdrawnAt       DateTime?
+  bug               Bug       @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  agent             Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  beneficiary       User      @relation("IssueInterestBeneficiary", fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+
+  @@unique([bugId, agentId])
+  @@index([bugId, withdrawnAt])
+  @@index([beneficiaryUserId])
+}
+
 model IssueValidation {
   id               String            @id @default(cuid())
   bugId            String
@@ -1090,20 +1153,21 @@ model TenantShareRedemption {
 
 /// One create per agent per Idempotency-Key (#441).
 model IdempotencyKey {
-  id        String   @id @default(cuid())
-  agentId   String
-  key       String
-  bugId     String?
-  createdAt DateTime @default(now())
-  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  bug       Bug?     @relation(fields: [bugId], references: [id], onDelete: SetNull)
+  id          String   @id @default(cuid())
+  agentId     String
+  key         String
+  bugId       String?
+  requestHash String?
+  createdAt   DateTime @default(now())
+  agent       Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  bug         Bug?     @relation(fields: [bugId], references: [id], onDelete: SetNull)
 
   @@unique([agentId, key])
   @@index([createdAt])
 }
 
 /// The event log agents poll and webhooks deliver (#445). Cursor is
-/// (createdAt, id).
+/// (txid, id): see lib/agent-api/events.ts (#739).
 model AgentEvent {
   id           String            @id @default(cuid())
   tenantId     String
@@ -1112,12 +1176,16 @@ model AgentEvent {
   actorAgentId String?
   bugId        String?
   createdAt    DateTime          @default(now())
+  /// The writing transaction's id (#739). Polls only return rows whose
+  /// transaction finished, so an event that commits late is never skipped.
+  txid         BigInt            @default(dbgenerated("((pg_current_xact_id())::text)::bigint"))
   tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   actorAgent   Agent?            @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
   bug          Bug?              @relation(fields: [bugId], references: [id], onDelete: SetNull)
   deliveries   WebhookDelivery[]
 
   @@index([tenantId, createdAt, id])
+  @@index([tenantId, txid, id])
   @@index([createdAt])
 }
 

@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { NotificationSettings } from "@/components/notification-settings";
 import { DisplayNameForm } from "@/components/display-name-form";
+import { WalletAddressForm } from "@/components/wallet-address-form";
 import { KeyboardShortcutSettings } from "@/components/keyboard-shortcut-settings";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 
@@ -17,6 +18,7 @@ export default async function SettingsPage() {
     name?: string | null;
     email?: string | null;
     theme?: string | null;
+    walletAddress?: string | null;
     emailNotifications?: boolean;
     notifyMentions?: boolean;
     notifyAssignments?: boolean;
@@ -31,6 +33,7 @@ export default async function SettingsPage() {
         name: true,
         email: true,
         theme: true,
+        walletAddress: true,
         emailNotifications: true,
         notifyMentions: true,
         notifyAssignments: true,
@@ -75,6 +78,12 @@ export default async function SettingsPage() {
             See how your profile looks to others
           </Link>
         </p>
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Wallet
+        </h2>
+        <WalletAddressForm initialAddress={settings?.walletAddress ?? ""} />
       </section>
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">

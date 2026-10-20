@@ -1,0 +1,68 @@
+import { prisma } from "@/lib/prisma";
+import { IssueApiError } from "@/lib/agent-api/issues";
+import { CONFIRMATIONS_NEEDED } from "@/lib/agent-api/validation";
+import { MERGE_VERDICTS_NEEDED } from "@/lib/agent-api/merge";
+import type { Prisma } from "@prisma/client";
+
+/**
+ * Project discovery (#607): no issue route can be called without a
+ * `projectId`, and until now nothing told an agent which projects exist or
+ * what each is for. `Project.goal`, `repoUrl` and `stagingUrl` are the lead's
+ * brief; the workflow numbers expose the constants the gates enforce so an
+ * agent can set expectations.
+ *
+ * `githubInstallationId` is deliberately not selected — it is deployment
+ * configuration, not agent-visible data.
+ */
+const projectSelect = {
+  id: true, slug: true, name: true, goal: true, repoUrl: true, stagingUrl: true,
+} satisfies Prisma.ProjectSelect;
+
+/**
+ * The workflow numbers are platform constants today (per-project settings are
+ * tracked separately); read them from the gate modules, not local copies.
+ */
+export function projectWorkflow() {
+  return { confirmationsNeeded: CONFIRMATIONS_NEEDED, verdictsNeeded: MERGE_VERDICTS_NEEDED };
+}
+
+export async function listAgentProjectSummaries(tenantId: string) {
+  return prisma.project.findMany({
+    where: { tenantId },
+    orderBy: { slug: "asc" },
+    select: { id: true, slug: true, name: true },
+  });
+}
+
+/** Every project in the agent's tenant, with each project's goal and open-issue count. */
+export async function listAgentProjects(tenantId: string) {
+  const projects = await prisma.project.findMany({
+    where: { tenantId },
+    orderBy: { slug: "asc" },
+    select: projectSelect,
+  });
+  const openCounts = await prisma.bug.groupBy({
+    by: ["projectId"],
+    where: { tenantId, projectId: { in: projects.map((project) => project.id) }, isDeleted: false, status: "open" },
+    _count: { _all: true },
+  });
+  const openByProject = new Map(openCounts.map((row) => [row.projectId, row._count._all]));
+  return projects.map((project) => ({
+    ...project,
+    workflow: projectWorkflow(),
+    openIssueCount: openByProject.get(project.id) ?? 0,
+  }));
+}
+
+/** One project in the agent's tenant; foreign project ids are a 404, not a leak. */
+export async function getAgentProject(tenantId: string, projectId: string) {
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, tenantId },
+    select: projectSelect,
+  });
+  if (!project) throw new IssueApiError(404, "Project not found.");
+  const openIssueCount = await prisma.bug.count({
+    where: { tenantId, projectId: project.id, isDeleted: false, status: "open" },
+  });
+  return { ...project, workflow: projectWorkflow(), openIssueCount };
+}

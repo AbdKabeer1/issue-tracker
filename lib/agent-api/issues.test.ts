@@ -21,9 +21,9 @@ vi.mock("@/lib/agents/rate-budget", async (original) => ({
 }));
 import { GET as list, POST as create } from "@/app/api/v1/issues/route";
 import { GET as read } from "@/app/api/v1/issues/[id]/route";
-import { POST as comment } from "@/app/api/v1/issues/[id]/comments/route";
+import { POST as comment, GET as comments } from "@/app/api/v1/issues/[id]/comments/route";
 import { POST as claim } from "@/app/api/v1/issues/[id]/claim/route";
-import { encodeCursor } from "./create-policy";
+import { encodeCursor, hashCreateRequest } from "./create-policy";
 import { PROJECT_ID_REQUIRED } from "./issues";
 
 afterEach(() => vi.restoreAllMocks());
@@ -31,6 +31,20 @@ afterEach(() => vi.restoreAllMocks());
 const issue = { id: "issue-a", title: "A distinct issue", createdAt: new Date("2026-10-19T12:00:00Z"), comments: [] };
 const context = { params: Promise.resolve({ id: issue.id }) };
 const validBody = { projectId: "project-a", title: issue.title, description: "An adequate description of the issue.", acknowledgeSimilar: true };
+
+function createRequestHash(body: typeof validBody, beneficiaryUserId = "owner-a") {
+  return hashCreateRequest({
+    projectId: body.projectId,
+    beneficiaryUserId,
+    title: body.title,
+    description: body.description,
+    categoryId: null,
+    proofLinks: [],
+    typeId: null,
+    severity: null,
+    acknowledgeSimilar: body.acknowledgeSimilar ?? null,
+  });
+}
 
 function request(method = "GET", body?: unknown, query = "?projectId=project-a", key = true) {
   return new NextRequest(`http://localhost/api/v1/issues${query}`, {
@@ -158,6 +172,48 @@ describe("agent issue reads", () => {
   });
 });
 
+describe("agent comment paging (#604)", () => {
+  const comment = { id: "comment-b", body: "older", createdAt: new Date("2026-10-19T10:00:00Z"), authorId: "person-a", parentId: null };
+  const newer = { id: "comment-c", body: "newer", createdAt: new Date("2026-10-19T10:01:00Z"), authorId: "person-b", parentId: comment.id };
+  beforeEach(() => db.comment.findMany.mockResolvedValue([comment]));
+
+  it("returns comments oldest first under the issue's scope, with an author and a cursor", async () => {
+    db.comment.findMany.mockResolvedValueOnce([comment, newer]);
+    const response = await comments(request("GET", undefined, "?projectId=project-a&limit=1"), context);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.items).toEqual([{ ...comment, createdAt: comment.createdAt.toISOString(), author: undefined, agent: undefined }]);
+    expect(body.items.length).toBe(1);
+    expect(body.nextCursor).toBe(encodeCursor(comment));
+    expect(db.comment.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { bugId: issue.id, deletedAt: null },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 2,
+    }));
+  });
+
+  it("returns only comments newer than the `after` cursor", async () => {
+    const cursor = encodeCursor(comment);
+    await comments(request("GET", undefined, `?projectId=project-a&after=${cursor}`), context);
+    const where = db.comment.findMany.mock.lastCall?.[0].where as Record<string, unknown>;
+    expect(where.OR).toEqual([{ createdAt: { gt: comment.createdAt } }, { createdAt: comment.createdAt, id: { gt: comment.id } }]);
+  });
+
+  it("rejects a missing issue, a foreign issue and malformed cursors without querying comments", async () => {
+    db.bug.findFirst.mockResolvedValueOnce(null);
+    expect((await comments(request(), context)).status).toBe(404);
+    expect((await comments(request("GET", undefined, "?projectId=project-a&after=bad"), context)).status).toBe(400);
+    expect(db.comment.findMany).not.toHaveBeenCalled();
+  });
+
+  it("requires a key, shares the read budget, and audits the read", async () => {
+    expect((await comments(request("GET", undefined, "", false), context)).status).toBe(401);
+    expect(db.comment.findMany).not.toHaveBeenCalled();
+    await comments(request(), context);
+    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false }, "read");
+    expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "comments.list" }) }));
+  });
+});
+
 describe("agent issue creation via the real shared create policy", () => {
   it("stores the named person and agent and ignores client severity", async () => {
     const response = await create(request("POST", { ...validBody, beneficiaryUserId: "beneficiary-a", severity: "critical" }));
@@ -200,7 +256,11 @@ describe("agent issue creation via the real shared create policy", () => {
   });
 
   it("returns the policy's replay without inserting again", async () => {
-    db.idempotencyKey.findUnique.mockResolvedValueOnce({ bugId: issue.id, createdAt: new Date() });
+    db.idempotencyKey.findUnique.mockResolvedValueOnce({
+      bugId: issue.id,
+      requestHash: createRequestHash(validBody),
+      createdAt: new Date(),
+    });
     const response = await create(request("POST", validBody));
     expect(response.status).toBe(200);
     expect((await response.json()).replayed).toBe(true);
@@ -209,9 +269,25 @@ describe("agent issue creation via the real shared create policy", () => {
   });
 
   it("does not return a replay from a different project", async () => {
-    db.idempotencyKey.findUnique.mockResolvedValueOnce({ bugId: "foreign-issue", createdAt: new Date() });
+    db.idempotencyKey.findUnique.mockResolvedValueOnce({
+      bugId: "foreign-issue",
+      requestHash: createRequestHash(validBody),
+      createdAt: new Date(),
+    });
     db.bug.findFirst.mockResolvedValueOnce(null);
     expect((await create(request("POST", validBody))).status).toBe(404);
+  });
+
+  it("returns 409 when the same idempotency key is reused with a different body (#531)", async () => {
+    db.idempotencyKey.findUnique.mockResolvedValueOnce({
+      bugId: issue.id,
+      requestHash: "different-hash",
+      createdAt: new Date(),
+    });
+    const response = await create(request("POST", validBody));
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toBe("idempotency_conflict");
+    expect(db.bug.create).not.toHaveBeenCalled();
   });
 
   it("returns the shared similar-issue conflict and accepts an explicit acknowledgement", async () => {
@@ -250,7 +326,7 @@ describe("agent comments", () => {
     expect(log).toHaveBeenCalledWith("[agent-api] request audit failed", {
       tenantId: "tenant-a", agentId: "agent-a", action: "comments.create",
       target: issue.id, payload: { status: 201, request: true },
-    }, error);
+    }, expect.objectContaining({ message: error.message }));
   });
 
   it("keeps transactional domain audit failures fatal (#755)", async () => {

@@ -5,6 +5,7 @@ import { bearerToken, hashSecret } from "@/lib/agents/keys";
 import { AgentLevelError } from "@/lib/agents/levels";
 import { AgentPlatformDisabledError, agentPlatformDisabledResponse } from "@/lib/agents/platform-gate";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
+import { logger } from "@/lib/logger";
 
 export { AgentPlatformDisabledError, agentPlatformDisabledResponse };
 
@@ -129,7 +130,7 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
         data: { lastUsedAt: now },
       }),
     ).catch((error) => {
-      console.error("[requireAgent] failed to update lastUsedAt", error);
+      logger.error("[requireAgent] failed to update lastUsedAt", error);
     });
   }
 
