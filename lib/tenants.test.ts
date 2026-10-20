@@ -142,6 +142,31 @@ describe("the person's tenants (#444)", () => {
     );
   });
 
+  it("loads the tenant when archivedAt has not been migrated yet", async () => {
+    const row = { role: "owner" as const, tenant: { id: "tenant-ziki", slug: "ziki", name: "Ziki" } };
+    const missing = Object.assign(
+      new Error("The column `Tenant.archivedAt` does not exist in the current database."),
+      { code: "P2022", meta: { column: "Tenant.archivedAt" } },
+    );
+    const findFirst = vi.fn().mockRejectedValueOnce(missing).mockResolvedValueOnce(row);
+    const db = { membership: { findFirst } };
+
+    await expect(memberTenantBySlug(db as never, "ada", "ziki")).resolves.toEqual({
+      ...row.tenant,
+      archivedAt: null,
+      role: "owner",
+    });
+    expect(findFirst).toHaveBeenCalledTimes(2);
+    expect(findFirst.mock.calls[1][0].select.tenant.select).not.toHaveProperty("archivedAt");
+  });
+
+  it("still fails the slug lookup when the database error is not a missing archivedAt", async () => {
+    const findFirst = vi.fn().mockRejectedValue(new Error('column "voteCount" does not exist'));
+    const db = { membership: { findFirst } };
+    await expect(memberTenantBySlug(db as never, "ada", "ziki")).rejects.toThrow(/voteCount/);
+    expect(findFirst).toHaveBeenCalledTimes(1);
+  });
+
   it("doesn't query for something that can't be a slug", async () => {
     const db = membershipDb();
     expect(await memberTenantBySlug(db as never, "ada", "Acme Secret Project")).toBeNull();

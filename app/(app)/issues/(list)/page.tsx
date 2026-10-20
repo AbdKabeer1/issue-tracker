@@ -75,6 +75,8 @@ import {
   platformFilterWhere,
 } from "@/lib/platform-filter";
 import { AREA_PARAM, parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
+import { IssueStageNav } from "@/components/issue-stage-nav";
+import { issueStageLabels, openIssueStages, parseIssueStageView, type IssueStage } from "@/lib/issue-stage";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Issues" };
@@ -291,6 +293,26 @@ export default async function BugsPage({
     }
   }
 
+  const stageView = isDeletedView ? null : parseIssueStageView(toSingleQueryParam(params.stage));
+  let stages = new Map<string, IssueStage>();
+  if (!isDeletedView) {
+    try {
+      stages = await openIssueStages(prisma, where);
+    } catch (error) {
+      console.error("[bugs] issue stage lookup failed", error);
+    }
+    if (stageView) {
+      const ids = [...stages.entries()].filter(([, stage]) => stage === stageView).map(([id]) => id);
+      where.id = { in: ids };
+      try {
+        totalCount = await prisma.bug.count({ where });
+      } catch (error) {
+        console.error("[bugs] stage count failed", error);
+        totalCount = 0;
+      }
+    }
+  }
+
   const baseTenantWhere: Prisma.BugWhereInput = {
     ...bugInTenant(tenantId),
     ...(projectId ? { projectId } : {}),
@@ -494,6 +516,25 @@ export default async function BugsPage({
     }),
   ).toString();
 
+  const reportedCount = [...stages.values()].filter((stage) => stage === "reported").length;
+  const confirmedCount = [...stages.values()].filter((stage) => stage === "confirmed").length;
+  const stageClass: Record<IssueStage, string> = {
+    reported: "bg-slate-100 text-slate-700",
+    confirmed: "bg-amber-50 text-amber-900",
+    ready: "bg-emerald-50 text-emerald-800",
+  };
+  const stageHref = (stage: "reported" | "confirmed" | null) => {
+    const next = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (key === "page" || key === "stage") continue;
+      const single = toSingleQueryParam(value);
+      if (single) next.set(key, single);
+    }
+    if (stage) next.set("stage", stage);
+    const qs = next.toString();
+    return qs ? `/issues?${qs}` : "/issues";
+  };
+
   const severityDotColors: Record<string, string> = {
     critical: "bg-red-500",
     high: "bg-orange-500",
@@ -571,7 +612,15 @@ export default async function BugsPage({
         />
       ) : null}
 
-      <div className="space-y-4">
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+        {!isDeletedView ? (
+          <IssueStageNav
+            current={stageView}
+            counts={{ all: statsTotal, reported: reportedCount, confirmed: confirmedCount }}
+            hrefFor={stageHref}
+          />
+        ) : null}
+        <div className="min-w-0 flex-1 space-y-4">
         {isFirstRun ? null : (
           <Suspense
             fallback={<div className="h-12 animate-pulse rounded-lg bg-slate-100" />}
@@ -663,6 +712,7 @@ export default async function BugsPage({
                       : 0;
                   const voterSummary =
                     voterSummaries.get(bug.id) ?? createEmptyVoterSummary();
+                  const stage = stages.get(bug.id);
 
                   // Priority order: severity and status answer "how urgent /
                   // where is it" and type says what it is, so those three stay
@@ -802,6 +852,14 @@ export default async function BugsPage({
                               pills={pills}
                               meta={
                                 <>
+                                  {stage ? (
+                                    <>
+                                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${stageClass[stage]}`}>
+                                        {issueStageLabels[stage]}
+                                      </span>
+                                      <MetaSeparator />
+                                    </>
+                                  ) : null}
                                   <RowAge
                                     date={bug.createdAt}
                                     sort={currentSort === "newest" ? "newest" : "updated"}
@@ -908,12 +966,14 @@ export default async function BugsPage({
                   tags: tagsParam,
                   platform: selectedPlatform,
                   area: selectedArea,
+                  stage: stageView,
                   deleted: isDeletedView,
                   showDuplicates,
                 })}
               />
             </>
           )}
+        </div>
       </div>
     </div>
   );

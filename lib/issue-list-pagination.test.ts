@@ -12,6 +12,7 @@ const everything: IssueListFilterValues = {
   tags: "bug,ui",
   platform: "cat1",
   area: "area1",
+  stage: "reported",
   deleted: true,
   showDuplicates: true,
 };
@@ -26,6 +27,7 @@ const nothing: IssueListFilterValues = {
   tags: undefined,
   platform: null,
   area: null,
+  stage: null,
   deleted: false,
   showDuplicates: false,
 };
@@ -41,6 +43,7 @@ describe("issueListPaginationParams (#967)", () => {
       tags: "bug,ui",
       platform: "cat1",
       area: "area1",
+      stage: "reported",
       deleted: "true",
       duplicates: "show",
       sort: "newest",

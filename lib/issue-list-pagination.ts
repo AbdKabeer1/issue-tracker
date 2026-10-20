@@ -20,6 +20,7 @@ export type IssueListFilterValues = {
   tags: string | undefined;
   platform: string | null | undefined;
   area: string | null | undefined;
+  stage: string | null | undefined;
   deleted: boolean;
   showDuplicates: boolean;
 };
@@ -35,6 +36,7 @@ export function issueListPaginationParams(values: IssueListFilterValues): Record
     [TAGS_PARAM, values.tags],
     [PLATFORM_PARAM, values.platform],
     [AREA_PARAM, values.area],
+    ["stage", values.stage],
     ["deleted", values.deleted ? "true" : undefined],
     [DUPLICATES_PARAM, values.showDuplicates ? SHOW_DUPLICATES : undefined],
     ["sort", values.sort],
