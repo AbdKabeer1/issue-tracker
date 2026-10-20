@@ -15,6 +15,7 @@ const db = vi.hoisted(() => {
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 
 import { hashSecret } from "./keys";
+import { openSecret } from "@/lib/secret-box";
 import { createAgent, regenerateKey, revokeAgent, rotateKey, setAgentBurst, setAgentLevel } from "./registry";
 
 const ada = { id: "ada", role: "user" as const };
@@ -178,6 +179,14 @@ describe("rotateKey (#427)", () => {
     expect(db.agentApiKey.create.mock.calls[0][0].data.projectId).toBe("project_web");
     expect(key.prefix).toBeTruthy();
   });
+
+  it("seals the replacement when it is the personal key for that project", async () => {
+    process.env.AUTH_SECRET = "test-secret-at-least-16";
+    db.agentApiKey.updateMany.mockResolvedValue({ count: 1 });
+    db.agent.findUnique.mockResolvedValue({ defaultProjectId: "project_web" });
+    const key = await rotateKey({ ...agent, projectId: "project_web" });
+    expect(openSecret(db.agentApiKey.create.mock.calls[0][0].data.sealedKey)).toBe(key.rawKey);
+  });
 });
 
 describe("regenerateKey (#572)", () => {
@@ -213,5 +222,14 @@ describe("regenerateKey (#572)", () => {
     db.project.findFirst.mockResolvedValue(null);
     expect(await regenerateKey(ada, "agent1", "project_other", now)).toMatchObject({ ok: false, field: "projectId" });
     expect(db.agentApiKey.create).not.toHaveBeenCalled();
+  });
+
+  it("seals the new key when it stays on the personal project", async () => {
+    process.env.AUTH_SECRET = "test-secret-at-least-16";
+    db.agent.findUnique.mockResolvedValue({ ...agentRow, defaultProjectId: "project_web" });
+    const result = await regenerateKey(ada, "agent1", "project_web", now);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(openSecret(db.agentApiKey.create.mock.calls[0][0].data.sealedKey)).toBe(result.key.rawKey);
   });
 });
