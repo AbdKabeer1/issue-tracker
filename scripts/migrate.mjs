@@ -16,6 +16,21 @@ import { existsSync } from "fs";
  * None of them drop anything.
  */
 
+/**
+ * #580: whether a migration that is still failing after every repair step
+ * should stop the container. True in production, so the server never starts
+ * on a schema its code doesn't match: the Dockerfile only runs `pnpm run start`
+ * when this script exits 0, and Coolify keeps the previous container serving.
+ * ALLOW_START_WITH_FAILED_MIGRATION=true is the escape hatch for an incident
+ * where starting anyway is the lesser evil. Outside production it only warns.
+ */
+function stopOnFailure() {
+  return (
+    process.env.NODE_ENV === "production" &&
+    process.env.ALLOW_START_WITH_FAILED_MIGRATION !== "true"
+  );
+}
+
 let url = process.env.DATABASE_URL;
 if (url) {
   url = url.trim();
@@ -32,13 +47,13 @@ if (!process.env.DATABASE_URL) {
   console.warn(
     "[db:migrate] WARNING: DATABASE_URL is not set. Skipping database migrations.",
   );
-  // #220: this used to exit 0 even outside development, so a container with a
-  // missing env var started normally against an unmigrated database - the exact
-  // outcome the doc comment above promises to prevent.
-  if (process.env.NODE_ENV === "production") {
-    console.warn(
-      "[db:migrate] WARNING: DATABASE_URL is not set. Skipping database migrations and proceeding to server startup.",
+  // #220, #580: in production a missing DATABASE_URL means the app would start
+  // against no database at all, so stop here and let the deploy fail.
+  if (stopOnFailure()) {
+    console.error(
+      "[db:migrate] DATABASE_URL is not set in production. Not starting the server.",
     );
+    process.exit(1);
   }
   process.exit(0);
 }
@@ -105,9 +120,11 @@ function deploy() {
   console.log("[db:migrate] Migrations applied.");
 }
 
+let firstDeployFailed = false;
 try {
   deploy();
 } catch (error) {
+  firstDeployFailed = true;
   console.error(
     "[db:migrate] prisma migrate deploy encountered error:",
     error instanceof Error ? error.message : String(error),
@@ -118,9 +135,19 @@ try {
 // steps below exist to unstick databases from an earlier incident; leave them
 // available but opt-in, and say so in the log when they do run.
 if (process.env.MIGRATION_REPAIR !== "1") {
-  console.log(
-    "[db:migrate] Repair steps skipped (set MIGRATION_REPAIR=1 to run the legacy repairs once).",
-  );
+  if (firstDeployFailed) {
+    if (stopOnFailure()) {
+      console.error(
+        "[db:migrate] Not starting the server. Fix the migration, or set ALLOW_START_WITH_FAILED_MIGRATION=true to start anyway.",
+      );
+      process.exit(1);
+    }
+    console.warn("[db:migrate] Continuing outside production.");
+  } else {
+    console.log(
+      "[db:migrate] Repair steps skipped (set MIGRATION_REPAIR=1 to run the legacy repairs once).",
+    );
+  }
   process.exit(0);
 }
 console.log(
@@ -517,4 +544,23 @@ try {
     "[db:migrate] Could not add PointDispute.requestedRole:",
     disputeRoleError instanceof Error ? disputeRoleError.message : String(disputeRoleError),
   );
+}
+
+// #580: every repair above has had its turn. One last `migrate deploy` must
+// succeed (it is a no-op when everything is applied); if it doesn't, the
+// schema is still behind the code and the server must not start on it.
+try {
+  deploy();
+} catch (finalError) {
+  console.error(
+    "[db:migrate] Migrations are still failing after every repair step:",
+    finalError instanceof Error ? finalError.message : String(finalError),
+  );
+  if (stopOnFailure()) {
+    console.error(
+      "[db:migrate] Not starting the server. Fix the migration, or set ALLOW_START_WITH_FAILED_MIGRATION=true to start anyway.",
+    );
+    process.exit(1);
+  }
+  console.warn("[db:migrate] Continuing outside production.");
 }

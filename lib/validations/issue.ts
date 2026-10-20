@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { displayNameSchema } from "@/lib/display-name";
+import { BCRYPT_MAX_PASSWORD_BYTES } from "@/lib/password";
 import { isGitHubUrl, splitProofLinkLines } from "@/lib/proof-links";
 import { stripGitHubMarkup } from "@/lib/github-paste";
 
@@ -146,7 +147,15 @@ export const loginSchema = z.object({
 const passwordField = z
   .string()
   .min(8, "Password must be at least 8 characters")
-  .max(128);
+  .max(128)
+  .refine(
+    (password) =>
+      new TextEncoder().encode(password).length <= BCRYPT_MAX_PASSWORD_BYTES,
+    {
+      message:
+        "Password is too long: bcrypt keeps only the first 72 bytes, so choose something shorter.",
+    },
+  );
 
 export const signupSchema = z
   .object({

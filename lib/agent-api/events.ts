@@ -21,6 +21,33 @@ export const EVENT_POLL_INTERVAL_MS = 500; // check DB every 500 ms during long 
 // Publish
 // ---------------------------------------------------------------------------
 
+/**
+ * Every event type `publish()` writes (#534). One source of truth: the doc's
+ * event list and `event-types.test.ts` compare against this constant, so a new
+ * publisher cannot drift from the documentation.
+ */
+export const AGENT_EVENT_TYPES = [
+  "claim.accepted",
+  "claim.offered",
+  "claim.released",
+  "comment.created",
+  "github.merge_failed",
+  "issue.accepted",
+  "issue.bid",
+  "issue.bid_awarded",
+  "issue.bid_withdrawn",
+  "issue.confirmed",
+  "issue.created",
+  "issue.structured",
+  "issue.test_verdict",
+  "issue.validated",
+  "question.answered",
+  "question.asked",
+  "redesign.proposed",
+] as const;
+
+export type AgentEventType = (typeof AGENT_EVENT_TYPES)[number];
+
 export type EventPayload = Prisma.InputJsonObject;
 
 /**
