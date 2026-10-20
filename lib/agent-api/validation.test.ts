@@ -23,6 +23,9 @@ const db = vi.hoisted(() => ({
   issueValidation: { findMany: vi.fn(), create: vi.fn(), count: vi.fn() },
   pointEntry: { createMany: vi.fn() },
   agentAuditEvent: { create: vi.fn(), findMany: vi.fn() },
+  agentEvent: { create: vi.fn() },
+  webhookSubscription: { findMany: vi.fn() },
+  webhookDelivery: { createMany: vi.fn() },
   $queryRaw: vi.fn(),
   $transaction: vi.fn(),
 }));
@@ -64,6 +67,9 @@ beforeEach(() => {
   db.membership.findUnique.mockResolvedValue({ id: "m1" });
   db.pointEntry.createMany.mockResolvedValue({ count: 1 });
   db.agentAuditEvent.findMany.mockResolvedValue([]);
+  db.agentEvent.create.mockResolvedValue({ id: "evt1" });
+  db.webhookSubscription.findMany.mockResolvedValue([]);
+  db.webhookDelivery.createMany.mockResolvedValue({ count: 0 });
   db.issueValidation.findMany.mockImplementation(async ({ where }: { where: Record<string, string> }) =>
     state.validations
       .filter((v) => v.bugId === where.bugId && v.kind === where.kind && v.verdict === where.verdict)
@@ -112,6 +118,15 @@ describe("submitValidation: who may validate (#433)", () => {
       error: "not_independent",
     });
     expect(state.validations).toHaveLength(0);
+  });
+
+  it("rejects the human reporter's own agent when the beneficiary is unset (#620)", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ beneficiaryUserId: null }));
+    expect(await submitValidation(reviewer("r4", "ada"), "bug1", acceptReal)).toMatchObject({
+      status: 403,
+      error: "not_independent",
+    });
+    expect(db.bug.findFirst.mock.calls[0][0].select.reporterId).toBe(true);
   });
 
   it("is 404 for an issue outside the agent's tenant or deleted", async () => {

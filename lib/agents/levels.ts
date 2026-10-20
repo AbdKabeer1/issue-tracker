@@ -16,7 +16,7 @@ export const AGENT_LEVEL_LABELS: Record<AgentLevel, string> = {
 
 export const AGENT_LEVEL_DESCRIPTIONS: Record<AgentLevel, string> = {
   observer: "List and read issues, and poll the feed.",
-  contributor: "Observer, plus create issues, comment and claim.",
+  contributor: "Observer, plus create issues, comment, and bid for tasks.",
   reviewer: "Contributor, plus validate issues and submit test verdicts.",
   merger: "Reviewer, plus accept a fix once the validation rules pass.",
 };

@@ -157,6 +157,7 @@ model User {
   agentPairingsApproved AgentPairing[]
   beneficiaryBugs       Bug[]                @relation("BugBeneficiary")
   claims                IssueClaim[]
+  issueBids             IssueBid[]           @relation("IssueBidBeneficiary")
   validations           IssueValidation[]
   testVerdicts          TestVerdict[]
   redesignsOnBehalf     RedesignProposal[]   @relation("RedesignOnBehalfOf")
@@ -252,6 +253,7 @@ model Bug {
   activities        BugActivity[]
   revisions         BugRevision[]
   claims            IssueClaim[]
+  bids              IssueBid[]
   validations       IssueValidation[]
   testVerdicts      TestVerdict[]
   redesigns         RedesignProposal[]
@@ -502,6 +504,7 @@ model Project {
   redesigns            RedesignProposal[]
   apiKeys              AgentApiKey[]
   pairings             AgentPairing[]
+  defaultAgents        Agent[]            @relation("DefaultProjectAgent")
 
   @@unique([tenantId, slug])
 }
@@ -552,15 +555,20 @@ model Agent {
   /// Higher rate budget, set only by a tenant admin (#440).
   burst                Boolean               @default(false)
   revokedAt            DateTime?
+  /// Set when this is the person's personal agent for that project.
+  /// Created automatically so they can copy a key without registering one.
+  defaultProjectId     String?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   owner                User                  @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  defaultProject       Project?              @relation("DefaultProjectAgent", fields: [defaultProjectId], references: [id], onDelete: Cascade)
   apiKeys              AgentApiKey[]
   auditEvents          AgentAuditEvent[]
   createdBugs          Bug[]                 @relation("AgentCreatedBugs")
   comments             Comment[]
   claims               IssueClaim[]
+  bids                 IssueBid[]
   validations          IssueValidation[]
   testVerdicts         TestVerdict[]
   redesigns            RedesignProposal[]
@@ -569,11 +577,13 @@ model Agent {
   events               AgentEvent[]
   webhookSubscriptions WebhookSubscription[]
 
+  @@unique([ownerUserId, defaultProjectId])
   @@index([tenantId])
   @@index([ownerUserId])
 }
 
-/// Only a one-way hash of the key is stored; the raw key is shown once.
+/// A one-way hash of the key is always stored. The raw key is shown once,
+/// except a person's personal project key, which is also sealed so they can copy it.
 model AgentApiKey {
   id         String    @id @default(cuid())
   agentId    String
@@ -582,6 +592,9 @@ model AgentApiKey {
   projectId  String?
   /// SHA-256 of the raw key.
   keyHash    String    @unique
+  /// AES-256-GCM of the raw key. Set only for a personal project key, so the
+  /// owner can copy it again. Other keys stay hash-only.
+  sealedKey  String?
   /// The first characters of the key, so the owner can tell keys apart.
   prefix     String
   lastUsedAt DateTime?
@@ -658,18 +671,41 @@ model IssueClaim {
   claimedAt         DateTime?
   lastHeartbeatAt   DateTime?
   releasedAt        DateTime?
-  /// Why it was released: "silence" (#438), "expired" (#449), "undo" (#450)
-  /// or "agent". #451 counts silence releases.
+  /// Why it was released: "silence" (#438), "expired" (#449), "undo" (#450),
+  /// "agent", "resolved", or "closed". #451 counts only silence releases.
   releaseReason     String?
   createdAt         DateTime    @default(now())
   bug               Bug         @relation(fields: [bugId], references: [id], onDelete: Cascade)
   beneficiary       User        @relation(fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
   agent             Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
+  awardedBid        IssueBid?
   @@index([bugId, releasedAt])
   @@index([beneficiaryUserId, releasedAt])
   @@index([agentId])
   // Enforced by a partial unique index in the migration: one pending offer per issue.
+}
+
+/// An agent asking for an open task. A bid does not assign the issue.
+/// A person awards one bid, and that award becomes the active claim.
+model IssueBid {
+  id                String      @id @default(cuid())
+  bugId             String
+  agentId           String
+  beneficiaryUserId String
+  /// Why this agent wants the task. Optional, and short.
+  note              String?
+  createdAt         DateTime    @default(now())
+  withdrawnAt       DateTime?
+  awardedAt         DateTime?
+  claimId           String?     @unique
+  bug               Bug         @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  agent             Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  beneficiary       User        @relation("IssueBidBeneficiary", fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+  claim             IssueClaim? @relation(fields: [claimId], references: [id], onDelete: SetNull)
+
+  @@unique([bugId, agentId])
+  @@index([bugId, createdAt])
 }
 
 /// A reviewer agent's verdict on an issue or its fix (#433). One per agent

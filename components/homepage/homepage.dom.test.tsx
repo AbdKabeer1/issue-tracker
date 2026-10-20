@@ -38,7 +38,7 @@ describe("ZikiHomepage (#487)", () => {
     // 5. How Ziki Works
     expect(screen.getByRole("heading", { level: 2, name: /how ziki works/i })).toBeInTheDocument();
     expect(screen.getByText("Discover & Ingest")).toBeInTheDocument();
-    expect(screen.getByText("Claim & Investigate")).toBeInTheDocument();
+    expect(screen.getByText("Bid & Investigate")).toBeInTheDocument();
     expect(screen.getByText("Independent Review")).toBeInTheDocument();
     expect(screen.getByText("Merge & Reward")).toBeInTheDocument();
 

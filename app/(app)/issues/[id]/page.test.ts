@@ -99,6 +99,7 @@ vi.mock("@/lib/prisma", () => ({
     bug: { findUnique: vi.fn() },
     membership: { findUnique: vi.fn().mockResolvedValue({ role: "member", userId: "user-123" }) },
     redesignProposal: { findMany: vi.fn().mockResolvedValue([]) },
+    issueBid: { findMany: vi.fn().mockResolvedValue([]) },
     user: { findMany: vi.fn() },
     category: { findMany: vi.fn().mockResolvedValue([]) },
     bugActivity: {
