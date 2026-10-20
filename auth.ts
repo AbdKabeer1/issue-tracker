@@ -10,6 +10,8 @@ import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 import { upsertGoogleUser, type GoogleAccount } from "@/lib/google-user";
 import { isGoogleEmailAllowed, getGoogleAllowlist } from "@/lib/google-allowlist";
 import { clientIpFrom, consumeAuthRateLimit } from "@/lib/rate-limit";
+import { TwoFactorInvalidError, TwoFactorRequiredError } from "@/lib/auth-errors";
+import { isTwoFactorEnabled, verifySecondFactor } from "@/lib/two-factor";
 
 const googleClientId = cleanEnv(
   process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID,
@@ -57,6 +59,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
+        totp: { label: "Authenticator or backup code", type: "text" },
       },
       async authorize(credentials, request) {
         if (!isPasswordAuthEnabled()) {
@@ -93,6 +96,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         );
         if (!valid) {
           return null;
+        }
+
+        // Second step (#648). Only reached with the right password, so these
+        // errors say nothing to someone guessing passwords. The check lives
+        // here, not in the form, so a direct POST to the credentials callback
+        // cannot skip it.
+        if (await isTwoFactorEnabled(user.id)) {
+          const code = typeof credentials?.totp === "string" ? credentials.totp : "";
+          if (!code.trim()) throw new TwoFactorRequiredError();
+          if (!(await verifySecondFactor(user.id, code))) throw new TwoFactorInvalidError();
         }
 
         return {
