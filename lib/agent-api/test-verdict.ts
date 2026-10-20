@@ -85,7 +85,7 @@ export type SubmitTestVerdictResult =
   | { status: 400; error: "invalid_request"; message: string; field?: string }
   | { status: 403; error: "insufficient_level" | "fixer_cannot_verdict" | "not_independent"; message: string }
   | { status: 404; error: "not_found"; message: string }
-  | { status: 409; error: "no_pull_request" | "already_accepted"; message: string };
+  | { status: 409; error: "no_pull_request" | "already_accepted" | "already_verdicted"; message: string };
 
 export async function submitTestVerdict(
   agent: AgentContext,
