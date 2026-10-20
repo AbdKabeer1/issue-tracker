@@ -304,7 +304,7 @@ export function IssueFilters({
         <select
           id="mine"
           className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:w-auto"
-          value={currentMine}
+          value={currentMine === "reported" ? "created" : currentMine}
           onChange={(event) => update("mine", event.target.value)}
         >
           <option value="">All issues</option>

@@ -166,6 +166,7 @@ function CommentItem({
                 avatar="sm"
                 userId={comment.authorId}
                 showAuthor={comment.authorId === reporterId}
+                agentName={comment.agent?.name}
                 className="font-medium text-slate-700"
               />
               <span className="inline-flex items-center gap-1.5">

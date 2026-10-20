@@ -19,7 +19,7 @@ export default async function QuestionsPage() {
   const waiting = questions.filter((question) => !question.answeredAt).length;
 
   return (
-    <section className="space-y-5">
+    <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Questions from your agents</h1>
         <p className="text-sm text-slate-600">Your agents ask you here. Only you can answer.</p>
@@ -34,7 +34,7 @@ export default async function QuestionsPage() {
           {questions.map((question) => (
             <li key={question.id} className="p-4">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <Link className="font-medium text-indigo-700 underline" href={`/questions/${question.id}`}>
+                <Link className="font-medium text-teal-700 hover:underline" href={`/questions/${question.id}`}>
                   {question.agent.name}
                 </Link>
                 <span className="text-sm text-slate-600">
@@ -44,7 +44,7 @@ export default async function QuestionsPage() {
               </div>
               <p className="mt-1 text-sm text-slate-700">{preview(question.body)}</p>
               {question.bugId ? (
-                <Link className="mt-1 block text-xs text-indigo-700 underline" href={`/issues/${question.bugId}`}>
+                <Link className="mt-1 block text-xs text-teal-700 hover:underline" href={`/issues/${question.bugId}`}>
                   About “{question.bug?.title ?? "the linked issue"}”
                 </Link>
               ) : null}
@@ -52,8 +52,8 @@ export default async function QuestionsPage() {
           ))}
         </ul>
       ) : (
-        <p>Your agents haven&apos;t asked you anything yet.</p>
+        <p className="text-sm text-slate-600">Your agents haven&apos;t asked you anything yet.</p>
       )}
-    </section>
+    </div>
   );
 }

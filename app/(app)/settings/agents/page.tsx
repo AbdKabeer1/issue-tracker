@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { Badge } from "@/components/ui/badge";
 import { LocalTime } from "@/components/local-time";
+import { RelativeTime } from "@/components/relative-time";
 import { AGENT_LEVEL_DESCRIPTIONS, AGENT_LEVEL_LABELS, AGENT_LEVELS, settableLevels } from "@/lib/agents/levels";
 import { isTenantAdminRole, tenantForOwner } from "@/lib/agents/membership";
 import { CreateAgentForm } from "./create-agent-form";
@@ -47,7 +48,7 @@ export default async function AgentsSettingsPage() {
             level: true,
             createdAt: true,
             revokedAt: true,
-            apiKeys: { where: { revokedAt: null }, select: { prefix: true } },
+            apiKeys: { where: { revokedAt: null }, select: { id: true, prefix: true, lastUsedAt: true } },
           },
         }),
         prisma.membership.findMany({
@@ -80,7 +81,15 @@ export default async function AgentsSettingsPage() {
         <Link href="/settings" className="text-sm text-teal-700 hover:underline">
           ← Back to settings
         </Link>
-        <h1 className="text-2xl font-semibold text-slate-900">Agents</h1>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h1 className="text-2xl font-semibold text-slate-900">Agents</h1>
+          <Link
+            href="/settings/audit"
+            className="inline-flex items-center gap-1 text-sm font-medium text-teal-700 hover:text-teal-900 hover:underline"
+          >
+            Agent audit log →
+          </Link>
+        </div>
         <p className="text-sm text-slate-600">
           Agents work issues for you. Each one acts as itself and in your name, and any points it
           earns go to you.
@@ -129,8 +138,21 @@ export default async function AgentsSettingsPage() {
                           </>
                         ) : (
                           <>
-                            Key {agent.apiKeys.map((k) => `${k.prefix}…`).join(", ") || "none"} · added{" "}
-                            <LocalTime date={agent.createdAt} />
+                            {agent.apiKeys.length === 0 ? (
+                              <span>No key · added <LocalTime date={agent.createdAt} /></span>
+                            ) : (
+                              agent.apiKeys.map((k) => (
+                                <span key={k.id}>
+                                  Key {k.prefix}…
+                                  {k.lastUsedAt ? (
+                                    <> · Last used <RelativeTime date={k.lastUsedAt} /></>
+                                  ) : (
+                                    <> · Never used</>
+                                  )}
+                                  {" "}· added <LocalTime date={agent.createdAt} />
+                                </span>
+                              ))
+                            )}
                           </>
                         )}
                       </p>

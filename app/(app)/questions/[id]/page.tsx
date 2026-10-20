@@ -18,9 +18,9 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
   if (!question) notFound();
 
   return (
-    <article className="space-y-5">
-      <Link href="/questions" className="text-indigo-700 underline">
-        All questions
+    <article className="mx-auto max-w-2xl space-y-6">
+      <Link href="/questions" className="text-sm text-teal-700 hover:underline">
+        ← All questions
       </Link>
       <div>
         <h1 className="text-2xl font-semibold">{question.agent.name} has a question</h1>
@@ -28,19 +28,21 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
       </div>
       <p className="whitespace-pre-wrap rounded border border-slate-200 bg-white p-5">{question.body}</p>
       {question.bug ? (
-        <Link href={`/issues/${question.bug.id}`} className="block text-indigo-700 underline">
+        <Link href={`/issues/${question.bug.id}`} className="block text-sm text-teal-700 hover:underline">
           About “{question.bug.title}”
         </Link>
       ) : null}
       <div className="space-y-2 rounded border border-slate-200 bg-white p-5">
-        <h2 className="font-medium">Your answer</h2>
+        <h2 id="your-answer-heading" className="font-medium">
+          Your answer
+        </h2>
         {question.answeredAt ? (
           <>
             <p className="whitespace-pre-wrap">{question.answer}</p>
             <LocalTime date={question.answeredAt} className="text-xs text-slate-500" />
           </>
         ) : (
-          <AnswerForm questionId={question.id} />
+          <AnswerForm questionId={question.id} labelledBy="your-answer-heading" />
         )}
       </div>
     </article>

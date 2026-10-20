@@ -44,6 +44,8 @@ export class AgentAuthError extends Error {
 
 type HeaderSource = { headers: { get(name: string): string | null } };
 
+const LAST_USED_THROTTLE_MS = 60 * 1000;
+
 export async function requireAgent(request: HeaderSource): Promise<AgentContext> {
   const raw = bearerToken(request.headers.get("authorization"));
   if (!raw) throw new AgentAuthError("missing_key");
@@ -52,6 +54,7 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
     where: { keyHash: hashSecret(raw) },
     select: {
       id: true,
+      lastUsedAt: true,
       revokedAt: true,
       agent: {
         select: {
@@ -74,6 +77,22 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
   const ownerInTenant = agent.owner.memberships.some((m) => m.tenantId === agent.tenantId);
   if (!agent.name || !agent.ownerUserId || !agent.tenantId || !ownerInTenant) {
     throw new AgentAuthError("invalid_key");
+  }
+
+  // Update lastUsedAt on successful auth, throttled to at most once per minute (#535)
+  const now = new Date();
+  if (
+    typeof prisma.agentApiKey?.update === "function" &&
+    (!key.lastUsedAt || now.getTime() - key.lastUsedAt.getTime() >= LAST_USED_THROTTLE_MS)
+  ) {
+    await Promise.resolve(
+      prisma.agentApiKey.update({
+        where: { id: key.id },
+        data: { lastUsedAt: now },
+      }),
+    ).catch((error) => {
+      console.error("[requireAgent] failed to update lastUsedAt", error);
+    });
   }
 
   return {

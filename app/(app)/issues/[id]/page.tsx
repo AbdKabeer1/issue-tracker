@@ -230,6 +230,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       include: {
         type: { select: { id: true, name: true, isActive: true } },
         reporter: { select: { name: true, email: true, role: true, image: true } },
+        createdByAgent: { select: { id: true, name: true } },
         milestone: { select: { id: true, title: true, dueDate: true, isClosed: true } },
         assignee: { select: { id: true, name: true, role: true, image: true } },
         category: { select: { id: true, name: true, isActive: true } },
@@ -262,6 +263,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         include: {
           type: { select: { id: true, name: true, isActive: true } },
           reporter: { select: { name: true, email: true, role: true, image: true } },
+          createdByAgent: { select: { id: true, name: true } },
           assignee: { select: { id: true, name: true, role: true, image: true } },
           category: { select: { id: true, name: true, isActive: true } },
           votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
@@ -715,6 +717,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 image={bug.reporter.image}
                 avatar="sm"
                 userId={bug.reporterId}
+                agentName={bug.createdByAgent?.name}
                 showAuthor
               />
             </dd>

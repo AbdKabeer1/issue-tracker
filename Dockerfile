@@ -24,11 +24,11 @@ ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME="0.0.0.0" T
 COPY --from=builder /app ./
 EXPOSE 3000
 
-# Traefik routing labels for Coolify
+# Traefik routing labels for Coolify (#586)
 LABEL "traefik.enable"="true"
-LABEL "traefik.http.routers.bug-tracker.rule"="Host(`issues.zedu.chat`) || (Host(`contributors.zedu.chat`) && PathPrefix(`/bug-tracker`))"
-LABEL "traefik.http.routers.bug-tracker.priority"="1000"
-LABEL "traefik.http.services.bug-tracker.loadbalancer.server.port"="3000"
+LABEL "traefik.http.routers.ziki.rule"="Host(`ziki.dev`) || Host(`www.ziki.dev`) || Host(`issues.zedu.chat`) || (Host(`contributors.zedu.chat`) && PathPrefix(`/bug-tracker`))"
+LABEL "traefik.http.routers.ziki.priority"="1000"
+LABEL "traefik.http.services.ziki.loadbalancer.server.port"="3000"
 
 # Verify database is reachable and server responds with HTTP 200 before container is declared healthy.
 # Coolify rolling deployments will wait for this check and keep the existing container running if it fails.

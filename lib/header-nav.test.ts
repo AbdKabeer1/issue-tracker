@@ -27,6 +27,16 @@ describe("headerNavItems", () => {
     expect(headerNavItems("user").map((i) => i.label)).toEqual(["Issues", "Projects", "Milestones"]);
   });
 
+  it("includes Questions and Redesigns when agent platform is enabled (#627)", () => {
+    expect(headerNavItems("user", { agentPlatform: true }).map((i) => i.label)).toEqual([
+      "Issues",
+      "Projects",
+      "Milestones",
+      "Questions",
+      "Redesigns",
+    ]);
+  });
+
   it("adds Platforms and Types for admins", () => {
     expect(headerNavItems("admin").map((i) => i.label)).toEqual([
       "Issues",
