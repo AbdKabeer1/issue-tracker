@@ -17,9 +17,9 @@ vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 
 import HomePage from "./page";
 
-async function landing(): Promise<string> {
+async function landing(searchParams?: Promise<{ landing?: string }>): Promise<string> {
   try {
-    await HomePage();
+    await HomePage({ searchParams });
   } catch (error) {
     return (error as { path: string }).path;
   }
@@ -30,14 +30,16 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("home redirect (#444)", () => {
-  it("sends a signed-out visitor to sign in", async () => {
+describe("home page & redirect (#444, #487)", () => {
+  it("renders the marketing homepage for a signed-out visitor rather than redirecting (#487)", async () => {
     mocks.auth.mockResolvedValue(null);
-    expect(await landing()).toBe("/login");
+    const result = await HomePage({});
+    expect(result).toBeDefined();
+    expect(mocks.redirect).not.toHaveBeenCalled();
     expect(mocks.homePathFor).not.toHaveBeenCalled();
   });
 
-  it("sends a signed-in person where their tenants say: the list or the picker", async () => {
+  it("sends a signed-in person where their tenants say: the list or the picker (#444)", async () => {
     mocks.auth.mockResolvedValue({ user: { id: "ada" } });
     mocks.resolveSessionUserId.mockResolvedValue({ userId: "ada" });
 
@@ -46,6 +48,14 @@ describe("home redirect (#444)", () => {
     mocks.homePathFor.mockResolvedValue("/tenants");
     expect(await landing()).toBe("/tenants");
     expect(mocks.homePathFor).toHaveBeenCalledWith({}, "ada");
+  });
+
+  it("renders the homepage for signed-in users when landing parameter is explicitly passed", async () => {
+    mocks.auth.mockResolvedValue({ user: { id: "ada" } });
+    const result = await HomePage({ searchParams: Promise.resolve({ landing: "1" }) });
+    expect(result).toBeDefined();
+    expect(mocks.redirect).not.toHaveBeenCalled();
+    expect(mocks.homePathFor).not.toHaveBeenCalled();
   });
 
   it("leaves a session it can't resolve to the issue list's own checks", async () => {
