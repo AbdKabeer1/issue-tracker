@@ -18,7 +18,7 @@ import type { NotificationEvent } from "@/lib/notifications";
 import { logger } from "@/lib/logger";
 
 export class IssueApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  constructor(public status: number, message: string, public body?: Record<string, unknown>) { super(message); }
 }
 
 const idSchema = z.string().trim().min(1).max(191);
@@ -48,7 +48,7 @@ export async function agentIssueRequest(
       response = budget.allowed ? await run(agent) : agentBudgetExceededResponse(budget.retryAfterSeconds);
     }
   } catch (error) {
-    if (error instanceof IssueApiError) response = NextResponse.json({ error: error.message }, { status: error.status });
+    if (error instanceof IssueApiError) response = NextResponse.json(error.body ? { error: error.message, ...error.body } : { error: error.message }, { status: error.status });
     else if (error instanceof z.ZodError) response = NextResponse.json({ error: "Invalid input.", details: error.issues }, { status: 422 });
     else response = agentErrorResponse(error);
   } finally {

@@ -141,6 +141,12 @@ enum ThemePreference {
   dark
 }
 
+enum TenantJoinRequestStatus {
+  pending
+  approved
+  rejected
+}
+
 model User {
   id                    String               @id @default(cuid())
   name                  String
@@ -199,11 +205,14 @@ model User {
   membershipChangesReceived MembershipChange[] @relation("MembershipChangeTarget")
   shareLinksSent        TenantShareLink[]
   shareRedemptions      TenantShareRedemption[]
+  tenantJoinRequests    TenantJoinRequest[] @relation("TenantJoinRequester")
+  joinRequestsReviewed  TenantJoinRequest[] @relation("TenantJoinReviewer")
   projectAuditEvents    ProjectAuditEvent[]
   jobsCreated           Job[]                 @relation("JobCreator")
   jobSubmissions        JobSubmission[]       @relation("JobSubmissionBeneficiary")
   jobReviews            JobReview[]           @relation("JobReviewBeneficiary")
   jobReviewOffers       JobReviewOffer[]      @relation("JobReviewOfferBeneficiary")
+  approvalsDecided      IssueApproval[]      @relation("ApprovalDecider")
 }
 
 /// Single-use password reset tokens (~30 min TTL). Store only the SHA-256 hash.
@@ -229,6 +238,7 @@ model IssueType {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   bugs        Bug[]
+  approvalRules ApprovalRule[]
 }
 
 model Bug {
@@ -287,6 +297,7 @@ model Bug {
   activities        BugActivity[]
   revisions         BugRevision[]
   claims            IssueClaim[]
+  approvals         IssueApproval[]
   bids              IssueBid[]
   interests         IssueInterest[]
   validations       IssueValidation[]
@@ -508,6 +519,8 @@ model Tenant {
   id            String             @id @default(cuid())
   slug          String             @unique
   name          String
+  description   String?            @db.VarChar(500)
+  discoverable  Boolean            @default(false)
   /// #517: the next issue number this tenant hands out. The insert trigger
   /// increments it under a row lock, so concurrent creates stay unique.
   nextIssueNumber Int             @default(1)
@@ -526,6 +539,7 @@ model Tenant {
   shareLinks    TenantShareLink[]
   events        AgentEvent[]
   membershipChanges MembershipChange[]
+  joinRequests  TenantJoinRequest[]
   notifications Notification[]
   projectAuditEvents ProjectAuditEvent[]
   jobs          Job[]
@@ -544,6 +558,9 @@ model Project {
   stagingUrl           String?
   /// GitHub App installation used to merge accepted fixes (#452). Never a token.
   githubInstallationId String?
+  /// How long an accepted claim has to link a fix before it is released (#593).
+  /// High and critical issues use at least 60 minutes (lib/claim-deadline.ts).
+  deliveryWindowMinutes Int              @default(15)
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   tenant               Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -555,6 +572,7 @@ model Project {
   testMissions         TestMission[]
   auditEvents          ProjectAuditEvent[]
   jobs                 Job[]
+  approvalRules        ApprovalRule[]
 
   @@unique([tenantId, slug])
 }
@@ -633,6 +651,25 @@ model MembershipChange {
   @@index([tenantId, createdAt])
 }
 
+/// A request to join a workspace listed in discovery. Approval is the only
+/// path from this record to membership; the unique pair prevents duplicates.
+model TenantJoinRequest {
+  id           String                   @id @default(cuid())
+  tenantId     String
+  userId       String
+  status       TenantJoinRequestStatus  @default(pending)
+  requestedAt  DateTime                 @default(now())
+  reviewedAt   DateTime?
+  reviewedById String?
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User                     @relation("TenantJoinRequester", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy   User?                    @relation("TenantJoinReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, userId])
+  @@index([tenantId, status, requestedAt])
+  @@index([userId, requestedAt])
+}
+
 /// A named agent working for its owner inside a tenant (#427). It always acts
 /// as itself and for a named person.
 model Agent {
@@ -673,6 +710,7 @@ model Agent {
   jobSubmissions       JobSubmission[]
   jobReviews           JobReview[]
   jobReviewOffers      JobReviewOffer[]
+  inboxItems           AgentInboxItem[]
 
   @@unique([ownerUserId, defaultProjectId])
   @@index([tenantId])
@@ -770,9 +808,16 @@ model IssueClaim {
   offeredAt         DateTime?
   claimedAt         DateTime?
   lastHeartbeatAt   DateTime?
+  /// When the fix is due (#593). Set when an offer or bid becomes active.
+  deliverBy         DateTime?
+  /// Set when the agent spends its one extension; a second request is refused.
+  extendedAt        DateTime?
+  /// Why the agent asked for more time, shown in the audit log.
+  extensionReason   String?
   releasedAt        DateTime?
-  /// Why it was released: "silence" (#438), "expired" (#449), "undo" (#450),
-  /// "agent", "resolved", or "closed". #451 counts only silence releases.
+  /// Why it was released: "silence" (#438), "deadline" (#593), "expired"
+  /// (#449), "undo" (#450), "agent", "resolved", or "closed". #451 counts
+  /// silence and deadline releases.
   releaseReason     String?
   createdAt         DateTime    @default(now())
   bug               Bug         @relation(fields: [bugId], references: [id], onDelete: Cascade)
@@ -783,6 +828,7 @@ model IssueClaim {
   @@index([bugId, releasedAt])
   @@index([beneficiaryUserId, releasedAt])
   @@index([agentId])
+  @@index([deliverBy])
   // Enforced by a partial unique index in the migration: one pending offer per issue.
   // Enforced by a partial unique index in the migration: one active claim per issue (#662).
 }
@@ -1183,10 +1229,37 @@ model AgentEvent {
   actorAgent   Agent?            @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
   bug          Bug?              @relation(fields: [bugId], references: [id], onDelete: SetNull)
   deliveries   WebhookDelivery[]
+  inboxItems   AgentInboxItem[]
 
   @@index([tenantId, createdAt, id])
   @@index([tenantId, txid, id])
   @@index([createdAt])
+}
+
+/// What is addressed to one agent (#601): an offer to it, a reply to its
+/// comment, a mention of its owner, an answer, a decision, a claim release.
+/// Written next to `publish()`, so polling is one indexed query per agent
+/// instead of a scan of the tenant's event feed. The payload is copied from
+/// the event so an item outlives event retention.
+model AgentInboxItem {
+  id        String      @id @default(cuid())
+  agentId   String
+  /// offer | reply | mention | answer | message | approval | claim
+  kind      String
+  eventId   String?
+  /// The event that put it here, e.g. `claim.offered`.
+  eventType String
+  bugId     String?
+  commentId String?
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime    @default(now())
+  agent     Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  event     AgentEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@unique([agentId, eventId])
+  @@index([agentId, createdAt, id])
+  @@index([agentId, readAt, createdAt, id])
 }
 
 /// An agent with a public HTTPS endpoint opting in to webhooks (#445). The
@@ -1228,4 +1301,39 @@ model WebhookDelivery {
   @@unique([subscriptionId, eventId])
   @@index([status, nextAttemptAt])
   @@index([status, createdAt])
+}
+
+/// A rule requiring human approval before an issue is offered or merged (#598).
+model ApprovalRule {
+  id          String         @id @default(cuid())
+  projectId   String
+  stage       String
+  issueTypeId String?
+  severity    String?
+  fileGlob    String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issueType   IssueType?     @relation(fields: [issueTypeId], references: [id], onDelete: SetNull)
+  approvals   IssueApproval[]
+
+  @@index([projectId, stage])
+}
+
+/// A human approval required by an ApprovalRule (#598).
+model IssueApproval {
+  id              String        @id @default(cuid())
+  bugId           String
+  ruleId          String?
+  stage           String
+  status          String        @default("pending")
+  decidedByUserId String?
+  decidedAt       DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  bug             Bug           @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  rule            ApprovalRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  decidedBy       User?         @relation("ApprovalDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([bugId, stage, status])
 }
