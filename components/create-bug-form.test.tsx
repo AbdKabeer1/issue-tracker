@@ -54,7 +54,7 @@ function descriptionTextarea() {
 
 function submitButton() {
   return screen.getByRole("button", {
-    name: /^(Create issue|Creating…)$/,
+    name: /^(Create issue|Creating…|Uploading…)$/,
   }) as HTMLButtonElement;
 }
 
@@ -193,4 +193,66 @@ describe("CreateBugForm optimistic submission", () => {
 
     expect(capturedFormData?.get("assigneeId")).toBeNull();
   });
+
+  it("disables submit button and prevents submission while an attachment is uploading (#734)", async () => {
+    let resolveUpload: (val: unknown) => void = () => {};
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveUpload = () =>
+            resolve({
+              ok: true,
+              json: async () => ({ id: "att-456", size: 4096 }),
+            });
+        }),
+    );
+
+    mockedCreateBug.mockImplementationOnce((formData) => {
+      capturedFormData = formData;
+      return Promise.resolve({ ok: true });
+    });
+
+    try {
+      const { container } = renderForm();
+      await fillValidForm(user);
+
+      const fileInput = container.querySelector(
+        'input[type="file"]',
+      ) as HTMLInputElement;
+      expect(fileInput).toBeTruthy();
+
+      const file = new File(["content"], "diag.png", { type: "image/png" });
+      await user.upload(fileInput, file);
+
+      // Submit button should be disabled and show Uploading…
+      await waitFor(() => {
+        expect(submitButton().disabled).toBe(true);
+        expect(submitButton().textContent).toBe("Uploading…");
+      });
+
+      // Attempting to submit form while uploading should be prevented
+      const form = container.querySelector("form") as HTMLFormElement;
+      form.requestSubmit();
+      expect(mockedCreateBug).not.toHaveBeenCalled();
+
+      // Resolve upload
+      resolveUpload(null);
+
+      // Button becomes enabled
+      await waitFor(() => {
+        expect(submitButton().disabled).toBe(false);
+        expect(submitButton().textContent).toBe("Create issue");
+      });
+
+      // Submit should now succeed with attachment included
+      await user.click(submitButton());
+      await waitFor(() => expect(mockedCreateBug).toHaveBeenCalledTimes(1));
+
+      expect(capturedFormData?.get("attachmentIds")).toBe("att-456");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });
+

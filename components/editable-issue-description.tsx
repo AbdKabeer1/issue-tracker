@@ -37,6 +37,7 @@ export function EditableIssueDescription({
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(initialTitle);
   const [description, setDescription] = useState(initialDescription);
+  const [editorUploading, setEditorUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -56,6 +57,7 @@ export function EditableIssueDescription({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    if (pending || editorUploading) return;
     setError(null);
 
     const formData = new FormData();
@@ -147,6 +149,7 @@ export function EditableIssueDescription({
               name="description"
               value={description}
               onChange={setDescription}
+              onUploadingChange={setEditorUploading}
               users={mentionUsers}
               minLength={10}
               maxLength={5000}
@@ -161,11 +164,12 @@ export function EditableIssueDescription({
               type="submit"
               disabled={
                 pending ||
+                editorUploading ||
                 title.trim().length < 3 ||
                 description.trim().length < 10
               }
             >
-              {pending ? "Saving…" : "Save"}
+              {pending ? "Saving…" : editorUploading ? "Uploading…" : "Save"}
             </Button>
             <Button
               type="button"
