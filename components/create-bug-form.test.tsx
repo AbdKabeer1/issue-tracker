@@ -5,6 +5,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { createBugAction } from "@/app/actions/issues";
+import { serializeDraft } from "@/lib/form-drafts";
 import { CreateBugForm } from "./create-issue-form";
 
 vi.mock("@/app/actions/issues", () => ({
@@ -297,6 +298,59 @@ describe("CreateBugForm optimistic submission", () => {
     expect(capturedFormData?.get("typeId")).toBeFalsy();
     expect(capturedFormData?.get("categoryId")).toBeFalsy();
     expect(capturedFormData?.get("proofLinks")).toBeFalsy();
+  });
+});
+
+describe("CreateBugForm project-scoped drafts (#729)", () => {
+  let user: ReturnType<typeof userEvent.setup>;
+  let mockStorage: Record<string, string>;
+
+  beforeEach(() => {
+    mockStorage = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => mockStorage[key] ?? null,
+      setItem: (key: string, value: string) => {
+        mockStorage[key] = value;
+      },
+      removeItem: (key: string) => {
+        delete mockStorage[key];
+      },
+    });
+    mockedCreateBug.mockReset();
+    mockedCreateBug.mockResolvedValue({ ok: true });
+    user = userEvent.setup();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("ignores a draft saved for a different project when projectId is set", async () => {
+    mockStorage["draft:u1:bug:new"] = serializeDraft(
+      { title: "Leaked from another project" },
+      Date.now(),
+    );
+
+    renderForm({ ...defaultProps, currentUserId: "u1", projectId: "project-a" });
+
+    await waitFor(() => {
+      expect(titleInput().value).toBe("");
+    });
+  });
+
+  it("saves the create-issue draft under its project key", async () => {
+    renderForm({ ...defaultProps, currentUserId: "u1", projectId: "project-a" });
+
+    await user.type(titleInput(), "Scoped draft");
+
+    await waitFor(() => {
+      const stored = mockStorage["draft:u1:bug:new:project-a"];
+      const parsed = stored
+        ? (JSON.parse(stored) as { values?: { title?: string } })
+        : null;
+      expect(parsed?.values?.title).toBe("Scoped draft");
+    });
+    expect(mockStorage["draft:u1:bug:new"]).toBeUndefined();
   });
 });
 

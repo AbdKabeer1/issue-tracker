@@ -7,13 +7,19 @@ import { currentTenantIdFor } from "@/lib/tenant-context";
 import { auditAccess, auditWhere } from "@/lib/agent-audit/visibility";
 import { AuditLog, type AuditLogRow } from "@/components/audit-log";
 import { undoAuditEventAction } from "@/app/actions/audit";
+import { parseIssueRef } from "@/lib/duplicates";
+import { AUDIT_PAGE_SIZE, auditPageHref, splitAuditPage } from "@/lib/agent-audit/paging";
 
 export const metadata = { title: "Agent audit log" };
 
-/** The newest events shown; filter by agent or issue to look further back. */
-const LIMIT = 100;
-
-type Props = { searchParams: Promise<{ agent?: string | string[]; issue?: string | string[] }> };
+type Props = {
+  searchParams: Promise<{
+    agent?: string | string[];
+    issue?: string | string[];
+    before?: string | string[];
+    show?: string | string[];
+  }>;
+};
 
 const single = (value: string | string[] | undefined): string | null => {
   const first = Array.isArray(value) ? value[0] : value;
@@ -51,26 +57,47 @@ export default async function AuditLogPage({ searchParams }: Props) {
 
   const params = await searchParams;
   const agentId = single(params.agent);
-  const issueId = single(params.issue);
+  const issueInput = single(params.issue);
+  const before = single(params.before);
+  // Request rows are hidden by default so each action reads once (#575).
+  const includeRequests = single(params.show) === "requests";
+
+  // #576: the issue filter takes "#123", "123", an issue link or an id.
+  const ref = issueInput ? parseIssueRef(issueInput) : null;
+  const issueId =
+    ref && "number" in ref
+      ? ((
+          await prisma.bug.findFirst({
+            where: { number: ref.number, tenantId: access.tenantId },
+            select: { id: true },
+          })
+        )?.id ?? null)
+      : (ref?.id ?? issueInput); // anything else is taken as an internal id, as before
+  // A filter that names no issue in this workspace matches nothing, not everything.
+  const noSuchIssue = Boolean(issueInput) && !issueId;
 
   const [events, agents] = await Promise.all([
-    prisma.agentAuditEvent.findMany({
-      where: auditWhere(access, { agentId, issueId }),
-      orderBy: { createdAt: "desc" },
-      take: LIMIT,
-      select: {
-        id: true,
-        createdAt: true,
-        action: true,
-        target: true,
-        agentId: true,
-        bugId: true,
-        payload: true,
-        undoneAt: true,
-        agent: { select: { name: true } },
-        bug: { select: { number: true, title: true } },
-      },
-    }),
+    noSuchIssue
+      ? []
+      : prisma.agentAuditEvent.findMany({
+          where: auditWhere(access, { agentId, issueId, includeRequests }),
+          // id breaks ties so the cursor never skips or repeats a row.
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: AUDIT_PAGE_SIZE + 1,
+          ...(before ? { cursor: { id: before }, skip: 1 } : {}),
+          select: {
+            id: true,
+            createdAt: true,
+            action: true,
+            target: true,
+            agentId: true,
+            bugId: true,
+            payload: true,
+            undoneAt: true,
+            agent: { select: { name: true } },
+            bug: { select: { number: true, title: true } },
+          },
+        }),
     // Only the agents this viewer may filter by.
     prisma.agent.findMany({
       where:
@@ -82,7 +109,8 @@ export default async function AuditLogPage({ searchParams }: Props) {
     }),
   ]);
 
-  const rows: AuditLogRow[] = events.map((event) => ({
+  const { page, olderCursor } = splitAuditPage(events);
+  const rows: AuditLogRow[] = page.map((event) => ({
     id: event.id,
     createdAt: event.createdAt,
     agentName: event.agent.name,
@@ -94,7 +122,7 @@ export default async function AuditLogPage({ searchParams }: Props) {
     payload: event.payload,
     undoneAt: event.undoneAt,
   }));
-  const filtered = Boolean(agentId || issueId);
+  const filtered = Boolean(agentId || issueInput || includeRequests);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -126,12 +154,22 @@ export default async function AuditLogPage({ searchParams }: Props) {
             ))}
           </select>
         </label>
+        <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            name="show"
+            value="requests"
+            defaultChecked={includeRequests}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          Show request rows
+        </label>
         <label className="text-sm">
-          <span className="block font-medium text-slate-700">Issue id</span>
+          <span className="block font-medium text-slate-700">Issue</span>
           <input
             name="issue"
-            defaultValue={issueId ?? ""}
-            placeholder="Any issue"
+            defaultValue={issueInput ?? ""}
+            placeholder="#123 or any issue"
             className="mt-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
         </label>
@@ -155,8 +193,39 @@ export default async function AuditLogPage({ searchParams }: Props) {
           onUndo={undoAuditEventAction}
         />
       </section>
-      {rows.length === LIMIT ? (
-        <p className="text-xs text-slate-500">Showing the newest {LIMIT}. Filter by agent or issue to see older events.</p>
+      {noSuchIssue ? (
+        <p className="text-sm text-slate-600">No issue matches “{issueInput}” in this workspace.</p>
+      ) : null}
+      {before || olderCursor ? (
+        <nav aria-label="Audit log pages" className="flex items-center justify-between text-sm">
+          {before ? (
+            <Link
+              href={auditPageHref({
+                agent: agentId,
+                issue: issueInput,
+                show: includeRequests ? "requests" : undefined,
+              })}
+              className="text-teal-700 hover:underline"
+            >
+              ← Newest
+            </Link>
+          ) : (
+            <span />
+          )}
+          {olderCursor ? (
+            <Link
+              href={auditPageHref({
+                agent: agentId,
+                issue: issueInput,
+                before: olderCursor,
+                show: includeRequests ? "requests" : undefined,
+              })}
+              className="font-medium text-teal-700 hover:underline"
+            >
+              Older →
+            </Link>
+          ) : null}
+        </nav>
       ) : null}
     </div>
   );

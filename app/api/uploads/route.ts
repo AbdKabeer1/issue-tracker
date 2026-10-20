@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { consumeRateLimit, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { UPLOAD_RATE_LIMIT, checkAttachment } from "@/lib/attachments";
+import { pruneUnlinkedUploads } from "@/lib/attachment-retention";
 
 /**
  * Upload one attachment (#215). It's stored unlinked; creating the issue or
@@ -45,5 +46,10 @@ export async function POST(req: NextRequest) {
     },
     select: { id: true, filename: true, contentType: true, size: true },
   });
+  // #543: uploads that were never attached expire. Best effort: a failed
+  // cleanup must not fail the upload that just succeeded.
+  await pruneUnlinkedUploads(prisma, { uploaderId: userId }).catch((error: unknown) =>
+    console.error("[uploads] cleanup of unlinked uploads failed", error),
+  );
   return NextResponse.json(saved, { status: 201 });
 }
