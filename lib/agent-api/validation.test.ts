@@ -120,6 +120,15 @@ describe("submitValidation: who may validate (#433)", () => {
     expect(state.validations).toHaveLength(0);
   });
 
+  it("rejects the human reporter's own agent when the beneficiary is unset (#620)", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ beneficiaryUserId: null }));
+    expect(await submitValidation(reviewer("r4", "ada"), "bug1", acceptReal)).toMatchObject({
+      status: 403,
+      error: "not_independent",
+    });
+    expect(db.bug.findFirst.mock.calls[0][0].select.reporterId).toBe(true);
+  });
+
   it("is 404 for an issue outside the agent's tenant or deleted", async () => {
     db.bug.findFirst.mockResolvedValue(null);
     expect(await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal)).toMatchObject({ status: 404 });

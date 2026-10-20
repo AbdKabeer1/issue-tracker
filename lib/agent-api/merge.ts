@@ -37,6 +37,7 @@ const mergeBugSelect = {
   status: true,
   assigneeId: true,
   beneficiaryUserId: true,
+  reporterId: true,
   createdByAgentId: true,
   createdByAgent: { select: { ownerUserId: true } },
   claims: {

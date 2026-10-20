@@ -68,6 +68,23 @@ describe("assertIndependentReviewer (#442)", () => {
     expect(reviewerConflict(bobAgent, { beneficiaryUserId: carol })).toBeNull();
   });
 
+  it("rejects the reporter's own agent when no beneficiary is set (#620)", () => {
+    const humanFiled: ReviewedBug = { beneficiaryUserId: null, reporterId: alice };
+    expect(reviewerConflict(aliceAgentB, humanFiled)).toBe("own-ticket");
+    expect(() => assertIndependentReviewer(aliceAgentB, humanFiled)).toThrow(
+      ReviewerNotIndependentError,
+    );
+  });
+
+  it("rejects the reporter's own agent even when someone else benefits (#620)", () => {
+    const humanFiledForCarol: ReviewedBug = { beneficiaryUserId: carol, reporterId: alice };
+    expect(reviewerConflict(aliceAgentA, humanFiledForCarol)).toBe("own-ticket");
+  });
+
+  it("still allows a stranger to review a human-filed ticket (#620)", () => {
+    expect(reviewerConflict(bobAgent, { beneficiaryUserId: null, reporterId: alice })).toBeNull();
+  });
+
   it("names the conflict on the error", () => {
     try {
       assertIndependentReviewer(aliceAgentB, filedByAliceAgent);
