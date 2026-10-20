@@ -5,9 +5,9 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   IDLE,
-  SHORTCUT_GROUPS,
   SHOW_SHORTCUTS_EVENT,
   shortcutFor,
+  shortcutGroups,
   stepRow,
   type SequenceState,
 } from "@/lib/keyboard-shortcuts";
@@ -28,7 +28,13 @@ function focusSearch(): boolean {
  * comes from the user's setting; the cheat sheet can still be opened from
  * Settings when they're off.
  */
-export function KeyboardShortcuts({ enabled }: { enabled: boolean }) {
+export function KeyboardShortcuts({
+  enabled,
+  dashboard = true,
+}: {
+  enabled: boolean;
+  dashboard?: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const [helpOpen, setHelpOpen] = useState(false);
@@ -74,7 +80,7 @@ export function KeyboardShortcuts({ enabled }: { enabled: boolean }) {
         return;
       }
 
-      const result = shortcutFor(event, target, sequence.current, Date.now());
+      const result = shortcutFor(event, target, sequence.current, Date.now(), { dashboard });
       sequence.current = result.state;
       if (!result.action) return;
 
@@ -106,6 +112,10 @@ export function KeyboardShortcuts({ enabled }: { enabled: boolean }) {
           event.preventDefault();
           router.push("/issues");
           break;
+        case "go-dashboard":
+          event.preventDefault();
+          router.push("/admin/dashboard");
+          break;
         case "go-notifications":
           event.preventDefault();
           router.push("/notifications");
@@ -118,7 +128,7 @@ export function KeyboardShortcuts({ enabled }: { enabled: boolean }) {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [enabled, router]);
+  }, [enabled, router, dashboard]);
 
   return (
     // <dialog> dismisses on Escape natively, so this has keyboard support
@@ -155,7 +165,7 @@ export function KeyboardShortcuts({ enabled }: { enabled: boolean }) {
             .
           </p>
         ) : null}
-        {SHORTCUT_GROUPS.map((group) => (
+        {shortcutGroups({ dashboard }).map((group) => (
           <section key={group.title} className="mt-4">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{group.title}</h3>
             <dl className="mt-2 space-y-1.5">
@@ -165,7 +175,9 @@ export function KeyboardShortcuts({ enabled }: { enabled: boolean }) {
                   <dd className="flex shrink-0 items-center gap-1">
                     {item.keys.map((k, i) => (
                       <span key={k} className="flex items-center gap-1">
-                        {i > 0 ? <span className="text-xs text-slate-500">then</span> : null}
+                        {i > 0 ? (
+                          <span className="text-xs text-slate-500">{item.joiner === "or" ? "or" : "then"}</span>
+                        ) : null}
                         <kbd className="min-w-[1.75rem] rounded border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-center font-mono text-xs text-slate-800 shadow-[inset_0_-1px_0_rgb(203_213_225)]">
                           {k}
                         </kbd>

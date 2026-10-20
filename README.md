@@ -32,6 +32,20 @@ https://ziki.dev
 
 Super-admin credentials come from `SUPER_ADMIN_*` env vars (see below). The seeder is idempotent and does not overwrite an existing super admin unless `SUPER_ADMIN_FORCE_UPDATE=true`.
 
+## Keyboard shortcuts
+
+Shortcuts are enabled by default and can be turned off in **Settings → Keyboard shortcuts**. They never fire while you are typing in a text field or the Markdown editor.
+
+| Shortcut | Action |
+| --- | --- |
+| `n` or `c` | Report a new issue |
+| `/` or `Ctrl/Cmd+K` | Search issues |
+| `g` then `i` | Go to issues |
+| `g` then `d` | Go to the admin dashboard (admins only) |
+| `g` then `n` | Go to notifications |
+| `j` / `k` | Next / previous issue in the list |
+| `?` | Show the shortcuts help dialog |
+
 ## Demo accounts (credentials seed)
 
 Local development only. Password sign-in is **off in production** (`AUTH_PASSWORD_LOGIN`), and the seeder refuses to load demo data when `NODE_ENV=production`.
