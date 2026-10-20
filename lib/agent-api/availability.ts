@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSuperAdmin } from "@/lib/auth-helpers";
 import type { AgentContext } from "@/lib/agents/require-agent";
@@ -7,10 +8,34 @@ import { demoteFromSilence } from "@/lib/agents/promotion";
 import { publish } from "@/lib/agent-api/events";
 import { notifyClaimOffered } from "@/lib/agent-notifications";
 import { offerNext, scheduleOfferExpiry } from "@/lib/agent-api/offer";
+import { isDeliveryOverdue } from "@/lib/claim-deadline";
 
 type OfferNextResult = NonNullable<Awaited<ReturnType<typeof offerNext>>>;
 
 const SILENCE_MS = 15 * 60 * 1000;
+
+/**
+ * Claims a sweep should inspect: silent ones (no heartbeat for 15 minutes) and
+ * overdue ones (#593) whose fix is not linked yet. Both are released and
+ * re-offered; the deadline does not depend on the heartbeat.
+ */
+function claimSweepWhere(now: Date, cutoff: Date, scope: { projectId?: string; tenantId?: string } = {}): Prisma.IssueClaimWhereInput {
+  return {
+    status: "active",
+    releasedAt: null,
+    bug: {
+      isDeleted: false,
+      status: "in_progress",
+      ...(scope.projectId ? { projectId: scope.projectId } : {}),
+      ...(scope.tenantId ? { tenantId: scope.tenantId } : {}),
+    },
+    OR: [
+      { lastHeartbeatAt: { lt: cutoff } },
+      { lastHeartbeatAt: null, claimedAt: { lt: cutoff } },
+      { deliverBy: { lt: now }, bug: { pullRequestUrl: null } },
+    ],
+  };
+}
 
 export async function heartbeatClaim(agent: AgentContext, projectId: string, bugId: string) {
   return prisma.$transaction(async (tx) => {
@@ -59,17 +84,22 @@ async function releaseClaimIfStale(
     await tx.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${claim.bugId} FOR NO KEY UPDATE`;
     // Re-read after locking: a heartbeat or another sweep may have won the race.
     const fresh = await tx.issueClaim.findFirst({ where: { id: claim.id, status: "active", releasedAt: null,
-      bug: { projectId, tenantId, isDeleted: false, status: "in_progress" } } });
-    const lastSeen = fresh?.lastHeartbeatAt ?? fresh?.claimedAt;
+      bug: { projectId, tenantId, isDeleted: false, status: "in_progress" } },
+      include: { bug: { select: { pullRequestUrl: true } } } });
     const now = new Date();
-    if (!fresh || !lastSeen || lastSeen.getTime() >= cutoff.getTime()) {
-      return { released: false, opened: false, offered: false, offer: null };
-    }
-    await tx.issueClaim.update({ where: { id: fresh.id }, data: { status: "released", releasedAt: now, releaseReason: "silence" } });
+    if (!fresh) return { released: false, opened: false, offered: false, offer: null };
+    const lastSeen = fresh.lastHeartbeatAt ?? fresh.claimedAt;
+    const silent = lastSeen != null && lastSeen.getTime() < cutoff.getTime();
+    // #593: an undelivered claim past its deadline goes back even while the
+    // agent keeps heartbeating.
+    const overdue = isDeliveryOverdue(fresh.deliverBy, now) && !fresh.bug?.pullRequestUrl;
+    if (!silent && !overdue) return { released: false, opened: false, offered: false, offer: null };
+    const reason = overdue ? "deadline" : "silence";
+    await tx.issueClaim.update({ where: { id: fresh.id }, data: { status: "released", releasedAt: now, releaseReason: reason } });
     await publish(tx, { tenantId, type: "claim.released", actorAgentId: fresh.agentId, bugId: fresh.bugId,
-      payload: { claimId: fresh.id, issueId: fresh.bugId, projectId, beneficiaryUserId: fresh.beneficiaryUserId, reason: "silence" } });
+      payload: { claimId: fresh.id, issueId: fresh.bugId, projectId, beneficiaryUserId: fresh.beneficiaryUserId, reason } });
     await audit({ agentId: fresh.agentId, tenantId } satisfies AuditAgent, "claim.released", fresh.bugId,
-      { claimId: fresh.id, reason: "silence", projectId }, { db: tx, bugId: fresh.bugId, actorUserId: options.actorUserId ?? null });
+      { claimId: fresh.id, reason, projectId }, { db: tx, bugId: fresh.bugId, actorUserId: options.actorUserId ?? null });
     await demoteFromSilence(fresh.agentId, tx, now);
     const otherClaim = await tx.issueClaim.count({ where: { bugId: fresh.bugId, releasedAt: null, id: { not: fresh.id } } });
     let reopened = false;
@@ -103,11 +133,12 @@ export async function releaseStaleClaims(projectId: string) {
   const admin = await requireSuperAdmin();
   const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, tenantId: true } });
   if (!project) throw new IssueApiError(404, "Project not found.");
-  const cutoff = new Date(Date.now() - SILENCE_MS);
-  const candidates = await prisma.issueClaim.findMany({ where: {
-    status: "active", releasedAt: null, bug: { projectId, tenantId: project.tenantId, isDeleted: false, status: "in_progress" },
-    OR: [{ lastHeartbeatAt: { lt: cutoff } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff } }],
-  }, select: { id: true, bugId: true } });
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - SILENCE_MS);
+  const candidates = await prisma.issueClaim.findMany({
+    where: claimSweepWhere(now, cutoff, { projectId, tenantId: project.tenantId }),
+    select: { id: true, bugId: true },
+  });
   let released = 0;
   for (const candidate of candidates) {
     const outcome = await releaseClaimIfStale(
@@ -127,12 +158,14 @@ export type ClaimSweepResult = { released: number; offered: number };
  * context, and actorUserId stays null (the scheduler acted, not a person).
  */
 export async function sweepStaleClaims(limit = 50): Promise<ClaimSweepResult> {
-  const cutoff = new Date(Date.now() - SILENCE_MS);
-  const candidates = await prisma.issueClaim.findMany({ where: {
-    status: "active", releasedAt: null, bug: { isDeleted: false },
-    OR: [{ lastHeartbeatAt: { lt: cutoff } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff } }],
-  }, select: { id: true, bugId: true, bug: { select: { tenantId: true, projectId: true } } },
-  orderBy: { createdAt: "asc" }, take: limit });
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - SILENCE_MS);
+  const candidates = await prisma.issueClaim.findMany({
+    where: claimSweepWhere(now, cutoff),
+    select: { id: true, bugId: true, bug: { select: { tenantId: true, projectId: true } } },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+  });
   let released = 0;
   let offered = 0;
   for (const candidate of candidates) {

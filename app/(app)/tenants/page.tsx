@@ -17,6 +17,9 @@ import { CreateTenantForm } from "./create-tenant-form";
 import { InviteCard } from "./invite-card";
 import { InviteLinkForm } from "./invite-link-form";
 import { ZeduOwnerForm } from "./zedu-owner-form";
+import { LocalTime } from "@/components/local-time";
+import { discoverableTenants, requestsForUser } from "@/lib/tenant-join-requests";
+import { JoinWorkspaceForm } from "./join-workspace-form";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Tenants" };
@@ -58,6 +61,10 @@ export default async function TenantsPage({
     (tenant) => tenant.archivedAt && tenant.role === "owner",
   );
   const hasTenants = activeTenants.length > 0;
+  const [discoverable, joinRequests] = await Promise.all([
+    !hasTenants && !inviteId ? discoverableTenants(prisma, user.id) : Promise.resolve([]),
+    requestsForUser(prisma, user.id),
+  ]);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -85,6 +92,51 @@ export default async function TenantsPage({
 
       {inviteId ? (
         <InviteCard invite={invite} accept={{ inviteId }} accountEmail={user.email} />
+      ) : null}
+
+      {joinRequests.length > 0 ? (
+        <section aria-labelledby="your-join-requests" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <h2 id="your-join-requests" className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6">
+            Your workspace requests
+          </h2>
+          <ul className="divide-y divide-slate-200">
+            {joinRequests.map((request) => (
+              <li key={request.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">{request.tenant.name}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">Requested <LocalTime date={request.requestedAt} /></p>
+                </div>
+                <Badge className={request.status === "approved" ? "bg-teal-50 text-teal-800 ring-1 ring-teal-200" : request.status === "rejected" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800 ring-1 ring-amber-200"}>
+                  {request.status === "pending" ? "Request Pending" : request.status[0]!.toUpperCase() + request.status.slice(1)}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {!hasTenants && !inviteId ? (
+        <section aria-labelledby="discover-workspaces" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <h2 id="discover-workspaces" className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6">
+            Discover workspaces
+          </h2>
+          {discoverable.length === 0 ? (
+            <p className="px-4 py-4 text-sm text-slate-600 sm:px-6">No workspaces are currently accepting join requests. You can still join with an invite or create a workspace.</p>
+          ) : (
+            <ul className="divide-y divide-slate-200">
+              {discoverable.map((tenant) => (
+                <li key={tenant.id} className="flex flex-wrap items-center gap-4 px-4 py-4 sm:px-6">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-900">{tenant.name}</p>
+                    {tenant.description ? <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{tenant.description}</p> : null}
+                    {tenant.memberships[0]?.user.name ? <p className="mt-1 text-xs text-slate-500">Owner: {tenant.memberships[0].user.name}</p> : null}
+                  </div>
+                  <JoinWorkspaceForm tenantId={tenant.id} pending={tenant.joinRequests[0]?.status === "pending"} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       ) : null}
 
       {hasTenants ? (

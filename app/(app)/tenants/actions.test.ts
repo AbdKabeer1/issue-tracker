@@ -28,7 +28,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth-helpers", () => ({ requireUser: mocks.requireUser }));
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
-vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
+vi.mock("next/cache", () => ({
+  revalidatePath: mocks.revalidatePath,
+  unstable_cache: vi.fn((fn) => fn),
+}));
 vi.mock("@/lib/project-context", () => ({ setActiveProjectCookie: mocks.setActiveProjectCookie }));
 vi.mock("@/lib/rate-limit", () => ({
   RATE_LIMIT_MESSAGE: "You're doing that too fast. Please wait a moment.",
