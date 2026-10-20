@@ -111,6 +111,7 @@ vi.mock("@/lib/prisma", () => ({
     attachment: { findMany: vi.fn().mockResolvedValue([]) },
     bugRevision: { findFirst: vi.fn().mockResolvedValue(null) },
     milestone: { findMany: vi.fn().mockResolvedValue([]) },
+    goal: { findMany: vi.fn().mockResolvedValue([]) },
     issueValidation: { findMany: vi.fn().mockResolvedValue([]) },
     issueClaim: { findMany: vi.fn().mockResolvedValue([]) },
     testVerdict: { findMany: vi.fn().mockResolvedValue([]) },
@@ -141,7 +142,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
     );
     // Find the header action bar container
     const headerActionBlockMatch = pageSourceFresh.match(
-      /<div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6 print:hidden">([\s\S]*?)<\/div>/,
+      /<div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-9 print:hidden">([\s\S]*?)<\/div>/,
     );
     expect(headerActionBlockMatch).toBeTruthy();
     const headerActionBlock = headerActionBlockMatch![1];
@@ -173,6 +174,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
       mockBugFindUnique.mockResolvedValue({
         id: "bug-1",
         number: 42,
+        tenantId: "tenant-zedu",
         title: "Test Bug",
         description: "Test Description",
         status: "open",
@@ -243,7 +245,9 @@ describe("BugDetailPage conditional user query (#349)", () => {
       });
 
       expect(mockUserFindMany).toHaveBeenCalledTimes(1);
+      // #502: only the issue's tenant can be mentioned or assigned.
       expect(mockUserFindMany).toHaveBeenCalledWith({
+        where: { memberships: { some: { tenantId: "tenant-zedu" } } },
         orderBy: { name: "asc" },
         select: { id: true, name: true, role: true, image: true },
       });
@@ -263,7 +267,9 @@ describe("BugDetailPage conditional user query (#349)", () => {
       });
 
       expect(mockUserFindMany).toHaveBeenCalledTimes(1);
+      // #502: only the issue's tenant can be mentioned or assigned.
       expect(mockUserFindMany).toHaveBeenCalledWith({
+        where: { memberships: { some: { tenantId: "tenant-zedu" } } },
         orderBy: { name: "asc" },
         select: { id: true, name: true, role: true, image: true },
       });

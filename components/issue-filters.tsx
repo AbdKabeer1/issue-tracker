@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { severities, statuses } from "@/lib/validations/issue";
 import { severityLabel, statusLabel } from "@/lib/labels";
+import { FINISHED_STATUS_FILTER } from "@/lib/issue-state";
 import {
   BUG_SORT_OPTIONS,
   bugSortLabels,
@@ -28,11 +29,13 @@ import {
   platformChoices,
   type PlatformOption,
 } from "@/lib/platform-filter";
+import { AREA_NONE, AREA_PARAM, parseProjectAreaFilter, type ProjectAreaOption } from "@/lib/project-area-filter";
 import { MILESTONE_NONE, MILESTONE_PARAM } from "@/lib/milestones";
 import {
   MIN_SUGGEST_LENGTH,
   type IssueSuggestion,
 } from "@/lib/issue-suggest";
+import { isTypingTarget } from "@/lib/keyboard-shortcuts";
 
 type TagType = { id: string; name: string; isActive?: boolean };
 
@@ -51,6 +54,7 @@ const FILTER_PARAMS = [
   "status",
   "severity",
   PLATFORM_PARAM,
+  AREA_PARAM,
   "sort",
   MILESTONE_PARAM,
 ];
@@ -74,11 +78,15 @@ export function IssueFilters({
   tagTypes = [],
   platforms = [],
   milestones = [],
+  areas = [],
+  shortcutsEnabled = true,
 }: {
   tagTypes?: TagType[];
   platforms?: PlatformOption[];
   /** #289: open milestones first; closed ones stay selectable for history. */
   milestones?: { id: string; title: string; isClosed: boolean }[];
+  areas?: ProjectAreaOption[];
+  shortcutsEnabled?: boolean;
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -116,6 +124,8 @@ export function IssueFilters({
   }, [filterOpen]);
 
   useEffect(() => {
+    if (!shortcutsEnabled) return;
+
     function handleKeyDown(event: KeyboardEvent) {
       const isCmdOrCtrlK =
         (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k";
@@ -130,14 +140,23 @@ export function IssueFilters({
 
       const target = event.target as HTMLElement | null;
       const isEditable =
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.tagName === "SELECT" ||
-          target.isContentEditable ||
-          Boolean(target.closest?.("[contenteditable='true']")));
+        isTypingTarget(target) ||
+        Boolean(
+          target &&
+            (target.tagName === "INPUT" ||
+              target.tagName === "TEXTAREA" ||
+              target.tagName === "SELECT" ||
+              target.isContentEditable ||
+              Boolean(target.closest?.("[contenteditable='true']"))),
+        );
+
+      const inDialog =
+        Boolean(target?.closest?.('dialog[open], [role="dialog"], [role="alertdialog"], [data-shortcuts-ignore]')) ||
+        Boolean(document.querySelector('dialog[open], [role="dialog"], [role="alertdialog"]'));
 
       if (isSlash && isEditable) return;
+      if (inDialog) return;
+      if (isCmdOrCtrlK && isEditable) return;
 
       event.preventDefault();
       inputRef.current?.focus();
@@ -146,7 +165,7 @@ export function IssueFilters({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [shortcutsEnabled]);
 
   function updateMany(changes: Record<string, string>, replace = false) {
     // Nothing changed: don't navigate (and don't reset the page, #132).
@@ -313,6 +332,7 @@ export function IssueFilters({
   const currentPlatform =
     parsePlatformFilter(params.get(PLATFORM_PARAM), platforms) ?? "";
   const platformOptions = platformChoices(platforms, currentPlatform || null);
+    const currentArea = parseProjectAreaFilter(params.get(AREA_PARAM), areas) ?? "";
   const currentMine = parseMineFilter(params.get("mine")) ?? "";
   const currentMilestone = params.get(MILESTONE_PARAM) ?? "";
 
@@ -322,6 +342,7 @@ export function IssueFilters({
     Boolean(currentMine),
     selectedNames.length > 0,
     Boolean(currentPlatform),
+      Boolean(currentArea),
     Boolean(currentMilestone),
     Boolean(params.get("sort")),
   ].filter(Boolean).length;
@@ -367,7 +388,11 @@ export function IssueFilters({
               aria-activedescendant={active >= 0 && suggestions[active] ? `${listId}-${active}` : undefined}
               autoComplete="off"
               value={text}
-              placeholder="Search, or type a tag like Design (/)"
+              placeholder={
+                shortcutsEnabled
+                  ? "Search, or type a tag like Design (/)"
+                  : "Search, or type a tag like Design"
+              }
               className="w-full rounded-lg border border-slate-300 pl-3 pr-8 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
               onChange={(event) => {
                 setText(event.target.value);
@@ -404,7 +429,7 @@ export function IssueFilters({
                 applyQueryNow();
               }}
             />
-            {!text ? (
+            {!text && shortcutsEnabled ? (
               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
                 <kbd className="hidden sm:inline-flex items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 select-none">
                   /
@@ -572,6 +597,9 @@ export function IssueFilters({
                         {statusLabel[status]}
                       </option>
                     ))}
+                    {/* The stat grid's "Closed" tile counts resolved + closed together
+                        (#685); the same aggregate is selectable here. */}
+                    <option value={FINISHED_STATUS_FILTER}>Closed (incl. resolved)</option>
                   </select>
                 </div>
 
@@ -644,6 +672,25 @@ export function IssueFilters({
                         </option>
                       ))}
                       <option value={PLATFORM_NONE}>No platform</option>
+                    </select>
+                  </div>
+                ) : null}
+
+                {/* Project area */}
+                {areas.length > 0 ? (
+                  <div>
+                    <label htmlFor="area" className="mb-1 block text-xs font-medium text-slate-600">
+                      Area
+                    </label>
+                    <select
+                      id="area"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      value={currentArea}
+                      onChange={(event) => update(AREA_PARAM, event.target.value)}
+                    >
+                      <option value="">All</option>
+                      {areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
+                      <option value={AREA_NONE}>No area</option>
                     </select>
                   </div>
                 ) : null}
@@ -727,6 +774,7 @@ export function IssueFilters({
             </li>
           ) : null}
         </ul>
+
       ) : null}
 
       {/* Active Filter Chips */}
@@ -751,7 +799,10 @@ export function IssueFilters({
           ) : null}
           {params.get("status") ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-emerald-900">
-              Status: {statusLabel[params.get("status") as keyof typeof statusLabel] ?? params.get("status")}
+              Status:{" "}
+              {params.get("status") === FINISHED_STATUS_FILTER
+                ? "Closed (incl. resolved)"
+                : statusLabel[params.get("status") as keyof typeof statusLabel] ?? params.get("status")}
               <button
                 type="button"
                 onClick={() => update("status", "")}
@@ -799,6 +850,19 @@ export function IssueFilters({
                 onClick={() => update(PLATFORM_PARAM, "")}
                 aria-label="Remove platform filter"
                 className="ml-0.5 rounded-full p-0.5 text-sky-700 hover:bg-sky-200/60"
+              >
+                ✕
+              </button>
+            </span>
+          ) : null}
+          {currentArea ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-teal-900">
+              Area: {currentArea === AREA_NONE ? "No area" : areas.find((area) => area.id === currentArea)?.name ?? currentArea}
+              <button
+                type="button"
+                onClick={() => update(AREA_PARAM, "")}
+                aria-label="Remove area filter"
+                className="ml-0.5 rounded-full p-0.5 text-teal-700 hover:bg-teal-200/60"
               >
                 ✕
               </button>

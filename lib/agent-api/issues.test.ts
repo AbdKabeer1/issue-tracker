@@ -2,16 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const db = vi.hoisted(() => ({
-  agentApiKey: { findUnique: vi.fn() }, agentAuditEvent: { create: vi.fn() },
+  agentApiKey: { findUnique: vi.fn() }, agentAuditEvent: { create: vi.fn(), findMany: vi.fn() },
   agentEvent: { create: vi.fn() },
   webhookSubscription: { findMany: vi.fn() }, webhookDelivery: { createMany: vi.fn() },
   project: { findFirst: vi.fn() }, category: { findMany: vi.fn(), findFirst: vi.fn() },
+  projectArea: { findMany: vi.fn(), findFirst: vi.fn() },
   bug: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   comment: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
   membership: { findUnique: vi.fn() }, issueWatch: { upsert: vi.fn() }, bugActivity: { create: vi.fn() },
   idempotencyKey: { findUnique: vi.fn(), deleteMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   issueType: { findUnique: vi.fn() }, user: { findMany: vi.fn() }, $queryRaw: vi.fn(), $transaction: vi.fn(),
   attachment: { updateMany: vi.fn() },
+  bugRevision: { findMany: vi.fn() },
+  issueValidation: { findMany: vi.fn() },
 }));
 const budget = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
@@ -66,7 +69,12 @@ beforeEach(() => {
   db.project.findFirst.mockResolvedValue({ id: "project-a" });
   db.category.findMany.mockResolvedValue([{ id: "windows", name: "Windows" }]);
   db.category.findFirst.mockResolvedValue({ id: "windows" });
+  db.projectArea.findMany.mockResolvedValue([{ id: "area-ui", name: "Frontend" }]);
+  db.projectArea.findFirst.mockResolvedValue({ id: "area-ui" });
   db.bug.findMany.mockResolvedValue([issue]);
+  db.bugRevision.findMany.mockResolvedValue([]);
+  db.issueValidation.findMany.mockResolvedValue([]);
+  db.agentAuditEvent.findMany.mockResolvedValue([]);
   db.bug.findFirst.mockResolvedValue(issue);
   db.bug.create.mockResolvedValue({ id: issue.id });
   db.membership.findUnique.mockResolvedValue({ userId: "beneficiary-a" });
@@ -112,12 +120,12 @@ describe("agent issue API authentication", () => {
 
   it("uses the shared read/write budgets and preserves Retry-After", async () => {
     await list(request());
-    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false }, "read");
+    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false, burstUntil: null }, "read");
     budget.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 12 });
     const response = await create(request("POST", validBody));
     expect(response.status).toBe(429);
     expect(response.headers.get("retry-after")).toBe("12");
-    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false }, "write");
+    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false, burstUntil: null }, "write");
     expect(db.bug.create).not.toHaveBeenCalled();
   });
 
@@ -129,6 +137,9 @@ describe("agent issue API authentication", () => {
     expect(ok.headers.get("ratelimit-remaining")).toBe("412");
     expect(ok.headers.get("ratelimit-reset")).toBe("1800");
     expect(ok.headers.get("ratelimit-policy")).toBe("600;w=3600");
+    expect(ok.headers.get("x-ratelimit-limit")).toBe("600");
+    expect(ok.headers.get("x-ratelimit-remaining")).toBe("412");
+    expect(ok.headers.get("x-ratelimit-reset")).toBe("1800");
 
     budget.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 90, kind: "write", limit: 30, windowSeconds: 3600, remaining: 0, resetSeconds: 90 });
     const limited = await create(request("POST", validBody));
@@ -136,6 +147,18 @@ describe("agent issue API authentication", () => {
     expect(limited.headers.get("ratelimit-budget")).toBe("write");
     expect(limited.headers.get("ratelimit-remaining")).toBe("0");
     expect(await limited.json()).toMatchObject({ budget: "write", limit: 30, resetSeconds: 90 });
+    expect(limited.headers.get("x-ratelimit-limit")).toBe("30");
+    expect(limited.headers.get("x-ratelimit-remaining")).toBe("0");
+    expect(limited.headers.get("x-ratelimit-reset")).toBe("90");
+  });
+
+  it("keeps the quota headers when a charged request fails validation (#596)", async () => {
+    budget.mockResolvedValueOnce({ allowed: true, kind: "write", limit: 30, windowSeconds: 3600, remaining: 29, resetSeconds: 3000 });
+    const invalid = await create(request("POST", {}));
+    expect([400, 422]).toContain(invalid.status);
+    expect(invalid.headers.get("x-ratelimit-limit")).toBe("30");
+    expect(invalid.headers.get("x-ratelimit-remaining")).toBe("29");
+    expect(invalid.headers.get("x-ratelimit-reset")).toBe("3000");
   });
 
   it("retires direct claims with 410 and without spending the write budget (#554)", async () => {
@@ -168,6 +191,74 @@ describe("agent issue reads", () => {
     expect(db.bug.findMany.mock.lastCall?.[0].where).not.toHaveProperty("categoryId");
   });
 
+  it("keeps only open issues in the requested intake stage, then pages them", async () => {
+    const open = {
+      id: "issue-a",
+      status: "open",
+      voteCount: 0,
+      beneficiaryUserId: "other",
+      reporterId: "other",
+      createdByAgentId: null,
+      createdByAgent: null,
+      claims: [],
+    };
+    db.bug.findMany.mockResolvedValueOnce([open]).mockResolvedValueOnce([issue]);
+    const response = await list(request("GET", undefined, "?projectId=project-a&stage=reported&limit=1"));
+    expect(response.status).toBe(200);
+    expect(db.bug.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ status: "open", id: { in: ["issue-a"] } }),
+      take: 2,
+    }));
+
+    db.bug.findMany.mockClear();
+    db.bug.findMany.mockResolvedValueOnce([{ ...open, voteCount: 1 }]);
+    const confirmed = await list(request("GET", undefined, "?projectId=project-a&stage=confirmed"));
+    expect(confirmed.status).toBe(200);
+    expect(await confirmed.json()).toEqual({ items: [], nextCursor: null });
+    expect(db.bug.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a confirmed issue with three upvotes as ready", async () => {
+    const open = {
+      id: "issue-a",
+      status: "open",
+      voteCount: 3,
+      beneficiaryUserId: "other",
+      reporterId: "other",
+      createdByAgentId: null,
+      createdByAgent: null,
+      claims: [],
+    };
+    db.bug.findMany.mockResolvedValueOnce([open]).mockResolvedValueOnce([issue]);
+    db.issueValidation.findMany.mockResolvedValueOnce([
+      { id: "v1", bugId: "issue-a", createdAt: new Date("2026-10-20T00:00:00Z"), agentId: "r1", agent: { ownerUserId: "rev-1" } },
+      { id: "v2", bugId: "issue-a", createdAt: new Date("2026-10-20T00:00:00Z"), agentId: "r2", agent: { ownerUserId: "rev-2" } },
+    ]);
+    const response = await list(request("GET", undefined, "?projectId=project-a&stage=ready"));
+    expect(response.status).toBe(200);
+    expect(db.bug.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: { in: ["issue-a"] } }),
+    }));
+  });
+
+  it("returns an empty page when stage is combined with a status that is not open", async () => {
+    const response = await list(request("GET", undefined, "?projectId=project-a&status=closed&stage=reported"));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ items: [], nextCursor: null });
+    expect(db.bug.findMany).not.toHaveBeenCalled();
+  });
+
+  it("filters only by areas belonging to the requested project", async () => {
+    await list(request("GET", undefined, "?projectId=project-a&area=area-ui"));
+    expect(db.projectArea.findMany).toHaveBeenCalledWith({
+      where: { projectId: "project-a" },
+      select: { id: true, name: true },
+    });
+    expect(db.bug.findMany.mock.lastCall?.[0].where).toMatchObject({ areaId: "area-ui" });
+    await list(request("GET", undefined, "?projectId=project-a&area=none"));
+    expect(db.bug.findMany.mock.lastCall?.[0].where).toMatchObject({ areaId: null });
+  });
+
   it("rejects absent/foreign projects, invalid enums, and malformed cursors", async () => {
     // #563: a missing projectId names the parameter instead of a raw validation dump.
     const missing = await list(request("GET", undefined, ""));
@@ -178,6 +269,7 @@ describe("agent issue reads", () => {
     expect((await list(request())).status).toBe(404);
     expect(db.project.findFirst).toHaveBeenCalledWith({ where: { id: "project-a", tenantId: "tenant-a" }, select: { id: true } });
     expect((await list(request("GET", undefined, "?projectId=project-a&status=unknown"))).status).toBe(422);
+    expect((await list(request("GET", undefined, "?projectId=project-a&stage=queued"))).status).toBe(422);
     expect((await list(request("GET", undefined, "?projectId=project-a&cursor=bad"))).status).toBe(400);
     expect(db.bug.findMany).not.toHaveBeenCalled();
   });
@@ -227,24 +319,31 @@ describe("agent comment paging (#604)", () => {
     expect((await comments(request("GET", undefined, "", false), context)).status).toBe(401);
     expect(db.comment.findMany).not.toHaveBeenCalled();
     await comments(request(), context);
-    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false }, "read");
+    expect(budget).toHaveBeenLastCalledWith({ id: "agent-a", burst: false, burstUntil: null }, "read");
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "comments.list" }) }));
   });
 });
 
 describe("agent issue creation via the real shared create policy", () => {
-  it("stores the named person and agent and ignores client severity", async () => {
-    const response = await create(request("POST", { ...validBody, beneficiaryUserId: "beneficiary-a", severity: "critical" }));
+  it("stores the owner as reporter and the agent as author, and ignores client severity", async () => {
+    const response = await create(request("POST", { ...validBody, areaId: "area-ui", severity: "critical" }));
     expect(response.status).toBe(201);
     expect(db.bug.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
-      tenantId: "tenant-a", projectId: "project-a", reporterId: "beneficiary-a", beneficiaryUserId: "beneficiary-a", createdByAgentId: "agent-a", severity: "medium", status: "open",
+      tenantId: "tenant-a", projectId: "project-a", reporterId: "owner-a", beneficiaryUserId: "owner-a", createdByAgentId: "agent-a", severity: "medium", status: "open", areaId: "area-ui",
     }) }));
     expect(db.idempotencyKey.update).toHaveBeenCalledWith({ where: { id: "held-key" }, data: { bugId: issue.id } });
     expect(db.agentEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       tenantId: "tenant-a", type: "issue.created", actorAgentId: "agent-a", bugId: issue.id,
-      payload: { issueId: issue.id, projectId: "project-a", beneficiaryUserId: "beneficiary-a" },
+      payload: { issueId: issue.id, projectId: "project-a", beneficiaryUserId: "owner-a" },
     }) }));
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "issue.created", bugId: issue.id }) }));
+  });
+
+  it("refuses a body that names a beneficiary (#494)", async () => {
+    const response = await create(request("POST", { ...validBody, beneficiaryUserId: "beneficiary-a" }));
+    expect(response.status).toBe(422);
+    expect(db.bug.create).not.toHaveBeenCalled();
+    expect(db.idempotencyKey.update).not.toHaveBeenCalled();
   });
 
   it("defaults the beneficiary to the owner, including when severity is invalid", async () => {
@@ -253,7 +352,7 @@ describe("agent issue creation via the real shared create policy", () => {
     expect(db.bug.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ beneficiaryUserId: "owner-a", severity: "medium" }) }));
   });
 
-  it("rejects a nonmember beneficiary and an inactive platform", async () => {
+  it("rejects a reporter outside the tenant and an inactive platform", async () => {
     db.membership.findUnique.mockResolvedValueOnce(null);
     expect((await create(request("POST", validBody))).status).toBe(422);
     db.category.findFirst.mockResolvedValueOnce(null);

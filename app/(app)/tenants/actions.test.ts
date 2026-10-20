@@ -214,6 +214,24 @@ describe("createTenantAction (#444)", () => {
     expect(mocks.createTenant).not.toHaveBeenCalled();
   });
 
+  it("passes the duplicate-name warning back, and the confirmation on (#537)", async () => {
+    mocks.createTenant.mockResolvedValueOnce({
+      ok: false,
+      field: "name",
+      duplicateName: "Acme",
+      error: "You're already in a tenant called \"Acme\" (acme).",
+    });
+    expect(await createTenantAction(undefined, form({ name: "Acme" }))).toMatchObject({
+      field: "name",
+      duplicateName: "Acme",
+      fieldErrors: { name: expect.stringContaining("already in a tenant") },
+    });
+
+    mocks.createTenant.mockResolvedValueOnce({ ok: true, tenant: ACME, projectId: "project-acme" });
+    await redirectedTo(() => createTenantAction(undefined, form({ name: "Acme", confirmDuplicate: "Acme" })));
+    expect(mocks.createTenant).toHaveBeenLastCalledWith({}, ADA, { name: "Acme", projectName: "", confirmDuplicate: "Acme" });
+  });
+
   it("stops someone creating tenants too fast", async () => {
     mocks.consumeRateLimit.mockResolvedValue({ allowed: false, retryAfterMs: 1000 });
     expect(await createTenantAction(undefined, form({ name: "Acme" }))).toEqual({

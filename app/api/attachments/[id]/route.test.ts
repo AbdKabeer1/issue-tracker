@@ -128,6 +128,7 @@ describe("GET /api/attachments/[id]", () => {
       data: Buffer.from("png-bytes"),
       bug: { isDeleted: true, tenantId: "tenant-ziki" },
     });
+    membershipFindUnique.mockResolvedValue({ userId: "admin-1" });
     const res = await makeRequest("att-2");
     expect(res.status).toBe(200);
   });
@@ -140,8 +141,9 @@ describe("GET /api/attachments/[id]", () => {
       contentType: "image/webp",
       size: 100,
       data: Buffer.from("webp-bytes"),
-      bug: { isDeleted: false },
+      bug: { isDeleted: false, tenantId: "tenant-ziki" },
     });
+    membershipFindUnique.mockResolvedValue({ userId: "user-3" });
     const res = await makeRequest("att-3");
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("image/webp");

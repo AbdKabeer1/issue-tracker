@@ -51,6 +51,8 @@ export type TenantFormResult = {
   error?: string;
   field?: string;
   fieldErrors?: Record<string, string>;
+  /** #537: the name to confirm before a second tenant with it is created. */
+  duplicateName?: string;
 };
 
 const discoverySettingsSchema = z.object({
@@ -204,8 +206,15 @@ export async function createTenantAction(
     return { error: RATE_LIMIT_MESSAGE };
   }
 
-  const result = await createTenant(prisma, user, input);
-  if (!result.ok) return fieldError(result.field ?? "name", result.error);
+  const confirmDuplicate = formData.get("confirmDuplicate");
+  const result = await createTenant(prisma, user, {
+    ...input,
+    ...(typeof confirmDuplicate === "string" && confirmDuplicate ? { confirmDuplicate } : {}),
+  });
+  if (!result.ok) {
+    const error = fieldError(result.field ?? "name", result.error);
+    return result.duplicateName ? { ...error, duplicateName: result.duplicateName } : error;
+  }
   return enterTenant(result.tenant.id, result.projectId);
 }
 

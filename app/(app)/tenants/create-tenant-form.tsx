@@ -38,6 +38,10 @@ export function CreateTenantForm({ nameMax }: { nameMax: number }) {
   }, [result, show, clear]);
 
   const formError = result?.error && !result.field ? result.error : null;
+  // #537: the server warned about a duplicate name. Submitting the same name
+  // again confirms it; changing the name asks again.
+  const confirmingDuplicate =
+    Boolean(result?.duplicateName) && result?.duplicateName === name.replace(/\s+/g, " ").trim();
 
   return (
     <form ref={formRef} action={action} className="mt-4 space-y-4" noValidate>
@@ -89,9 +93,10 @@ export function CreateTenantForm({ nameMax }: { nameMax: number }) {
           {formError}
         </p>
       ) : null}
+      {confirmingDuplicate ? <input type="hidden" name="confirmDuplicate" value={result?.duplicateName} /> : null}
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={pending}>
-          {pending ? "Creating…" : "Create tenant"}
+          {pending ? "Creating…" : confirmingDuplicate ? "Create anyway" : "Create tenant"}
         </Button>
         <p className="text-xs text-slate-500">You&apos;ll be its owner.</p>
       </div>

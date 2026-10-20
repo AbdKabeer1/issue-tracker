@@ -6,9 +6,11 @@ import { agentErrorResponse, assertKeyProject, requireAgent, type AgentContext }
 import { requireLevel } from "@/lib/agents/levels";
 import { audit } from "@/lib/agents/audit";
 import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/rate-budget";
-import { withAgentBudgetHeaders } from "@/lib/agents/rate-budget-headers";
+import { withAgentBudgetHeaders, type AgentBudgetQuota } from "@/lib/agents/rate-budget-headers";
 import { createBugSchema, commentSchema, statusSchema, severitySchema } from "@/lib/validations/issue";
 import { parsePlatformFilter, platformFilterWhere } from "@/lib/platform-filter";
+import { parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
+import { openIssueStages, type IssueStage } from "@/lib/issue-stage";
 import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, hashCreateRequest, pageSize, toPage, type IssueCursor } from "@/lib/agent-api/create-policy";
 import { createdSummary, commentedSummary, commentPreview } from "@/lib/activity-log";
 import { extractMentionedUserIds, normalizeMentions } from "@/lib/mentions";
@@ -25,11 +27,14 @@ export class IssueApiError extends Error {
 }
 
 const idSchema = z.string().trim().min(1).max(191);
+const stageSchema = z.enum(["reported", "confirmed", "ready"]);
 /** Files uploaded with POST /api/v1/attachments, linked on save (#645). */
 const attachmentIdsSchema = z.array(idSchema).max(MAX_ATTACHMENTS_PER_ITEM).optional();
-const createSchema = createBugSchema.pick({ title: true, description: true, categoryId: true, proofLinks: true })
+export const createSchema = createBugSchema.pick({ title: true, description: true, categoryId: true, areaId: true, proofLinks: true })
   .extend({
-    projectId: idSchema.optional(), beneficiaryUserId: idSchema.optional(),
+    // #494: no beneficiaryUserId — an agent can't file issues in someone
+    // else's name. The reporter is always the agent's owner.
+    projectId: idSchema.optional(),
     typeId: z.unknown().optional(), severity: z.unknown().optional(), acknowledgeSimilar: z.unknown().optional(),
     attachmentIds: attachmentIdsSchema,
   }).strict();
@@ -43,6 +48,7 @@ export async function agentIssueRequest(
 ): Promise<Response> {
   let agent: AgentContext | undefined;
   let response: Response | undefined;
+  let quota: AgentBudgetQuota | undefined;
   try {
     agent = await requireAgent(request);
     requireLevel(agent, level);
@@ -50,10 +56,12 @@ export async function agentIssueRequest(
       // Retired or non-working routes must not spend the caller's budget (#554).
       response = await run(agent);
     } else {
-      const budget = await consumeAgentBudget({ id: agent.agentId, burst: agent.burst }, level === "observer" ? "read" : "write");
+      const budget = await consumeAgentBudget(
+        { id: agent.agentId, burst: agent.burst, burstUntil: agent.burstUntil ?? null },
+        level === "observer" ? "read" : "write",
+      );
+      quota = budget;
       response = budget.allowed ? await run(agent) : agentBudgetExceededResponse(budget.retryAfterSeconds, budget);
-      // #646: every charged response says what's left of the budget it used.
-      if (budget.allowed) response = withAgentBudgetHeaders(response, budget);
     }
   } catch (error) {
     if (error instanceof IssueApiError) response = NextResponse.json(error.body ? { error: error.message, ...error.body } : { error: error.message }, { status: error.status });
@@ -76,6 +84,9 @@ export async function agentIssueRequest(
       }
     }
   }
+  // #646/#596: every charged response — success, validation failure, or a
+  // domain error thrown after the charge — reports the same quota.
+  if (quota) response = withAgentBudgetHeaders(response, quota);
   response.headers.set("Cache-Control", "private, no-store");
   return response;
 }
@@ -107,29 +118,46 @@ type Scope = { tenantId: string; projectId: string };
 const issueSelect = {
   id: true, number: true, title: true, description: true, status: true, severity: true,
   categoryId: true, typeId: true, reporterId: true, assigneeId: true, beneficiaryUserId: true,
-  createdByAgentId: true, projectId: true, createdAt: true, updatedAt: true, proofLinks: true,
+  createdByAgentId: true, projectId: true, areaId: true, createdAt: true, updatedAt: true, proofLinks: true,
+  area: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.BugSelect;
 
 export async function listAgentIssues(scope: Scope, params: URLSearchParams) {
   const status = params.get("status");
   const severity = params.get("severity");
   const assignee = params.get("assignee");
+  const stageRaw = params.get("stage");
+  const stage: IssueStage | null = stageRaw ? stageSchema.parse(stageRaw) : null;
   const platforms = await prisma.category.findMany({
     where: { tenantId: scope.tenantId },
     select: { id: true, name: true },
   });
+  const requestedArea = params.get("area");
+  const areas = requestedArea
+    ? await prisma.projectArea.findMany({ where: { projectId: scope.projectId }, select: { id: true, name: true } })
+    : [];
   const cursorRaw = params.get("cursor");
   const cursor = decodeCursor(cursorRaw);
   if (cursorRaw !== null && !cursor) throw new IssueApiError(400, "Invalid cursor.");
   const limit = pageSize(params.get("limit"));
-  const where: Prisma.BugWhereInput = {
+  const filtered: Prisma.BugWhereInput = {
     ...scope, isDeleted: false,
     ...(status ? { status: statusSchema.parse(status) } : {}),
     ...(severity ? { severity: severitySchema.parse(severity) } : {}),
     ...(assignee ? { assigneeId: assignee === "none" ? null : idSchema.parse(assignee) } : {}),
     ...platformFilterWhere(parsePlatformFilter(params.get("platform"), platforms)),
-    ...cursorWhere(cursor),
+    ...projectAreaFilterWhere(parseProjectAreaFilter(requestedArea, areas)),
   };
+  if (stage) {
+    // A stage only exists on an open issue. Any other status is an empty page.
+    if (filtered.status && filtered.status !== "open") return { items: [], nextCursor: null };
+    filtered.status = "open";
+    const stages = await openIssueStages(prisma, filtered);
+    const ids = [...stages.entries()].filter(([, value]) => value === stage).map(([id]) => id);
+    if (ids.length === 0) return { items: [], nextCursor: null };
+    filtered.id = { in: ids };
+  }
+  const where: Prisma.BugWhereInput = { ...filtered, ...cursorWhere(cursor) };
   const rows = await prisma.bug.findMany({ where, orderBy: cursorOrderBy(), take: limit + 1, select: issueSelect });
   return toPage(rows, limit);
 }
@@ -209,7 +237,9 @@ async function normalizeTenantMentions(db: Prisma.TransactionClient, tenantId: s
 export async function createAgentIssue(agent: AgentContext, request: NextRequest) {
   const input = createSchema.parse(await issueJson(request));
   const scope = await issueProject(agent, request.nextUrl.searchParams, input.projectId);
-  const beneficiaryUserId = input.beneficiaryUserId ?? agent.ownerId;
+  // #494: always the agent's owner. The create schema no longer accepts a
+  // beneficiary, so no request can put words in another person's mouth.
+  const beneficiaryUserId = agent.ownerId;
   const requestHash = hashCreateRequest({
     projectId: scope.projectId,
     beneficiaryUserId,
@@ -222,6 +252,7 @@ export async function createAgentIssue(agent: AgentContext, request: NextRequest
     acknowledgeSimilar: input.acknowledgeSimilar ?? null,
     // Only when sent, so keys stored before #645 still replay.
     ...(input.attachmentIds?.length ? { attachmentIds: [...new Set(input.attachmentIds)].sort() } : {}),
+    ...(input.areaId ? { areaId: input.areaId } : {}),
   });
   const result = await createIssueWithPolicy({
     agent, projectId: scope.projectId, idempotencyKey: request.headers.get("Idempotency-Key"),
@@ -240,10 +271,18 @@ export async function createAgentIssue(agent: AgentContext, request: NextRequest
         });
         if (!category) throw new IssueApiError(422, "Platform not found or inactive.");
       }
+      const areaId = input.areaId || null;
+      if (areaId) {
+        const area = await tx.projectArea.findFirst({
+          where: { id: areaId, projectId: scope.projectId },
+          select: { id: true },
+        });
+        if (!area) throw new IssueApiError(422, "Area not found in this project.");
+      }
       const description = await normalizeTenantMentions(tx, scope.tenantId, input.description);
       const issue = await tx.bug.create({
         data: {
-          ...scope, ...policy, title: input.title, description, status: "open", categoryId,
+          ...scope, ...policy, title: input.title, description, status: "open", categoryId, areaId,
           reporterId: beneficiaryUserId, beneficiaryUserId, createdByAgentId: agent.agentId,
           proofLinks: input.proofLinks,
           watches: { create: { userId: beneficiaryUserId } },

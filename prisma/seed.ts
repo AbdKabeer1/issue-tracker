@@ -1,9 +1,26 @@
-import { PrismaClient, Severity, Status } from "@prisma/client";
+import { Prisma, PrismaClient, Severity, Status } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
 const MIN_SUPER_ADMIN_PASSWORD_LENGTH = 12;
+
+async function ensureZeduOwnerMembership(
+  userId: string,
+  tx: Prisma.TransactionClient,
+) {
+  const tenant = await tx.tenant.upsert({
+    where: { slug: "zedu" },
+    update: {},
+    create: { slug: "zedu", name: "Ziki" },
+  });
+
+  await tx.membership.upsert({
+    where: { tenantId_userId: { tenantId: tenant.id, userId } },
+    update: { role: "owner" },
+    create: { tenantId: tenant.id, userId, role: "owner" },
+  });
+}
 
 /**
  * Idempotent super-admin provisioning from env.
@@ -34,6 +51,7 @@ async function ensureSuperAdmin() {
 
   if (existing) {
     if (existing.role === "super_admin" && !forceUpdate) {
+      await prisma.$transaction((tx) => ensureZeduOwnerMembership(existing.id, tx));
       console.log(`Super admin already exists (${email}); leaving unchanged.`);
       return;
     }
@@ -46,27 +64,33 @@ async function ensureSuperAdmin() {
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
-    await prisma.user.update({
-      where: { id: existing.id },
-      data: {
-        role: "super_admin",
-        passwordHash,
-        name,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: existing.id },
+        data: {
+          role: "super_admin",
+          passwordHash,
+          name,
+        },
+      });
+      await ensureZeduOwnerMembership(existing.id, tx);
     });
     console.log(`Updated super admin (${email}).`);
     return;
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
-  await prisma.user.create({
-    data: {
-      name,
-      email,
-      passwordHash,
-      role: "super_admin",
-      emailVerified: new Date(),
-    },
+  await prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        name,
+        email,
+        passwordHash,
+        role: "super_admin",
+        emailVerified: new Date(),
+      },
+    });
+    await ensureZeduOwnerMembership(user.id, tx);
   });
   console.log(`Created super admin (${email}).`);
 }
@@ -261,7 +285,12 @@ async function ensureDefaultCategories() {
 }
 
 async function ensureDefaultTypes() {
-  const count = await prisma.issueType.count();
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "zedu" }, select: { id: true } });
+  if (!tenant) {
+    console.log("Skipping default issue types: the Zedu organization is missing.");
+    return;
+  }
+  const count = await prisma.issueType.count({ where: { tenantId: tenant.id } });
   if (count > 0) {
     return;
   }
@@ -275,9 +304,10 @@ async function ensureDefaultTypes() {
 
   for (const item of defaults) {
     await prisma.issueType.upsert({
-      where: { name: item.name },
+      where: { tenantId_name: { tenantId: tenant.id, name: item.name } },
       update: {},
       create: {
+        tenantId: tenant.id,
         name: item.name,
         description: item.description,
         isActive: true,

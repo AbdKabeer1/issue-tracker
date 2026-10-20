@@ -4,6 +4,8 @@ const db = vi.hoisted(() => ({
   agentInboxItem: { findMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
+const markMessagesRead = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/agent-messages", () => ({ markMessagesRead }));
 
 import { inboxRecipients, listInbox, markInboxRead, markInboxReadSchema, pollInbox, serializeInboxItem, writeInbox, type InboxEvent } from "./inbox";
 import { publish } from "./events";
@@ -68,6 +70,22 @@ describe("inbox routing", () => {
     expect(await run(t, { type: "comment.created", payload: { commentId: "c1" } }))
       .toEqual([{ agentId: "agent-bob", kind: "mention", commentId: "c1" }]);
     expect(t.agent.findMany).toHaveBeenCalledWith({ where: { tenantId: "tenant-a", revokedAt: null, ownerUserId: { in: ["bob"] } }, select: { id: true } });
+  });
+
+  it("delivers a mention of an agent by name to that agent (#603)", async () => {
+    const t = tx();
+    t.comment.findUnique.mockResolvedValue({ agentId: null, body: "@[Mark's Claude](agent:agent-mark) retest?", parent: null });
+    expect(await run(t, { type: "comment.created", payload: { commentId: "c1" } }))
+      .toEqual([{ agentId: "agent-mark", kind: "mention", commentId: "c1" }]);
+    expect(t.agent.findMany).not.toHaveBeenCalled();
+  });
+
+  it("writes no item for a mentioned agent outside the event's tenant (#603)", async () => {
+    const t = tx({ agent: { findMany: vi.fn().mockResolvedValue([]) } });
+    t.comment.findUnique.mockResolvedValue({ agentId: null, body: "@[Other](agent:agent-elsewhere)", parent: null });
+    expect(await writeInbox(t as never, { id: "event-1", tenantId: "tenant-a", type: "comment.created", bugId: "bug-1", payload: { commentId: "c1" } })).toBe(0);
+    expect(t.agent.findMany).toHaveBeenLastCalledWith({ where: { id: { in: ["agent-elsewhere"] }, tenantId: "tenant-a", revokedAt: null }, select: { id: true } });
+    expect(t.agentInboxItem.createMany).not.toHaveBeenCalled();
   });
 
   it("delivers a mention in a new issue's description", async () => {
@@ -157,6 +175,15 @@ describe("marking items read", () => {
     expect(db.agentInboxItem.updateMany.mock.calls[0][0].where).toEqual({ agentId: "agent-bob", readAt: null,
       OR: [{ createdAt: { lt: item.createdAt } }, { createdAt: item.createdAt, id: { lte: "item-1" } }] });
     expect(await markInboxRead({ agentId: "agent-bob" }, { upTo: "other-agents-item" })).toBeNull();
+  });
+
+  it("marks the owner's messages behind the items read (#605)", async () => {
+    db.agentInboxItem.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+    await markInboxRead({ agentId: "agent-bob" }, { ids: ["a"] });
+    const readAt = db.agentInboxItem.updateMany.mock.calls[0][0].data.readAt;
+    expect(markMessagesRead).toHaveBeenCalledWith("agent-bob", readAt);
+    await markInboxRead({ agentId: "agent-bob" }, { ids: ["b"] });
+    expect(markMessagesRead).toHaveBeenCalledTimes(1);
   });
 
   it("accepts ids or upTo, not both or neither", () => {

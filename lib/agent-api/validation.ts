@@ -2,11 +2,15 @@ import { Prisma, type PrismaClient, type Severity, type ValidationKind } from "@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
-import { reviewerConflict, type ReviewedBug } from "@/lib/agents/independence";
+import { reviewerConflict, reviewerCreditConflict, type ReviewedBug } from "@/lib/agents/independence";
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { award } from "@/lib/points/award";
-import { pointSourceKey, REPORTER_POINTS } from "@/lib/points/rules";
+import { pointSourceKey } from "@/lib/points/rules";
+import {
+  calculateReporterPoints,
+  getProjectRewardConfig,
+} from "@/lib/points/project-rewards";
 import { severities } from "@/lib/validations/issue";
 import { publish } from "@/lib/agent-api/events";
 import { promoteEarnedReviewer } from "@/lib/agents/promotion";
@@ -115,7 +119,7 @@ const reviewedBugSelect = {
   duplicateOfId: true,
   createdByAgentId: true,
   createdByAgent: { select: { ownerUserId: true } },
-  claims: { select: { status: true, releasedAt: true, agent: { select: { ownerUserId: true } } } },
+  claims: { select: { status: true, releasedAt: true, beneficiaryUserId: true, agent: { select: { ownerUserId: true } } } },
 } satisfies Prisma.BugSelect;
 
 type LoadedBug = Prisma.BugGetPayload<{ select: typeof reviewedBugSelect }>;
@@ -294,6 +298,13 @@ export async function submitValidation(
       };
     }
   }
+  if (reviewerCreditConflict(onBehalfOfUserId, bug as ReviewedBug)) {
+    return {
+      status: 403,
+      error: "not_independent",
+      message: "onBehalfOfUserId must be independent of the issue's reporter, solver, and claim beneficiary.",
+    };
+  }
 
   if (body.duplicateOfId) {
     const canonical =
@@ -352,12 +363,14 @@ export async function submitValidation(
         // The person the issue is for earns the reporter points (#422), once:
         // the sourceKey makes a second award, or the backfill (#435), a no-op.
         const userId = bug.beneficiaryUserId ?? bug.reporterId;
+        const rewardConfig = await getProjectRewardConfig(tx, bug.projectId);
+        const points = calculateReporterPoints(rewardConfig);
         await award(tx, {
           tenantId: bug.tenantId,
           userId,
           bugId: bug.id,
           role: "reporter",
-          points: REPORTER_POINTS,
+          points,
           sourceKey: pointSourceKey("reporter", bug.id, userId),
         });
       }
@@ -420,7 +433,7 @@ export async function submitValidation(
       if (newlyConfirmed) {
         const issue = await tx.bug.findUnique({
           where: { id: bug.id },
-          select: { id: true, projectId: true, title: true, status: true, assigneeId: true, voteCount: true },
+          select: { id: true, projectId: true, title: true, status: true, assigneeId: true, areaId: true, voteCount: true },
         });
         const currentClaim = await tx.issueClaim.findFirst({
           where: { bugId: bug.id, releasedAt: null, status: { in: ["offered", "active"] } },

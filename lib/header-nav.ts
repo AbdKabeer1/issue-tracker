@@ -45,6 +45,7 @@ export function headerNavItems(
 
   const items: HeaderNavItem[] = [
     { href: "/issues", label: "Issues" },
+    { href: "/team", label: "Team" },
     {
       href: "/projects",
       label: "Manage Project",

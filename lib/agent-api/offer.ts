@@ -19,7 +19,7 @@ const id = z.string().trim().min(1).max(191);
 export const offerSchema = z.object({ projectId: id.optional() }).strict();
 
 type Db = typeof prisma | Prisma.TransactionClient;
-export type OfferCandidate = { beneficiaryUserId: string; agentId: string; activeClaims: number; lastOfferedAt: Date | null; pendingOffer?: boolean; volunteered?: boolean };
+export type OfferCandidate = { beneficiaryUserId: string; agentId: string; activeClaims: number; lastOfferedAt: Date | null; pendingOffer?: boolean; volunteered?: boolean; areaMatch?: boolean };
 
 export function isOfferExpired(offeredAt: Date | null, now = Date.now()): boolean {
   return !offeredAt || now - offeredAt.getTime() >= OFFER_TTL_MS;
@@ -29,6 +29,7 @@ export function rankOfferCandidates<T extends OfferCandidate>(candidates: T[]): 
   return [...candidates].sort((a, b) =>
     (b.volunteered ? 1 : 0) - (a.volunteered ? 1 : 0)
     || a.activeClaims - b.activeClaims
+    || Number(Boolean(b.areaMatch)) - Number(Boolean(a.areaMatch))
     || (a.lastOfferedAt?.getTime() ?? Number.NEGATIVE_INFINITY) - (b.lastOfferedAt?.getTime() ?? Number.NEGATIVE_INFINITY)
     || a.beneficiaryUserId.localeCompare(b.beneficiaryUserId));
 }
@@ -37,14 +38,18 @@ export function availableOfferCandidates<T extends OfferCandidate>(candidates: T
   return rankOfferCandidates(candidates.filter((person) => person.activeClaims < MAX_ACTIVE_CLAIMS && !person.pendingOffer));
 }
 
-/** Re-arm the expiry that releases an offer nobody accepted. Exported for the stale-claim sweep (#524). */
-export function scheduleOfferExpiry(claimId: string): void {
-  setTimeout(() => { void expireOffer(claimId).catch(() => undefined); }, OFFER_TTL_MS);
+/**
+ * Offers have a durable due date (`offeredAt + OFFER_TTL_MS`) swept by the platform runner (#647).
+ * Replaces in-process setTimeout so serverless and multi-instance deploys do not rely on dying timers (#527, #647).
+ */
+export function scheduleOfferExpiry(claimId?: string): void {
+  void claimId;
+  // Expiry is handled by sweepExpiredOffers on the scheduled runner.
 }
 
 /** Picks by active workload, then by who has waited longest since their last offer.
  * Exported for the stale-claim sweep (#524), which re-offers a reopened issue with no agent caller. */
-export async function offerNext(db: Db, caller: { agentId?: string; tenantId: string }, bug: { id: string; projectId: string; title: string; assigneeId?: string | null }, excludeUserIds: string[] = []) {
+export async function offerNext(db: Db, caller: { agentId?: string; tenantId: string }, bug: { id: string; projectId: string; title: string; assigneeId?: string | null; areaId?: string | null }, excludeUserIds: string[] = []) {
   // Lock the Bug row first to serialize offer creation on this issue across concurrent calls (#680).
   await db.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${bug.id} FOR NO KEY UPDATE`;
 
@@ -67,12 +72,18 @@ export async function offerNext(db: Db, caller: { agentId?: string; tenantId: st
     },
     select: { userId: true, user: { select: { agents: {
       where: { tenantId: caller.tenantId, revokedAt: null, level: { in: ["contributor", "reviewer", "merger"] } },
-      orderBy: { createdAt: "asc" }, take: 1, select: { id: true },
+      orderBy: { createdAt: "asc" }, select: {
+        id: true,
+        areaPreferences: { where: { projectAreaId: bug.areaId ?? "" }, select: { projectAreaId: true } },
+      },
     } } } },
   });
-  const people = memberships.flatMap((m) => m.user.agents[0] && !excludeUserIds.includes(m.userId) && (!bug.assigneeId || bug.assigneeId === m.userId)
-    ? [{ beneficiaryUserId: m.userId, agentId: m.user.agents[0].id }]
-    : []);
+  const people = memberships.flatMap((m) => {
+    if (!m.user.agents.length || excludeUserIds.includes(m.userId) || (bug.assigneeId && bug.assigneeId !== m.userId)) return [];
+    const preferred = bug.areaId ? m.user.agents.find((agent) => agent.areaPreferences.length > 0) : undefined;
+    const selected = preferred ?? m.user.agents[0];
+    return [{ beneficiaryUserId: m.userId, agentId: selected.id, areaMatch: Boolean(preferred) }];
+  });
   if (!people.length) return null;
 
   const active = await db.issueClaim.groupBy({
@@ -104,6 +115,7 @@ export async function offerNext(db: Db, caller: { agentId?: string; tenantId: st
     ...p, activeClaims: counts.get(p.beneficiaryUserId) ?? 0,
     lastOfferedAt: lastOffered.get(p.beneficiaryUserId) ?? null,
     pendingOffer: pendingPeople.has(p.beneficiaryUserId),
+    areaMatch: p.areaMatch,
   }));
 
   const next = availableOfferCandidates(candidates)[0];
@@ -131,7 +143,7 @@ export async function offerIssue(agent: AgentContext, projectId: string, bugId: 
     const result = await prisma.$transaction(async (tx) => {
       const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${bugId} AND "tenantId" = ${agent.tenantId} AND "projectId" = ${projectId} AND "isDeleted" = false FOR UPDATE`;
       if (!locked.length) throw new IssueApiError(404, "Issue not found in this project.");
-      const bug = await tx.bug.findFirst({ where: { id: bugId, tenantId: agent.tenantId, projectId, isDeleted: false }, select: { id: true, title: true, projectId: true, status: true, assigneeId: true, voteCount: true } });
+      const bug = await tx.bug.findFirst({ where: { id: bugId, tenantId: agent.tenantId, projectId, isDeleted: false }, select: { id: true, title: true, projectId: true, status: true, assigneeId: true, areaId: true, voteCount: true } });
       if (!bug) throw new IssueApiError(404, "Issue not found in this project.");
       if (bug.status !== "open") throw new IssueApiError(409, "Only open issues can be offered.");
       if (bug.voteCount < WORK_READINESS_VOTE_THRESHOLD) throw new IssueApiError(409, `The issue must reach at least ${WORK_READINESS_VOTE_THRESHOLD} upvotes before it can be offered.`);
@@ -165,24 +177,29 @@ export async function offerIssue(agent: AgentContext, projectId: string, bugId: 
   }
 }
 
-/** Durable expiry state is checked here and again on acceptance after restarts. */
-export async function expireOffer(claimId: string): Promise<void> {
+/** Durable expiry state is checked here and again on acceptance after restarts. Returns true if expired. */
+export async function expireOffer(claimId: string): Promise<boolean> {
   const result = await prisma.$transaction(async (tx) => {
-    const claim = await tx.issueClaim.findUnique({ where: { id: claimId }, select: { id: true, bugId: true, status: true, offeredAt: true, releasedAt: true, agentId: true, beneficiaryUserId: true, bug: { select: { tenantId: true, id: true, title: true, projectId: true, assigneeId: true } } } });
+    const claim = await tx.issueClaim.findUnique({ where: { id: claimId }, select: { id: true, bugId: true, status: true, offeredAt: true, releasedAt: true, agentId: true, beneficiaryUserId: true, bug: { select: { tenantId: true, id: true, title: true, projectId: true, assigneeId: true, areaId: true } } } });
     if (!claim || claim.status !== "offered" || claim.releasedAt || !isOfferExpired(claim.offeredAt)) return null;
     await tx.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${claim.bugId} FOR UPDATE`;
-    const fresh = await tx.issueClaim.findUnique({ where: { id: claimId }, select: { id: true, bugId: true, status: true, offeredAt: true, releasedAt: true, agentId: true, beneficiaryUserId: true, bug: { select: { tenantId: true, id: true, title: true, projectId: true, assigneeId: true } } } });
+    const fresh = await tx.issueClaim.findUnique({ where: { id: claimId }, select: { id: true, bugId: true, status: true, offeredAt: true, releasedAt: true, agentId: true, beneficiaryUserId: true, bug: { select: { tenantId: true, id: true, title: true, projectId: true, assigneeId: true, areaId: true } } } });
     if (!fresh || fresh.status !== "offered" || fresh.releasedAt || !isOfferExpired(fresh.offeredAt)) return null;
     const now = new Date();
     await tx.issueClaim.update({ where: { id: claimId }, data: { status: "released", releasedAt: now, releaseReason: "expired" } });
     await publish(tx, { tenantId: fresh.bug.tenantId, type: "claim.released", actorAgentId: fresh.agentId, bugId: fresh.bugId,
       payload: { claimId, issueId: fresh.bugId, beneficiaryUserId: fresh.beneficiaryUserId, reason: "expired" } });
-    return offerNext(tx, { tenantId: fresh.bug.tenantId }, fresh.bug);
+    const next = await offerNext(tx, { tenantId: fresh.bug.tenantId }, fresh.bug);
+    return { released: true, next };
   });
   if (result) {
-    notifyClaimOffered({ id: result.claim.id, bugId: result.claim.bugId, bugTitle: result.bugTitle, beneficiaryUserId: result.beneficiaryUserId });
-    scheduleOfferExpiry(result.claim.id);
+    if (result.next) {
+      notifyClaimOffered({ id: result.next.claim.id, bugId: result.next.claim.bugId, bugTitle: result.next.bugTitle, beneficiaryUserId: result.next.beneficiaryUserId });
+      scheduleOfferExpiry(result.next.claim.id);
+    }
+    return true;
   }
+  return false;
 }
 
 /**
@@ -202,8 +219,8 @@ export async function sweepExpiredOffers(tenantId?: string): Promise<{ expired: 
   });
   let expired = 0;
   for (const c of candidates) {
-    await expireOffer(c.id);
-    expired++;
+    const didExpire = await expireOffer(c.id);
+    if (didExpire) expired++;
   }
   return { expired };
 }
@@ -211,12 +228,12 @@ export async function sweepExpiredOffers(tenantId?: string): Promise<{ expired: 
 export async function acceptOffer(agent: AgentContext, claimId: string) {
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const claim = await tx.issueClaim.findUnique({ where: { id: claimId }, include: { beneficiary: { select: { name: true } }, bug: { select: { id: true, title: true, status: true, assigneeId: true, tenantId: true, projectId: true, voteCount: true, severity: true, project: { select: { deliveryWindowMinutes: true } }, assignee: { select: { name: true } } } } } });
+      const claim = await tx.issueClaim.findUnique({ where: { id: claimId }, include: { beneficiary: { select: { name: true } }, bug: { select: { id: true, title: true, status: true, assigneeId: true, tenantId: true, projectId: true, areaId: true, voteCount: true, severity: true, project: { select: { deliveryWindowMinutes: true } }, assignee: { select: { name: true } } } } } });
       if (!claim || claim.bug.tenantId !== agent.tenantId) throw new IssueApiError(404, "Offer not found.");
       const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${claim.bugId} AND "tenantId" = ${agent.tenantId} FOR UPDATE`;
       if (!locked.length) throw new IssueApiError(404, "Offer not found.");
       await tx.$queryRaw`SELECT "id" FROM "IssueClaim" WHERE "id" = ${claimId} FOR UPDATE`;
-      const fresh = await tx.issueClaim.findUnique({ where: { id: claimId }, include: { beneficiary: { select: { name: true } }, bug: { select: { id: true, title: true, status: true, assigneeId: true, tenantId: true, projectId: true, voteCount: true, severity: true, project: { select: { deliveryWindowMinutes: true } }, assignee: { select: { name: true } } } } } });
+      const fresh = await tx.issueClaim.findUnique({ where: { id: claimId }, include: { beneficiary: { select: { name: true } }, bug: { select: { id: true, title: true, status: true, assigneeId: true, tenantId: true, projectId: true, areaId: true, voteCount: true, severity: true, project: { select: { deliveryWindowMinutes: true } }, assignee: { select: { name: true } } } } } });
       if (!fresh || fresh.agentId !== agent.agentId) throw new IssueApiError(409, "This offer is no longer available to this agent.");
       if (fresh.status === "released" && fresh.releaseReason === "expired") throw new IssueApiError(410, "This offer expired and has been released.");
       if (fresh.status !== "offered" || fresh.releasedAt) throw new IssueApiError(409, "This offer is no longer available to this agent.");
@@ -325,7 +342,7 @@ export async function releaseClaim(agent: AgentContext, projectId: string, bugId
 
     const bug = await tx.bug.findFirstOrThrow({
       where: { id: bugId },
-      select: { id: true, title: true, status: true, assigneeId: true, projectId: true },
+      select: { id: true, title: true, status: true, assigneeId: true, projectId: true, areaId: true },
     });
     let reopened = false;
     if (claim.status === "active") {

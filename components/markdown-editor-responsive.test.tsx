@@ -20,14 +20,14 @@ describe("MarkdownEditor responsive toolbar on 360px phones (#696)", () => {
     );
 
     // The header row containing tabs and formatting toolbar
-    const headerRow = container.querySelector('[role="tablist"]')?.parentElement;
+    const headerRow = container.querySelector('[role="group"][aria-label="Editor view"]')?.parentElement;
     expect(headerRow).not.toBeNull();
     expect(headerRow).toHaveClass("flex-nowrap");
     expect(headerRow).toHaveClass("sm:flex-wrap");
 
-    // The tablist is shrink-0 so it preserves tab layout beside the toolbar
-    const tablist = screen.getByRole("tablist", { name: "Editor mode" });
-    expect(tablist).toHaveClass("shrink-0");
+    // The view switcher is shrink-0 so it keeps its layout beside the toolbar
+    const switcher = screen.getByRole("group", { name: "Editor view" });
+    expect(switcher).toHaveClass("shrink-0");
 
     // The toolbar itself is flex-nowrap and overflow-x-auto on mobile
     const toolbar = screen.getByRole("toolbar", { name: "Formatting" });
@@ -56,7 +56,7 @@ describe("MarkdownEditor responsive toolbar on 360px phones (#696)", () => {
     expect(boldBtn).toHaveClass("[@media(pointer:coarse)]:w-9");
   });
 
-  it("renders tabs with touch target padding on mobile and compact padding on desktop", () => {
+  it("renders the Write and Preview buttons with touch target padding on mobile and compact padding on desktop", () => {
     render(
       <MarkdownEditor
         value="Hello world"
@@ -65,7 +65,7 @@ describe("MarkdownEditor responsive toolbar on 360px phones (#696)", () => {
       />,
     );
 
-    const writeTab = screen.getByRole("tab", { name: "Write" });
+    const writeTab = screen.getByRole("button", { name: "Write" });
     expect(writeTab).toHaveClass("shrink-0");
     expect(writeTab).toHaveClass("px-2.5");
     expect(writeTab).toHaveClass("py-1.5");
@@ -83,13 +83,13 @@ describe("MarkdownEditor responsive toolbar on 360px phones (#696)", () => {
       />,
     );
 
-    const writeTab = screen.getByRole("tab", { name: "Write" });
+    const writeTab = screen.getByRole("button", { name: "Write" });
     writeTab.focus();
     expect(writeTab).toHaveFocus();
 
-    // Tab to Preview tab
+    // Tab to the Preview button
     await user.tab();
-    const previewTab = screen.getByRole("tab", { name: /Preview/i });
+    const previewTab = screen.getByRole("button", { name: /Preview/i });
     expect(previewTab).toHaveFocus();
 
     // Tab into the toolbar: first tool is Bold

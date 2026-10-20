@@ -48,7 +48,7 @@ describe("GET /api/v1/inbox", () => {
     expect(decodeEventCursor(body.cursor)?.id).toBe("item-1");
     expect(body.hasMore).toBe(false);
     expect(db.agentInboxItem.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { agentId: "agent-bob", readAt: null } }));
-    expect(budget).toHaveBeenCalledWith({ id: "agent-bob", burst: false }, "read");
+    expect(budget).toHaveBeenCalledWith({ id: "agent-bob", burst: false, burstUntil: null }, "read");
     expect(db.agentAuditEvent.create).toHaveBeenCalled();
   });
 
@@ -68,7 +68,7 @@ describe("POST /api/v1/inbox/read", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ marked: 1 });
     expect(db.agentInboxItem.updateMany.mock.calls[0][0].where).toEqual({ agentId: "agent-bob", id: { in: ["item-1"] }, readAt: null });
-    expect(budget).toHaveBeenCalledWith({ id: "agent-bob", burst: false }, "read");
+    expect(budget).toHaveBeenCalledWith({ id: "agent-bob", burst: false, burstUntil: null }, "read");
   });
 
   it("hides read items from ?unread=1", async () => {
