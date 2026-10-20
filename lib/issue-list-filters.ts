@@ -11,6 +11,7 @@ import {
 import { parseTagFilter, tagTypeIds } from "@/lib/tag-filter";
 import { parseBugSort, type BugSortOption } from "@/lib/issues-sort";
 import { DUPLICATES_PARAM, duplicatesWhere, parseShowDuplicates } from "@/lib/duplicates";
+import { parseProjectAreaFilter, projectAreaFilterWhere, type ProjectAreaOption } from "@/lib/project-area-filter";
 
 export type RawParams = Record<string, string | string[] | undefined>;
 
@@ -42,6 +43,7 @@ export function parseBugListFilters({
   canSeeDeleted,
   tagTypes = [],
   platforms = [],
+  areas = [],
   milestones = [],
 }: {
   params: RawParams;
@@ -51,6 +53,8 @@ export function parseBugListFilters({
   tagTypes?: readonly TagType[];
   /** Known platforms, so an id that no longer exists falls back to no filter. */
   platforms?: readonly PlatformLike[];
+  /** Areas belonging to the active project, so stale/foreign ids mean no filter. */
+  areas?: readonly ProjectAreaOption[];
   /** Known milestones (#289); an unknown id means no filter, like platforms. */
   milestones?: readonly { id: string }[];
 }): ParsedBugFilters {
@@ -90,6 +94,8 @@ export function parseBugListFilters({
   } else if (platform && platforms.some((p) => p.id === platform)) {
     where.categoryId = platform;
   }
+
+  Object.assign(where, projectAreaFilterWhere(parseProjectAreaFilter(params.area, areas)));
 
   Object.assign(where, milestoneWhere(parseMilestoneFilter(params[MILESTONE_PARAM], milestones)));
 

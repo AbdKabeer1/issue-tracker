@@ -6,6 +6,7 @@ const db = vi.hoisted(() => ({
   agentEvent: { create: vi.fn() },
   webhookSubscription: { findMany: vi.fn() }, webhookDelivery: { createMany: vi.fn() },
   project: { findFirst: vi.fn() }, category: { findMany: vi.fn(), findFirst: vi.fn() },
+  projectArea: { findMany: vi.fn(), findFirst: vi.fn() },
   bug: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   comment: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
   membership: { findUnique: vi.fn() }, issueWatch: { upsert: vi.fn() }, bugActivity: { create: vi.fn() },
@@ -51,6 +52,8 @@ beforeEach(() => {
   db.project.findFirst.mockResolvedValue({ id: "project-a" });
   db.category.findMany.mockResolvedValue([{ id: "windows", name: "Windows" }]);
   db.category.findFirst.mockResolvedValue({ id: "windows" });
+  db.projectArea.findMany.mockResolvedValue([{ id: "area-ui", name: "Frontend" }]);
+  db.projectArea.findFirst.mockResolvedValue({ id: "area-ui" });
   db.bug.findMany.mockResolvedValue([issue]);
   db.bug.findFirst.mockResolvedValue(issue);
   db.bug.create.mockResolvedValue({ id: issue.id });
@@ -136,6 +139,17 @@ describe("agent issue reads", () => {
     expect(db.bug.findMany.mock.lastCall?.[0].where).not.toHaveProperty("categoryId");
   });
 
+  it("filters only by areas belonging to the requested project", async () => {
+    await list(request("GET", undefined, "?projectId=project-a&area=area-ui"));
+    expect(db.projectArea.findMany).toHaveBeenCalledWith({
+      where: { projectId: "project-a" },
+      select: { id: true, name: true },
+    });
+    expect(db.bug.findMany.mock.lastCall?.[0].where).toMatchObject({ areaId: "area-ui" });
+    await list(request("GET", undefined, "?projectId=project-a&area=none"));
+    expect(db.bug.findMany.mock.lastCall?.[0].where).toMatchObject({ areaId: null });
+  });
+
   it("rejects absent/foreign projects, invalid enums, and malformed cursors", async () => {
     // #563: a missing projectId names the parameter instead of a raw validation dump.
     const missing = await list(request("GET", undefined, ""));
@@ -160,10 +174,10 @@ describe("agent issue reads", () => {
 
 describe("agent issue creation via the real shared create policy", () => {
   it("stores the named person and agent and ignores client severity", async () => {
-    const response = await create(request("POST", { ...validBody, beneficiaryUserId: "beneficiary-a", severity: "critical" }));
+    const response = await create(request("POST", { ...validBody, beneficiaryUserId: "beneficiary-a", areaId: "area-ui", severity: "critical" }));
     expect(response.status).toBe(201);
     expect(db.bug.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
-      tenantId: "tenant-a", projectId: "project-a", reporterId: "beneficiary-a", beneficiaryUserId: "beneficiary-a", createdByAgentId: "agent-a", severity: "medium", status: "open",
+      tenantId: "tenant-a", projectId: "project-a", reporterId: "beneficiary-a", beneficiaryUserId: "beneficiary-a", createdByAgentId: "agent-a", severity: "medium", status: "open", areaId: "area-ui",
     }) }));
     expect(db.idempotencyKey.update).toHaveBeenCalledWith({ where: { id: "held-key" }, data: { bugId: issue.id } });
     expect(db.agentEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({

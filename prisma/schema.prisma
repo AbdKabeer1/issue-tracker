@@ -46,6 +46,7 @@ enum ActivityType {
   comment_deleted
   type_changed
   category_changed
+  area_changed
   duplicate_changed
 }
 
@@ -235,6 +236,8 @@ model Bug {
   tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   projectId         String
   project           Project            @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  areaId            String?
+  area              ProjectArea?       @relation(fields: [areaId], references: [id], onDelete: SetNull)
   /// #423: the person the work is for. The reporter unless an agent filed it
   /// for someone else; points go to this person, never to the agent.
   beneficiaryUserId String
@@ -272,6 +275,7 @@ model Bug {
   /// #517: issue numbers are per tenant, so two tenants can both have a #1.
   @@unique([tenantId, number])
   @@index([tenantId, projectId])
+  @@index([projectId, areaId])
   @@index([beneficiaryUserId])
   @@index([createdByAgentId])
   @@index([categoryId])
@@ -516,6 +520,7 @@ model Project {
   updatedAt            DateTime           @updatedAt
   tenant               Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   bugs                 Bug[]
+  areas                ProjectArea[]
   redesigns            RedesignProposal[]
   apiKeys              AgentApiKey[]
   pairings             AgentPairing[]
@@ -523,6 +528,36 @@ model Project {
   auditEvents          ProjectAuditEvent[]
 
   @@unique([tenantId, slug])
+}
+
+/// A project-owned work area, such as frontend or backend (#609).
+model ProjectArea {
+  id               String                 @id @default(cuid())
+  projectId        String
+  name             String
+  slug             String
+  description      String?
+  paths            String[]               @default([])
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  project          Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  bugs             Bug[]
+  agentPreferences AgentAreaPreference[]
+
+  @@unique([projectId, slug])
+  @@index([projectId])
+}
+
+/// An agent's preferred areas for a project. Preference never restricts access.
+model AgentAreaPreference {
+  agentId       String
+  projectAreaId String
+  createdAt     DateTime    @default(now())
+  agent         Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  projectArea   ProjectArea @relation(fields: [projectAreaId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, projectAreaId])
+  @@index([projectAreaId])
 }
 
 /// Human changes to project configuration, including GitHub App linking.
@@ -597,6 +632,7 @@ model Agent {
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   owner                User                  @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
   defaultProject       Project?              @relation("DefaultProjectAgent", fields: [defaultProjectId], references: [id], onDelete: Cascade)
+  areaPreferences      AgentAreaPreference[]
   apiKeys              AgentApiKey[]
   auditEvents          AgentAuditEvent[]
   createdBugs          Bug[]                 @relation("AgentCreatedBugs")

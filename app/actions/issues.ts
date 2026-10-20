@@ -5,6 +5,7 @@ import { fieldError, fromZodError } from "@/lib/form-errors";
 import { redirect } from "next/navigation";
 import {
   activityCreateData,
+  areaChangedSummary,
   assigneeChangedSummary,
   boostedSummary,
   categoryChangedSummary,
@@ -214,6 +215,7 @@ export async function createBugAction(
     typeId: formData.get("typeId") || "",
     assigneeId: targetAssigneeId || "",
     categoryId: formData.get("categoryId") || "",
+    areaId: formData.get("areaId") || "",
     proofLinks: formData.get("proofLinks") || "",
   });
 
@@ -258,6 +260,9 @@ export async function createBugAction(
     parsed.data.categoryId && parsed.data.categoryId.length > 0
       ? parsed.data.categoryId
       : null;
+  const areaId = parsed.data.areaId && parsed.data.areaId.length > 0
+    ? parsed.data.areaId
+    : null;
 
   // #425: the issue goes into the reporter's tenant. No membership, no issue.
   const tenantId = await currentTenantIdFor(userId);
@@ -276,6 +281,14 @@ export async function createBugAction(
     }
   }
 
+  if (areaId) {
+    const area = await prisma.projectArea.findFirst({
+      where: { id: areaId, projectId },
+      select: { id: true },
+    });
+    if (!area) return fieldError("areaId", "Area not found in this project.");
+  }
+
   // Always open at creation — createBugSchema rejects client status.
   const issueData = {
     tenantId,
@@ -291,6 +304,7 @@ export async function createBugAction(
     reporterId: userId,
     assigneeId,
     categoryId,
+    areaId,
     // Reporter and assignee watch the issue from the start (#216).
     watches: {
       create: [...new Set([userId, assigneeId].filter((id): id is string => Boolean(id)))].map(
@@ -415,6 +429,7 @@ export async function updateBugAction(
     include: {
       assignee: { select: { id: true, name: true } },
       category: { select: { id: true, name: true } },
+      area: { select: { id: true, name: true } },
       type: { select: { id: true, name: true } },
       milestone: { select: { id: true, title: true } },
     },
@@ -480,6 +495,7 @@ export async function updateBugAction(
   }
 
   const categoryRaw = formData.get("categoryId");
+  const areaRaw = formData.get("areaId");
   const typeRaw = formData.get("typeId");
   const parsed = updateBugSchema.safeParse({
     status: requestedStatus,
@@ -494,6 +510,11 @@ export async function updateBugAction(
       ? categoryRaw === "" || categoryRaw === "none"
         ? null
         : categoryRaw || undefined
+      : undefined,
+    areaId: admin
+      ? areaRaw === "" || areaRaw === "none"
+        ? null
+        : areaRaw || undefined
       : undefined,
   });
 
@@ -527,6 +548,7 @@ export async function updateBugAction(
     typeId?: string | null;
     assigneeId?: string | null;
     categoryId?: string | null;
+    areaId?: string | null;
     milestoneId?: string | null;
     isBoosted?: boolean;
     boostedAt?: Date | null;
@@ -541,6 +563,9 @@ export async function updateBugAction(
     if (parsed.data.categoryId !== undefined) {
       data.categoryId =
         parsed.data.categoryId === "" ? null : parsed.data.categoryId;
+    }
+    if (parsed.data.areaId !== undefined) {
+      data.areaId = parsed.data.areaId === "" ? null : parsed.data.areaId;
     }
   }
   if (parsed.data.assigneeId !== undefined) {
@@ -677,6 +702,25 @@ export async function updateBugAction(
     });
     if (!cat) {
       return { error: "Platform not found" };
+    }
+  }
+
+  if (data.areaId !== undefined) {
+    let toName: string | null = null;
+    if (data.areaId) {
+      const area = await prisma.projectArea.findFirst({
+        where: { id: data.areaId, projectId: existing.projectId },
+        select: { id: true, name: true },
+      });
+      if (!area) return { error: "Area not found in this project." };
+      toName = area.name;
+    }
+    if (data.areaId !== existing.areaId) {
+      pending.push({
+        type: "area_changed",
+        summary: areaChangedSummary(existing.area?.name ?? null, toName),
+        metadata: { field: "area", from: existing.area?.name ?? null, to: toName },
+      });
     }
   }
 

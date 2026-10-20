@@ -5,7 +5,9 @@ import { audit } from "@/lib/agents/audit";
 import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/rate-budget";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { currentTenantIdFor } from "@/lib/tenant-context";
+import { prisma } from "@/lib/prisma";
 import { FeedInputError, feedProject, parseFeedCursor, readFeed } from "@/lib/feed";
+import { parseProjectAreaFilter } from "@/lib/project-area-filter";
 
 export async function GET(request: NextRequest) {
   try {
@@ -29,7 +31,12 @@ export async function GET(request: NextRequest) {
     const project = await feedProject(tenantId, request.nextUrl.searchParams.get("projectId"));
     if (!project) return NextResponse.json({ error: "Project not found." }, { status: 404 });
     if (agent) assertKeyProject(agent, project.id);
-    return NextResponse.json(await readFeed(tenantId, project.id, cursor), {
+    const requestedArea = request.nextUrl.searchParams.get("area");
+    const areas = requestedArea
+      ? await prisma.projectArea.findMany({ where: { projectId: project.id }, select: { id: true, name: true } })
+      : [];
+    const area = parseProjectAreaFilter(requestedArea, areas);
+    return NextResponse.json(await readFeed(tenantId, project.id, cursor, area), {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (error) {
