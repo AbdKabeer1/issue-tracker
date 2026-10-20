@@ -172,6 +172,7 @@ model User {
   membershipChangesReceived MembershipChange[] @relation("MembershipChangeTarget")
   shareLinksSent        TenantShareLink[]
   shareRedemptions      TenantShareRedemption[]
+  projectAuditEvents    ProjectAuditEvent[]
 }
 
 /// Single-use password reset tokens (~30 min TTL). Store only the SHA-256 hash.
@@ -486,6 +487,7 @@ model Tenant {
   events        AgentEvent[]
   membershipChanges MembershipChange[]
   notifications Notification[]
+  projectAuditEvents ProjectAuditEvent[]
 }
 
 /// A product inside a tenant, e.g. Zedu Web or Zedu Desktop. Not the same as
@@ -509,8 +511,27 @@ model Project {
   apiKeys              AgentApiKey[]
   pairings             AgentPairing[]
   defaultAgents        Agent[]            @relation("DefaultProjectAgent")
+  auditEvents          ProjectAuditEvent[]
 
   @@unique([tenantId, slug])
+}
+
+/// Human changes to project configuration, including GitHub App linking.
+model ProjectAuditEvent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  projectId   String
+  actorUserId String
+  action      String
+  changes     Json
+  createdAt   DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actor       User     @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 model Membership {
@@ -949,6 +970,8 @@ model WebhookSubscription {
   agentId                String
   url                    String
   signingSecretEncrypted String
+  /// Event types to deliver; empty means every event (#512).
+  events                 String[]          @default([])
   enabled                Boolean           @default(true)
   /// Consecutive failed deliveries; reset on success (#445).
   failureCount           Int               @default(0)

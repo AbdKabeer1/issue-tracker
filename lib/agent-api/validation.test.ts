@@ -16,6 +16,7 @@ const state = vi.hoisted(() => ({
   validations: [] as Row[],
   agents: {} as Record<string, { id: string; ownerUserId: string }>,
 }));
+const promotion = vi.hoisted(() => ({ promoteEarnedReviewer: vi.fn() }));
 
 const db = vi.hoisted(() => ({
   bug: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
@@ -30,6 +31,7 @@ const db = vi.hoisted(() => ({
   $transaction: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
+vi.mock("@/lib/agents/promotion", () => promotion);
 
 import { isConfirmed, submitValidation } from "./validation";
 
@@ -70,6 +72,7 @@ beforeEach(() => {
   db.agentEvent.create.mockResolvedValue({ id: "evt1" });
   db.webhookSubscription.findMany.mockResolvedValue([]);
   db.webhookDelivery.createMany.mockResolvedValue({ count: 0 });
+  promotion.promoteEarnedReviewer.mockResolvedValue({ ok: true, changed: false, standing: 1 });
   db.issueValidation.findMany.mockImplementation(async ({ where }: { where: Record<string, string> }) =>
     state.validations
       .filter((v) => v.bugId === where.bugId && v.kind === where.kind && v.verdict === where.verdict)
@@ -231,6 +234,7 @@ describe("submitValidation: the body (#433)", () => {
       target: "bug:bug1",
       bugId: "bug1",
     });
+    expect(promotion.promoteEarnedReviewer).toHaveBeenCalledWith("r1", db);
   });
 });
 

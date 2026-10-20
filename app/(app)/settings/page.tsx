@@ -108,6 +108,9 @@ export default async function SettingsPage() {
             Register the AI agents that work issues for you, and see your team&apos;s.
           </p>
           <div className="mt-3 flex flex-wrap gap-4 text-sm">
+            <Link href="/settings/agents/connect" className="font-medium text-teal-700 hover:underline">
+              Connect your agent
+            </Link>
             <Link href="/settings/agents" className="font-medium text-teal-700 hover:underline">
               Manage agents
             </Link>
