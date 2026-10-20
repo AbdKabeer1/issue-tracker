@@ -12,7 +12,8 @@ import {
   setProjectArchivedAction,
   switchProjectAction,
 } from "./actions";
-import { isTenantAdmin } from "@/lib/agents/membership";
+import { isTenantAdmin, isTenantAdminRole } from "@/lib/agents/membership";
+import { MissionCoverage } from "./mission-coverage";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Projects" };
@@ -65,6 +66,18 @@ export default async function ProjectsPage({
         archivedAt: true,
         createdAt: true,
         _count: { select: { bugs: true } },
+        testMissions: {
+          select: {
+            id: true,
+            routePattern: true,
+            brief: true,
+            role: true,
+            viewport: true,
+            lastCoveredAt: true,
+            issuesFiled: true,
+          },
+          orderBy: [{ routePattern: "asc" }, { role: "asc" }, { viewport: "asc" }],
+        },
       },
       orderBy: { createdAt: "asc" },
     }),
@@ -75,6 +88,7 @@ export default async function ProjectsPage({
     }),
   ]);
   const isOwner = membership?.role === "owner";
+  const canManageMissions = isTenantAdminRole(membership?.role, user.role);
   const activeProjects = projects.filter((project) => !project.archivedAt);
   const archivedProjects = projects.filter((project) => project.archivedAt);
 
@@ -156,6 +170,14 @@ export default async function ProjectsPage({
                         <Link href={`/projects/${encodeURIComponent(project.slug)}/settings`} className="text-xs font-medium text-teal-700 hover:underline">Settings</Link>
                       ) : null}
                     </div>
+                    <MissionCoverage
+                      projectId={project.id}
+                      canManage={canManageMissions}
+                      missions={project.testMissions.map((mission) => ({
+                        ...mission,
+                        lastCoveredAt: mission.lastCoveredAt?.toISOString() ?? null,
+                      }))}
+                    />
 
                     {isOwner ? (
                       <details className="mt-3 text-xs text-slate-600">

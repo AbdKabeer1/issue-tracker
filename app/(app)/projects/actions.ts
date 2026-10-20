@@ -7,13 +7,15 @@ import { fieldError, fromZodError } from "@/lib/form-errors";
 import { prisma } from "@/lib/prisma";
 import { setActiveProjectCookie } from "@/lib/project-context";
 import { currentTenantIdFor, NO_TENANT_MESSAGE } from "@/lib/tenant-context";
-import { nextProjectSlug, projectNameSchema, projectSettingsSchema, projectSlugBase } from "./validation";
 import { isTenantAdmin } from "@/lib/agents/membership";
+import { createMissionSchema, createTestMissions } from "@/lib/missions";
+import { nextProjectSlug, projectNameSchema, projectSettingsSchema, projectSlugBase } from "./validation";
 
 export type ProjectActionResult = {
   error?: string;
   field?: string;
   fieldErrors?: Record<string, string>;
+  message?: string;
 };
 
 function projectsMessage(key: "error" | "notice", message: string): string {
@@ -90,6 +92,40 @@ export async function updateProjectAction(
   revalidatePath(`/projects/${slug}/settings`);
   revalidatePath("/issues");
   return {};
+}
+
+/** Create a route/role/viewport mission set for a project (#619). */
+export async function createTestMissionAction(
+  _previous: ProjectActionResult | undefined,
+  formData: FormData,
+): Promise<ProjectActionResult> {
+  const user = await requireUser();
+  const tenantId = await currentTenantIdFor(user.id);
+  if (!tenantId) return { error: NO_TENANT_MESSAGE };
+
+  const projectId = String(formData.get("projectId") ?? "").trim();
+  const project = projectId ? await prisma.project.findFirst({
+    where: { id: projectId, tenantId },
+    select: { id: true },
+  }) : null;
+  if (!project) return { error: "Project not found." };
+  if (!(await isTenantAdmin(user, tenantId))) {
+    return { error: "Only project admins can manage test missions." };
+  }
+
+  const parsed = createMissionSchema.safeParse({
+    routePattern: formData.get("routePattern"),
+    brief: formData.get("brief"),
+    roles: formData.getAll("roles"),
+    viewports: formData.getAll("viewports"),
+  });
+  if (!parsed.success) return fromZodError(parsed.error, "Check the mission details");
+
+  const result = await createTestMissions(project.id, parsed.data);
+  revalidatePath("/projects");
+  return result.count > 0
+    ? { message: `Added ${result.count} test mission${result.count === 1 ? "" : "s"}.` }
+    : { message: "Those route, role, and viewport missions already exist." };
 }
 
 /**

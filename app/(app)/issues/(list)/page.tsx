@@ -253,7 +253,11 @@ export default async function BugsPage({
     }
   }
 
-  const baseTenantWhere: Prisma.BugWhereInput = { ...bugInTenant(tenantId), isDeleted: isDeletedView };
+  const baseTenantWhere: Prisma.BugWhereInput = {
+    ...bugInTenant(tenantId),
+    ...(projectId ? { projectId } : {}),
+    isDeleted: isDeletedView,
+  };
 
   let statsTotal = 0;
   let statsOpen = 0;
@@ -910,7 +914,7 @@ export default async function BugsPage({
                           {(bug._count?.comments ?? 0) > 0 ? (
                             <span
                               className="inline-flex items-center gap-1 text-slate-600 font-medium"
-                              title={`${bug._count?.comments} comments`}
+                              title={`Conversation: ${bug._count?.comments} item${bug._count?.comments === 1 ? "" : "s"}`}
                             >
                               <svg
                                 className="h-4 w-4 text-slate-500"

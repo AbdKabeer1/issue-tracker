@@ -7,8 +7,11 @@ import { z } from "zod";
  * Agent event feed (#445).
  *
  * Agents poll `GET /api/v1/events?after=&afterId=&wait=` to learn what changed
- * inside their tenant. The cursor is `(createdAt, id)` on `AgentEvent` — the
- * same composite the index covers.
+ * inside their tenant. The cursor is `(txid, id)` on `AgentEvent` (#739):
+ * `txid` is the id of the transaction that wrote the event, and a poll only
+ * returns events whose transaction can no longer be running. `createdAt` is
+ * set before commit, so ordering by it let an event that committed late land
+ * behind a cursor that had already moved past it.
  *
  * Webhooks deliver the same event ids, so a client can dedupe across both
  * channels.
@@ -52,6 +55,7 @@ export const AGENT_EVENT_TYPES = [
   "issue.confirmed",
   "issue.created",
   "issue.deleted",
+  "issue.interest",
   "issue.restored",
   "issue.structured",
   "issue.test_verdict",
@@ -116,19 +120,41 @@ type PrismaClient = typeof prisma;
 // Poll cursor
 // ---------------------------------------------------------------------------
 
-export type EventCursor = { createdAt: Date; id: string };
+/**
+ * A position in the feed. Responses always hand out `{ txid, id }`. The
+ * `{ createdAt, id }` form is what cursors issued before #739, and the manual
+ * `after=<ISO>&afterId=` form, decode to; it still works as a starting point.
+ */
+export type EventCursor =
+  | { txid: bigint; id: string }
+  | { createdAt: Date; id: string };
 
 /** Encode a cursor to an opaque string safe in query parameters. */
 export function encodeEventCursor(cursor: EventCursor): string {
-  return Buffer.from(JSON.stringify([cursor.createdAt.toISOString(), cursor.id])).toString("base64url");
+  const value = "txid" in cursor
+    ? ["t", cursor.txid.toString(), cursor.id]
+    : [cursor.createdAt.toISOString(), cursor.id];
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
+
+const PG_BIGINT_MIN = BigInt("-9223372036854775808");
+const PG_BIGINT_MAX = BigInt("9223372036854775807");
 
 /** Decode a cursor produced by `encodeEventCursor`. Returns `null` on invalid input. */
 export function decodeEventCursor(raw: string | null | undefined): EventCursor | null {
   if (!raw || raw.length > 300) return null;
   try {
     const value: unknown = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
-    if (!Array.isArray(value) || value.length !== 2) return null;
+    if (!Array.isArray(value)) return null;
+    if (value.length === 3 && value[0] === "t") {
+      const [, txid, id] = value;
+      if (typeof txid !== "string" || !/^-?\d{1,19}$/.test(txid) || typeof id !== "string" || !id.trim() || id.length > 191) return null;
+      // 19 digits can still overflow Postgres bigint; Prisma would throw a 500.
+      const parsed = BigInt(txid);
+      if (parsed < PG_BIGINT_MIN || parsed > PG_BIGINT_MAX) return null;
+      return { txid: parsed, id };
+    }
+    if (value.length !== 2) return null;
     const [iso, id] = value;
     if (typeof iso !== "string" || !z.iso.datetime({ offset: true }).safeParse(iso).success || typeof id !== "string" || !id.trim() || id.length > 191) return null;
     const createdAt = new Date(iso);
@@ -181,6 +207,7 @@ const eventSelect = {
   actorAgentId: true,
   bugId: true,
   createdAt: true,
+  txid: true,
 } satisfies Prisma.AgentEventSelect;
 
 export type AgentEventRow = {
@@ -190,11 +217,44 @@ export type AgentEventRow = {
   actorAgentId: string | null;
   bugId: string | null;
   createdAt: Date;
+  txid: bigint;
 };
+
+/**
+ * The oldest transaction id that may still be running (#739). Every
+ * transaction below it has committed or rolled back, so an event with a
+ * smaller `txid` is either visible now or never will be. A later poll can only
+ * reveal events with a `txid` at or above this, which is past any cursor
+ * handed out now.
+ */
+async function settledBefore(): Promise<bigint> {
+  const [row] = await prisma.$queryRaw<{ xmin: string }[]>`
+    SELECT pg_snapshot_xmin(pg_current_snapshot())::text AS xmin`;
+  return BigInt(row.xmin);
+}
+
+function afterCursor(cursor: EventCursor): Prisma.AgentEventWhereInput {
+  if ("txid" in cursor) {
+    return {
+      OR: [
+        { txid: { gt: cursor.txid } },
+        { txid: cursor.txid, id: { gt: cursor.id } },
+      ],
+    };
+  }
+  return {
+    OR: [
+      { createdAt: { gt: cursor.createdAt } },
+      { createdAt: cursor.createdAt, id: { gt: cursor.id } },
+    ],
+  };
+}
 
 /**
  * Fetch events for `agent.tenantId` that come after `cursor`, in ascending
  * order (oldest first). Reads 101 rows so the route can detect another page.
+ * Events from transactions that may still be running are held back until
+ * they settle, so a cursor never moves past an event that is about to appear.
  */
 export async function listEvents(
   agent: Pick<AgentContext, "tenantId">,
@@ -202,18 +262,12 @@ export async function listEvents(
 ): Promise<AgentEventRow[]> {
   const where: Prisma.AgentEventWhereInput = {
     tenantId: agent.tenantId,
-    ...(cursor
-      ? {
-          OR: [
-            { createdAt: { gt: cursor.createdAt } },
-            { createdAt: cursor.createdAt, id: { gt: cursor.id } },
-          ],
-        }
-      : {}),
+    txid: { lt: await settledBefore() },
+    ...(cursor ? afterCursor(cursor) : {}),
   };
   return prisma.agentEvent.findMany({
     where,
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    orderBy: [{ txid: "asc" }, { id: "asc" }],
     take: 101,
     select: eventSelect,
   });
