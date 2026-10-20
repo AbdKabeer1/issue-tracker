@@ -74,6 +74,8 @@ export type NotificationEvent =
       kind: "agent_question";
       questionId: string;
       excerpt?: string;
+      /** #606: the question is still unanswered and the agent's claim is paused on it. */
+      reminder?: boolean;
     })
   | (AgentBase & {
       /** A redesign is waiting for this person to approve it (#431). */
@@ -188,9 +190,12 @@ function planAgentNotification(
   let lines: (string | false | undefined)[];
   switch (event.kind) {
     case "agent_question":
-      subject = `${event.actorName} has a question for you${about}`;
+      subject = event.reminder
+        ? `Reminder: ${event.actorName} is still waiting for your answer${about}`
+        : `${event.actorName} has a question for you${about}`;
       lines = [
         `${event.actorName}, an agent working for you, asked you a question${about}.`,
+        event.reminder && "Its work on the issue is paused until you answer.",
         event.excerpt ? `\n> ${event.excerpt}` : undefined,
       ];
       break;
