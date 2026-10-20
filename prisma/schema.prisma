@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 enum Severity {
@@ -972,13 +973,14 @@ model TenantShareRedemption {
 
 /// One create per agent per Idempotency-Key (#441).
 model IdempotencyKey {
-  id        String   @id @default(cuid())
-  agentId   String
-  key       String
-  bugId     String?
-  createdAt DateTime @default(now())
-  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  bug       Bug?     @relation(fields: [bugId], references: [id], onDelete: SetNull)
+  id          String   @id @default(cuid())
+  agentId     String
+  key         String
+  bugId       String?
+  requestHash String?
+  createdAt   DateTime @default(now())
+  agent       Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  bug         Bug?     @relation(fields: [bugId], references: [id], onDelete: SetNull)
 
   @@unique([agentId, key])
   @@index([createdAt])

@@ -8,7 +8,7 @@ import { audit } from "@/lib/agents/audit";
 import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/rate-budget";
 import { createBugSchema, commentSchema, statusSchema, severitySchema } from "@/lib/validations/issue";
 import { parsePlatformFilter, platformFilterWhere } from "@/lib/platform-filter";
-import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, pageSize, toPage } from "@/lib/agent-api/create-policy";
+import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, hashCreateRequest, pageSize, toPage } from "@/lib/agent-api/create-policy";
 import { createdSummary, commentedSummary, commentPreview } from "@/lib/activity-log";
 import { extractMentionedUserIds, normalizeMentions } from "@/lib/mentions";
 import { commentDepth, MAX_COMMENT_DEPTH } from "@/lib/comments";
@@ -149,8 +149,20 @@ export async function createAgentIssue(agent: AgentContext, request: NextRequest
   const input = createSchema.parse(await issueJson(request));
   const scope = await issueProject(agent, request.nextUrl.searchParams, input.projectId);
   const beneficiaryUserId = input.beneficiaryUserId ?? agent.ownerId;
+  const requestHash = hashCreateRequest({
+    projectId: scope.projectId,
+    beneficiaryUserId,
+    title: input.title,
+    description: input.description,
+    categoryId: input.categoryId || null,
+    proofLinks: input.proofLinks,
+    typeId: input.typeId ?? null,
+    severity: input.severity ?? null,
+    acknowledgeSimilar: input.acknowledgeSimilar ?? null,
+  });
   const result = await createIssueWithPolicy({
     agent, projectId: scope.projectId, idempotencyKey: request.headers.get("Idempotency-Key"),
+    requestHash,
     title: input.title, typeId: input.typeId, severity: input.severity, acknowledgeSimilar: input.acknowledgeSimilar,
     insert: async (tx, policy) => {
       const member = await tx.membership.findUnique({
