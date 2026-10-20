@@ -5,10 +5,12 @@ import { createReviewOffers } from "@/lib/agent-api/review-offer";
 import { agentIssueRequest, issueJson } from "@/lib/agent-api/issues";
 import { publish } from "@/lib/agent-api/events";
 import {
+  clientForInstallation,
   mergeAcceptedFix,
   parseGitHubRepoUrl,
   parsePullRequestUrl,
   sameRepo,
+  standingAcceptance,
 } from "@/lib/github/merge-pr";
 
 export const runtime = "nodejs";
@@ -41,7 +43,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
     const bug = await prisma.bug.findFirst({
       where: { id, tenantId: agent.tenantId, isDeleted: false },
-      select: { id: true, projectId: true, project: { select: { repoUrl: true } } },
+      select: {
+        id: true,
+        projectId: true,
+        pullRequestUrl: true,
+        project: { select: { repoUrl: true, githubInstallationId: true } },
+      },
     });
     if (!bug) return NextResponse.json({ error: "No such issue." }, { status: 404 });
 
@@ -53,10 +60,35 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       );
     }
 
+    // #489: once a fix is accepted, its pull request is part of what was
+    // reviewed. Swapping in a different one would merge code nobody accepted,
+    // so the link itself is refused.
+    const accepted = await standingAcceptance(prisma, bug.id);
+    if (accepted && bug.pullRequestUrl && bug.pullRequestUrl !== parsed.data.pullRequestUrl) {
+      return NextResponse.json(
+        {
+          error:
+            "This issue's accepted fix is bound to a different pull request — link the accepted one again.",
+        },
+        { status: 409 },
+      );
+    }
+
+    // #489: record the head commit with the link, so the acceptance and the
+    // merge gate bind to the exact code, not just a pull request number.
+    let pullRequestHeadSha: string | null = null;
+    const client = clientForInstallation(bug.project?.githubInstallationId);
+    if (client) {
+      pullRequestHeadSha = await client
+        .getPullRequest(ref)
+        .then((pullRequest) => pullRequest.headSha || null)
+        .catch(() => null);
+    }
+
     await prisma.$transaction(async (tx) => {
       await tx.bug.update({
         where: { id: bug.id },
-        data: { pullRequestUrl: parsed.data.pullRequestUrl },
+        data: { pullRequestUrl: parsed.data.pullRequestUrl, pullRequestHeadSha },
       });
 
       await tx.bugActivity.create({

@@ -295,6 +295,9 @@ model Bug {
   createdByAgent    Agent?             @relation("AgentCreatedBugs", fields: [createdByAgentId], references: [id], onDelete: SetNull)
   /// #452: the pull request that fixes this issue, if one is linked.
   pullRequestUrl    String?
+  /// Head commit of that pull request when it was linked (#489). Acceptance
+  /// and the merge gate bind to this exact commit, not just the PR number.
+  pullRequestHeadSha String?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   reporter          User               @relation("BugReporter", fields: [reporterId], references: [id])
@@ -964,6 +967,9 @@ model TestVerdict {
   /// The pull request this verdict tested (#526). Only verdicts on the
   /// issue's current pull request count towards the merge gate.
   pullRequestUrl   String?
+  /// The head commit of that pull request this verdict tested (#489). Only
+  /// the commit the acceptance pinned may merge.
+  headSha          String?
   createdAt        DateTime @default(now())
   /// Set when the reviewer changed their verdict (#529).
   changedAt        DateTime?
