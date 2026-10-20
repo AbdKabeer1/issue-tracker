@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { SignOutButton } from "@/components/sign-out-button";
 import { BrandLockup } from "@/components/brand-lockup";
 import { ProjectSwitcher } from "@/components/project-switcher";
-import { AgentKeyCopyButton } from "@/components/agent-key-copy";
+import { AgentKeyCopyButton, type AgentKeyHint } from "@/components/agent-key-copy";
 import { RoleSwitcher } from "@/components/role-switcher";
 import type { ProjectChoice } from "@/lib/project-context";
 import {
@@ -157,6 +157,7 @@ export function AppHeader({
   userId,
   projects = [],
   activeProjectId = null,
+  agentKeys = [],
 }: {
   userName?: string | null;
   /** Their picture, if their sign-in provider gave one (#290). */
@@ -170,6 +171,8 @@ export function AppHeader({
   /** The tenant's projects and the one currently active (#426). */
   projects?: ProjectChoice[];
   activeProjectId?: string | null;
+  /** Prefixes of this person's live agent keys for the active project. */
+  agentKeys?: AgentKeyHint[];
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -223,6 +226,7 @@ export function AppHeader({
           <AgentKeyCopyButton
             projectId={activeProjectId ?? projects[0]?.id}
             projectName={projects.find((p) => p.id === (activeProjectId ?? projects[0]?.id))?.name}
+            keys={agentKeys}
           />
         </div>
 
@@ -381,6 +385,7 @@ export function AppHeader({
               <AgentKeyCopyButton
                 projectId={activeProjectId ?? projects[0]?.id}
                 projectName={projects.find((p) => p.id === (activeProjectId ?? projects[0]?.id))?.name}
+                keys={agentKeys}
                 fullWidth
               />
             </div>

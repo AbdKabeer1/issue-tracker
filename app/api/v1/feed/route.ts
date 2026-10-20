@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { agentErrorResponse, requireAgent } from "@/lib/agents/require-agent";
+import { agentErrorResponse, assertKeyProject, requireAgent, type AgentContext } from "@/lib/agents/require-agent";
 import { requireLevel } from "@/lib/agents/levels";
 import { audit } from "@/lib/agents/audit";
 import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/rate-budget";
@@ -10,9 +10,10 @@ import { FeedInputError, feedProject, parseFeedCursor, readFeed } from "@/lib/fe
 export async function GET(request: NextRequest) {
   try {
     let tenantId: string | null;
+    let agent: AgentContext | undefined;
     // A supplied bad key must not fall back to a valid browser session.
     if (request.headers.has("authorization")) {
-      const agent = await requireAgent(request);
+      agent = await requireAgent(request);
       requireLevel(agent, "observer");
       const budget = await consumeAgentBudget({ id: agent.agentId, burst: agent.burst }, "read");
       await audit(agent, "feed.read", request.nextUrl.searchParams.get("projectId"));
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
     const cursor = parseFeedCursor(request.nextUrl.searchParams);
     const project = await feedProject(tenantId, request.nextUrl.searchParams.get("projectId"));
     if (!project) return NextResponse.json({ error: "Project not found." }, { status: 404 });
+    if (agent) assertKeyProject(agent, project.id);
     return NextResponse.json(await readFeed(tenantId, project.id, cursor), {
       headers: { "Cache-Control": "private, no-store" },
     });

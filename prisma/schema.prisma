@@ -485,6 +485,8 @@ model Project {
   tenant               Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   bugs                 Bug[]
   redesigns            RedesignProposal[]
+  apiKeys              AgentApiKey[]
+  pairings             AgentPairing[]
 
   @@unique([tenantId, slug])
 }
@@ -541,6 +543,9 @@ model Agent {
 model AgentApiKey {
   id         String    @id @default(cuid())
   agentId    String
+  /// The only project this key may act in. Null is a legacy key that still
+  /// works across the tenant; new keys always set it (#742).
+  projectId  String?
   /// SHA-256 of the raw key.
   keyHash    String    @unique
   /// The first characters of the key, so the owner can tell keys apart.
@@ -549,8 +554,10 @@ model AgentApiKey {
   revokedAt  DateTime?
   createdAt  DateTime  @default(now())
   agent      Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  project    Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([agentId])
+  @@index([agentId, projectId])
 }
 
 /// Pairing an agent by code (#427). The owner is set only when a signed-in
@@ -564,6 +571,8 @@ model AgentPairing {
   ownerUserId    String?
   /// The tenant the agent joins, set on approval.
   tenantId       String?
+  /// The project the issued key is limited to, set on approval (#742).
+  projectId      String?
   /// The agent row created on approval.
   agentId        String?
   /// SHA-256 of the secret the waiting agent polls with to collect its key.
@@ -574,6 +583,7 @@ model AgentPairing {
   approvedAt     DateTime?
   createdAt      DateTime  @default(now())
   owner          User?     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  project        Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
 }
 
 /// Every agent action, so any call can be traced and undone (#427, #450).
