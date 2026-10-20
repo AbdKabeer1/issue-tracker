@@ -83,4 +83,65 @@ describe("ticket offers", () => {
     );
     expect(result.expired).toBe(2);
   });
+
+  it("rejects offer acceptance if the issue already has an active claim (#662)", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { acceptOffer } = await import("@/lib/agent-api/offer");
+    const { IssueApiError } = await import("@/lib/agent-api/issues");
+
+    const txMock = {
+      issueClaim: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "claim-1",
+          bugId: "bug-1",
+          agentId: "agent-1",
+          beneficiaryUserId: "user-1",
+          status: "offered",
+          offeredAt: new Date(),
+          releasedAt: null,
+          beneficiary: { name: "Agent User" },
+          bug: { id: "bug-1", title: "Bug 1", status: "open", assigneeId: null, tenantId: "tenant-1", projectId: "proj-1", voteCount: 5, assignee: null },
+        }),
+        findFirst: vi.fn().mockResolvedValue({
+          id: "claim-active",
+          bugId: "bug-1",
+          status: "active",
+          releasedAt: null,
+        }),
+      },
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "bug-1" }]),
+    };
+    vi.spyOn(prisma, "$transaction").mockImplementation(async (fn: unknown) =>
+      (fn as (tx: unknown) => unknown)(txMock),
+    );
+
+    const agent = { agentId: "agent-1", ownerId: "user-1", tenantId: "tenant-1", level: "contributor" as const } as unknown as import("@/lib/agents/require-agent").AgentContext;
+    await expect(acceptOffer(agent, "claim-1")).rejects.toThrow(IssueApiError);
+    await expect(acceptOffer(agent, "claim-1")).rejects.toMatchObject({
+      status: 409,
+      message: "This issue already has an active claim.",
+    });
+  });
+
+  it("maps P2002 unique constraint violation to 409 conflict during acceptOffer (#662)", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { Prisma } = await import("@prisma/client");
+    const { acceptOffer } = await import("@/lib/agent-api/offer");
+    const { IssueApiError } = await import("@/lib/agent-api/issues");
+
+    const p2002Error = new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+      code: "P2002",
+      clientVersion: "5.0.0",
+    });
+
+    vi.spyOn(prisma, "$transaction").mockRejectedValue(p2002Error);
+
+    const agent = { agentId: "agent-1", ownerId: "user-1", tenantId: "tenant-1", level: "contributor" as const } as unknown as import("@/lib/agents/require-agent").AgentContext;
+    await expect(acceptOffer(agent, "claim-1")).rejects.toThrow(IssueApiError);
+    await expect(acceptOffer(agent, "claim-1")).rejects.toMatchObject({
+      status: 409,
+      message: "This issue already has an active claim.",
+    });
+  });
 });
+
