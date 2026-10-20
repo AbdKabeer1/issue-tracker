@@ -247,18 +247,25 @@ describe("agent comment paging (#604)", () => {
 });
 
 describe("agent issue creation via the real shared create policy", () => {
-  it("stores the named person and agent and ignores client severity", async () => {
-    const response = await create(request("POST", { ...validBody, beneficiaryUserId: "beneficiary-a", areaId: "area-ui", severity: "critical" }));
+  it("stores the owner as reporter and the agent as author, and ignores client severity", async () => {
+    const response = await create(request("POST", { ...validBody, areaId: "area-ui", severity: "critical" }));
     expect(response.status).toBe(201);
     expect(db.bug.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
-      tenantId: "tenant-a", projectId: "project-a", reporterId: "beneficiary-a", beneficiaryUserId: "beneficiary-a", createdByAgentId: "agent-a", severity: "medium", status: "open", areaId: "area-ui",
+      tenantId: "tenant-a", projectId: "project-a", reporterId: "owner-a", beneficiaryUserId: "owner-a", createdByAgentId: "agent-a", severity: "medium", status: "open", areaId: "area-ui",
     }) }));
     expect(db.idempotencyKey.update).toHaveBeenCalledWith({ where: { id: "held-key" }, data: { bugId: issue.id } });
     expect(db.agentEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       tenantId: "tenant-a", type: "issue.created", actorAgentId: "agent-a", bugId: issue.id,
-      payload: { issueId: issue.id, projectId: "project-a", beneficiaryUserId: "beneficiary-a" },
+      payload: { issueId: issue.id, projectId: "project-a", beneficiaryUserId: "owner-a" },
     }) }));
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "issue.created", bugId: issue.id }) }));
+  });
+
+  it("refuses a body that names a beneficiary (#494)", async () => {
+    const response = await create(request("POST", { ...validBody, beneficiaryUserId: "beneficiary-a" }));
+    expect(response.status).toBe(422);
+    expect(db.bug.create).not.toHaveBeenCalled();
+    expect(db.idempotencyKey.update).not.toHaveBeenCalled();
   });
 
   it("defaults the beneficiary to the owner, including when severity is invalid", async () => {
@@ -267,7 +274,7 @@ describe("agent issue creation via the real shared create policy", () => {
     expect(db.bug.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ beneficiaryUserId: "owner-a", severity: "medium" }) }));
   });
 
-  it("rejects a nonmember beneficiary and an inactive platform", async () => {
+  it("rejects a reporter outside the tenant and an inactive platform", async () => {
     db.membership.findUnique.mockResolvedValueOnce(null);
     expect((await create(request("POST", validBody))).status).toBe(422);
     db.category.findFirst.mockResolvedValueOnce(null);
