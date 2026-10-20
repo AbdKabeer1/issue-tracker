@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Avatar } from "@/components/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LocalTime } from "@/components/local-time";
+import { MemberRoleActions } from "@/components/member-role-actions";
 import { requireUser } from "@/lib/auth-helpers";
+import { isSuperAdmin } from "@/lib/roles";
 import { INVITE_TTL_DAYS, canInvite, pendingInvites } from "@/lib/invites";
 import { prisma } from "@/lib/prisma";
 import { ZEDU_SLUG } from "@/lib/tenant";
@@ -36,7 +39,8 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
   if (!tenant) notFound();
 
   const canManage = canInvite(tenant.role);
-  const [currentTenantId, counts, managers, invites, shareLinks] = await Promise.all([
+  const canChangeRoles = tenant.role === "owner" || isSuperAdmin(user.role);
+  const [currentTenantId, counts, managers, invites, members, shareLinks] = await Promise.all([
     currentTenantIdFor(user.id),
     prisma.tenant.findUnique({
       where: { id: tenant.id },
@@ -50,8 +54,19 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
       take: 20,
     }),
     canManage ? pendingInvites(prisma, tenant.id) : [],
+    prisma.membership.findMany({
+      where: { tenantId: tenant.id },
+      orderBy: [{ role: "asc" }, { user: { name: "asc" } }],
+      take: 200,
+      select: {
+        role: true,
+        createdAt: true,
+        user: { select: { id: true, name: true, email: true, image: true, role: true } },
+      },
+    }),
     canManage ? listShareLinks(prisma, tenant.id) : [],
   ]);
+  const ownerCount = members.filter((member) => member.role === "owner").length;
   const current = tenant.id === currentTenantId;
 
   return (
@@ -105,6 +120,45 @@ export default async function TenantPage({ params }: { params: Promise<{ slug: s
             Only owners and admins can invite people. Ask one of them to invite your teammate.
           </p>
         )}
+      </section>
+
+      <section aria-labelledby="tenant-members" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <h2
+          id="tenant-members"
+          className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6"
+        >
+          Members
+        </h2>
+        <p className="border-b border-slate-200 px-4 py-3 text-sm text-slate-600 sm:px-6">
+          Roles here apply only in {tenant.name}. Someone who is an admin somewhere else is a member here until an owner promotes them.
+        </p>
+        <ul className="divide-y divide-slate-200">
+          {members.map((member) => (
+            <li key={member.user.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
+              <Avatar name={member.user.name} image={member.user.image} size="md" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-slate-900">{member.user.name}</p>
+                <p className="truncate text-xs text-slate-500">{member.user.email}</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Joined <LocalTime date={member.createdAt} />
+                </p>
+              </div>
+              <Badge className="bg-slate-100 text-slate-700">{MEMBERSHIP_ROLE_LABELS[member.role]}</Badge>
+              <MemberRoleActions
+                tenantId={tenant.id}
+                tenantName={tenant.name}
+                userId={member.user.id}
+                userName={member.user.name}
+                membershipRole={member.role}
+                siteSuperAdmin={member.user.role === "super_admin"}
+                canChangeRoles={canChangeRoles}
+                canRemove={canManage || isSuperAdmin(user.role)}
+                isSelf={member.user.id === user.id}
+                ownerCount={ownerCount}
+              />
+            </li>
+          ))}
+        </ul>
       </section>
 
       {canManage ? (

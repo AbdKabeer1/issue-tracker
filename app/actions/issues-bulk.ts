@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireUser } from "@/lib/auth-helpers";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import {
   activityCreateData,
   assigneeChangedSummary,
@@ -36,7 +38,9 @@ export async function bulkUpdateBugsAction(
   rawIds: unknown,
   rawChange: unknown,
 ): Promise<BulkResult> {
-  const user = await requireAdmin();
+  const user = await requireUser();
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!access.admin) redirect("/issues");
 
   const parsed = validateBulk(rawIds, rawChange);
   if (!parsed.ok) return { error: parsed.error };

@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import type { Status } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireUser } from "@/lib/auth-helpers";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { formatIssueNumber } from "@/lib/issue-number";
 import { duplicateLinkProblem, parseIssueRef, type LinkSide } from "@/lib/duplicates";
 import { escapeSearchQuery } from "@/lib/search";
@@ -14,6 +15,16 @@ export type DuplicateActionResult = { ok?: true; error?: string };
 export type DuplicateCandidate = { id: string; number: number; title: string; status: Status };
 
 class LinkRefused extends Error {}
+
+const DUPLICATE_FORBIDDEN = "Only an owner or admin of this organization can change duplicates.";
+
+/** Duplicate links are an organization power, not a site-wide admin power. */
+async function requireOrgAdmin() {
+  const user = await requireUser();
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!access.admin) return { error: DUPLICATE_FORBIDDEN };
+  return { user };
+}
 
 function revalidate(...bugIds: (string | null | undefined)[]) {
   revalidatePath("/issues");
@@ -36,7 +47,9 @@ export async function markDuplicateAction(
   bugId: string,
   targetRef: string,
 ): Promise<DuplicateActionResult> {
-  const admin = await requireAdmin();
+  const gate = await requireOrgAdmin();
+  if ("error" in gate) return { error: gate.error };
+  const admin = gate.user;
   const ref = parseIssueRef(targetRef ?? "");
   if (!ref) return { error: "Enter an issue number, like #12." };
 
@@ -101,7 +114,9 @@ export async function markDuplicateAction(
 
 /** Admin only (#285): the issue is no longer a duplicate; it reappears in the list. */
 export async function clearDuplicateAction(bugId: string): Promise<DuplicateActionResult> {
-  const admin = await requireAdmin();
+  const gate = await requireOrgAdmin();
+  if ("error" in gate) return { error: gate.error };
+  const admin = gate.user;
   const bug = await prisma.bug.findUnique({
     where: { id: bugId, ...bugInTenant(await currentTenantIdFor(admin.id)) },
     select: { number: true, duplicateOfId: true, duplicateOf: { select: { id: true, number: true } } },
@@ -154,7 +169,9 @@ export async function findDuplicateCandidatesAction(
   bugId: string,
   query: string,
 ): Promise<DuplicateCandidate[]> {
-  const admin = await requireAdmin();
+  const gate = await requireOrgAdmin();
+  if ("error" in gate) return [];
+  const admin = gate.user;
   const text = (query ?? "").trim().slice(0, 200);
   if (!text) return [];
   const ref = parseIssueRef(text);

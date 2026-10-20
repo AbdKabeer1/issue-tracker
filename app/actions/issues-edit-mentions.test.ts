@@ -19,6 +19,15 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/auth-helpers", () => ({
   requireUser: vi.fn().mockResolvedValue({ id: "reporter-1", name: "Ada", role: "user" }),
 }));
+vi.mock("@/lib/tenant-access", () => ({
+  currentTenantAccess: vi.fn(async () => ({
+    tenantId: "tenant-zedu",
+    tenantName: "Zedu",
+    tenantSlug: "zedu",
+    membershipRole: "member",
+    admin: false,
+  })),
+}));
 
 vi.mock("@/lib/session-user", () => ({
   resolveSessionUserId: vi.fn(),

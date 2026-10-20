@@ -1,8 +1,8 @@
 import Link from "next/link";
 import type { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
 import { CreateIssueForm } from "@/components/create-issue-form";
 
@@ -44,7 +44,7 @@ async function loadMentionUsers(): Promise<MentionUser[]> {
 
 export default async function NewBugPage() {
   const user = await requireUser();
-  const admin = isAdmin(user.role);
+  const admin = (await currentTenantAccess(user.id, user.role)).admin;
   // Every signed-in user is needed for @mentions; admins additionally get
   // the assignee picker. Each lookup fails on its own: the list page already
   // does this, and a throw here is the error page instead of the form.

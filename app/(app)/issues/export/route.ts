@@ -5,6 +5,7 @@ import { getIssueTypes, getPlatforms } from "@/lib/lookups";
 import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { getBugOrderBy } from "@/lib/issues-sort";
 import { parseBugListFilters, type RawParams } from "@/lib/issue-list-filters";
 import { CSV_EOL, csvRow } from "@/lib/csv";
@@ -41,6 +42,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
   const user = await requireUser();
+  const access = await currentTenantAccess(user.id, user.role);
 
   const params: RawParams = Object.fromEntries(
     request.nextUrl.searchParams.entries(),
@@ -59,7 +61,7 @@ export async function GET(request: NextRequest) {
     userId: user.id,
     // Deleted issues are admin-only on the list, and must stay admin-only
     // here: an export is just another way of reading the same rows.
-    canSeeDeleted: canDeleteTicket(user.role),
+    canSeeDeleted: canDeleteTicket(user.role, access.membershipRole),
     tagTypes,
     platforms,
     milestones,

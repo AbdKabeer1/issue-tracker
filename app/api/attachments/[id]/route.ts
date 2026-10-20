@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
-import { isAdmin } from "@/lib/roles";
 import { attachmentResponseHeaders } from "@/lib/attachments";
+import { tenantAccessFor } from "@/lib/tenant-access";
 
 /**
  * Serve an attachment (#215) to signed-in users. Files on a deleted issue
@@ -24,7 +24,7 @@ export async function GET(
       contentType: true,
       size: true,
       data: true,
-      bug: { select: { isDeleted: true } },
+      bug: { select: { isDeleted: true, tenantId: true } },
       redesignProposal: { select: { tenantId: true } },
     },
   });
@@ -39,7 +39,10 @@ export async function GET(
     });
     if (!membership) return notFound();
   }
-  if (attachment.bug?.isDeleted && !isAdmin(user.role)) return notFound();
+  if (attachment.bug?.isDeleted) {
+    const access = await tenantAccessFor(user.id, attachment.bug.tenantId, user.role);
+    if (!access.admin) return notFound();
+  }
 
   return new NextResponse(new Uint8Array(attachment.data), {
     status: 200,

@@ -4,7 +4,6 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { viewerBugScope } from "@/lib/tenant-viewer";
@@ -52,6 +51,7 @@ import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { fetchVoterSummary } from "@/lib/voter-summaries";
 import { createEmptyVoterSummary } from "@/lib/voters";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { MilestoneDue } from "@/components/milestone-due";
 import { dueDateValue } from "@/lib/milestones";
 import { canEditTicket } from "@/lib/ticket-editing";
@@ -210,8 +210,9 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   }
 
   const user = await requireUser();
-  const canTriage = isAdmin(user.role);
-  const canDelete = canDeleteTicket(user.role);
+  const access = await currentTenantAccess(user.id, user.role);
+  const canTriage = access.admin;
+  const canDelete = canDeleteTicket(user.role, access.membershipRole);
   // #289: open milestones for the triage panel (admins only). Started here,
   // alongside the issue query, and awaited where the form needs them.
   const milestoneOptionsPromise: Promise<{ id: string; title: string; isClosed: boolean }[]> = canTriage
@@ -472,6 +473,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
     canEditTicket({
       actorId: userId,
       actorRole: user.role,
+      membershipRole: access.membershipRole,
       reporterId: bug.reporterId,
     }) && !bug.isDeleted;
   const canSelfAssign =
@@ -479,6 +481,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
     canAssignTicket({
       actorId: userId,
       actorRole: user.role,
+      membershipRole: access.membershipRole,
       currentAssigneeId: bug.assigneeId,
       targetAssigneeId: isAssignee ? null : userId,
     });
@@ -932,6 +935,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           users={users}
           currentUserId={user.id}
           currentUserRole={user.role}
+          tenantAdmin={access.admin}
           readOnly={bug.isDeleted}
         />
       </section>
@@ -944,7 +948,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 Danger zone
               </h2>
               <p className="text-sm text-slate-600">
-                Delete this issue. It will be hidden from everyone except admins, who can restore it.
+                Delete this issue. It will be hidden from everyone except owners and admins of this organization, who can restore it.
               </p>
             </div>
             <DeleteIssueButton

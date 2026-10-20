@@ -5,6 +5,17 @@ vi.mock("@/lib/auth-helpers", () => ({
   requireUser: vi.fn(),
 }));
 
+const tenantAccessFor = vi.hoisted(() =>
+  vi.fn(async () => ({
+    tenantId: "tenant-ziki",
+    tenantName: "Ziki",
+    tenantSlug: "ziki",
+    membershipRole: "member" as "owner" | "admin" | "member",
+    admin: false,
+  })),
+);
+vi.mock("@/lib/tenant-access", () => ({ tenantAccessFor }));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     membership: { findUnique: vi.fn() },
@@ -84,7 +95,7 @@ describe("GET /api/attachments/[id]", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns 200 if attachment belongs to a deleted issue and user is an admin", async () => {
+  it("returns 404 when a site admin is only a member of the issue's organization", async () => {
     userMock.mockResolvedValue({ id: "admin-1", role: "admin" });
     findUnique.mockResolvedValue({
       uploaderId: "user-2",
@@ -92,7 +103,28 @@ describe("GET /api/attachments/[id]", () => {
       contentType: "image/png",
       size: 50,
       data: Buffer.from("png-bytes"),
-      bug: { isDeleted: true },
+      bug: { isDeleted: true, tenantId: "tenant-ziki" },
+    });
+    const res = await makeRequest("att-2");
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 200 if an owner of the organization requests a file on a deleted issue", async () => {
+    userMock.mockResolvedValue({ id: "admin-1", role: "user" });
+    tenantAccessFor.mockResolvedValueOnce({
+      tenantId: "tenant-ziki",
+      tenantName: "Ziki",
+      tenantSlug: "ziki",
+      membershipRole: "owner",
+      admin: true,
+    });
+    findUnique.mockResolvedValue({
+      uploaderId: "user-2",
+      filename: "issue.png",
+      contentType: "image/png",
+      size: 50,
+      data: Buffer.from("png-bytes"),
+      bug: { isDeleted: true, tenantId: "tenant-ziki" },
     });
     const res = await makeRequest("att-2");
     expect(res.status).toBe(200);

@@ -20,7 +20,6 @@ import {
   type ActivityMetadata,
 } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
-import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import {
   resolveSessionUserId,
@@ -76,6 +75,7 @@ import {
   defaultProjectIdFor,
   NO_TENANT_MESSAGE,
 } from "@/lib/tenant-context";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { awardSolver } from "@/lib/points/award";
 import {
   checkRateLimit,
@@ -123,7 +123,8 @@ export async function createBugAction(
 ): Promise<ActionResult> {
   const user = await requireUser();
   const userId = user.id;
-  const admin = isAdmin(user.role);
+  const access = await currentTenantAccess(userId, user.role);
+  const admin = access.admin;
 
   const limit = await consumeRateLimit(
     `create-bug:${userId}`,
@@ -146,6 +147,7 @@ export async function createBugAction(
       !canAssignTicket({
         actorId: userId,
         actorRole: user.role,
+        membershipRole: access.membershipRole,
         currentAssigneeId: null,
         targetAssigneeId,
       })
@@ -313,7 +315,8 @@ export async function updateBugAction(
 ): Promise<ActionResult> {
   const user = await requireUser();
   const userId = user.id;
-  const admin = isAdmin(user.role);
+  const access = await currentTenantAccess(userId, user.role);
+  const admin = access.admin;
 
   const existing = await prisma.bug.findUnique({
     where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
@@ -353,6 +356,7 @@ export async function updateBugAction(
     !canChangeTicketStatus({
       actorId: userId,
       actorRole: user.role,
+      membershipRole: access.membershipRole,
       currentAssigneeId: existing.assigneeId,
     })
   ) {
@@ -361,7 +365,7 @@ export async function updateBugAction(
 
   if (!admin && !isAssignee && !isSelfAssigning) {
     return {
-      error: "Only the assignee or an admin can update this issue",
+      error: "Only the assignee, or an owner or admin of this organization, can update this issue",
     };
   }
 
@@ -370,6 +374,7 @@ export async function updateBugAction(
       !canAssignTicket({
         actorId: userId,
         actorRole: user.role,
+        membershipRole: access.membershipRole,
         currentAssigneeId: existing.assigneeId,
         targetAssigneeId,
       })
@@ -714,6 +719,7 @@ export async function editBugContentAction(
     !canEditTicket({
       actorId: userId,
       actorRole: user.role,
+      membershipRole: (await currentTenantAccess(userId, user.role)).membershipRole,
       reporterId: existing.reporterId,
     })
   ) {
@@ -1061,7 +1067,8 @@ export async function toggleVoteAction(
  */
 export async function deleteBugAction(bugId: string): Promise<ActionResult> {
   const user = await requireUser();
-  if (!canDeleteTicket(user.role)) {
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!canDeleteTicket(user.role, access.membershipRole)) {
     return { error: TICKET_DELETION_ERRORS.unauthorized };
   }
 
@@ -1119,7 +1126,8 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
  */
 export async function restoreBugAction(bugId: string): Promise<ActionResult> {
   const user = await requireUser();
-  if (!canRestoreTicket(user.role)) {
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!canRestoreTicket(user.role, access.membershipRole)) {
     return { error: TICKET_DELETION_ERRORS.unauthorizedRestore };
   }
 
@@ -1179,7 +1187,8 @@ export async function toggleBoostBugAction(
   bugId: string,
 ): Promise<ActionResult & { isBoosted?: boolean }> {
   const user = await requireUser();
-  if (!canBoostTicket(user.role)) {
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!canBoostTicket(user.role, access.membershipRole)) {
     return { error: TICKET_BOOST_ERRORS.unauthorized };
   }
 
@@ -1278,6 +1287,7 @@ export async function selfAssignBugAction(
     !canAssignTicket({
       actorId: userId,
       actorRole: user.role,
+      membershipRole: (await currentTenantAccess(userId, user.role)).membershipRole,
       currentAssigneeId: existing.assigneeId,
       targetAssigneeId,
     })

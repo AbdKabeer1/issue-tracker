@@ -49,9 +49,11 @@ import {
   parseBugSort,
 } from "@/lib/issues-sort";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { DeleteIssueButton } from "@/components/delete-issue-button";
 import { RestoreIssueButton } from "@/components/restore-issue-button";
 import { canBoostTicket } from "@/lib/ticket-boosting";
+import type { OrganizationRole } from "@/lib/organization-role";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { defaultSortFor, mineFilterWhere, parseMineFilter } from "@/lib/mine-filter";
 import { finishedWatchedWhere } from "@/lib/watching";
@@ -124,11 +126,13 @@ export default async function BugsPage({
   const session = await auth();
   let userId: string | undefined;
   let effectiveRole: AppRole | null | undefined;
+  let membershipRole: OrganizationRole | null = null;
 
   if (session?.user) {
     const user = await requireUser();
     userId = user.id;
     effectiveRole = user.role;
+    membershipRole = (await currentTenantAccess(user.id, user.role)).membershipRole;
   }
   // #425: only issues in the viewer's tenant; none without a membership.
   let tenantId: string | null = null;
@@ -140,8 +144,8 @@ export default async function BugsPage({
     console.error("[bugs] tenant/project resolution failed", error);
   }
 
-  const canDelete = canDeleteTicket(effectiveRole);
-  const canBoost = canBoostTicket(effectiveRole);
+  const canDelete = canDeleteTicket(effectiveRole, membershipRole);
+  const canBoost = canBoostTicket(effectiveRole, membershipRole);
   const params = await searchParams;
   const qParam = toSingleQueryParam(params.q);
   const statusParam = toSingleQueryParam(params.status);
