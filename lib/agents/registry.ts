@@ -259,28 +259,65 @@ export async function setAgentAreaPreferences(
 }
 
 /**
- * Turns the higher write budget on or off (#440). A workspace admin or a
- * site admin may do this. An owner who is not an admin cannot.
+ * Turns the higher write budget on or off (#440), optionally until a time
+ * (#596). A workspace admin or a site admin may do this. An owner who is not
+ * an admin cannot.
+ *
+ * `burst` stays the enabled flag; `burstUntil` only limits it. Disabling
+ * clears the expiry, so turning it back on cannot inherit a stale window.
+ * The budget helper treats an expired time as the standard budget, so no
+ * scheduled job is needed.
  */
-export async function setAgentBurst(actor: Actor, agentId: string, burst: boolean): Promise<ManageResult> {
+export async function setAgentBurst(
+  actor: Actor,
+  agentId: string,
+  burst: boolean,
+  burstUntil: Date | null = null,
+  now = new Date(),
+): Promise<ManageResult> {
   const managed = await managedAgent(actor, agentId);
   if (!managed) return { ok: false, error: NOT_FOUND };
   if (!managed.isTenantAdmin && !isAdmin(actor.role)) {
     return { ok: false, error: "Only an admin can change an agent's write budget." };
   }
   if (managed.agent.revokedAt) return { ok: false, error: "That agent is revoked." };
-  const before = await prisma.agent.findUniqueOrThrow({ where: { id: agentId }, select: { burst: true } });
-  if (before.burst === burst) return { ok: true };
-  await prisma.$transaction(async (tx) => {
-    await tx.agent.update({ where: { id: agentId }, data: { burst } });
-    await audit(
-      { agentId, tenantId: managed.agent.tenantId },
-      "agent.burst_changed",
-      `agent:${agentId}`,
-      { from: before.burst, to: burst, by: "admin" },
-      { actorUserId: actor.id, db: tx },
-    );
+
+  const nextUntil = burst ? burstUntil : null;
+  if (nextUntil && (!Number.isFinite(nextUntil.getTime()) || nextUntil.getTime() <= now.getTime())) {
+    return { ok: false, error: "Choose an expiry time in the future." };
+  }
+
+  const before = await prisma.agent.findUniqueOrThrow({
+    where: { id: agentId },
+    select: { burst: true, burstUntil: true },
   });
+  const beforeUntil = before.burstUntil?.getTime() ?? null;
+  const nextTime = nextUntil?.getTime() ?? null;
+  // Re-saving the same state is harmless and does not add a misleading audit row.
+  if (before.burst === burst && beforeUntil === nextTime) return { ok: true };
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.agent.update({ where: { id: agentId }, data: { burst, burstUntil: nextUntil } });
+      await audit(
+        { agentId, tenantId: managed.agent.tenantId },
+        "agent.burst_changed",
+        `agent:${agentId}`,
+        {
+          from: before.burst,
+          to: burst,
+          fromUntil: before.burstUntil?.toISOString() ?? null,
+          toUntil: nextUntil?.toISOString() ?? null,
+          by: "admin",
+        },
+        { actorUserId: actor.id, db: tx },
+      );
+    });
+  } catch {
+    // The transaction rolled back, so the old budget still applies. Never
+    // report success when the change was not persisted.
+    return { ok: false, error: "Couldn't change the write budget. Try again." };
+  }
   return { ok: true };
 }
 

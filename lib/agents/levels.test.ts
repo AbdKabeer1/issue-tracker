@@ -1,6 +1,10 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   AgentLevelError,
+  OWNER_REVIEW_LIMIT,
+  SEPARATE_LEVEL_AGENTS,
   canSetLevel,
   hasLevel,
   isAgentLevel,
@@ -34,6 +38,18 @@ describe("agent levels (#427)", () => {
     expect(canSetLevel({ isOwner: false, isTenantAdmin: true }, "merger")).toBe(true);
     expect(canSetLevel({ isOwner: false, isTenantAdmin: false }, "observer")).toBe(false);
     expect(settableLevels(owner)).toEqual(["observer", "contributor", "reviewer"]);
+  });
+
+  it("tells a person to keep one agent per level, without calling that a review", () => {
+    expect(SEPARATE_LEVEL_AGENTS).toMatch(/observer/);
+    expect(SEPARATE_LEVEL_AGENTS).toMatch(/contributor/);
+    expect(SEPARATE_LEVEL_AGENTS).toMatch(/reviewer/);
+    expect(SEPARATE_LEVEL_AGENTS).toMatch(/merger/);
+    expect(OWNER_REVIEW_LIMIT).toMatch(/not an independent reviewer/);
+    expect(OWNER_REVIEW_LIMIT).toMatch(/ticket you filed/);
+    const doc = readFileSync(path.resolve(__dirname, "../../docs/ziki-for-agents.md"), "utf8");
+    expect(doc).toContain("separate agent for each level");
+    expect(doc).toContain("Independence is by **owner**, not by agent");
   });
 
   it("recognises only real levels, so a forged body can't set one", () => {

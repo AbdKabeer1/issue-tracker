@@ -4,7 +4,15 @@ import { prisma } from "@/lib/prisma";
 import { Badge } from "@/components/ui/badge";
 import { LocalTime } from "@/components/local-time";
 import { RelativeTime } from "@/components/relative-time";
-import { AGENT_LEVEL_DESCRIPTIONS, AGENT_LEVEL_LABELS, AGENT_LEVELS, settableLevels } from "@/lib/agents/levels";
+import {
+  AGENT_LEVEL_DESCRIPTIONS,
+  AGENT_LEVEL_LABELS,
+  AGENT_LEVELS,
+  OWNER_REVIEW_LIMIT,
+  SEPARATE_LEVEL_AGENTS,
+  settableLevels,
+} from "@/lib/agents/levels";
+import { MAX_ACTIVE_AGENTS_PER_OWNER } from "@/lib/agents/registry-limits";
 import { isTenantAdminRole } from "@/lib/agents/membership";
 import { projectContextFor } from "@/lib/project-context";
 import { currentTenantIdFor } from "@/lib/tenant-context";
@@ -48,6 +56,9 @@ export default async function AgentsSettingsPage() {
     : null;
   const isAdmin = isTenantAdminRole(membership?.role, user.role);
   const projects = context.projects;
+  // One clock for every budget label, so a grant cannot look active in one
+  // row and expired in another because the page rendered across the boundary.
+  const now = new Date();
 
   let personalKey: Awaited<ReturnType<typeof ensureDefaultProjectKey>> = null;
   let personalProjectName: string | null = null;
@@ -81,6 +92,7 @@ export default async function AgentsSettingsPage() {
             model: true,
             level: true,
             burst: true,
+            burstUntil: true,
             createdAt: true,
             revokedAt: true,
             defaultProjectId: true,
@@ -104,7 +116,7 @@ export default async function AgentsSettingsPage() {
                   where: { tenantId, revokedAt: null },
                   orderBy: { createdAt: "asc" },
                   select: {
-                    id: true, name: true, model: true, level: true, burst: true,
+                    id: true, name: true, model: true, level: true, burst: true, burstUntil: true,
                     areaPreferences: { select: { projectAreaId: true, projectArea: { select: { projectId: true } } } },
                   },
                 },
@@ -160,6 +172,10 @@ export default async function AgentsSettingsPage() {
             </a>
           </div>
         </div>
+        <p className="text-sm text-slate-600">
+          {SEPARATE_LEVEL_AGENTS} You can keep {MAX_ACTIVE_AGENTS_PER_OWNER} active agents in this workspace.{" "}
+          {OWNER_REVIEW_LIMIT}
+        </p>
         <div className="rounded-xl border border-teal-200 bg-teal-50/60 p-4 text-sm text-teal-950 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <p className="font-semibold text-teal-900">Developer Documentation &amp; AI Specs</p>
@@ -232,10 +248,10 @@ export default async function AgentsSettingsPage() {
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="register-heading">
             <h2 id="register-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Another agent
+              Add an agent
             </h2>
             <p className="mt-2 text-sm text-slate-600">
-              Optional. Register an extra agent here, or approve one that asked to join at{" "}
+              Register a separate agent for a level you don&apos;t have yet, or approve one that asked to join at{" "}
               <Link href="/settings/agents/pair" className="text-teal-700 underline">
                 the approval page
               </Link>
@@ -300,6 +316,8 @@ export default async function AgentsSettingsPage() {
                         projects={projects}
                         currentProjectId={agent.apiKeys.find((key) => key.project)?.project?.id}
                         burst={agent.burst}
+                        burstUntil={agent.burstUntil}
+                        now={now}
                         canSetBurst={isAdmin}
                         areas={areas}
                         areaPreferences={agent.areaPreferences.map((preference) => ({ projectId: preference.projectArea.projectId, projectAreaId: preference.projectAreaId }))}
@@ -344,6 +362,8 @@ export default async function AgentsSettingsPage() {
                               projects={projects}
                               currentProjectId={context.activeProjectId}
                               burst={agent.burst}
+                              burstUntil={agent.burstUntil}
+                              now={now}
                               canSetBurst
                               areas={areas}
                               areaPreferences={agent.areaPreferences.map((preference) => ({ projectId: preference.projectArea.projectId, projectAreaId: preference.projectAreaId }))}
@@ -374,8 +394,9 @@ export default async function AgentsSettingsPage() {
             </dl>
             <p className="mt-3 text-xs text-slate-500">
               New agents start as observers. You can raise your own agents up to reviewer; only a team
-              admin can make one a merger. Each agent may make 30 writes an hour, including reviews.
-              An admin can turn on a higher budget of 400 writes an hour.
+              admin can make one a merger. Give each level its own agent. {OWNER_REVIEW_LIMIT} Each
+              agent may make 30 writes an hour, including reviews. An admin can turn on a higher budget
+              of 400 writes an hour.
             </p>
           </section>
         </>
