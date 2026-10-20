@@ -106,7 +106,17 @@ describe("stale claim release", () => {
   });
   it("limits candidates to stale active claims in the project, excluding offers", async () => {
     await releaseStaleClaims("project");
-    expect(db.issueClaim.findMany).toHaveBeenCalledWith({ where: { status: "active", releasedAt: null, bug: { projectId: "project", tenantId: "tenant", isDeleted: false }, OR: [{ lastHeartbeatAt: { lt: cutoff } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff } }] }, select: { id: true, bugId: true } });
+    expect(db.issueClaim.findMany).toHaveBeenCalledWith({ where: { status: "active", releasedAt: null, bug: { projectId: "project", tenantId: "tenant", isDeleted: false, status: "in_progress" }, OR: [{ lastHeartbeatAt: { lt: cutoff } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff } }] }, select: { id: true, bugId: true } });
+    expect(db.issueClaim.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        bug: { projectId: "project", tenantId: "tenant", isDeleted: false, status: "in_progress" },
+      }),
+    }));
+  });
+  it("skips a candidate if its issue was resolved before the locked re-read", async () => {
+    db.issueClaim.findFirst.mockResolvedValueOnce(null);
+    expect(await releaseStaleClaims("project")).toEqual({ released: 0 });
+    expect(db.issueClaim.update).not.toHaveBeenCalled();
   });
   it("preserves a newer claim and skips claims already released by another sweep", async () => {
     db.issueClaim.count.mockResolvedValueOnce(1);

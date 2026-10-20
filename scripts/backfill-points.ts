@@ -9,7 +9,7 @@
  */
 import { PrismaClient } from "@prisma/client";
 import { cleanEnv } from "../lib/env-clean";
-import { backfillPoints, type BackfillLine } from "../lib/points/backfill";
+import { backfillPoints, parseBackfillArgs, type BackfillLine } from "../lib/points/backfill";
 
 function describe(line: BackfillLine): string {
   const state = line.alreadyAwarded ? "skip (already awarded)" : "award";
@@ -17,8 +17,13 @@ function describe(line: BackfillLine): string {
 }
 
 async function main() {
-  const dryRun = process.argv.includes("--dry-run");
-  const verbose = dryRun || process.argv.includes("--verbose");
+  // Checked before connecting: an unknown flag (e.g. --dryrun) must not become a real run.
+  const args = parseBackfillArgs(process.argv.slice(2));
+  if (!args.ok) {
+    console.error(args.error);
+    process.exit(2);
+  }
+  const { dryRun, verbose } = args;
   const url = cleanEnv(process.env.DATABASE_URL);
   const prisma = new PrismaClient(url ? { datasources: { db: { url } } } : undefined);
 

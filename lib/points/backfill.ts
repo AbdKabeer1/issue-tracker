@@ -109,15 +109,38 @@ export async function backfillPoints(db: Db, options: BackfillOptions = {}): Pro
       const already = new Set(present.map((p) => p.sourceKey));
 
       for (const entry of entries) {
-        const alreadyAwarded = already.has(entry.sourceKey);
         result.planned++;
+        let alreadyAwarded = already.has(entry.sourceKey);
+        // award() skips an existing key, so if a real award wins the race
+        // after the lookup above, the entry counts as existing, not lost.
+        if (!dryRun && !alreadyAwarded) {
+          if (await award(db, entry)) result.written++;
+          else alreadyAwarded = true;
+        }
         if (alreadyAwarded) result.existing++;
         onLine?.({ ...entry, alreadyAwarded });
-        // award() skips an existing key too, so a run racing a real award is still safe.
-        if (!dryRun && !alreadyAwarded && (await award(db, entry))) result.written++;
       }
     }
     if (bugs.length < batchSize) break;
   }
   return result;
+}
+
+export const BACKFILL_USAGE = "Usage: pnpm tsx scripts/backfill-points.ts [--dry-run] [--verbose]";
+
+const BACKFILL_FLAGS = new Set(["--dry-run", "--verbose"]);
+
+/**
+ * The script's flags. Anything else is an error, checked before connecting:
+ * a mistyped `--dryrun` must never fall through to a real run that writes.
+ */
+export function parseBackfillArgs(
+  args: ReadonlyArray<string>,
+): { ok: true; dryRun: boolean; verbose: boolean } | { ok: false; error: string } {
+  const unknown = args.filter((arg) => !BACKFILL_FLAGS.has(arg));
+  if (unknown.length > 0) {
+    return { ok: false, error: `Unknown argument${unknown.length > 1 ? "s" : ""}: ${unknown.join(" ")}\n${BACKFILL_USAGE}` };
+  }
+  const dryRun = args.includes("--dry-run");
+  return { ok: true, dryRun, verbose: dryRun || args.includes("--verbose") };
 }

@@ -671,8 +671,8 @@ model IssueClaim {
   claimedAt         DateTime?
   lastHeartbeatAt   DateTime?
   releasedAt        DateTime?
-  /// Why it was released: "silence" (#438), "expired" (#449), "undo" (#450)
-  /// or "agent". #451 counts silence releases.
+  /// Why it was released: "silence" (#438), "expired" (#449), "undo" (#450),
+  /// "agent", "resolved", or "closed". #451 counts only silence releases.
   releaseReason     String?
   createdAt         DateTime    @default(now())
   bug               Bug         @relation(fields: [bugId], references: [id], onDelete: Cascade)
