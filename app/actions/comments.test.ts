@@ -48,6 +48,9 @@ vi.mock("@/lib/prisma", () => {
       user: {
         findMany: vi.fn(),
       },
+      agent: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
       membership: {
         findUnique: vi.fn().mockResolvedValue(null),
       },
@@ -64,6 +67,7 @@ import { deleteCommentAction, updateCommentAction } from "./comments";
 
 const findCommentMock = vi.mocked(prisma.comment.findUnique) as unknown as ReturnType<typeof vi.fn>;
 const findUsersMock = vi.mocked(prisma.user.findMany) as unknown as ReturnType<typeof vi.fn>;
+const findAgentsMock = vi.mocked(prisma.agent.findMany) as unknown as ReturnType<typeof vi.fn>;
 const notifyMock = vi.mocked(notifyLater);
 
 const bobId = "clxxxxxxxxxxxxxxxxxxxxxxxx2";
@@ -77,7 +81,7 @@ function existingComment(body: string) {
     body,
     deletedAt: null,
     author: { name: "Ada" },
-    bug: { isDeleted: false, title: "Login button does nothing" },
+    bug: { isDeleted: false, title: "Login button does nothing", tenantId: "tenant-zedu" },
   };
 }
 
@@ -166,6 +170,25 @@ describe("updateCommentAction mention notifications (#228)", () => {
     expect(blocked).toEqual({ error: RATE_LIMIT_MESSAGE });
   });
 
+  it("uses shared persistent store for rate limiting when configured (#624)", async () => {
+    const { setRateLimitStore, ACTION_RATE_LIMITS, RATE_LIMIT_MESSAGE } = await import("@/lib/rate-limit");
+    const hitMock = vi.fn().mockResolvedValue({ allowed: false, retryAfterMs: 1000 });
+    setRateLimitStore({ hit: hitMock });
+    findCommentMock.mockResolvedValue(existingComment("Initial comment"));
+
+    try {
+      const blocked = await edit("Edit with custom store");
+      expect(blocked).toEqual({ error: RATE_LIMIT_MESSAGE });
+      expect(hitMock).toHaveBeenCalledWith(
+        "edit-comment:author-1",
+        ACTION_RATE_LIMITS.editComment,
+        expect.any(Number),
+      );
+    } finally {
+      setRateLimitStore(null);
+    }
+  });
+
   it("fails with deleted error and avoids side effects when comment was deleted concurrently (#721)", async () => {
     findCommentMock.mockResolvedValue(existingComment("Initial comment"));
     txCommentUpdateMany.mockResolvedValueOnce({ count: 0 });
@@ -184,6 +207,43 @@ describe("updateCommentAction mention notifications (#228)", () => {
     const res = await deleteCommentAction("comment-1");
     expect(res).toEqual({ error: COMMENT_ERRORS.deleted });
     expect(txBugActivityUpdateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateCommentAction agent mentions (#603)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetRateLimits();
+    txCommentUpdateMany.mockResolvedValue({ count: 1 });
+    txAttachmentUpdateMany.mockResolvedValue({ count: 0 });
+    findUsersMock.mockResolvedValue([]);
+  });
+
+  it("keeps a tenant agent's tag and notifies its owner once", async () => {
+    findCommentMock.mockResolvedValue(existingComment("Can someone retest?"));
+    findAgentsMock.mockResolvedValue([{ id: "agent-1", name: "Mark's Claude", ownerUserId: carolId }]);
+
+    expect(await edit("Can someone retest? @[Claude](agent:agent-1)")).toEqual({ ok: true });
+
+    expect(findAgentsMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: { in: ["agent-1"] }, tenantId: "tenant-zedu", revokedAt: null },
+    }));
+    expect(txCommentUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ body: "Can someone retest? @[Mark's Claude](agent:agent-1)" }),
+    }));
+    expect(notifyMock).toHaveBeenCalledWith(expect.objectContaining({ kind: "mentioned", recipientIds: [carolId] }));
+  });
+
+  it("degrades an agent outside the issue's tenant to plain text", async () => {
+    findCommentMock.mockResolvedValue(existingComment("hi"));
+    findAgentsMock.mockResolvedValue([]);
+
+    expect(await edit("hi @[Stranger](agent:agent-x)")).toEqual({ ok: true });
+
+    expect(txCommentUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ body: "hi @Stranger" }),
+    }));
+    expect(notifyMock).not.toHaveBeenCalled();
   });
 });
 

@@ -28,9 +28,11 @@ export class IssueApiError extends Error {
 const idSchema = z.string().trim().min(1).max(191);
 /** Files uploaded with POST /api/v1/attachments, linked on save (#645). */
 const attachmentIdsSchema = z.array(idSchema).max(MAX_ATTACHMENTS_PER_ITEM).optional();
-const createSchema = createBugSchema.pick({ title: true, description: true, categoryId: true, areaId: true, proofLinks: true })
+export const createSchema = createBugSchema.pick({ title: true, description: true, categoryId: true, areaId: true, proofLinks: true })
   .extend({
-    projectId: idSchema.optional(), beneficiaryUserId: idSchema.optional(),
+    // #494: no beneficiaryUserId — an agent can't file issues in someone
+    // else's name. The reporter is always the agent's owner.
+    projectId: idSchema.optional(),
     typeId: z.unknown().optional(), severity: z.unknown().optional(), acknowledgeSimilar: z.unknown().optional(),
     attachmentIds: attachmentIdsSchema,
   }).strict();
@@ -216,7 +218,9 @@ async function normalizeTenantMentions(db: Prisma.TransactionClient, tenantId: s
 export async function createAgentIssue(agent: AgentContext, request: NextRequest) {
   const input = createSchema.parse(await issueJson(request));
   const scope = await issueProject(agent, request.nextUrl.searchParams, input.projectId);
-  const beneficiaryUserId = input.beneficiaryUserId ?? agent.ownerId;
+  // #494: always the agent's owner. The create schema no longer accepts a
+  // beneficiary, so no request can put words in another person's mouth.
+  const beneficiaryUserId = agent.ownerId;
   const requestHash = hashCreateRequest({
     projectId: scope.projectId,
     beneficiaryUserId,

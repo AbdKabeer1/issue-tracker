@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
-import { reviewerConflict, reviewerCreditConflict, type ReviewedBug } from "@/lib/agents/independence";
+import { reviewerConflict, reviewerCreditConflict, ReviewerNotIndependentError, type ReviewedBug } from "@/lib/agents/independence";
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { IssueApiError } from "@/lib/agent-api/issues";
@@ -21,7 +21,10 @@ import { statusChangedSummary } from "@/lib/activity-log";
  * A merger accepting a fix (#434). The gate: the issue is confirmed, no
  * redesign is waiting for a person, and at least two reviewers whose owners
  * differ said the fix is good to merge. Neither the agent holding the claim
- * nor any agent of the claim holder's owner may be one of those reviewers.
+ * nor any agent of the claim holder's owner may be one of those reviewers,
+ * and the merger itself must be independent of the fix it accepts (#493):
+ * a merger owned by the ticket's beneficiary, reporter, filer, or claim
+ * holder can't accept and pay that side.
  *
  * Accepting records the decision on Ziki: it sets the issue to `resolved` and
  * awards points through `award()` (#428) for the solver and for up to two
@@ -69,12 +72,12 @@ export type AcceptFixResult =
       solverUserId: string | null;
       rewardedReviewerUserIds: string[];
     }
-  | { status: 403; error: "insufficient_level"; message: string }
+  | { status: 403; error: "insufficient_level" | "not_independent"; message: string }
   | { status: 404; error: "not_found"; message: string }
   | {
       status: 409;
       error: "not_ready";
-      missing: "already_accepted" | "redesign" | "confirmation" | "verdicts";
+      missing: "already_accepted" | "redesign" | "confirmation" | "verdicts" | "claim" | "pull_request";
       message: string;
     };
 
@@ -88,6 +91,14 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
     select: mergeBugSelect,
   });
   if (!bug) return { status: 404, error: "not_found", message: "No such issue in this agent's tenant." };
+  // #493: the merger is an independent reviewer too. The same rule that keeps
+  // a claim holder's side out of the verdicts keeps it out of the accept —
+  // otherwise an owner could accept their own fix and collect the solver
+  // points. Checked before anything is written.
+  const conflict = reviewerConflict({ id: agent.agentId, ownerUserId: agent.ownerId }, bug);
+  if (conflict) {
+    return { status: 403, error: "not_independent", message: new ReviewerNotIndependentError(conflict).message };
+  }
   if (bug.status === "resolved") {
     return {
       status: 409,
@@ -98,6 +109,22 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
   }
 
   const claim = activeClaim(bug);
+  if (!claim) {
+    return {
+      status: 409,
+      error: "not_ready",
+      missing: "claim",
+      message: "This issue needs an active claim before its fix can be accepted.",
+    };
+  }
+  if (!bug.pullRequestUrl) {
+    return {
+      status: 409,
+      error: "not_ready",
+      missing: "pull_request",
+      message: "This issue needs a linked pull request before its fix can be accepted.",
+    };
+  }
   const reviewed: ReviewedBug = bug;
 
   return prisma.$transaction(async (tx) => {

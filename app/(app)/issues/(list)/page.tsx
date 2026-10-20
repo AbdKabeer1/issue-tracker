@@ -20,7 +20,7 @@ import {
 import { LocalTime } from "@/components/local-time";
 import { severities, statuses } from "@/lib/validations/issue";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
-import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
+import { boundSearchTerm, escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
 import {
   hasMatch,
   highlightSegments,
@@ -193,7 +193,7 @@ export default async function BugsPage({
   // These lookups are filters only. Each one fails on its own: Promise.all
   // used to throw away the ones that succeeded when Milestone was missing,
   // and the admin path below then queried them again outside this catch.
-  const [tagTypes, platforms, milestones, areas] = await Promise.all([
+  const [tagTypes, platforms, milestones, areas, userPrefs] = await Promise.all([
     // Cached, expired by the admin actions that change them (#297).
     loadOrEmpty("issue types", () => getIssueTypes(), []),
     // Every platform, not just active ones: a link filtered on a platform
@@ -217,7 +217,16 @@ export default async function BugsPage({
         : Promise.resolve([]),
       [],
     ),
+    userId && prisma.user?.findUnique
+      ? prisma.user
+          .findUnique({
+            where: { id: userId },
+            select: { keyboardShortcuts: true },
+          })
+          .catch(() => null)
+      : Promise.resolve(null),
   ]);
+  const shortcutsEnabled = userPrefs?.keyboardShortcuts ?? true;
   const selectedMilestone = parseMilestoneFilter(params[MILESTONE_PARAM], milestones);
   const milestoneParam = milestoneParamValue(selectedMilestone);
   const selectedTags = parseTagFilter(params.tags, tagTypes);
@@ -239,7 +248,7 @@ export default async function BugsPage({
   Object.assign(where, projectAreaFilterWhere(selectedArea));
   Object.assign(where, milestoneWhere(selectedMilestone));
   if (qParam?.trim()) {
-    const q = escapeSearchQuery(qParam.trim());
+    const q = escapeSearchQuery(boundSearchTerm(qParam));
     where.OR = [
       { title: { contains: q, mode: "insensitive" } },
       { description: { contains: q, mode: "insensitive" } },
@@ -564,6 +573,7 @@ export default async function BugsPage({
               platforms={platforms}
               milestones={milestones}
               areas={areas}
+              shortcutsEnabled={shortcutsEnabled}
             />
           </Suspense>
         )}

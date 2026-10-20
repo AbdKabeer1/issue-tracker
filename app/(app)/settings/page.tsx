@@ -87,6 +87,19 @@ export default async function SettingsPage() {
       </section>
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Security
+        </h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Protect your account with a second step at sign-in.
+        </p>
+        <p className="mt-3 text-sm">
+          <Link href="/settings/security" className="font-medium text-teal-700 hover:underline">
+            Two-factor sign-in
+          </Link>
+        </p>
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Appearance
         </h2>
         <ThemeSettings initialTheme={parseTheme(settings?.theme)} />
