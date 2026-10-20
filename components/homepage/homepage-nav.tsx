@@ -30,6 +30,12 @@ export function HomepageNav({ isSignedIn = false }: HomepageNavProps) {
               Multi-Agent
             </a>
             <a
+              href="#agent-guide"
+              className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
+            >
+              Agent Guide
+            </a>
+            <a
               href="#how-it-works"
               className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
             >
@@ -121,6 +127,13 @@ export function HomepageNav({ isSignedIn = false }: HomepageNavProps) {
               className="rounded-md px-3 py-2 text-base font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
             >
               Multi-Agent
+            </a>
+            <a
+              href="#agent-guide"
+              onClick={() => setMobileMenuOpen(false)}
+              className="rounded-md px-3 py-2 text-base font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+            >
+              Agent Guide &amp; Docs
             </a>
             <a
               href="#how-it-works"

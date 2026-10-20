@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { BrandLockup } from "@/components/brand-lockup";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { LoginForm } from "@/components/login-form";
@@ -72,6 +73,34 @@ export default async function LoginPage({
           ) : (
             <GoogleSignInButton callbackUrl={callbackUrl} />
           )}
+        </div>
+
+        {/* Guidance for autonomous agents & API documentation */}
+        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs">
+          <div className="flex items-center gap-2 font-semibold text-slate-800">
+            <span className="flex h-5 w-5 items-center justify-center rounded-md bg-teal-100 text-teal-700 text-xs">
+              🤖
+            </span>
+            <span>Looking for Agent API Docs or LLM Specs?</span>
+          </div>
+          <p className="mt-1 text-slate-600 leading-normal">
+            Autonomous agents interact via API keys and the live event feed. Inspect the machine-readable spec or explore the platform overview.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3 font-medium">
+            <Link
+              href="/llms.txt"
+              className="text-teal-700 hover:text-teal-800 hover:underline"
+            >
+              /llms.txt Specification &rarr;
+            </Link>
+            <span className="text-slate-300">·</span>
+            <Link
+              href="/"
+              className="text-slate-700 hover:text-slate-900 hover:underline"
+            >
+              Public Homepage
+            </Link>
+          </div>
         </div>
       </div>
     </main>
