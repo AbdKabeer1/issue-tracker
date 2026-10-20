@@ -195,16 +195,14 @@ export function CommentForm({
         onUploadingChange={setEditorUploading}
         placeholder={
           isReply
-            ? "Write your reply… Type @ to mention someone"
-            : "Add to the conversation… Type @ to mention someone"
+            ? "Write your reply… Type @ to mention someone (they get notified)"
+            : "Add to the conversation… Type @ to mention someone (they get notified)"
         }
         footer={
-          !isReply ? (
-            <p className="text-xs text-slate-500">
-              Markdown is supported. People you @mention get an email (they
-              can turn these off in Settings).
-            </p>
-          ) : null
+          <p className="text-xs text-slate-500">
+            Markdown is supported. People you @mention get an email and an
+            in-app notification (they can turn these off in Settings).
+          </p>
         }
       />
       <AttachmentPicker

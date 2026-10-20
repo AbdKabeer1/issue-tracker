@@ -13,8 +13,9 @@ describe("ChangePasswordForm (#570)", () => {
     expect(html).toContain('id="currentPassword"');
     expect(html).toContain('id="newPassword"');
     expect(html).toContain('id="confirmPassword"');
-    expect(html).toContain('autocomplete="current-password"');
-    expect(html).toContain('autocomplete="new-password"');
+    // The server renderer may keep React's `autoComplete` casing; match either.
+    expect(html).toMatch(/autocomplete="current-password"/i);
+    expect(html).toMatch(/autocomplete="new-password"/i);
     expect(html).toContain("Change password");
   });
 });

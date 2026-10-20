@@ -70,8 +70,6 @@ export function isAcknowledged(value: unknown): boolean {
 /** Searched over, then cut to SIMILAR_LIMIT once scored (as /api/issues/similar). */
 const CANDIDATES = 10;
 
-let trigramUnavailable = false;
-
 /**
  * Open issues in this project whose title looks like `title`, using the same
  * scoring as the reporter's "is it one of these?" hint (lib/similar-issues.ts).
@@ -83,24 +81,21 @@ export async function findSimilarIssues(
 ): Promise<SimilarIssue[]> {
   const query = normalizeQuery(title);
   if (!shouldSearch(query)) return [];
-  if (!trigramUnavailable) {
-    try {
-      const rows = await db.$queryRaw<ScoredIssue[]>`
-        SELECT "id", "number", "title", "status", "voteCount",
-               GREATEST(similarity("title", ${query}), word_similarity(${query}, "title")) AS "score"
-        FROM "Bug"
-        WHERE "isDeleted" = false
-          AND "tenantId" = ${scope.tenantId}
-          AND "projectId" = ${scope.projectId}
-          AND "status"::text = ANY(${SIMILAR_STATUSES as string[]})
-          AND ("title" % ${query} OR ${query} <% "title")
-        ORDER BY "score" DESC
-        LIMIT ${CANDIDATES}`;
-      return pickSimilar(rows);
-    } catch (error) {
-      trigramUnavailable = true;
-      console.error("[agent-create] trigram search failed; using plain matching from now on", error);
-    }
+  try {
+    const rows = await db.$queryRaw<ScoredIssue[]>`
+      SELECT "id", "number", "title", "status", "voteCount",
+             GREATEST(similarity("title", ${query}), word_similarity(${query}, "title")) AS "score"
+      FROM "Bug"
+      WHERE "isDeleted" = false
+        AND "tenantId" = ${scope.tenantId}
+        AND "projectId" = ${scope.projectId}
+        AND "status"::text = ANY(${SIMILAR_STATUSES as string[]})
+        AND ("title" % ${query} OR ${query} <% "title")
+      ORDER BY "score" DESC
+      LIMIT ${CANDIDATES}`;
+    return pickSimilar(rows);
+  } catch (error) {
+    console.error("[agent-create] trigram search failed; using plain matching for this request", error);
   }
   const terms = fallbackTerms(query);
   if (terms.length < 1) return [];

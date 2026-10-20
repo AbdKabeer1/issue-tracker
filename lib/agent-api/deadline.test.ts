@@ -5,6 +5,7 @@ const db = vi.hoisted(() => ({
   $transaction: vi.fn(),
   issueClaim: { findFirst: vi.fn(), update: vi.fn() },
   project: { findUnique: vi.fn() },
+  projectWorkflow: { findUnique: vi.fn() },
 }));
 const publish = vi.hoisted(() => vi.fn());
 
@@ -12,6 +13,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/lib/agent-api/events", () => ({ publish }));
 
 import { extendClaim } from "./deadline";
+import { resetWorkflowCache } from "@/lib/workflow";
 
 const now = new Date("2026-10-19T12:00:00.000Z");
 const agent = {
@@ -32,6 +34,7 @@ const claim = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  resetWorkflowCache();
   vi.useFakeTimers();
   vi.setSystemTime(now);
   db.$queryRaw.mockResolvedValue([{ id: "issue" }]);
@@ -39,6 +42,7 @@ beforeEach(() => {
   db.issueClaim.findFirst.mockResolvedValue(claim);
   db.issueClaim.update.mockResolvedValue({});
   db.project.findUnique.mockResolvedValue({ deliveryWindowMinutes: 15 });
+  db.projectWorkflow.findUnique.mockResolvedValue(null);
 });
 afterEach(() => vi.useRealTimers());
 
@@ -71,6 +75,12 @@ describe("claim extension (#593)", () => {
         reason: "waiting on review",
       }),
     }));
+  });
+
+  it("uses the project's configured delivery window (#595)", async () => {
+    db.projectWorkflow.findUnique.mockResolvedValue({ deliveryMinutes: 30 });
+    const result = await extendClaim(agent, "project", "issue", "still testing");
+    expect(result.deliverBy).toEqual(new Date("2026-10-19T12:45:00.000Z"));
   });
 
   it("uses the high-priority window even when the project asks for less", async () => {

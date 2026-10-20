@@ -135,7 +135,13 @@ async function seedDemoData() {
   const project = await prisma.project.upsert({
     where: { tenantId_slug: { tenantId: tenant.id, slug: "zedu" } },
     update: {},
-    create: { tenantId: tenant.id, slug: "zedu", name: "Ziki" },
+    create: { tenantId: tenant.id, slug: "zedu", name: "Ziki", workflow: { create: {} } },
+  });
+  // A project seeded before #595 has no workflow row yet.
+  await prisma.projectWorkflow.upsert({
+    where: { projectId: project.id },
+    update: {},
+    create: { projectId: project.id },
   });
   const zedu = { tenantId: tenant.id, projectId: project.id };
   await prisma.membership.createMany({

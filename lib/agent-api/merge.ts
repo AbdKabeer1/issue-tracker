@@ -19,11 +19,12 @@ import {
 } from "@/lib/points/project-rewards";
 import { assertRedesignOpen } from "@/lib/redesigns";
 import { statusChangedSummary } from "@/lib/activity-log";
+import { workflowFor } from "@/lib/workflow";
 
 /**
  * A merger accepting a fix (#434). The gate: the issue is confirmed, no
- * redesign is waiting for a person, and at least two reviewers whose owners
- * differ said the fix is good to merge. Neither the agent holding the claim
+ * redesign is waiting for a person, and the project's required reviewers whose
+ * owners differ said the fix is good to merge. Neither the agent holding the claim
  * nor any agent of the claim holder's owner may be one of those reviewers,
  * and the merger itself must be independent of the fix it accepts (#493):
  * a merger owned by the ticket's beneficiary, reporter, filer, or claim
@@ -33,9 +34,6 @@ import { statusChangedSummary } from "@/lib/activity-log";
  * awards points through `award()` (#428) for the solver and for up to two
  * reviewers. It does not merge a git branch (#452).
  */
-
-/** How many independent good-to-merge verdicts accept a fix. */
-export const MERGE_VERDICTS_NEEDED = 2;
 
 const mergeBugSelect = {
   id: true,
@@ -151,7 +149,7 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
         status: 409 as const,
         error: "not_ready" as const,
         missing: "confirmation" as const,
-        message: "This issue isn't confirmed yet: two independent reviewers must accept it as real.",
+        message: "This issue isn't confirmed yet: the project's required independent reviewers must accept it as real.",
       };
     }
 
@@ -182,12 +180,13 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
       if (verdict.headSha) acceptedHeadSha = verdict.headSha;
     }
 
-    if (reviewers.length < MERGE_VERDICTS_NEEDED) {
+    const { verdictsNeeded } = await workflowFor(bug.projectId, tx);
+    if (reviewers.length < verdictsNeeded) {
       return {
         status: 409 as const,
         error: "not_ready" as const,
         missing: "verdicts" as const,
-        message: `This needs ${MERGE_VERDICTS_NEEDED} reviewers saying it is good to merge; ${reviewers.length} count so far.`,
+        message: `This needs ${verdictsNeeded} reviewers saying it is good to merge; ${reviewers.length} count so far.`,
       };
     }
 
