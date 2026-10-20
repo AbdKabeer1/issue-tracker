@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export const RATE_LIMIT_MESSAGE =
   "You're doing that too fast. Please wait a moment.";
 
@@ -88,17 +90,69 @@ export function checkAuthRateLimit(
   return { allowed: false, retryAfterMs: Math.max(...blocked.map((c) => c.retryAfterMs)) };
 }
 
+const IP_PATTERN = /^[0-9a-fA-F:.]{2,45}$/;
+
+function validIp(value: string | null | undefined): string | null {
+  const ip = value?.trim() ?? "";
+  return IP_PATTERN.test(ip) ? ip : null;
+}
+
 /**
- * Best-effort client IP from proxy headers (first `x-forwarded-for` entry,
- * else `x-real-ip`). It's only used as a rate-limit key, never for access
- * decisions, so a spoofed value at worst gives an attacker their own bucket;
- * the per-email limit still applies.
+ * How many proxies in front of the app append to `X-Forwarded-For` (#507).
+ * Traefik (Coolify) and Vercel each add exactly one hop, so the default is 1.
+ * 0 means there is no proxy and forwarding headers are not trusted at all.
+ */
+export function trustedProxyHops(): number {
+  const raw = process.env.TRUSTED_PROXY_HOPS?.trim();
+  if (!raw) return 1;
+  const hops = Number.parseInt(raw, 10);
+  return Number.isFinite(hops) && hops >= 0 ? Math.min(hops, 10) : 1;
+}
+
+/**
+ * The client IP as seen by the proxy we trust, for rate-limit keys (#507).
+ *
+ * The left-most `X-Forwarded-For` entry is whatever the client sent, so it
+ * can't be trusted: rotating it would hand out a fresh bucket per request.
+ * Each trusted proxy appends the address it received the request from, so
+ * the client is the entry `TRUSTED_PROXY_HOPS` places from the right.
+ * `CLIENT_IP_HEADER` (e.g. `cf-connecting-ip`) overrides this when the
+ * platform sets a single header the client can't forge.
  */
 export function clientIpFrom(headers: { get(name: string): string | null }): string | null {
-  const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const realIp = headers.get("x-real-ip")?.trim();
-  const ip = forwarded || realIp || "";
-  return /^[0-9a-fA-F:.]{2,45}$/.test(ip) ? ip : null;
+  const configured = process.env.CLIENT_IP_HEADER?.trim().toLowerCase();
+  if (configured) return validIp(headers.get(configured)?.split(",")[0]);
+
+  const hops = trustedProxyHops();
+  if (hops === 0) return null;
+
+  const chain = (headers.get("x-forwarded-for") ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (chain.length > 0) return validIp(chain[Math.max(0, chain.length - hops)]);
+  return validIp(headers.get("x-real-ip"));
+}
+
+let warnedNoClientIp = false;
+
+/**
+ * A rate-limit key for one client (#509). With no usable IP, every caller
+ * used to share one "unknown" bucket, so a single client could lock everyone
+ * else out. Those callers now get a bucket per browser/agent fingerprint
+ * instead, and production logs once so the missing proxy header gets fixed.
+ */
+export function clientRateLimitKey(headers: { get(name: string): string | null }): string {
+  const ip = clientIpFrom(headers);
+  if (ip) return `ip:${ip}`;
+  if (!warnedNoClientIp && process.env.NODE_ENV === "production") {
+    warnedNoClientIp = true;
+    console.warn(
+      "[rate-limit] no client IP on a request; check that the proxy sets X-Forwarded-For or set CLIENT_IP_HEADER",
+    );
+  }
+  const fingerprint = [headers.get("user-agent") ?? "", headers.get("accept-language") ?? ""].join("|");
+  return `anon:${createHash("sha256").update(fingerprint).digest("hex").slice(0, 32)}`;
 }
 
 // ---------------------------------------------------------------------------
