@@ -27,17 +27,17 @@ export function ChangePasswordForm() {
     <form ref={formRef} action={action} className="mt-4 space-y-4" noValidate>
       <div className="space-y-1.5">
         <label htmlFor="currentPassword" className="text-sm font-medium text-slate-800">Current password</label>
-        <PasswordInput id="currentPassword" name="currentPassword" autocomplete="current-password" required {...attrs("currentPassword")} />
+        <PasswordInput id="currentPassword" name="currentPassword" autoComplete="current-password" required {...attrs("currentPassword")} />
         <FieldError formId={FORM_ID} field="currentPassword" errors={fieldErrors} />
       </div>
       <div className="space-y-1.5">
         <label htmlFor="newPassword" className="text-sm font-medium text-slate-800">New password</label>
-        <PasswordInput id="newPassword" name="password" autocomplete="new-password" minLength={8} required {...attrs("password")} />
+        <PasswordInput id="newPassword" name="password" autoComplete="new-password" minLength={8} required {...attrs("password")} />
         <FieldError formId={FORM_ID} field="password" errors={fieldErrors} />
       </div>
       <div className="space-y-1.5">
         <label htmlFor="confirmPassword" className="text-sm font-medium text-slate-800">Confirm new password</label>
-        <PasswordInput id="confirmPassword" name="confirmPassword" visibilityLabel="confirm new password" autocomplete="new-password" minLength={8} required {...attrs("confirmPassword")} />
+        <PasswordInput id="confirmPassword" name="confirmPassword" visibilityLabel="confirm new password" autoComplete="new-password" minLength={8} required {...attrs("confirmPassword")} />
         <FieldError formId={FORM_ID} field="confirmPassword" errors={fieldErrors} />
       </div>
       {result?.error && !result.field ? <p className="text-sm text-red-600" role="alert">{result.error}</p> : null}
