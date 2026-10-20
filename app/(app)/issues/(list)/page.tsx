@@ -457,7 +457,7 @@ export default async function BugsPage({
   // query is the one extra read, and it must not take the list down either.
   const bulkTypes = canDelete ? activeBulkOptions(tagTypes) : [];
   const bulkPlatforms = canDelete ? activeBulkOptions(platforms) : [];
-  const bulkUsers = canDelete ? await loadBulkAssignees() : [];
+  const bulkUsers = canDelete ? await loadBulkAssignees(tenantId) : [];
 
   let voterSummaries = new Map<string, ReturnType<typeof createEmptyVoterSummary>>();
   try {

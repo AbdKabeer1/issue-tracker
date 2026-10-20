@@ -49,6 +49,7 @@ const FIELD_LABELS: Record<string, string> = {
 
 export function CreateIssueForm({
   users,
+  assigneeUsers = users,
   categories = [],
   types = [],
   isAdmin,
@@ -56,6 +57,7 @@ export function CreateIssueForm({
   projectId,
 }: {
   users: UserOption[];
+  assigneeUsers?: UserOption[];
   categories?: CategoryOption[];
   types?: TypeOption[];
   isAdmin: boolean;
@@ -402,7 +404,7 @@ export function CreateIssueForm({
             <AssigneeCombobox
               id="assigneeId"
               name="assigneeId"
-              people={users}
+              people={assigneeUsers}
               value={values.assigneeId}
               onChange={(val) => setValue("assigneeId", val)}
             />
