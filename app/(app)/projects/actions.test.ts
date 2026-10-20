@@ -6,6 +6,7 @@ const cookieGet = vi.hoisted(() => vi.fn());
 const cookieSet = vi.hoisted(() => vi.fn());
 const redirect = vi.hoisted(() => vi.fn());
 const revalidatePath = vi.hoisted(() => vi.fn());
+const isTenantAdmin = vi.hoisted(() => vi.fn());
 
 vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("next/headers", () => ({
@@ -13,6 +14,7 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("@/lib/auth-helpers", () => ({ requireUser }));
+vi.mock("@/lib/agents/membership", () => ({ isTenantAdmin }));
 vi.mock("@/lib/tenant-context", () => ({
   currentTenantIdFor,
   NO_TENANT_MESSAGE: "You're not a member of a workspace yet.",
@@ -29,6 +31,8 @@ vi.mock("@/lib/prisma", () => ({
     membership: {
       findUnique: vi.fn(),
     },
+    $transaction: vi.fn(),
+    projectAuditEvent: { create: vi.fn() },
   },
 }));
 
@@ -37,9 +41,9 @@ import { ACTIVE_PROJECT_COOKIE } from "@/lib/project-context";
 import {
   createProjectAction,
   deleteProjectAction,
-  renameProjectAction,
   setProjectArchivedAction,
   switchProjectAction,
+  updateProjectAction,
 } from "./actions";
 
 const findMany = vi.mocked(prisma.project.findMany) as unknown as ReturnType<typeof vi.fn>;
@@ -74,6 +78,7 @@ beforeEach(() => {
   update.mockResolvedValue({});
   remove.mockResolvedValue({});
   membership.mockResolvedValue({ role: "owner" });
+  isTenantAdmin.mockResolvedValue(true);
   cookieGet.mockReturnValue(undefined);
 });
 
@@ -171,32 +176,13 @@ describe("project lifecycle actions (#573)", () => {
     findFirst.mockResolvedValue(project);
   });
 
-  it("renames a project for the tenant owner, keeping the slug", async () => {
-    await expectRedirect(
-      renameProjectAction(form({ projectId: project.id, name: "  Zedu Web  " })),
-    );
-
-    expect(update).toHaveBeenCalledWith({
-      where: { id: project.id },
-      data: { name: "Zedu Web" },
-    });
-    expect(redirect).toHaveBeenCalledWith("/projects?notice=Project%20renamed.");
-  });
-
-  it("doesn't rename for a member or an archived project", async () => {
+  it("doesn't archive or delete for a member", async () => {
     membership.mockResolvedValue({ role: "member" });
     await expectRedirect(
-      renameProjectAction(form({ projectId: project.id, name: "Zedu Web" })),
+      setProjectArchivedAction(form({ projectId: project.id, archived: "true" })),
     );
     expect(update).not.toHaveBeenCalled();
     expect(redirect).toHaveBeenCalledWith(expect.stringContaining("/projects?error="));
-
-    membership.mockResolvedValue({ role: "owner" });
-    findFirst.mockResolvedValue({ ...project, archivedAt: new Date("2026-10-01") });
-    await expectRedirect(
-      renameProjectAction(form({ projectId: project.id, name: "Zedu Web" })),
-    );
-    expect(update).not.toHaveBeenCalled();
   });
 
   it("archives and restores a project", async () => {
@@ -240,5 +226,33 @@ describe("project lifecycle actions (#573)", () => {
       deleteProjectAction(form({ projectId: project.id, confirmName: "wrong" })),
     );
     expect(remove).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateProjectAction (#608)", () => {
+  it("updates settings and records the change with the actor", async () => {
+    findFirst.mockResolvedValue({ id: "project-zedu", name: "Web", goal: null, repoUrl: null, stagingUrl: null });
+    const update = vi.fn();
+    const audit = vi.fn();
+    const transaction = vi.mocked(prisma.$transaction) as unknown as ReturnType<typeof vi.fn>;
+    transaction.mockImplementation(async (work: (tx: unknown) => Promise<unknown>) =>
+      work({ project: { update }, projectAuditEvent: { create: audit } }),
+    );
+    const result = await updateProjectAction(undefined, form({ slug: "web", name: "Web App", goal: "Ship", repoUrl: "https://github.com/acme/web", stagingUrl: "https://staging.example.com" }));
+    expect(result).toEqual({});
+    expect(update).toHaveBeenCalledWith({ where: { id: "project-zedu" }, data: { name: "Web App", goal: "Ship", repoUrl: "https://github.com/acme/web", stagingUrl: "https://staging.example.com" } });
+    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ tenantId: "tenant-zedu", projectId: "project-zedu", actorUserId: "user-1", action: "settings.updated" }) }));
+    expect(revalidatePath).toHaveBeenCalledWith("/projects/web/settings");
+    expect(revalidatePath).toHaveBeenCalledWith("/issues");
+  });
+
+  it("refuses members and invalid URLs without writing", async () => {
+    isTenantAdmin.mockResolvedValue(false);
+    expect(await updateProjectAction(undefined, form({ slug: "web", name: "Web", goal: "", repoUrl: "https://evil.example/repo", stagingUrl: "http://staging.example.com" }))).toMatchObject({ error: expect.any(String) });
+    expect(findFirst).not.toHaveBeenCalled();
+    isTenantAdmin.mockResolvedValue(true);
+    const invalid = await updateProjectAction(undefined, form({ slug: "web", name: "Web", goal: "", repoUrl: "https://evil.example/repo", stagingUrl: "http://staging.example.com" }));
+    expect(invalid.fieldErrors).toMatchObject({ repoUrl: expect.any(String), stagingUrl: expect.any(String) });
+    expect(vi.mocked(prisma.$transaction)).not.toHaveBeenCalled();
   });
 });

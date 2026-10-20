@@ -70,6 +70,56 @@ export function checkRateLimit(
   return { allowed: true, retryAfterMs: 0 };
 }
 
+export type RateLimitItem = {
+  key: string;
+  config: RateLimitConfig;
+};
+
+/**
+ * Sliding window rate limiter for multiple items atomically.
+ * Only records attempts if all items are within their limits.
+ */
+export function checkManyRateLimits(
+  items: RateLimitItem[],
+  now = Date.now(),
+): { allowed: boolean; retryAfterMs: number } {
+  if (items.length === 0) return { allowed: true, retryAfterMs: 0 };
+
+  const blocked: RateLimitResult[] = [];
+  const keyCounts = new Map<string, number>();
+  for (const { key } of items) {
+    keyCounts.set(key, (keyCounts.get(key) ?? 0) + 1);
+  }
+
+  for (const { key, config } of items) {
+    const windowStart = now - config.windowMs;
+    const timestamps = (tracker.get(key) ?? []).filter((t) => t > windowStart);
+    const needed = keyCounts.get(key) ?? 1;
+    if (timestamps.length + needed - 1 >= config.max) {
+      const oldest = timestamps[0] ?? now;
+      const retryAfterMs = Math.max(0, oldest + config.windowMs - now);
+      blocked.push({ allowed: false, retryAfterMs });
+    }
+  }
+
+  if (blocked.length > 0) {
+    return {
+      allowed: false,
+      retryAfterMs: Math.max(...blocked.map((c) => c.retryAfterMs)),
+    };
+  }
+
+  for (const { key, config } of items) {
+    const windowStart = now - config.windowMs;
+    const timestamps = (tracker.get(key) ?? []).filter((t) => t > windowStart);
+    timestamps.push(now);
+    tracker.set(key, timestamps);
+  }
+  if (tracker.size > MAX_TRACKED_KEYS) pruneExpired(now);
+
+  return { allowed: true, retryAfterMs: 0 };
+}
+
 /**
  * Checks an auth action against both its per-email and per-IP limits (#207).
  * Either limit being hit blocks the attempt.
@@ -80,14 +130,20 @@ export function checkAuthRateLimit(
   now = Date.now(),
 ): { allowed: boolean; retryAfterMs: number } {
   const limits = AUTH_RATE_LIMITS[action];
-  const checks = [
-    email ? checkRateLimit(`auth:${action}:email:${email.trim().toLowerCase()}`, limits.email, now) : null,
-    ip ? checkRateLimit(`auth:${action}:ip:${ip}`, limits.ip, now) : null,
-  ].filter((c): c is { allowed: boolean; retryAfterMs: number } => c !== null);
-
-  const blocked = checks.filter((c) => !c.allowed);
-  if (blocked.length === 0) return { allowed: true, retryAfterMs: 0 };
-  return { allowed: false, retryAfterMs: Math.max(...blocked.map((c) => c.retryAfterMs)) };
+  const items: RateLimitItem[] = [];
+  if (email) {
+    items.push({
+      key: `auth:${action}:email:${email.trim().toLowerCase()}`,
+      config: limits.email,
+    });
+  }
+  if (ip) {
+    items.push({
+      key: `auth:${action}:ip:${ip}`,
+      config: limits.ip,
+    });
+  }
+  return checkManyRateLimits(items, now);
 }
 
 const IP_PATTERN = /^[0-9a-fA-F:.]{2,45}$/;
@@ -110,9 +166,57 @@ export function trustedProxyHops(): number {
 }
 
 /**
- * The client IP as seen by the proxy we trust, for rate-limit keys (#507).
+ * Comma-separated list of trusted proxy IPs or CIDR subnets (#675).
+ * When specified, X-Forwarded-For is parsed from right to left across trusted proxies,
+ * selecting the first untrusted IP in the chain as the client IP.
+ */
+export function trustedProxies(): string[] {
+  const raw = process.env.TRUSTED_PROXIES?.trim();
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
+function matchesCidr(ip: string, cidr: string): boolean {
+  const [net, maskStr] = cidr.split("/");
+  if (!maskStr) return ip.toLowerCase() === net.toLowerCase();
+  const mask = Number.parseInt(maskStr, 10);
+  if (!Number.isFinite(mask) || mask < 0 || mask > 32) return false;
+
+  const ipParts = ip.split(".").map(Number);
+  const netParts = net.split(".").map(Number);
+  if (ipParts.length !== 4 || netParts.length !== 4 || ipParts.some(Number.isNaN) || netParts.some(Number.isNaN)) {
+    return false;
+  }
+
+  const ipNum = ((ipParts[0] << 24) | (ipParts[1] << 16) | (ipParts[2] << 8) | ipParts[3]) >>> 0;
+  const netNum = ((netParts[0] << 24) | (netParts[1] << 16) | (netParts[2] << 8) | netParts[3]) >>> 0;
+  const maskNum = mask === 0 ? 0 : ((-1 << (32 - mask)) >>> 0);
+
+  return (ipNum & maskNum) === (netNum & maskNum);
+}
+
+export function isTrustedProxyIp(ip: string, list: string[]): boolean {
+  const lowerIp = ip.toLowerCase();
+  for (const entry of list) {
+    const lowerEntry = entry.toLowerCase();
+    if (lowerEntry === "loopback" && (lowerIp === "127.0.0.1" || lowerIp === "::1")) return true;
+    if (lowerEntry === lowerIp) return true;
+    if (lowerEntry.includes("/") && matchesCidr(lowerIp, lowerEntry)) return true;
+  }
+  return false;
+}
+
+/**
+ * The client IP as seen by the proxy we trust, for rate-limit keys (#507, #675).
  *
- * The left-most `X-Forwarded-For` entry is whatever the client sent, so it
+ * When TRUSTED_PROXIES is configured, the X-Forwarded-For chain is evaluated from
+ * right to left, stripping off verified intermediate proxies to uncover the genuine
+ * client IP and prevent spoofing.
+ *
+ * Otherwise, the left-most `X-Forwarded-For` entry is whatever the client sent, so it
  * can't be trusted: rotating it would hand out a fresh bucket per request.
  * Each trusted proxy appends the address it received the request from, so
  * the client is the entry `TRUSTED_PROXY_HOPS` places from the right.
@@ -122,6 +226,25 @@ export function trustedProxyHops(): number {
 export function clientIpFrom(headers: { get(name: string): string | null }): string | null {
   const configured = process.env.CLIENT_IP_HEADER?.trim().toLowerCase();
   if (configured) return validIp(headers.get(configured)?.split(",")[0]);
+
+  const proxyList = trustedProxies();
+  if (proxyList.length > 0) {
+    const chain = (headers.get("x-forwarded-for") ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (chain.length > 0) {
+      for (let i = chain.length - 1; i >= 0; i--) {
+        const candidate = validIp(chain[i]);
+        if (!candidate) continue;
+        if (!isTrustedProxyIp(candidate, proxyList)) {
+          return candidate;
+        }
+      }
+      return null;
+    }
+    return validIp(headers.get("x-real-ip"));
+  }
 
   const hops = trustedProxyHops();
   if (hops === 0) return null;
@@ -170,6 +293,7 @@ export type RateLimitResult = { allowed: boolean; retryAfterMs: number };
 
 export type RateLimitStore = {
   hit(key: string, config: RateLimitConfig, now: number): Promise<RateLimitResult>;
+  hitMany?(items: RateLimitItem[], now: number): Promise<RateLimitResult>;
 };
 
 export type RateLimitStoreName = "postgres" | "memory";
@@ -189,6 +313,7 @@ export function rateLimitStoreName(
 
 const memoryStore: RateLimitStore = {
   hit: async (key, config, now) => checkRateLimit(key, config, now),
+  hitMany: async (items, now) => checkManyRateLimits(items, now),
 };
 
 let storeOverride: RateLimitStore | null = null;
@@ -234,22 +359,64 @@ export async function consumeRateLimit(
   }
 }
 
-/** `checkAuthRateLimit`, against the shared store. */
+async function fallbackHitMany(
+  store: RateLimitStore,
+  items: RateLimitItem[],
+  now: number,
+): Promise<RateLimitResult> {
+  const checks = await Promise.all(items.map((item) => store.hit(item.key, item.config, now)));
+  const blocked = checks.filter((c) => !c.allowed);
+  if (blocked.length === 0) return { allowed: true, retryAfterMs: 0 };
+  return { allowed: false, retryAfterMs: Math.max(...blocked.map((c) => c.retryAfterMs)) };
+}
+
+/**
+ * Records attempts against multiple keys in the shared store atomically and
+ * says whether all are allowed (#678). If the store fails, the in-memory limiter answers instead.
+ */
+export async function consumeRateLimits(
+  items: RateLimitItem[],
+  now = Date.now(),
+): Promise<RateLimitResult> {
+  if (items.length === 0) return { allowed: true, retryAfterMs: 0 };
+  const store = await configuredStore();
+  if (store === memoryStore) return checkManyRateLimits(items, now);
+  try {
+    const result = store.hitMany
+      ? await store.hitMany(items, now)
+      : await fallbackHitMany(store, items, now);
+    if (typeof result?.allowed !== "boolean") throw new Error("rate-limit store returned no result");
+    return result;
+  } catch (error) {
+    if (lastStoreErrorAt === null || now - lastStoreErrorAt > MINUTE) {
+      lastStoreErrorAt = now;
+      console.error("[rate-limit] shared store failed; using this instance's memory", error);
+    }
+    return checkManyRateLimits(items, now);
+  }
+}
+
+/** `checkAuthRateLimit`, against the shared store (#678). */
 export async function consumeAuthRateLimit(
   action: AuthRateLimitAction,
   { email, ip }: { email?: string | null; ip?: string | null },
   now = Date.now(),
 ): Promise<RateLimitResult> {
   const limits = AUTH_RATE_LIMITS[action];
-  const checks = await Promise.all([
-    email
-      ? consumeRateLimit(`auth:${action}:email:${email.trim().toLowerCase()}`, limits.email, now)
-      : null,
-    ip ? consumeRateLimit(`auth:${action}:ip:${ip}`, limits.ip, now) : null,
-  ]);
-  const blocked = checks.filter((c): c is RateLimitResult => c !== null && !c.allowed);
-  if (blocked.length === 0) return { allowed: true, retryAfterMs: 0 };
-  return { allowed: false, retryAfterMs: Math.max(...blocked.map((c) => c.retryAfterMs)) };
+  const items: RateLimitItem[] = [];
+  if (email) {
+    items.push({
+      key: `auth:${action}:email:${email.trim().toLowerCase()}`,
+      config: limits.email,
+    });
+  }
+  if (ip) {
+    items.push({
+      key: `auth:${action}:ip:${ip}`,
+      config: limits.ip,
+    });
+  }
+  return consumeRateLimits(items, now);
 }
 
 /** The longest window any limit uses; shared-store rows older than this are dead. */
@@ -263,4 +430,5 @@ export function trackedKeyCount(): number {
 /** Reset rate limit tracker (useful for testing). */
 export function resetRateLimits(): void {
   tracker.clear();
+  lastStoreErrorAt = null;
 }

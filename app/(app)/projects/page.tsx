@@ -9,11 +9,10 @@ import { CopyProjectIdButton } from "./copy-project-id";
 import { CreateProjectForm } from "./create-project-form";
 import {
   deleteProjectAction,
-  renameProjectAction,
   setProjectArchivedAction,
   switchProjectAction,
 } from "./actions";
-import { PROJECT_NAME_MAX } from "./validation";
+import { isTenantAdmin } from "@/lib/agents/membership";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Projects" };
@@ -50,6 +49,7 @@ export default async function ProjectsPage({
       </div>
     );
   }
+  const canManageProjects = await isTenantAdmin(user, tenantId);
 
   const [tenant, projects, activeProjectId, membership] = await Promise.all([
     prisma.tenant.findUnique({
@@ -152,37 +152,17 @@ export default async function ProjectsPage({
                         {project.id}
                       </code>
                       <CopyProjectIdButton projectId={project.id} />
+                      {canManageProjects ? (
+                        <Link href={`/projects/${encodeURIComponent(project.slug)}/settings`} className="text-xs font-medium text-teal-700 hover:underline">Settings</Link>
+                      ) : null}
                     </div>
 
                     {isOwner ? (
                       <details className="mt-3 text-xs text-slate-600">
                         <summary className="cursor-pointer font-medium text-slate-700">
-                          Manage project
+                          Archive or delete
                         </summary>
                         <div className="mt-2 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                          <form action={renameProjectAction} className="space-y-1">
-                            <input type="hidden" name="projectId" value={project.id} />
-                            <label
-                              htmlFor={`project-name-${project.id}`}
-                              className="block font-medium text-slate-700"
-                            >
-                              Name
-                            </label>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <input
-                                id={`project-name-${project.id}`}
-                                name="name"
-                                defaultValue={project.name}
-                                maxLength={PROJECT_NAME_MAX}
-                                required
-                                className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
-                              />
-                              <Button type="submit" variant="secondary">
-                                Save name
-                              </Button>
-                            </div>
-                          </form>
-
                           <form action={setProjectArchivedAction}>
                             <input type="hidden" name="projectId" value={project.id} />
                             <input type="hidden" name="archived" value="true" />

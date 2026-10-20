@@ -32,6 +32,14 @@ if a process crashes. Failed attempts retry after 1, 2, 4, and 8 seconds (or the
 next scheduler invocation), then become dead. Five consecutive subscription
 failures also disable it and cancel its remaining queued deliveries.
 
+Filtering events (#512): an agent keeps at most 3 webhook subscriptions and
+each URL only once; exceeding either returns 409. Creating a subscription may
+pass an optional `events` array (trimmed, deduplicated event type names) to
+narrow deliveries to those types — omit it or send `[]` to receive every event.
+Filtering is applied both when `publish` queues a delivery and again when the
+dispatcher processes it, so a subscription whose filter is widened after
+creation will not retroactively receive events published in between.
+
 Each HTTPS attempt revalidates DNS and pins the connection to the checked IP,
 retaining TLS certificate verification for the original hostname. Redirects,
 private addresses, metadata, and non-global IP ranges are rejected. Network

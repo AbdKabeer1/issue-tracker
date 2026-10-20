@@ -149,6 +149,22 @@ describe("publish", () => {
     vi.resetAllMocks();
   });
 
+  it("only queues deliveries for subscriptions whose event filter matches (#512)", async () => {
+    const fakeDb = {
+      agentEvent: { create: vi.fn().mockResolvedValue({ id: "new-event" }) },
+      webhookSubscription: { findMany: vi.fn().mockResolvedValue([]) },
+      webhookDelivery: { createMany: vi.fn() },
+    } as unknown as Parameters<typeof publish>[0];
+
+    await publish(fakeDb, { tenantId: "tenant-a", type: "issue.created", payload: {} });
+
+    const where = (fakeDb.webhookSubscription.findMany as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0].where;
+    expect(where.OR).toEqual([
+      { events: { isEmpty: true } },
+      { events: { has: "issue.created" } },
+    ]);
+  });
+
   it("creates an AgentEvent row with the given fields", async () => {
     const fakeDb = {
       agentEvent: { create: vi.fn().mockResolvedValue({ id: "new-event" }) },

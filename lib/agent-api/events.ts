@@ -95,7 +95,9 @@ export async function publish(
   });
   const subscriptions = await db.webhookSubscription.findMany({
     where: { enabled: true, agent: { tenantId: params.tenantId, revokedAt: null,
-      owner: { memberships: { some: { tenantId: params.tenantId } } } } },
+      owner: { memberships: { some: { tenantId: params.tenantId } } } },
+      // Empty filter = every event; otherwise only the subscribed types (#512).
+      OR: [{ events: { isEmpty: true } }, { events: { has: params.type } }] },
     select: { id: true },
   });
   if (subscriptions.length) await db.webhookDelivery.createMany({

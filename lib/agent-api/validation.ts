@@ -9,6 +9,7 @@ import { award } from "@/lib/points/award";
 import { pointSourceKey, REPORTER_POINTS } from "@/lib/points/rules";
 import { severities } from "@/lib/validations/issue";
 import { publish } from "@/lib/agent-api/events";
+import { promoteEarnedReviewer } from "@/lib/agents/promotion";
 
 /** Severity order for the reviewer agreement rule (#528). */
 const SEVERITY_RANK: Record<(typeof severities)[number], number> = {
@@ -331,6 +332,10 @@ export async function submitValidation(
         },
         { bugId: bug.id, db: tx },
       );
+
+      // Re-evaluate the earned level after this validation is stored, inside
+      // the same transaction so the validation and promotion audit commit together.
+      await promoteEarnedReviewer(agent.agentId, tx);
 
       // Publish "issue.validated" event to the agent event feed (#445)
       await publish(tx, {
