@@ -21,6 +21,7 @@ import { ensureWatching } from "@/lib/watch";
 import { notifyLater } from "@/lib/notify";
 import type { NotificationEvent } from "@/lib/notifications";
 import type { Severity, Status } from "@prisma/client";
+import { publish } from "@/lib/agent-api/events";
 import { issueChangePayload, publishWebEvent } from "@/lib/agent-api/web-events";
 
 export type BulkResult = {
@@ -165,10 +166,27 @@ export async function bulkUpdateBugsAction(
           .filter((bug) => changedIds.includes(bug.id) && change.status === terminalStatus && bug.status !== terminalStatus)
           .map((bug) => bug.id);
         if (terminalIds.length > 0) {
+          const activeClaims = typeof tx.issueClaim?.findMany === "function"
+            ? await tx.issueClaim.findMany({
+                where: { bugId: { in: terminalIds }, status: "active", releasedAt: null },
+                select: { id: true, agentId: true, beneficiaryUserId: true, bugId: true },
+              })
+            : [];
           await tx.issueClaim.updateMany({
             where: { bugId: { in: terminalIds }, status: "active", releasedAt: null },
             data: { status: "released", releasedAt: new Date(), releaseReason: terminalStatus },
           });
+          for (const claim of activeClaims) {
+            const claimTenantId = byId.get(claim.bugId)?.tenantId ?? tenantId;
+            if (!claimTenantId) continue;
+            await publish(tx, {
+              tenantId: claimTenantId,
+              type: "claim.released",
+              actorAgentId: claim.agentId,
+              bugId: claim.bugId,
+              payload: { claimId: claim.id, issueId: claim.bugId, beneficiaryUserId: claim.beneficiaryUserId, reason: terminalStatus },
+            });
+          }
         }
       }
       await tx.bugActivity.createMany({ data: activityCreateData(entries) });
