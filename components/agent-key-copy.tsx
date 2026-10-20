@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { copyText } from "@/lib/clipboard";
 import { useToast } from "@/components/ui/toast";
-import { agentBootstrapMessage } from "@/lib/agents/bootstrap-message";
+import { agentAccessRequest, agentBootstrapMessage } from "@/lib/agents/bootstrap-message";
 
 /** A live key's prefix. The header shows this, not the secret. */
 export type AgentKeyHint = {
@@ -71,6 +71,14 @@ export function AgentKeyCopyButton({
     } else {
       toast(apiKey ? "Couldn't copy the agent setup." : `Could not copy. Key: ${projectId}`, "error");
     }
+  }
+
+  async function handleCopySite(e?: React.MouseEvent) {
+    e?.stopPropagation();
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://ziki.dev";
+    const ok = await copyText(agentAccessRequest({ origin, projectName }));
+    if (ok) toast("Site copied. The agent will ask you to approve it.");
+    else toast("Couldn't copy the site.", "error");
   }
 
   async function handleCopyProjectId(e?: React.MouseEvent) {
@@ -175,9 +183,25 @@ export function AgentKeyCopyButton({
 
             {apiKey ? (
               <p className="text-slate-600">
-                Copy sends your API key and this site to an agent. It can start work without you registering one.
+                Copy sends your API key and this site. The agent can start without you registering one.
               </p>
             ) : null}
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-slate-500 text-[11px]">Or share only this site</span>
+                <button
+                  type="button"
+                  onClick={handleCopySite}
+                  className="text-teal-700 hover:text-teal-900 font-medium hover:underline text-[11px]"
+                >
+                  Copy site
+                </button>
+              </div>
+              <p className="text-slate-600">
+                The agent requests access. You approve it while signed in, and the key is returned to the agent.
+              </p>
+            </div>
 
             <div>
               <span className="text-slate-500 block text-[11px]">API key prefixes</span>

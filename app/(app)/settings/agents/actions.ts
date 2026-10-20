@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { isAgentLevel } from "@/lib/agents/levels";
 import { consumePairingLimit } from "@/lib/agents/rate-limit";
 import { approvePairing, findPendingPairing } from "@/lib/agents/pairing";
+import { currentTenantIdFor } from "@/lib/tenant-context";
 import { createAgent, regenerateKey, revokeAgent, setAgentBurst, setAgentLevel } from "@/lib/agents/registry";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 
@@ -95,7 +96,13 @@ export async function pairAgentAction(
 
   const code = String(formData.get("code") ?? "");
   if (formData.get("intent") === "approve") {
-    const result = await approvePairing(user, code, new Date(), String(formData.get("projectId") ?? ""));
+    const result = await approvePairing(
+      user,
+      code,
+      new Date(),
+      String(formData.get("projectId") ?? ""),
+      await currentTenantIdFor(user.id),
+    );
     if (!result.ok) return result;
     revalidatePath("/settings/agents");
     return { ok: true, step: "done", name: result.name };

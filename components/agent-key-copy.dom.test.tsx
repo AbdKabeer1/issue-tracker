@@ -4,7 +4,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentKeyCopyButton } from "./agent-key-copy";
-import { agentBootstrapMessage } from "@/lib/agents/bootstrap-message";
+import { agentAccessRequest, agentBootstrapMessage } from "@/lib/agents/bootstrap-message";
 import * as clipboard from "@/lib/clipboard";
 
 const mockToast = vi.fn();
@@ -91,6 +91,26 @@ describe("AgentKeyCopyButton", () => {
     });
     expect(document.body.textContent).not.toContain(apiKey);
     expect(screen.getByText("ziki_secr")).toBeDefined();
+  });
+
+  it("copies only the site so the agent can request access", async () => {
+    vi.spyOn(clipboard, "copyText").mockResolvedValue(true);
+    render(
+      <AgentKeyCopyButton
+        projectId="cly-test-project-123"
+        projectName="Zedu Core"
+        apiKey="ziki_secret_full_value_not_shown"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Agent Key:/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy site" }));
+
+    await waitFor(() => {
+      expect(clipboard.copyText).toHaveBeenCalledWith(
+        agentAccessRequest({ origin: window.location.origin, projectName: "Zedu Core" }),
+      );
+      expect(mockToast).toHaveBeenCalledWith("Site copied. The agent will ask you to approve it.");
+    });
   });
 
   it("copies the project id from the details, not the personal key", async () => {

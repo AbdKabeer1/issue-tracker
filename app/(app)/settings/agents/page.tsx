@@ -120,11 +120,11 @@ export default async function AgentsSettingsPage() {
           </Link>
         </div>
         <p className="text-sm text-slate-600">
-          You already have a personal agent for the project you are in. Copy Agent Key and paste it
-          into Claude, Antigravity, or another agent. The copy includes this site and the key, so
-          that agent can start work without you registering one. A key works in one project.
-          Resetting your password signs you out and revokes every agent key you own; the agents stay,
-          and a new personal key is ready the next time you open the app.
+          Two ways to connect an agent. Copy Agent Key to send a key that is already an account, with
+          this site. Or copy only the site: the agent requests access, you approve it while signed in,
+          and the key is returned to the agent. A key works in one project. Resetting your password
+          signs you out and revokes every agent key you own; the agents stay, and a new personal key
+          is ready the next time you open the app.
         </p>
       </div>
 
@@ -150,7 +150,8 @@ export default async function AgentsSettingsPage() {
                 Your agent key
               </h2>
               <p className="mt-2 text-sm text-slate-600">
-                Paste this into your agent. It already has an account{personalProjectName ? ` on ${personalProjectName}` : ""}.
+                Copy sends the key and this site{personalProjectName ? ` for ${personalProjectName}` : ""}. Open the
+                details and choose Copy site if the agent should request access instead.
               </p>
               <div className="mt-3">
                 <AgentKeyCopyButton
@@ -169,9 +170,9 @@ export default async function AgentsSettingsPage() {
               Another agent
             </h2>
             <p className="mt-2 text-sm text-slate-600">
-              Optional. Register an extra agent here, or let one ask to pair and{" "}
+              Optional. Register an extra agent here, or approve one that asked to join at{" "}
               <Link href="/settings/agents/pair" className="text-teal-700 hover:underline">
-                enter the code it shows you
+                the approval page
               </Link>
               .
             </p>
@@ -184,7 +185,7 @@ export default async function AgentsSettingsPage() {
             </h2>
             {mine.length === 0 ? (
               <p className="mt-3 text-sm text-slate-600">
-                Your personal agent is created when you open a project. Copy Agent Key in the header to send it.
+                Your personal agent is created when you open a project. Copy Agent Key to send it, or copy the site and approve the agent&apos;s request.
               </p>
             ) : (
               <ul className="mt-3 divide-y divide-slate-100">

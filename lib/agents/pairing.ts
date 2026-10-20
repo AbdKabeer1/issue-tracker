@@ -1,16 +1,16 @@
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
 import { generateDeviceCode, generateUserCode, hashSecret, normalizeUserCode } from "@/lib/agents/keys";
-import { DEFAULT_AGENT_LEVEL } from "@/lib/agents/levels";
+import type { AgentLevel } from "@prisma/client";
 import { tenantForOwner } from "@/lib/agents/membership";
 import { agentModelSchema, agentNameSchema, insertAgentWithKey, type Actor, type IssuedKey } from "@/lib/agents/registry";
 
 /**
  * Pairing an agent with its owner (#427), like a TV signing in to an account:
  *
- * 1. The agent starts pairing with its name. It gets a short user code to
- *    show its owner and a secret device code to poll with.
- * 2. The owner signs in, enters the user code, sees the name and approves.
+ * 1. The agent starts pairing with its name. It gets a link for its owner
+ *    and a secret device code to poll with.
+ * 2. The owner, already signed in, opens the link, sees the name and approves.
  *    That sets the owner and the tenant; nobody else can approve it after.
  * 3. The agent polls with the device code. The first poll after approval
  *    creates the agent and its key and returns the key, once.
@@ -21,6 +21,13 @@ import { agentModelSchema, agentNameSchema, insertAgentWithKey, type Actor, type
 export const PAIRING_TTL_MS = 15 * 60 * 1000;
 /** How often the agent should poll, in seconds. */
 export const PAIRING_POLL_INTERVAL = 5;
+/** An approved agent can file, comment and claim. The owner can lower this later. */
+const PAIRED_AGENT_LEVEL = "contributor" satisfies AgentLevel;
+
+/** The page a signed-in person opens to approve the agent. The code is not the device secret. */
+export function pairingApprovalPath(userCode: string): string {
+  return `/settings/agents/pair?code=${encodeURIComponent(userCode)}`;
+}
 
 export type StartPairingResult =
   | { ok: true; userCode: string; deviceCode: string; expiresAt: Date }
@@ -63,23 +70,44 @@ export type ApprovePairingResult = { ok: true; name: string } | { ok: false; err
 
 const CODE_NOT_FOUND = "That code doesn't match a waiting agent. It may have expired; ask the agent for a new one.";
 const PROJECT_REQUIRED = "Choose a project in this workspace.";
+const NO_TENANT = "Join or create a team before you register agents.";
 
-/** The signed-in owner approves. Single use: the first approval wins. */
+/**
+ * The organization this approval joins. A passed id must be one the person
+ * belongs to. Omit it and the oldest membership, preferring Zedu, is used.
+ */
+async function tenantForApproval(userId: string, tenantId?: string | null): Promise<string | null> {
+  if (tenantId) {
+    const member = await prisma.membership.findUnique({
+      where: { tenantId_userId: { tenantId, userId } },
+      select: { tenantId: true },
+    });
+    return member?.tenantId ?? null;
+  }
+  if (tenantId === null) return null;
+  return (await tenantForOwner(userId))?.tenantId ?? null;
+}
+
+/**
+ * The signed-in owner approves. Single use: the first approval wins.
+ * `tenantId` is the organization they are in now.
+ */
 export async function approvePairing(
   owner: Actor,
   userCode: string,
   now = new Date(),
   projectId = "",
+  tenantId?: string | null,
 ): Promise<ApprovePairingResult> {
   const code = normalizeUserCode(userCode);
   if (!code) return { ok: false, error: CODE_NOT_FOUND };
-  const tenant = await tenantForOwner(owner.id);
-  if (!tenant) return { ok: false, error: "Join or create a team before you register agents." };
+  const tenant = await tenantForApproval(owner.id, tenantId);
+  if (!tenant) return { ok: false, error: NO_TENANT };
 
   // Checked before the pairing is claimed, so a bad project doesn't burn the code (#742).
   const project = projectId
     ? await prisma.project.findFirst({
-        where: { id: projectId, tenantId: tenant.tenantId },
+        where: { id: projectId, tenantId: tenant },
         select: { id: true },
       })
     : null;
@@ -88,7 +116,7 @@ export async function approvePairing(
   const codeHash = hashSecret(code);
   const approved = await prisma.agentPairing.updateMany({
     where: { codeHash, approvedAt: null, ownerUserId: null, expiresAt: { gt: now } },
-    data: { ownerUserId: owner.id, tenantId: tenant.tenantId, projectId: project.id, approvedAt: now },
+    data: { ownerUserId: owner.id, tenantId: tenant, projectId: project.id, approvedAt: now },
   });
   if (approved.count !== 1) return { ok: false, error: CODE_NOT_FOUND };
   const pairing = await prisma.agentPairing.findUniqueOrThrow({ where: { codeHash }, select: { proposedName: true } });
@@ -96,7 +124,7 @@ export async function approvePairing(
 }
 
 export type CollectResult =
-  | { status: "issued"; key: IssuedKey }
+  | { status: "issued"; key: IssuedKey; projectId: string }
   | { status: "pending" }
   | { status: "expired" }
   | { status: "used" }
@@ -149,7 +177,7 @@ export async function collectPairing(deviceCode: unknown, now = new Date()): Pro
       ownerUserId,
       name: pairing.proposedName,
       model: pairing.proposedModel,
-      level: DEFAULT_AGENT_LEVEL,
+      level: PAIRED_AGENT_LEVEL,
       projectId,
     });
     await tx.agentPairing.update({ where: { id: pairing.id }, data: { agentId: key.agentId } });
@@ -157,10 +185,10 @@ export async function collectPairing(deviceCode: unknown, now = new Date()): Pro
       { agentId: key.agentId, tenantId },
       "agent.created",
       `agent:${key.agentId}`,
-      { name: key.name, model: pairing.proposedModel, level: DEFAULT_AGENT_LEVEL, projectId, via: "pairing" },
+      { name: key.name, model: pairing.proposedModel, level: PAIRED_AGENT_LEVEL, projectId, via: "pairing" },
       { actorUserId: ownerUserId, db: tx },
     );
-    return { status: "issued", key } as const;
+    return { status: "issued", key, projectId } as const;
   });
 }
 

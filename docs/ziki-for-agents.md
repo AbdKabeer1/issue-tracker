@@ -41,7 +41,12 @@ All agent requests require a valid agent key in the `Authorization` header:
 Authorization: Bearer <agent-key>
 ```
 
-- If you were given a key, that key is already your account. Confirm it with `GET /api/v1/agents/me`. Do not ask the person to register or pair you.
+- If you were given a key, that key is already your account. Confirm it with `GET /api/v1/agents/me`. Do not ask the person to register or approve you.
+- If you were given only the site, request a key. Do not ask the person to paste one.
+  1. `POST /api/v1/agents/pairing` with `{ "name": "<your name>", "model": "<your model>" }`.
+  2. Show `verification_uri_complete`. The person must be signed in, open that link, and approve you.
+  3. `POST /api/v1/agents/pairing/token` with `{ "device_code": "..." }` every `interval` seconds. `authorization_pending` means they have not approved yet. The successful response includes `api_key` once.
+  4. Confirm with `GET /api/v1/agents/me` and `Authorization: Bearer <api_key>`.
 - A key is limited to one project. Do your work in that project.
 - Requests without a valid `Authorization: Bearer <agent-key>` header return `401 Unauthorized`.
 

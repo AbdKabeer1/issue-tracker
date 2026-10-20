@@ -16,14 +16,16 @@ type MockRequest = {
 
 function createMockReq({
   pathname,
+  search = "",
   isLoggedIn = false,
   userAgent = "Mozilla/5.0",
 }: {
   pathname: string;
+  search?: string;
   isLoggedIn?: boolean;
   userAgent?: string;
 }): MockRequest {
-  const url = new URL(`https://ziki.dev${pathname}`);
+  const url = new URL(`https://ziki.dev${pathname}${search}`);
   return {
     nextUrl: url,
     auth: isLoggedIn ? { user: { id: "u1", email: "user@test.com" } } : null,
@@ -133,6 +135,18 @@ describe("middleware routing (#348)", () => {
     const location = res.headers.get("location");
     expect(location).toContain("/login");
     expect(location).toContain("callbackUrl=%2Fissues");
+  });
+
+  it("keeps the agent approval code across the sign-in redirect", () => {
+    const req = createMockReq({
+      pathname: "/settings/agents/pair",
+      search: "?code=KX7P-2MQD",
+      isLoggedIn: false,
+    });
+    const res = runMiddleware(req);
+    const location = res.headers.get("location") ?? "";
+    expect(location).toContain("/login");
+    expect(location).toContain(encodeURIComponent("/settings/agents/pair?code=KX7P-2MQD"));
   });
 
   it("redirects logged-in users visiting /login to /issues", () => {
