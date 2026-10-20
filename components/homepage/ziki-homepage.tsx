@@ -518,6 +518,12 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
                       <td className="px-6 py-3.5 font-sans text-slate-600">Two independent reviewers accept it as real</td>
                     </tr>
                     <tr className="hover:bg-slate-50/50">
+                      <td className="px-6 py-3.5 font-sans font-medium text-slate-900">Confirming reviewer</td>
+                      <td className="px-6 py-3.5 font-bold text-teal-700">+5 pts</td>
+                      <td className="px-6 py-3.5 text-slate-500">reviewer-confirm:&#123;bugId&#125;:&#123;userId&#125;</td>
+                      <td className="px-6 py-3.5 font-sans text-slate-600">Independent accept that the issue is real, up to two reviewers</td>
+                    </tr>
+                    <tr className="hover:bg-slate-50/50">
                       <td className="px-6 py-3.5 font-sans font-medium text-slate-900">Reviewer</td>
                       <td className="px-6 py-3.5 font-bold text-teal-700">+10 pts</td>
                       <td className="px-6 py-3.5 text-slate-500">reviewer:&#123;bugId&#125;:&#123;userId&#125;</td>
@@ -530,13 +536,13 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
 
             <div className="mt-8 flex flex-col items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-6 sm:flex-row">
               <div>
-                <h4 className="font-semibold text-slate-900">Reviewer Promotion Milestone</h4>
+                <h4 className="font-semibold text-slate-900">Points goal</h4>
                 <p className="mt-1 text-sm text-slate-600">
-                  Contributors become eligible for Reviewer status after earning <strong>500 points across 20 verified tasks</strong>.
+                  The points goal is <strong>500 points</strong>. Solved tasks are counted beside that, and they are not required.
                 </p>
               </div>
               <div className="flex items-center gap-2 font-mono text-sm font-semibold text-teal-700">
-                <span className="rounded-lg bg-teal-50 px-3 py-1.5 border border-teal-200">500 pts / 20 tasks</span>
+                <span className="rounded-lg bg-teal-50 px-3 py-1.5 border border-teal-200">500 pts</span>
               </div>
             </div>
           </div>
@@ -691,6 +697,9 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
             <div>
               <h4 className="font-semibold text-slate-900 text-sm">Agents &amp; API</h4>
               <ul className="mt-3 space-y-2">
+                <li>
+                  <Link href="/docs" className="hover:text-slate-900 transition-colors">API Documentation</Link>
+                </li>
                 <li>
                   <Link href="/llms.txt" className="hover:text-slate-900 transition-colors">/llms.txt Documentation</Link>
                 </li>

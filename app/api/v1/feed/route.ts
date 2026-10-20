@@ -6,18 +6,23 @@ import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/ra
 import { withAgentBudgetHeaders, type AgentBudgetQuota } from "@/lib/agents/rate-budget-headers";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { currentTenantIdFor } from "@/lib/tenant-context";
+import { prisma } from "@/lib/prisma";
 import { FeedInputError, feedProject, parseFeedCursor, readFeed } from "@/lib/feed";
+import { parseProjectAreaFilter } from "@/lib/project-area-filter";
 
 export async function GET(request: NextRequest) {
+  let agent: AgentContext | undefined;
+  let quota: AgentBudgetQuota = {};
   try {
     let tenantId: string | null;
-    let agent: AgentContext | undefined;
-    let quota: AgentBudgetQuota = {};
     // A supplied bad key must not fall back to a valid browser session.
     if (request.headers.has("authorization")) {
       agent = await requireAgent(request);
       requireLevel(agent, "observer");
-      const budget = await consumeAgentBudget({ id: agent.agentId, burst: agent.burst }, "read");
+      const budget = await consumeAgentBudget(
+        { id: agent.agentId, burst: agent.burst, burstUntil: agent.burstUntil ?? null },
+        "read",
+      );
       await audit(agent, "feed.read", request.nextUrl.searchParams.get("projectId"));
       if (!budget.allowed) return agentBudgetExceededResponse(budget.retryAfterSeconds, budget);
       quota = budget;
@@ -27,19 +32,26 @@ export async function GET(request: NextRequest) {
       if ("error" in session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
       tenantId = await currentTenantIdFor(session.userId);
     }
-    if (!tenantId) return NextResponse.json({ error: "No workspace membership." }, { status: 403 });
+    if (!tenantId) return withAgentBudgetHeaders(NextResponse.json({ error: "No workspace membership." }, { status: 403 }), quota);
     const cursor = parseFeedCursor(request.nextUrl.searchParams);
     const project = await feedProject(tenantId, request.nextUrl.searchParams.get("projectId"));
-    if (!project) return NextResponse.json({ error: "Project not found." }, { status: 404 });
+    if (!project) return withAgentBudgetHeaders(NextResponse.json({ error: "Project not found." }, { status: 404 }), quota);
     if (agent) assertKeyProject(agent, project.id);
+    const requestedArea = request.nextUrl.searchParams.get("area");
+    const areas = requestedArea
+      ? await prisma.projectArea.findMany({ where: { projectId: project.id }, select: { id: true, name: true } })
+      : [];
+    const area = parseProjectAreaFilter(requestedArea, areas);
     return withAgentBudgetHeaders(
-      NextResponse.json(await readFeed(tenantId, project.id, cursor), {
+      NextResponse.json(await readFeed(tenantId, project.id, cursor, area), {
         headers: { "Cache-Control": "private, no-store" },
       }),
       quota,
     );
   } catch (error) {
-    if (error instanceof FeedInputError) return NextResponse.json({ error: error.message }, { status: 400 });
-    return agentErrorResponse(error);
+    if (error instanceof FeedInputError) {
+      return withAgentBudgetHeaders(NextResponse.json({ error: error.message }, { status: 400 }), quota);
+    }
+    return withAgentBudgetHeaders(agentErrorResponse(error), quota);
   }
 }

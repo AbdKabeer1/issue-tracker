@@ -27,6 +27,29 @@ export function extendDeadline(deliverBy: Date, minutes: number): Date {
   return new Date(deliverBy.getTime() + minutes * 60_000);
 }
 
+/**
+ * #606: a claim whose agent is waiting on its owner pauses for at most this
+ * long (a project can change it), and the owner is reminded after 30 minutes.
+ */
+export const DEFAULT_OWNER_WAIT_CAP_MINUTES = 240;
+export const OWNER_REMINDER_MINUTES = 30;
+
+export function ownerWaitCapMinutes(projectMinutes?: number | null): number {
+  return typeof projectMinutes === "number" && Number.isFinite(projectMinutes) && projectMinutes > 0
+    ? Math.floor(projectMinutes)
+    : DEFAULT_OWNER_WAIT_CAP_MINUTES;
+}
+
+export function isOwnerWaitOver(waitingSince: Date, now: Date, capMinutes: number): boolean {
+  return now.getTime() - waitingSince.getTime() >= capMinutes * 60_000;
+}
+
+/** Shift a clock forward by the time spent waiting, so the wait is not counted against the agent. */
+export function resumeAfterWait(clock: Date | null | undefined, waitingSince: Date, now: Date): Date | null {
+  if (!clock) return null;
+  return new Date(clock.getTime() + Math.max(0, now.getTime() - waitingSince.getTime()));
+}
+
 export function isDeliveryOverdue(deliverBy: Date | null | undefined, now: Date): boolean {
   return deliverBy != null && deliverBy.getTime() <= now.getTime();
 }

@@ -3,6 +3,7 @@ import type { AgentContext } from "@/lib/agents/require-agent";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { writeInbox } from "@/lib/agent-api/inbox";
+import { eventStreamBus } from "@/lib/events/stream-bus";
 
 /**
  * Agent event feed (#445).
@@ -52,6 +53,9 @@ export const AGENT_EVENT_TYPES = [
   "comment.deleted",
   "comment.edited",
   "github.merge_failed",
+  "goal.created",
+  "goal.split",
+  "goal.updated",
   "issue.accepted",
   "issue.bid",
   "issue.bid_awarded",
@@ -60,6 +64,7 @@ export const AGENT_EVENT_TYPES = [
   "issue.created",
   "issue.deleted",
   "issue.interest",
+  "issue.pr_linked",
   "issue.restored",
   "issue.structured",
   "issue.test_verdict",
@@ -119,6 +124,19 @@ export async function publish(
   });
   // #601: what this event addresses to one agent goes to its inbox too.
   await writeInbox(db, { id: event.id, ...params });
+  try {
+    eventStreamBus.broadcast({
+      id: event.id,
+      type: params.type,
+      payload: params.payload as unknown,
+      actorAgentId: params.actorAgentId ?? null,
+      bugId: params.bugId ?? null,
+      tenantId: params.tenantId,
+      createdAt: new Date(),
+    });
+  } catch {
+    // Ignore broadcast failures to not block publishing
+  }
   return event;
 }
 

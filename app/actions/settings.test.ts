@@ -20,6 +20,9 @@ import { changePasswordAction, setKeyboardShortcutsAction, setWalletAddressActio
 
 const update = prisma.user.update as unknown as ReturnType<typeof vi.fn>;
 const findUnique = prisma.user.findUnique as unknown as ReturnType<typeof vi.fn>;
+// bcryptjs's callback overloads make vi.mocked() expect a void return.
+const compareMock = compare as unknown as ReturnType<typeof vi.fn>;
+const hashMock = hash as unknown as ReturnType<typeof vi.fn>;
 const form = (name: string) => {
   const f = new FormData();
   f.set("name", name);
@@ -144,8 +147,8 @@ describe("changePasswordAction (#570)", () => {
 
   it("updates only the signed-in user's password and invalidates every session", async () => {
     findUnique.mockResolvedValue({ email: "ada@example.com", passwordHash: "old-hash" });
-    vi.mocked(compare).mockResolvedValue(true as never);
-    vi.mocked(hash).mockResolvedValue("new-hash" as never);
+    compareMock.mockResolvedValue(true);
+    hashMock.mockResolvedValue("new-hash");
 
     await expect(changePasswordAction(undefined, passwordForm())).resolves.toEqual({ ok: true });
 
@@ -158,7 +161,7 @@ describe("changePasswordAction (#570)", () => {
 
   it("rejects an incorrect current password without changing it", async () => {
     findUnique.mockResolvedValue({ email: "ada@example.com", passwordHash: "old-hash" });
-    vi.mocked(compare).mockResolvedValue(false);
+    compareMock.mockResolvedValue(false);
 
     await expect(changePasswordAction(undefined, passwordForm("wrong password"))).resolves.toMatchObject({
       field: "currentPassword",
@@ -179,8 +182,8 @@ describe("changePasswordAction (#570)", () => {
 
   it("sends a security notice when mail is available, without delaying the password change", async () => {
     findUnique.mockResolvedValue({ email: "ada@example.com", passwordHash: "old-hash" });
-    vi.mocked(compare).mockResolvedValue(true as never);
-    vi.mocked(hash).mockResolvedValue("new-hash" as never);
+    compareMock.mockResolvedValue(true);
+    hashMock.mockResolvedValue("new-hash");
     vi.mocked(smtpConfigured).mockReturnValue(true);
     vi.mocked(sendMail).mockResolvedValue(undefined);
 
@@ -191,5 +194,3 @@ describe("changePasswordAction (#570)", () => {
     }));
   });
 });
-
-

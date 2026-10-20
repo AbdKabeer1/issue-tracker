@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
 import {
   assertIndependentReviewer,
+  reviewerCreditConflict,
   ReviewerNotIndependentError,
   type ReviewedBug,
 } from "@/lib/agents/independence";
@@ -27,7 +28,8 @@ import { handleTestVerdictSubmitted } from "@/lib/agent-api/review-offer";
  *   reviewer who finds a regression can take back "good to merge" until the
  *   fix is accepted. The audit log keeps every change.
  * - A verdict needs a linked pull request and records which one it tested
- *   (#526). Linking a different PR means the old verdicts no longer count.
+ *   (#526), and the head commit it tested (#489). Linking a different PR means
+ *   the old verdicts no longer count.
  */
 
 export const TEST_VERDICT_NOTES_MAX = 2000;
@@ -37,6 +39,15 @@ export const testVerdictBodySchema = z.object({
   notes: z.string().trim().max(TEST_VERDICT_NOTES_MAX).optional(),
   /** The person the agent acts for; defaults to its owner. */
   onBehalfOfUserId: z.string().trim().min(1).max(191).optional(),
+  /**
+   * The head commit the reviewer tested (#489). Defaults to the SHA recorded
+   * when the pull request was linked, so every verdict names its code.
+   */
+  headSha: z
+    .string()
+    .trim()
+    .regex(/^[0-9a-f]{7,64}$/i, "headSha must be a hexadecimal commit SHA.")
+    .optional(),
 });
 
 export type TestVerdictBody = z.infer<typeof testVerdictBodySchema>;
@@ -47,8 +58,10 @@ const reviewedBugSelect = {
   tenantId: true,
   status: true,
   pullRequestUrl: true,
+  pullRequestHeadSha: true,
   severity: true,
   beneficiaryUserId: true,
+  assigneeId: true,
   reporterId: true,
   createdByAgentId: true,
   createdByAgent: { select: { ownerUserId: true } },
@@ -57,6 +70,7 @@ const reviewedBugSelect = {
       status: true,
       releasedAt: true,
       agentId: true,
+      beneficiaryUserId: true,
       agent: { select: { ownerUserId: true } },
     },
   },
@@ -76,6 +90,7 @@ type StoredVerdict = {
   notes: string | null;
   onBehalfOfUserId: string;
   pullRequestUrl: string | null;
+  headSha: string | null;
   changedAt: Date | null;
 };
 
@@ -136,6 +151,9 @@ export async function submitTestVerdict(
     };
   }
   const pullRequestUrl = bug.pullRequestUrl;
+  // #489: the verdict records the commit it tested. An agent that inspected
+  // a newer commit says so; otherwise the SHA recorded when the PR was linked.
+  const headSha = body.headSha ?? bug.pullRequestHeadSha;
 
   if (activeClaimAgent(bug) === agent.agentId) {
     return {
@@ -166,6 +184,13 @@ export async function submitTestVerdict(
       };
     }
   }
+  if (reviewerCreditConflict(onBehalfOfUserId, bug as ReviewedBug)) {
+    return {
+      status: 403,
+      error: "not_independent",
+      message: "onBehalfOfUserId must be independent of the issue's reporter, solver, and claim beneficiary.",
+    };
+  }
 
   const verdictSelect = {
     id: true,
@@ -173,6 +198,7 @@ export async function submitTestVerdict(
     notes: true,
     onBehalfOfUserId: true,
     pullRequestUrl: true,
+    headSha: true,
     changedAt: true,
   } as const;
 
@@ -193,6 +219,7 @@ export async function submitTestVerdict(
             notes: body.notes || null,
             onBehalfOfUserId,
             pullRequestUrl,
+            headSha,
             changedAt: new Date(),
           },
           select: verdictSelect,
@@ -204,7 +231,7 @@ export async function submitTestVerdict(
           {
             verdictId: verdict.id,
             from: { goodToMerge: existing.goodToMerge, pullRequestUrl: existing.pullRequestUrl },
-            to: { goodToMerge: body.goodToMerge, pullRequestUrl },
+            to: { goodToMerge: body.goodToMerge, pullRequestUrl, headSha },
             onBehalfOfUserId,
           },
           { bugId: bug.id, db: tx },
@@ -218,6 +245,7 @@ export async function submitTestVerdict(
             goodToMerge: body.goodToMerge,
             onBehalfOfUserId,
             pullRequestUrl,
+            headSha,
             changed: true,
             previousGoodToMerge: existing.goodToMerge,
           },
@@ -236,6 +264,7 @@ export async function submitTestVerdict(
           goodToMerge: body.goodToMerge,
           notes: body.notes || null,
           pullRequestUrl,
+          headSha,
         },
         select: verdictSelect,
       });
@@ -244,13 +273,13 @@ export async function submitTestVerdict(
         agent,
         "issue.test_verdict",
         `bug:${bug.id}`,
-        { verdictId: verdict.id, goodToMerge: body.goodToMerge, onBehalfOfUserId, pullRequestUrl },
+        { verdictId: verdict.id, goodToMerge: body.goodToMerge, onBehalfOfUserId, pullRequestUrl, headSha },
         { bugId: bug.id, db: tx },
       );
       await publish(tx, {
         tenantId: bug.tenantId,
         type: "issue.test_verdict",
-        payload: { issueId: bug.id, verdictId: verdict.id, goodToMerge: body.goodToMerge, onBehalfOfUserId, pullRequestUrl },
+        payload: { issueId: bug.id, verdictId: verdict.id, goodToMerge: body.goodToMerge, onBehalfOfUserId, pullRequestUrl, headSha },
         actorAgentId: agent.agentId,
         bugId: bug.id,
       });

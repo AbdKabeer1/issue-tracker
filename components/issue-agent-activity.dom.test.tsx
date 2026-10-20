@@ -106,6 +106,25 @@ describe("IssueAgentActivity (#448)", () => {
     expect(screen.getByText(/extension used/)).toBeInTheDocument();
   });
 
+  it("says the claim is waiting on the owner instead of counting down (#606)", () => {
+    const decisions: AgentDecision[] = [
+      {
+        id: "c1",
+        at: "2026-01-01T12:00:00.000Z",
+        kind: "claimed",
+        agentName: "fixer-agent",
+        personName: "Bob",
+        deliverBy: new Date(Date.now() + 90 * 60_000).toISOString(),
+        waitingOnName: "Mark",
+      },
+    ];
+
+    render(<IssueAgentActivity decisions={decisions} />);
+
+    expect(screen.getByText(/Waiting for Mark to answer fixer-agent's question\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Delivery due/)).not.toBeInTheDocument();
+  });
+
   it("lists the decisions in chronological order regardless of input order", () => {
     const decisions: AgentDecision[] = [
       {

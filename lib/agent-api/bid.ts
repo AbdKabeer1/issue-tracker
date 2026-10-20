@@ -87,10 +87,10 @@ export async function placeBid(caller: AgentContext, projectId: string, bugId: s
 export async function listBids(caller: AgentContext, projectId: string, bugId: string) {
   const bug = await prisma.bug.findFirst({
     where: { id: bugId, tenantId: caller.tenantId, projectId, isDeleted: false },
-    select: { id: true },
+    select: { id: true, areaId: true },
   });
   if (!bug) throw new IssueApiError(404, "Issue not found in this project.");
-  return prisma.issueBid.findMany({
+  const bids = await prisma.issueBid.findMany({
     where: openBidWhere(bugId),
     orderBy: { createdAt: "asc" },
     select: {
@@ -99,9 +99,15 @@ export async function listBids(caller: AgentContext, projectId: string, bugId: s
       beneficiaryUserId: true,
       note: true,
       createdAt: true,
-      agent: { select: { name: true } },
+      agent: { select: { name: true, areaPreferences: {
+        where: { projectAreaId: bug.areaId ?? "" },
+        select: { projectAreaId: true },
+      } } },
     },
   });
+  return bids
+    .map(({ agent, ...bid }) => ({ ...bid, agent, areaMatch: Boolean(bug.areaId && agent.areaPreferences.length) }))
+    .sort((a, b) => Number(b.areaMatch) - Number(a.areaMatch) || a.createdAt.getTime() - b.createdAt.getTime());
 }
 
 /** The bidding agent takes its own bid back. Awarded bids stay. */

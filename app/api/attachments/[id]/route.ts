@@ -39,6 +39,13 @@ export async function GET(
     });
     if (!membership) return notFound();
   }
+  if (attachment.bug) {
+    const membership = await prisma.membership.findUnique({
+      where: { tenantId_userId: { tenantId: attachment.bug.tenantId, userId: user.id } },
+      select: { userId: true },
+    });
+    if (!membership) return notFound();
+  }
   if (attachment.bug?.isDeleted) {
     const access = await tenantAccessFor(user.id, attachment.bug.tenantId, user.role);
     if (!access.admin) return notFound();

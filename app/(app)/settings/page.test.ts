@@ -9,6 +9,14 @@ vi.mock("@/lib/prisma", () => ({
     },
   },
 }));
+vi.mock("@/auth", () => ({
+  auth: vi.fn(),
+  signIn: vi.fn(),
+  signOut: vi.fn(),
+}));
+vi.mock("@/components/account-data-settings", () => ({
+  AccountDataSettings: () => null,
+}));
 
 import { prisma } from "@/lib/prisma";
 import SettingsPage from "./page";

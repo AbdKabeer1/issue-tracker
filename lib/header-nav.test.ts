@@ -23,13 +23,15 @@ describe("SWITCH_TENANT_LINK (#444)", () => {
 });
 
 describe("headerNavItems (#761)", () => {
-  it("shows Issues, Manage Project, Escalations, and Redesigns to normal users by default", () => {
+  it("shows Issues, Team, Manage Project, Escalations, and Redesigns to normal users by default", () => {
     const items = headerNavItems("user");
     expect(items.map((i) => i.label)).toEqual([
       "Issues",
+      "Team",
       "Manage Project",
       "Escalations",
       "Redesigns",
+      "API Docs",
     ]);
     const manageProject = items.find((i) => i.label === "Manage Project");
     expect(manageProject?.children?.map((c) => c.label)).toEqual([
@@ -41,16 +43,20 @@ describe("headerNavItems (#761)", () => {
   it("shows only Issues and Manage Project when agent platform is explicitly disabled", () => {
     expect(headerNavItems("user", { agentPlatform: false }).map((i) => i.label)).toEqual([
       "Issues",
+      "Team",
       "Manage Project",
+      "API Docs",
     ]);
   });
 
   it("includes Escalations and Redesigns when agent platform is enabled (#627)", () => {
     expect(headerNavItems("user", { agentPlatform: true }).map((i) => i.label)).toEqual([
       "Issues",
+      "Team",
       "Manage Project",
       "Escalations",
       "Redesigns",
+      "API Docs",
     ]);
   });
 
@@ -67,9 +73,11 @@ describe("headerNavItems (#761)", () => {
     const items = headerNavItems("admin");
     expect(items.map((i) => i.label)).toEqual([
       "Issues",
+      "Team",
       "Manage Project",
       "Escalations",
       "Redesigns",
+      "API Docs",
     ]);
     const manageProject = items.find((i) => i.label === "Manage Project");
     expect(manageProject?.children?.map((c) => c.label)).toEqual([
@@ -93,9 +101,11 @@ describe("headerNavItems (#761)", () => {
   it("adds Admins for super admins (#761)", () => {
     expect(headerNavItems("super_admin").map((i) => i.label)).toEqual([
       "Issues",
+      "Team",
       "Manage Project",
       "Escalations",
       "Redesigns",
+      "API Docs",
       "Admins",
     ]);
   });
