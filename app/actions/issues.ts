@@ -54,6 +54,7 @@ import {
 } from "@/lib/ticket-boosting";
 import { canAssignTicket, TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
 import { canChangeTicketStatus, TICKET_TRIAGE_ERRORS } from "@/lib/ticket-triage";
+import { publish } from "@/lib/agent-api/events";
 import {
   canEditTicket,
   formatEditSummary,
@@ -190,9 +191,23 @@ export async function createBugAction(
     }
   }
 
+  // Auto-generate title from description if omitted or blank (for simplified report intake)
+  const rawTitle = formData.get("title");
+  const rawDesc = formData.get("description");
+  let titleStr = typeof rawTitle === "string" ? rawTitle.trim() : "";
+  const isReport = formData.get("isReport") === "true";
+
+  if (!titleStr && typeof rawDesc === "string" && rawDesc.trim().length >= 3) {
+    const firstLine = rawDesc.trim().split(/\r?\n/)[0]?.trim() || "";
+    titleStr = firstLine.slice(0, 80);
+    if (titleStr.length < 3) {
+      titleStr = rawDesc.trim().slice(0, 80);
+    }
+  }
+
   // Non-admins cannot set severity at creation; assignee validated above.
   const parsed = createBugSchema.safeParse({
-    title: formData.get("title"),
+    title: titleStr,
     description: formData.get("description"),
     severity: admin ? formData.get("severity") || "medium" : "medium",
     typeId: formData.get("typeId") || "",
@@ -345,6 +360,26 @@ export async function createBugAction(
   }
   if (events.length > 0) notifyLater(...events);
 
+  // Notify agent platform on feed (#764)
+  try {
+    if (prisma.agentEvent) {
+      await publish(prisma, {
+        tenantId,
+        type: isReport ? "report.created" : "issue.created",
+        payload: {
+          issueId: bug.id,
+          projectId,
+          beneficiaryUserId: userId,
+          isReport,
+        },
+        bugId: bug.id,
+      });
+    }
+  } catch (err) {
+    // Non-fatal if agent events / webhooks are not configured in test environment
+    console.warn("[createBugAction] could not publish agent event", err);
+  }
+
   revalidatePath("/issues");
   revalidatePath("/bugs");
   redirect(`/issues/${bug.id}`);
@@ -419,8 +454,12 @@ export async function updateBugAction(
         membershipRole: access.membershipRole,
         currentAssigneeId: existing.assigneeId,
         targetAssigneeId,
+        voteCount: existing.voteCount,
       })
     ) {
+      if (targetAssigneeId && typeof existing.voteCount === "number" && existing.voteCount < 3) {
+        return { error: TICKET_ASSIGN_ERRORS.needsVotes };
+      }
       return { error: TICKET_ASSIGN_ERRORS.unauthorized };
     }
   }
@@ -1321,6 +1360,7 @@ export async function selfAssignBugAction(
       title: true,
       assigneeId: true,
       isDeleted: true,
+      voteCount: true,
       assignee: { select: { name: true } },
     },
   });
@@ -1338,8 +1378,12 @@ export async function selfAssignBugAction(
       membershipRole: (await currentTenantAccess(userId, user.role)).membershipRole,
       currentAssigneeId: existing.assigneeId,
       targetAssigneeId,
+      voteCount: existing.voteCount,
     })
   ) {
+    if (assign && typeof existing.voteCount === "number" && existing.voteCount < 3) {
+      return { error: TICKET_ASSIGN_ERRORS.needsVotes };
+    }
     return { error: TICKET_ASSIGN_ERRORS.unauthorized };
   }
 

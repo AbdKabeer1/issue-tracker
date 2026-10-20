@@ -6,6 +6,7 @@ import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { pointTotals } from "@/lib/points/leaderboard";
 import { PointsSummary } from "@/components/points-summary";
 import { requireUser } from "@/lib/auth-helpers";
+import { canViewProfile } from "@/lib/profile-access";
 import { roleLabels } from "@/lib/roles";
 import { Badge } from "@/components/ui/badge";
 import { LocalTime } from "@/components/local-time";
@@ -26,10 +27,11 @@ export async function generateMetadata({
   params,
 }: ProfileProps): Promise<Metadata> {
   const { id } = await params;
-  const user = await prisma.user.findUnique({
-    where: { id },
-    select: { name: true },
-  });
+  const viewer = await requireUser();
+  // #503: the name is in the tab title, so it gets the same check as the page.
+  const user = (await canViewProfile(prisma, viewer, id))
+    ? await prisma.user.findUnique({ where: { id }, select: { name: true } })
+    : null;
   return {
     title: user ? user.name : "Person not found",
     robots: { index: false, follow: false },
@@ -39,6 +41,8 @@ export async function generateMetadata({
 export default async function ProfilePage({ params }: ProfileProps) {
   const viewer = await requireUser();
   const { id } = await params;
+  // #503: only people who share a tenant with this person can see them.
+  if (!(await canViewProfile(prisma, viewer, id))) notFound();
   // #428: points in the viewer's tenant.
   const tenantId = await currentTenantIdFor(viewer.id);
   // #425, #439: a profile is another way to read issues. No membership, no issues.
