@@ -186,3 +186,43 @@ describe("newlyMentionedUserIds (#228)", () => {
     expect(newlyMentionedUserIds(before, before)).toEqual([]);
   });
 });
+
+describe("code-aware mention processing (#731)", () => {
+  const nameMap = new Map([
+    [aliceId, "Alice Smith"],
+    [bobId, "Bob Jones"],
+  ]);
+
+  it("does not extract or rewrite mention tags inside fenced code", () => {
+    const body = `before @[Alice](${aliceId})\n\`\`\`\nliteral @[Example](${bobId}) stays\n\`\`\`\nafter`;
+    expect(extractMentionedUserIds(body)).toEqual([aliceId]);
+    expect(normalizeMentions(body, nameMap)).toBe(body.replace(`@[Alice](${aliceId})`, `@[Alice Smith](${aliceId})`));
+  });
+
+  it("does not extract or rewrite mention tags inside inline code", () => {
+    const body = `see \`@[Example](${bobId})\` and @[Alice](${aliceId})`;
+    expect(extractMentionedUserIds(body)).toEqual([aliceId]);
+    expect(normalizeMentions(body, nameMap)).toBe(
+      `see \`@[Example](${bobId})\` and @[Alice Smith](${aliceId})`,
+    );
+  });
+
+  it("treats an unterminated fence as code to the end", () => {
+    const body = "```js\n" + "tag @[Example](" + bobId + ")";
+    expect(extractMentionedUserIds(body)).toEqual([]);
+    expect(normalizeMentions(body, nameMap)).toBe(body);
+  });
+
+  it("keeps code samples byte-identical when they contain tag-like text", () => {
+    const body = `\`\`\`text\n@[Example](${bobId})\n\`\`\``;
+    expect(normalizeMentions(body, nameMap)).toBe(body);
+  });
+
+  it("still processes prose mentions with no code present", () => {
+    const body = `@[Imposter](${aliceId}) met @Unknown`;
+    expect(extractMentionedUserIds(body)).toEqual([aliceId]);
+    expect(normalizeMentions(body, nameMap)).toBe(
+      `@[Alice Smith](${aliceId}) met @Unknown`,
+    );
+  });
+});

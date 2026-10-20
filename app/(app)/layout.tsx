@@ -17,6 +17,7 @@ import { ensureDefaultProjectKey } from "@/lib/agents/default-key";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 import { projectContextFor, type ProjectChoice } from "@/lib/project-context";
 import { currentTenantIdFor } from "@/lib/tenant-context";
+import { countPendingEscalations } from "@/lib/agent-questions";
 
 export default async function AppLayout({
   children,
@@ -107,6 +108,15 @@ export default async function AppLayout({
     console.error("[layout] notification count failed", error);
   }
 
+  let pendingEscalationsCount = 0;
+  if (tenantId) {
+    try {
+      pendingEscalationsCount = await countPendingEscalations(user.id, tenantId);
+    } catch (error) {
+      console.error("[layout] pending escalations count failed", error);
+    }
+  }
+
   // #287: one primary-key read; a failure leaves shortcuts on, the default.
   let shortcutsEnabled = true;
   try {
@@ -129,6 +139,7 @@ export default async function AppLayout({
         isRealSuperAdmin={user.isRealSuperAdmin}
         isRealAdmin={user.isRealAdmin}
         unreadCount={unreadCount}
+        pendingEscalationsCount={pendingEscalationsCount}
         userId={user.id}
         projects={projects}
         activeProjectId={activeProjectId}

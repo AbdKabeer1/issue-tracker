@@ -10,6 +10,7 @@ import type { AppRole } from "@/lib/roles";
 import { IssueFilters } from "@/components/issue-filters";
 import { IssueStats } from "@/components/issue-stats";
 import { IssuesSidebar } from "@/components/issues-sidebar";
+import { IssuesSidebarDisclosure } from "@/components/issues-sidebar-disclosure";
 import { Avatar } from "@/components/avatar";
 import { VoteButton } from "@/components/vote-button";
 import { Badge } from "@/components/ui/badge";
@@ -65,6 +66,8 @@ import {
 import { TAGS_PARAM, parseTagFilter, serializeTags, tagTypeIds } from "@/lib/tag-filter";
 import { bugInTenant, currentTenantIdFor, isMissingTenantColumnError } from "@/lib/tenant-context";
 import { activeProjectIdFor } from "@/lib/project-context";
+import { RichText } from "@/components/rich-text";
+import { isOrganizationAdmin } from "@/lib/organization-role";
 import {
   PLATFORM_PARAM,
   parsePlatformFilter,
@@ -143,6 +146,9 @@ export default async function BugsPage({
   } catch (error) {
     console.error("[bugs] tenant/project resolution failed", error);
   }
+  const activeProject = tenantId && projectId
+    ? await prisma.project.findFirst({ where: { id: projectId, tenantId }, select: { slug: true, name: true, goal: true } }).catch(() => null)
+    : null;
 
   const canDelete = canDeleteTicket(effectiveRole, membershipRole);
   const canBoost = canBoostTicket(effectiveRole, membershipRole);
@@ -222,41 +228,36 @@ export default async function BugsPage({
   }
 
   let totalCount = 0;
-  // Only a member, and only when the tenant column itself is missing, may see
-  // the pre-migration board. Anyone else keeps an empty scope (#439).
-  let unscopedBoard = false;
   try {
     totalCount = await prisma.bug.count({ where });
   } catch (error) {
     console.error("[bugs] list count failed", error);
     const missingColumn = isMissingTenantColumnError(error);
-    if (missingColumn && tenantId) {
-      unscopedBoard = true;
-      delete where.tenantId;
-      delete where.projectId;
-      try {
-        totalCount = await prisma.bug.count({ where });
-      } catch (retryError) {
-        console.error("[bugs] un-scoped list count failed", retryError);
-        const detail = retryError instanceof Error ? retryError.message : "Could not load issues";
-        return issuesQueryError(detail);
-      }
-    } else if (!tenantId) {
+    if (!tenantId) {
+      // No membership: nothing to show either way (#439).
       totalCount = 0;
       if (missingColumn) {
         delete where.tenantId;
         delete where.projectId;
         where.id = { in: [] };
       }
+    } else if (missingColumn) {
+      // #506: never retry without the tenant filter. That used to show every
+      // tenant's issues to anyone whose query error mentioned the column.
+      return issuesQueryError(
+        "The issue list is unavailable while the database finishes upgrading. Try again in a minute.",
+      );
     } else {
       const detail = error instanceof Error ? error.message : "Could not load issues";
       return issuesQueryError(detail);
     }
   }
 
-  const baseTenantWhere: Prisma.BugWhereInput = unscopedBoard
-    ? { isDeleted: isDeletedView }
-    : { ...bugInTenant(tenantId), isDeleted: isDeletedView };
+  const baseTenantWhere: Prisma.BugWhereInput = {
+    ...bugInTenant(tenantId),
+    ...(projectId ? { projectId } : {}),
+    isDeleted: isDeletedView,
+  };
 
   let statsTotal = 0;
   let statsOpen = 0;
@@ -496,8 +497,7 @@ export default async function BugsPage({
   let isFirstRun = false;
   if (totalCount === 0 && !isDeletedView) {
     try {
-      const scope = unscopedBoard ? {} : bugInTenant(tenantId);
-      isFirstRun = (await prisma.bug.count({ where: { ...scope, isDeleted: false } })) === 0;
+      isFirstRun = (await prisma.bug.count({ where: { ...bugInTenant(tenantId), isDeleted: false } })) === 0;
     } catch {
       isFirstRun = false;
     }
@@ -548,8 +548,33 @@ export default async function BugsPage({
     low: "bg-emerald-500",
   };
 
+  const sidebarProps = {
+    counts: {
+      all: statsTotal,
+      mine: sidebarMine,
+      assigned: sidebarAssigned,
+      created: sidebarCreated,
+      saved: sidebarSaved,
+      categories: typeCountsMap,
+      platforms: platformCountsMap,
+    },
+    tagTypes,
+    platforms,
+  };
+
   const page = (
     <div className="space-y-6">
+      {activeProject?.goal ? (
+        <section aria-labelledby="project-goal-heading" className="rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 id="project-goal-heading" className="text-sm font-semibold text-slate-900">{activeProject.name} goal</h2>
+            {membershipRole && isOrganizationAdmin(membershipRole, effectiveRole) ? (
+              <Link href={`/projects/${encodeURIComponent(activeProject.slug)}/settings`} className="text-xs font-medium text-teal-800 underline">Edit project settings</Link>
+            ) : null}
+          </div>
+          <RichText content={activeProject.goal} className="mt-1 text-sm" />
+        </section>
+      ) : null}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -617,21 +642,13 @@ export default async function BugsPage({
 
       <div className="flex flex-col lg:flex-row gap-6 items-start">
         {!isFirstRun ? (
-          <aside className="w-full lg:w-60 shrink-0">
-            <IssuesSidebar
-              counts={{
-                all: statsTotal,
-                mine: sidebarMine,
-                assigned: sidebarAssigned,
-                created: sidebarCreated,
-                saved: sidebarSaved,
-                categories: typeCountsMap,
-                platforms: platformCountsMap,
-              }}
-              tagTypes={tagTypes}
-              platforms={platforms}
-            />
-          </aside>
+          <>
+            {/* Phones: one collapsed disclosure so the list starts near the top (#574). */}
+            <IssuesSidebarDisclosure {...sidebarProps} />
+            <aside className="hidden lg:block w-60 shrink-0">
+              <IssuesSidebar {...sidebarProps} />
+            </aside>
+          </>
         ) : null}
 
         <div className="flex-1 min-w-0 space-y-4 w-full">

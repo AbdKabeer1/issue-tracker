@@ -28,6 +28,28 @@ describe("form-drafts pure helpers (#106)", () => {
       expect(key).toBe("draft:anon:bug:new");
     });
 
+    it("scopes create-bug drafts to the active project (#729)", () => {
+      const projectA = buildDraftKey({
+        userId: "user-123",
+        formType: "create-bug",
+        projectId: "project-a",
+      });
+      const projectB = buildDraftKey({
+        userId: "user-123",
+        formType: "create-bug",
+        projectId: "project-b",
+      });
+      expect(projectA).toBe("draft:user-123:bug:new:project-a");
+      expect(projectB).toBe("draft:user-123:bug:new:project-b");
+      expect(projectA).not.toBe(projectB);
+    });
+
+    it("falls back to the legacy unscoped create-bug key without project context", () => {
+      expect(buildDraftKey({ userId: "user-123", formType: "create-bug" })).toBe(
+        "draft:user-123:bug:new",
+      );
+    });
+
     it("builds correct key for update-bug", () => {
       const key = buildDraftKey({
         userId: "user-456",
@@ -140,6 +162,14 @@ describe("form-drafts pure helpers (#106)", () => {
       const loaded = loadDraftFromStorage<{ title: string }>(key, 2000);
 
       expect(loaded).toEqual(values);
+    });
+
+    it("never loads another project's create-form draft (#729)", () => {
+      const keyA = buildDraftKey({ userId: "u1", formType: "create-bug", projectId: "project-a" });
+      const keyB = buildDraftKey({ userId: "u1", formType: "create-bug", projectId: "project-b" });
+      saveDraftToStorage(keyA, { title: "Draft in project A" }, 1000);
+
+      expect(loadDraftFromStorage<{ title: string }>(keyB, 2000)).toBeNull();
     });
 
     it("removes expired draft when loaded from storage", () => {

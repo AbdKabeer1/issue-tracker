@@ -25,6 +25,7 @@ type AgentBase = {
   actorId: string | null;
   actorName: string;
   recipientId: string;
+  tenantId?: string;
   bugId?: string | null;
   bugTitle?: string | null;
 };

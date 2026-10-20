@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { createReviewOffers } from "@/lib/agent-api/review-offer";
 import { agentIssueRequest, issueJson } from "@/lib/agent-api/issues";
 import {
   mergeAcceptedFix,
@@ -55,6 +56,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       where: { id: bug.id },
       data: { pullRequestUrl: parsed.data.pullRequestUrl },
     });
+
+    await createReviewOffers(prisma, agent, bug.id, {
+      pullRequestUrl: parsed.data.pullRequestUrl,
+    }).catch(() => null);
 
     const result = await mergeAcceptedFix(agent, id);
     if (result.status === 200) {

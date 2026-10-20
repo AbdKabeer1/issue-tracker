@@ -134,6 +134,28 @@ describe("BugDetailPage conditional user query (#349)", () => {
     expect(pageSource).toMatch(/canTriage[\s\S]*?prisma\.user\.findMany/);
   });
 
+  it("does not render CopyLinkButton, BoostTicketButton, or DeleteIssueButton in the header (#760)", () => {
+    const pageSourceFresh = readFileSync(
+      path.resolve(__dirname, "page.tsx"),
+      "utf8",
+    );
+    // Find the header action bar container
+    const headerActionBlockMatch = pageSourceFresh.match(
+      /<div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6 print:hidden">([\s\S]*?)<\/div>/,
+    );
+    expect(headerActionBlockMatch).toBeTruthy();
+    const headerActionBlock = headerActionBlockMatch![1];
+
+    expect(headerActionBlock).not.toContain("CopyLinkButton");
+    expect(headerActionBlock).not.toContain("BoostTicketButton");
+    expect(headerActionBlock).not.toContain("DeleteIssueButton");
+    expect(headerActionBlock).not.toContain("RestoreIssueButton");
+
+    // Danger zone still retains DeleteIssueButton
+    expect(pageSourceFresh).toContain("Danger zone");
+    expect(pageSourceFresh).toMatch(/Danger zone[\s\S]*?<DeleteIssueButton/);
+  });
+
   describe("runtime execution", () => {
     beforeEach(() => {
       vi.clearAllMocks();
