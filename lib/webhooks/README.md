@@ -62,3 +62,22 @@ finished deliveries never survive their event by long), expired pairings one
 day after expiry, and agent audit rows after 180 days — recent rows are always
 kept, so plausible undo targets survive. Each table loses at most 500 rows per
 sweep; a failing sweep never blocks delivery and is retried on the next run.
+
+## Scheduling
+
+Nothing is delivered until the dispatcher runs. Two supported schedulers:
+
+**Vercel Cron** — `vercel.json` schedules `/api/v1/webhooks/dispatch` every
+minute. Vercel calls it with `GET` and `Authorization: Bearer $CRON_SECRET`;
+set `CRON_SECRET` in the Vercel project (and in `.env` for local parity).
+
+**Coolify / any external cron** — call the route with `POST` and the
+dispatcher secret:
+
+```bash
+curl -fsS -X POST https://ziki.dev/api/v1/webhooks/dispatch \
+  -H "Authorization: Bearer $WEBHOOK_DISPATCH_SECRET"
+```
+
+Run it at least once a minute; retries and backoff live in `deliver.ts`, and
+repeated failures auto-disable the subscription.

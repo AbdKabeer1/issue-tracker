@@ -8,6 +8,7 @@ import {
   resetPasswordSchema,
   signupSchema,
   updateBugSchema,
+  walletAddressSchema,
 } from "./issue";
 
 const validCuid = "clxxxxxxxxxxxxxxxxxxxxxxxxx";
@@ -578,3 +579,45 @@ describe("saving code samples (#114)", () => {
   });
 });
 
+describe("walletAddressSchema (#618)", () => {
+  it("accepts a lowercase EVM address", () => {
+    const address = `0x${"a".repeat(40)}`;
+    const parsed = walletAddressSchema.safeParse(address);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data).toBe(address);
+  });
+
+  it("accepts a mixed-case checksummed address", () => {
+    const address = "0x52908400098527886E0F7030069857D2E4169EE7";
+    const parsed = walletAddressSchema.safeParse(address);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data).toBe(address);
+  });
+
+  it("trims what the person typed", () => {
+    const parsed = walletAddressSchema.safeParse(`  0x${"b".repeat(40)}  `);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data).toBe(`0x${"b".repeat(40)}`);
+  });
+
+  it("clears the address on an empty value", () => {
+    for (const input of ["", "   "]) {
+      const parsed = walletAddressSchema.safeParse(input);
+      expect(parsed.success).toBe(true);
+      if (parsed.success) expect(parsed.data).toBeNull();
+    }
+  });
+
+  it.each([
+    ["no 0x prefix", `0${"a".repeat(40)}`],
+    ["one hex character short", `0x${"a".repeat(39)}`],
+    ["one hex character long", `0x${"a".repeat(41)}`],
+    ["a non-hex character", `0x${"g".repeat(40)}`],
+    ["an uppercase 0X prefix", `0X${"a".repeat(40)}`],
+    ["nothing at all", "points please"],
+    ["an address with 0x in the middle", `abc0x${"a".repeat(40)}`],
+    ["a truncated address", "0xdeadbeef"],
+  ])("rejects %s", (_label, input) => {
+    expect(walletAddressSchema.safeParse(input).success).toBe(false);
+  });
+});
