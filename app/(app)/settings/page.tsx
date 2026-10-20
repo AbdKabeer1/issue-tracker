@@ -111,6 +111,9 @@ export default async function SettingsPage() {
             <Link href="/settings/agents" className="font-medium text-teal-700 hover:underline">
               Manage agents
             </Link>
+            <Link href="/settings/agents/pair" className="font-medium text-teal-700 hover:underline">
+              Pair an agent
+            </Link>
             <Link href="/settings/audit" className="font-medium text-teal-700 hover:underline">
               Agent audit log
             </Link>
