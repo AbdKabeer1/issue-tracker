@@ -1,23 +1,57 @@
 import { isAdmin, isSuperAdmin, type AppRole } from "@/lib/roles";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 
-export type HeaderNavItem = { href: string; label: string; badge?: number };
+export type HeaderNavSubItem = {
+  href: string;
+  label: string;
+  description?: string;
+};
+
+export type HeaderNavItem = {
+  href: string;
+  label: string;
+  badge?: number;
+  children?: HeaderNavSubItem[];
+};
 
 /** #444: pick another tenant, create one, or accept an invite. */
 export const SWITCH_TENANT_LINK: HeaderNavItem = { href: "/tenants", label: "Switch tenant" };
 
-/** Links shown in the header for the role the user is currently viewing as. */
+/** Links shown in the header for the role the user is currently viewing as (#761). */
 export function headerNavItems(
   role?: AppRole | null,
   options?: { agentPlatform?: boolean; managePlatforms?: boolean; pendingEscalations?: number },
 ): HeaderNavItem[] {
+  const manageProjectChildren: HeaderNavSubItem[] = [
+    { href: "/projects", label: "Projects", description: "View, switch, and create workspace projects" },
+    { href: "/milestones", label: "Milestones", description: "Track release goals and milestones" },
+  ];
+
+  if (options?.managePlatforms || isAdmin(role)) {
+    manageProjectChildren.push({
+      href: "/admin/categories",
+      label: "Platforms",
+      description: "Manage target platforms (Web, Mobile, Desktop, Backend)",
+    });
+  }
+
+  if (isAdmin(role)) {
+    manageProjectChildren.push({
+      href: "/admin/types",
+      label: "Types",
+      description: "Manage issue classifications",
+    });
+  }
+
   const items: HeaderNavItem[] = [
     { href: "/issues", label: "Issues" },
-    // #426: projects decide which issues the board shows.
-    { href: "/projects", label: "Projects" },
-    // #289: everyone can see what's left for a release.
-    { href: "/milestones", label: "Milestones" },
+    {
+      href: "/projects",
+      label: "Manage Project",
+      children: manageProjectChildren,
+    },
   ];
+
   if (options?.agentPlatform ?? isAgentPlatformEnabled()) {
     items.push(
       {
@@ -30,17 +64,11 @@ export function headerNavItems(
       { href: "/redesigns", label: "Redesigns" },
     );
   }
-  // Platforms are per organization, so an owner or admin of the open
-  // organization sees them too. Types stay a site-wide catalog.
-  if (options?.managePlatforms || isAdmin(role)) {
-    items.push({ href: "/admin/categories", label: "Platforms" });
-  }
-  if (isAdmin(role)) {
-    items.push({ href: "/admin/types", label: "Types" });
-  }
+
   if (isSuperAdmin(role)) {
     items.push({ href: "/admin/users", label: "Admins" });
   }
+
   return items;
 }
 
@@ -66,6 +94,18 @@ export function isNavItemActive(pathname: string | null, href: string): boolean 
       path.startsWith("/escalations/") ||
       path === "/questions" ||
       path.startsWith("/questions/")
+    );
+  }
+  if (href === "/manage-project") {
+    return (
+      path === "/projects" ||
+      path.startsWith("/projects/") ||
+      path === "/milestones" ||
+      path.startsWith("/milestones/") ||
+      path === "/admin/categories" ||
+      path.startsWith("/admin/categories/") ||
+      path === "/admin/types" ||
+      path.startsWith("/admin/types/")
     );
   }
   return path === href || path.startsWith(`${href}/`);

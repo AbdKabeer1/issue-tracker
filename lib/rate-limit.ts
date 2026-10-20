@@ -166,41 +166,159 @@ export function trustedProxyHops(): number {
 }
 
 /**
- * The client IP as seen by the proxy we trust, for rate-limit keys (#507).
+ * Comma-separated list of trusted proxy IPs or CIDR subnets (#675).
+ * When specified, X-Forwarded-For is parsed from right to left across trusted proxies,
+ * selecting the first untrusted IP in the chain as the client IP.
+ */
+export function trustedProxies(): string[] {
+  const raw = process.env.TRUSTED_PROXIES?.trim();
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
+function matchesCidr(ip: string, cidr: string): boolean {
+  const [net, maskStr] = cidr.split("/");
+  if (!maskStr) return ip.toLowerCase() === net.toLowerCase();
+  const mask = Number.parseInt(maskStr, 10);
+  if (!Number.isFinite(mask) || mask < 0 || mask > 32) return false;
+
+  const ipParts = ip.split(".").map(Number);
+  const netParts = net.split(".").map(Number);
+  if (ipParts.length !== 4 || netParts.length !== 4 || ipParts.some(Number.isNaN) || netParts.some(Number.isNaN)) {
+    return false;
+  }
+
+  const ipNum = ((ipParts[0] << 24) | (ipParts[1] << 16) | (ipParts[2] << 8) | ipParts[3]) >>> 0;
+  const netNum = ((netParts[0] << 24) | (netParts[1] << 16) | (netParts[2] << 8) | netParts[3]) >>> 0;
+  const maskNum = mask === 0 ? 0 : ((-1 << (32 - mask)) >>> 0);
+
+  return (ipNum & maskNum) === (netNum & maskNum);
+}
+
+export function isTrustedProxyIp(ip: string, list: string[]): boolean {
+  const lowerIp = ip.toLowerCase();
+  for (const entry of list) {
+    const lowerEntry = entry.toLowerCase();
+    if (lowerEntry === "loopback" && (lowerIp === "127.0.0.1" || lowerIp === "::1")) return true;
+    if (lowerEntry === lowerIp) return true;
+    if (lowerEntry.includes("/") && matchesCidr(lowerIp, lowerEntry)) return true;
+  }
+  return false;
+}
+
+/**
+ * The client IP as seen by the proxy we trust, for rate-limit keys (#507, #675).
  *
- * The left-most `X-Forwarded-For` entry is whatever the client sent, so it
+ * When TRUSTED_PROXIES is configured, the X-Forwarded-For chain is evaluated from
+ * right to left, stripping off verified intermediate proxies to uncover the genuine
+ * client IP and prevent spoofing.
+ *
+ * Otherwise, the left-most `X-Forwarded-For` entry is whatever the client sent, so it
  * can't be trusted: rotating it would hand out a fresh bucket per request.
  * Each trusted proxy appends the address it received the request from, so
  * the client is the entry `TRUSTED_PROXY_HOPS` places from the right.
  * `CLIENT_IP_HEADER` (e.g. `cf-connecting-ip`) overrides this when the
  * platform sets a single header the client can't forge.
  */
-export function clientIpFrom(headers: { get(name: string): string | null }): string | null {
+export type HeadersLike = { get(name: string): string | null };
+export type RequestWithHeadersAndIp = {
+  headers: HeadersLike;
+  ip?: string | null;
+  socket?: { remoteAddress?: string | null };
+};
+
+/**
+ * The client IP as seen by the proxy we trust, for rate-limit keys (#507, #663, #675).
+ *
+ * When TRUSTED_PROXIES is configured, the connection IP is verified first:
+ * - If connection IP is from an untrusted client (not in TRUSTED_PROXIES),
+ *   X-Forwarded-For is ignored (spoofed) and the connection IP is returned.
+ * - If connection IP is from a trusted proxy, the X-Forwarded-For chain is evaluated
+ *   from right to left, stripping verified intermediate proxies to uncover the genuine
+ *   client IP.
+ * - Falls back to connection IP when all forwarded IPs are trusted or absent.
+ *
+ * Otherwise, the left-most `X-Forwarded-For` entry is whatever the client sent, so it
+ * can't be trusted: rotating it would hand out a fresh bucket per request.
+ * Each trusted proxy appends the address it received the request from, so
+ * the client is the entry `TRUSTED_PROXY_HOPS` places from the right.
+ * `CLIENT_IP_HEADER` (e.g. `cf-connecting-ip`) overrides this when the
+ * platform sets a single header the client can't forge.
+ */
+export function clientIpFrom(
+  headersOrRequest: HeadersLike | RequestWithHeadersAndIp,
+  connectionIp?: string | null,
+): string | null {
+  const headers = "headers" in headersOrRequest ? headersOrRequest.headers : headersOrRequest;
+  const directIp = validIp(
+    connectionIp ??
+      ("ip" in headersOrRequest
+        ? headersOrRequest.ip
+        : "socket" in headersOrRequest
+          ? headersOrRequest.socket?.remoteAddress
+          : undefined),
+  );
+
   const configured = process.env.CLIENT_IP_HEADER?.trim().toLowerCase();
-  if (configured) return validIp(headers.get(configured)?.split(",")[0]);
+  if (configured) return validIp(headers.get(configured)?.split(",")[0]) ?? directIp;
+
+  const proxyList = trustedProxies();
+  if (proxyList.length > 0) {
+    // If we have a direct connection IP from an untrusted source, do NOT trust
+    // headers sent by the client; return the connection IP directly (#663).
+    if (directIp && !isTrustedProxyIp(directIp, proxyList)) {
+      return directIp;
+    }
+
+    const chain = (headers.get("x-forwarded-for") ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (chain.length > 0) {
+      for (let i = chain.length - 1; i >= 0; i--) {
+        const candidate = validIp(chain[i]);
+        if (!candidate) continue;
+        if (!isTrustedProxyIp(candidate, proxyList)) {
+          return candidate;
+        }
+      }
+      return directIp;
+    }
+    return validIp(headers.get("x-real-ip")) ?? directIp;
+  }
 
   const hops = trustedProxyHops();
-  if (hops === 0) return null;
+  if (hops === 0) return directIp;
 
   const chain = (headers.get("x-forwarded-for") ?? "")
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
-  if (chain.length > 0) return validIp(chain[Math.max(0, chain.length - hops)]);
-  return validIp(headers.get("x-real-ip"));
+  if (chain.length > 0) {
+    const candidate = validIp(chain[Math.max(0, chain.length - hops)]);
+    return candidate ?? directIp;
+  }
+  return validIp(headers.get("x-real-ip")) ?? directIp;
 }
 
 let warnedNoClientIp = false;
 
 /**
- * A rate-limit key for one client (#509). With no usable IP, every caller
+ * A rate-limit key for one client (#509, #663). With no usable IP, every caller
  * used to share one "unknown" bucket, so a single client could lock everyone
  * else out. Those callers now get a bucket per browser/agent fingerprint
  * instead, and production logs once so the missing proxy header gets fixed.
  */
-export function clientRateLimitKey(headers: { get(name: string): string | null }): string {
-  const ip = clientIpFrom(headers);
+export function clientRateLimitKey(
+  headersOrRequest: HeadersLike | RequestWithHeadersAndIp,
+  connectionIp?: string | null,
+): string {
+  const ip = clientIpFrom(headersOrRequest, connectionIp);
   if (ip) return `ip:${ip}`;
+  const headers = "headers" in headersOrRequest ? headersOrRequest.headers : headersOrRequest;
   if (!warnedNoClientIp && process.env.NODE_ENV === "production") {
     warnedNoClientIp = true;
     console.warn(

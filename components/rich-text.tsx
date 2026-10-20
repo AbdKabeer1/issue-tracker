@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import {
   inlineImageSrc,
   looksLikeMarkdown,
@@ -134,7 +134,24 @@ function isBlockStart(line: string): boolean {
   );
 }
 
+/**
+ * Render sibling items, starting a new list whenever the marker type switches
+ * between ordered and unordered, so `1. a` then `- b` stays an ol + ul (#725).
+ */
 function renderListItems(items: ListItem[], renderMentions?: (text: string) => ReactNode) {
+  const runs: ListItem[][] = [];
+  for (const item of items) {
+    const run = runs[runs.length - 1];
+    if (run && run[0]?.ordered === item.ordered) run.push(item);
+    else runs.push([item]);
+  }
+  if (runs.length <= 1) return renderListRun(items, renderMentions);
+  return runs.map((run, index) => (
+    <Fragment key={index}>{renderListRun(run, renderMentions)}</Fragment>
+  ));
+}
+
+function renderListRun(items: ListItem[], renderMentions?: (text: string) => ReactNode) {
   if (items.length === 0) return null;
   const ordered = items[0]?.ordered ?? false;
   const start = ordered ? items[0]?.orderNumber : undefined;

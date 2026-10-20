@@ -35,6 +35,7 @@ import {
   commentSchema,
   createBugSchema,
   editBugContentSchema,
+  editProofLinksSchema,
   updateBugSchema,
 } from "@/lib/validations/issue";
 import {
@@ -58,7 +59,9 @@ import { publish } from "@/lib/agent-api/events";
 import {
   canEditTicket,
   formatEditSummary,
+  formatProofLinkSummary,
   getChangedEditFields,
+  getProofLinkChanges,
   TICKET_EDIT_ERRORS,
 } from "@/lib/ticket-editing";
 import { Prisma, type ActivityType } from "@prisma/client";
@@ -933,6 +936,99 @@ export async function editBugContentAction(
       recipientIds: newlyMentioned,
     });
   }
+
+  revalidatePath("/issues");
+  revalidatePath(`/issues/${bugId}`);
+  revalidatePath("/bugs");
+  revalidatePath(`/bugs/${bugId}`);
+  return { ok: true };
+}
+
+/**
+ * Lets the reporter or an admin add, correct, or remove an issue's proof
+ * links after filing (#737). Same rules as create: GitHub URLs, at most 20.
+ */
+export async function editProofLinksAction(
+  bugId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await requireUser();
+  const userId = user.id;
+
+  const limit = checkRateLimit(
+    `edit-bug:${userId}`,
+    ACTION_RATE_LIMITS.editBug,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
+
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
+    select: {
+      id: true,
+      proofLinks: true,
+      reporterId: true,
+      isDeleted: true,
+    },
+  });
+
+  if (!existing || existing.isDeleted) {
+    return { error: TICKET_EDIT_ERRORS.notFound };
+  }
+
+  if (
+    !canEditTicket({
+      actorId: userId,
+      actorRole: user.role,
+      membershipRole: (await currentTenantAccess(userId, user.role)).membershipRole,
+      reporterId: existing.reporterId,
+    })
+  ) {
+    return { error: TICKET_EDIT_ERRORS.unauthorized };
+  }
+
+  const parsed = editProofLinksSchema.safeParse({
+    proofLinks: formData.get("proofLinks") || "",
+  });
+
+  if (!parsed.success) {
+    return fromZodError(parsed.error);
+  }
+
+  const proofLinks = parsed.data.proofLinks;
+  const changes = getProofLinkChanges(existing.proofLinks ?? [], proofLinks);
+  if (changes.added.length === 0 && changes.removed.length === 0) {
+    return { ok: true };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.bug.update({
+      where: { id: bugId },
+      data: { proofLinks, updatedAt: new Date() },
+    });
+
+    await publishWebEvent(tx, {
+      bugId,
+      type: "issue.updated",
+      actorUserId: userId,
+      payload: issueChangePayload({ proofLinks }),
+    });
+
+    await tx.bugActivity.create({
+      data: {
+        bugId,
+        actorId: userId,
+        type: "edited",
+        summary: formatProofLinkSummary(changes),
+        metadata: {
+          fields: ["proofLinks"],
+          added: changes.added,
+          removed: changes.removed,
+        },
+      },
+    });
+  });
 
   revalidatePath("/issues");
   revalidatePath(`/issues/${bugId}`);

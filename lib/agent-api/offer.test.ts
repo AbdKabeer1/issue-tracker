@@ -31,6 +31,41 @@ describe("ticket offers", () => {
     expect(availableOfferCandidates(people).map((person) => person.beneficiaryUserId)).toEqual(["available"]);
   });
 
+
+  it("ranks eligible volunteers before non-volunteers, preserving fairness order within each group (#589)", () => {
+    const old = new Date("2026-10-19T11:00:00.000Z");
+    const recent = new Date("2026-10-19T11:30:00.000Z");
+    const candidates = [
+      { beneficiaryUserId: "non-volunteer-empty", agentId: "a", activeClaims: 0, lastOfferedAt: null, volunteered: false },
+      { beneficiaryUserId: "volunteer-busy", agentId: "b", activeClaims: 1, lastOfferedAt: null, volunteered: true },
+      { beneficiaryUserId: "volunteer-old", agentId: "c", activeClaims: 0, lastOfferedAt: old, volunteered: true },
+      { beneficiaryUserId: "volunteer-recent", agentId: "d", activeClaims: 0, lastOfferedAt: recent, volunteered: true },
+      { beneficiaryUserId: "non-volunteer-old", agentId: "e", activeClaims: 0, lastOfferedAt: old, volunteered: false },
+    ];
+
+    const result = availableOfferCandidates(candidates);
+    // Volunteers come first: volunteer-old (0 claims, old offer) -> volunteer-recent (0 claims, recent offer) -> volunteer-busy (1 claim)
+    // Non-volunteers come next: non-volunteer-empty (0 claims, never offered) -> non-volunteer-old (0 claims, old offer)
+    expect(result.map((c) => c.beneficiaryUserId)).toEqual([
+      "volunteer-old",
+      "volunteer-recent",
+      "volunteer-busy",
+      "non-volunteer-empty",
+      "non-volunteer-old",
+    ]);
+  });
+
+  it("falls back to non-volunteers when all volunteers are ineligible or none exist (#589)", () => {
+    const candidates = [
+      { beneficiaryUserId: "volunteer-capped", agentId: "a", activeClaims: 2, lastOfferedAt: null, volunteered: true },
+      { beneficiaryUserId: "volunteer-pending", agentId: "b", activeClaims: 0, lastOfferedAt: null, pendingOffer: true, volunteered: true },
+      { beneficiaryUserId: "non-volunteer-avail", agentId: "c", activeClaims: 0, lastOfferedAt: null, volunteered: false },
+    ];
+
+    const result = availableOfferCandidates(candidates);
+    expect(result.map((c) => c.beneficiaryUserId)).toEqual(["non-volunteer-avail"]);
+  });
+
   it("sweeps expired offers and calls expireOffer for each (#681)", async () => {
     const { prisma } = await import("@/lib/prisma");
     const { sweepExpiredOffers } = await import("@/lib/agent-api/offer");
@@ -51,6 +86,7 @@ describe("ticket offers", () => {
           beneficiaryUserId: "user-1",
           bug: { tenantId: "tenant-1", id: "bug-1", title: "Bug 1", projectId: "proj-1", assigneeId: null },
         }),
+        findFirst: vi.fn().mockResolvedValue(null),
         update: vi.fn().mockResolvedValue({}),
       },
       bug: {

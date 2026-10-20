@@ -286,11 +286,18 @@ export function cleanTrailingUrl(rawUrl: string): { href: string; trailing: stri
 /**
  * Links require an http(s) href (or tracker attachments, #305) so soft-mentions
  * `@[Name](userId)` stay text, and bare URLs are linked automatically.
+ * Labels may contain backslash-escaped brackets, as uploads of `screen[1].png`
+ * produce (#724).
  */
 export const INLINE_RE =
-  /(!?\[[^\]]*\]\((?:https?:\/\/|mailto:|\/api\/attachments\/)[^)\s]*\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\s][^*]*\*|(?<![\w])_[^_\s][^_]*_(?![\w])|(?<![\w/.-])(https?:\/\/[^\s<>"]+))/g;
+  /(!?\[(?:[^\]\\]|\\.)*\]\((?:https?:\/\/|mailto:|\/api\/attachments\/)[^)\s]*\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\s][^*]*\*|(?<![\w])_[^_\s][^_]*_(?![\w])|(?<![\w/.-])(https?:\/\/[^\s<>"]+))/g;
 
-export const MARKDOWN_TARGET_RE = /^(!?)\[([^\]]*)\]\(([^)\s]+)\)$/;
+export const MARKDOWN_TARGET_RE = /^(!?)\[((?:[^\]\\]|\\.)*)\]\(([^)\s]+)\)$/;
+
+/** Undoes the escaping `escapeLabel` applies to uploaded filenames. */
+function unescapeLabel(label: string): string {
+  return label.replace(/\\([\\[\]])/g, "$1");
+}
 
 /**
  * Appends a plain-text chunk or merges it into the trailing text token.
@@ -323,9 +330,9 @@ export function tokenizeInline(text: string): InlineToken[] {
     const target = MARKDOWN_TARGET_RE.exec(raw);
     if (target) {
       if (target[1] === "!") {
-        tokens.push({ type: "image", alt: target[2] ?? "", src: target[3] ?? "" });
+        tokens.push({ type: "image", alt: unescapeLabel(target[2] ?? ""), src: target[3] ?? "" });
       } else {
-        tokens.push({ type: "link", label: target[2] ?? raw, href: target[3] ?? "" });
+        tokens.push({ type: "link", label: unescapeLabel(target[2] ?? raw), href: target[3] ?? "" });
       }
     } else if (raw.startsWith("`")) {
       tokens.push({ type: "code", value: raw.slice(1, -1) });

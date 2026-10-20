@@ -10,9 +10,10 @@ const db = vi.hoisted(() => ({
   membership: { findMany: vi.fn() },
   bug: { updateMany: vi.fn(), findFirst: vi.fn() }, $queryRaw: vi.fn(), $transaction: vi.fn(),
 }));
-const mocks = vi.hoisted(() => ({ admin: vi.fn(), budget: vi.fn(), notifyLater: vi.fn() }));
+const mocks = vi.hoisted(() => ({ admin: vi.fn(), budget: vi.fn(), demote: vi.fn(), notifyLater: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/lib/auth-helpers", () => ({ requireSuperAdmin: mocks.admin }));
+vi.mock("@/lib/agents/promotion", () => ({ demoteFromSilence: mocks.demote }));
 vi.mock("@/lib/agents/rate-budget", async (original) => ({ ...await original<typeof import("@/lib/agents/rate-budget")>(), consumeAgentBudget: mocks.budget }));
 vi.mock("@/lib/notify", () => ({ notifyLater: mocks.notifyLater }));
 import { releaseStaleClaims, sweepStaleClaims } from "./availability";
@@ -48,6 +49,7 @@ beforeEach(() => {
   db.webhookSubscription.findMany.mockResolvedValue([]);
   mocks.admin.mockResolvedValue({ id: "admin" });
   mocks.budget.mockResolvedValue({ allowed: true });
+  mocks.demote.mockResolvedValue({ ok: true, changed: false, releases: 1 });
 });
 afterEach(() => vi.useRealTimers());
 
@@ -105,6 +107,7 @@ describe("stale claim release", () => {
     }) }));
     expect(db.bug.updateMany).toHaveBeenCalledWith({ where: { id: "issue", projectId: "project", tenantId: "tenant", isDeleted: false, assigneeId: "owner", status: "in_progress" }, data: { assigneeId: null, status: "open" } });
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: "claim.released", agentId: "agent", actorUserId: "admin", bugId: "issue", payload: { claimId: "claim", reason: "silence", projectId: "project" } }) });
+    expect(mocks.demote).toHaveBeenCalledWith("agent", db, now);
     expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(db.issueClaim.findFirst.mock.invocationCallOrder[0]);
   });
   it.each([cutoff, new Date(cutoff.getTime() + 1), now])("keeps a heartbeat at or after the 15-minute boundary (%s)", async (lastHeartbeatAt) => {
@@ -187,6 +190,7 @@ describe("scheduled stale-claim sweep (#524)", () => {
       select: { id: true, bugId: true, bug: { select: { tenantId: true, projectId: true } } } });
   });
   it("rewrites the released issue to open and offers it to the next eligible agent", async () => {
+    db.issueClaim.findFirst.mockResolvedValueOnce(claim).mockResolvedValueOnce(null);
     db.membership.findMany.mockResolvedValue([{ userId: "next-owner", user: { agents: [{ id: "agent-next" }] } }]);
     expect(await sweepStaleClaims()).toEqual({ released: 1, offered: 1 });
     const events = db.agentEvent.create.mock.calls.map(([call]) => call.data);
