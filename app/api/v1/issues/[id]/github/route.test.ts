@@ -19,6 +19,7 @@ vi.mock("@/lib/github/merge-pr", async (original) => ({
 
 const db = vi.hoisted(() => ({
   bug: { findFirst: vi.fn(), update: vi.fn() },
+  bugActivity: { create: vi.fn() },
   agentAuditEvent: { create: vi.fn() },
   agentEvent: { create: vi.fn() },
   webhookSubscription: { findMany: vi.fn() },
@@ -67,9 +68,11 @@ describe("POST /api/v1/issues/[id]/github (#452)", () => {
     });
     db.bug.findFirst.mockResolvedValue({
       id: "bug1",
+      projectId: "proj-1",
       project: { repoUrl: "https://github.com/zedu/web" },
     });
     db.bug.update.mockResolvedValue({});
+    db.bugActivity.create.mockResolvedValue({});
     db.agentAuditEvent.create.mockResolvedValue({});
     db.agentEvent.create.mockResolvedValue({ id: "event-1" });
     db.webhookSubscription.findMany.mockResolvedValue([]);
@@ -82,6 +85,33 @@ describe("POST /api/v1/issues/[id]/github (#452)", () => {
     expect(db.bug.update).toHaveBeenCalledWith({
       where: { id: "bug1" },
       data: { pullRequestUrl: PR_URL },
+    });
+    expect(db.bugActivity.create).toHaveBeenCalledWith({
+      data: {
+        bugId: "bug1",
+        actorId: agent.ownerId,
+        type: "edited",
+        summary: `linked PR ${PR_URL}`,
+        metadata: {
+          field: "pullRequestUrl",
+          pullRequestUrl: PR_URL,
+        },
+      },
+    });
+    expect(db.agentEvent.create).toHaveBeenCalledWith({
+      data: {
+        tenantId: agent.tenantId,
+        type: "issue.pr_linked",
+        payload: {
+          issueId: "bug1",
+          projectId: "proj-1",
+          pullRequestUrl: PR_URL,
+          agentId: agent.agentId,
+        },
+        actorAgentId: agent.agentId,
+        bugId: "bug1",
+      },
+      select: { id: true },
     });
     expect(mocks.merge).toHaveBeenCalledWith(agent, "bug1");
     expect(mocks.budget).toHaveBeenCalledWith({ id: "c1", burst: false }, "write");
