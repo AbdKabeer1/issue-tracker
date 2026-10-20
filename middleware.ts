@@ -31,6 +31,7 @@ export function isPublicPath(
     isAuthPage ||
     isPasswordResetPage ||
     isIssuePreview ||
+    pathWithoutBase === "/" ||
     pathWithoutBase.startsWith("/session-expired") ||
     pathWithoutBase.startsWith("/api/auth") ||
     pathWithoutBase.startsWith("/api/health") ||
