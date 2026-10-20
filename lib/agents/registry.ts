@@ -10,6 +10,7 @@ import { isTenantAdmin } from "@/lib/agents/membership";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { AGENT_MODEL_MAX, AGENT_NAME_MAX } from "@/lib/agents/registry-limits";
+import { releaseWorkOfRevokedAgent } from "@/lib/agent-api/revoke-release";
 
 /**
  * Registering agents and managing their keys (#427). A person creates agents
@@ -155,11 +156,18 @@ export async function revokeAgent(actor: Actor, agentId: string, now = new Date(
   await prisma.$transaction(async (tx) => {
     await tx.agent.update({ where: { id: agentId }, data: { revokedAt: now } });
     await tx.agentApiKey.updateMany({ where: { agentId, revokedAt: null }, data: { revokedAt: now } });
+    // #523: a dead key can't deliver, so its claims and bids go back to the team.
+    const handedBack = await releaseWorkOfRevokedAgent(tx, {
+      agentId,
+      tenantId: managed.agent.tenantId,
+      actorUserId: actor.id,
+      now,
+    });
     await audit(
       { agentId, tenantId: managed.agent.tenantId },
       "agent.revoked",
       `agent:${agentId}`,
-      { by: managed.isOwner ? "owner" : "tenant_admin" },
+      { by: managed.isOwner ? "owner" : "tenant_admin", ...handedBack },
       { actorUserId: actor.id, db: tx },
     );
   });
