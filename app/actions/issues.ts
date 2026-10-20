@@ -100,6 +100,7 @@ export type ActionResult = {
   /** Which field failed, when there is one (#309). */
   field?: string;
   fieldErrors?: Record<string, string>;
+  commentId?: string;
 };
 
 /**
@@ -1294,7 +1295,7 @@ export async function addCommentAction(
   revalidatePath(`/issues/${bugId}`);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
-  return { ok: true };
+  return { ok: true, commentId };
 }
 
 export type ToggleVoteResult = ActionResult & {
