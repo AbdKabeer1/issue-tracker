@@ -50,12 +50,14 @@ export async function bulkUpdateBugsAction(
 
   // Referenced rows are checked once for the whole batch rather than once
   // per issue, and before the transaction opens.
+  let inactiveTypeId: string | undefined;
   if (typeof change.typeId === "string") {
     const type = await prisma.issueType.findUnique({
       where: { id: change.typeId },
-      select: { id: true },
+      select: { id: true, isActive: true },
     });
     if (!type) return { error: "Issue type not found" };
+    if (!type.isActive) inactiveTypeId = type.id;
   }
   const tenantId = await currentTenantIdFor(user.id);
   if (typeof change.categoryId === "string") {
@@ -118,6 +120,10 @@ export async function bulkUpdateBugsAction(
     return { error: "None of the selected issues can be changed.", skipped };
   }
 
+  if (inactiveTypeId && changing.some((bug) => bug.typeId !== inactiveTypeId)) {
+    return { error: "Issue type is inactive. Please pick another." };
+  }
+
   // Names for whatever the fields are being set to, looked up once.
   const toNames = await resolveNames(change, tenantId);
 
@@ -147,6 +153,17 @@ export async function bulkUpdateBugsAction(
         // Something moved underneath us. Throwing rolls the whole thing
         // back rather than logging activity for rows that were not updated.
         throw new BulkRaceError(result.count, changedIds.length);
+      }
+      for (const terminalStatus of ["resolved", "closed"] as const) {
+        const terminalIds = changing
+          .filter((bug) => changedIds.includes(bug.id) && change.status === terminalStatus && bug.status !== terminalStatus)
+          .map((bug) => bug.id);
+        if (terminalIds.length > 0) {
+          await tx.issueClaim.updateMany({
+            where: { bugId: { in: terminalIds }, status: "active", releasedAt: null },
+            data: { status: "released", releasedAt: new Date(), releaseReason: terminalStatus },
+          });
+        }
       }
       await tx.bugActivity.createMany({ data: activityCreateData(entries) });
       // #428: marking issues resolved earns the assignee solver points, once.
