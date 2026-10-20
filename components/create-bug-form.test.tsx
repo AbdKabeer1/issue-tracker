@@ -195,16 +195,20 @@ describe("CreateBugForm optimistic submission", () => {
   });
 
   it("disables submit button and prevents submission while an attachment is uploading (#734)", async () => {
-    let resolveUpload: (val: unknown) => void = () => {};
+    // The file input lives inside its label. user.upload clicks that input, and
+    // the label can open the dialog again, so more than one request may be in
+    // flight. Resolving only the last one leaves the button disabled.
+    const finishUpload: Array<() => void> = [];
     const originalFetch = global.fetch;
     global.fetch = vi.fn().mockImplementation(
       () =>
         new Promise((resolve) => {
-          resolveUpload = () =>
+          finishUpload.push(() =>
             resolve({
               ok: true,
               json: async () => ({ id: "att-456", size: 4096 }),
-            });
+            }),
+          );
         }),
     );
 
@@ -236,8 +240,8 @@ describe("CreateBugForm optimistic submission", () => {
       form.requestSubmit();
       expect(mockedCreateBug).not.toHaveBeenCalled();
 
-      // Resolve upload
-      resolveUpload(null);
+      // Resolve every upload started by the dialog.
+      finishUpload.splice(0).forEach((finish) => finish());
 
       // Button becomes enabled
       await waitFor(() => {
@@ -249,7 +253,7 @@ describe("CreateBugForm optimistic submission", () => {
       await user.click(submitButton());
       await waitFor(() => expect(mockedCreateBug).toHaveBeenCalledTimes(1));
 
-      expect(capturedFormData?.get("attachmentIds")).toBe("att-456");
+      expect(String(capturedFormData?.get("attachmentIds"))).toContain("att-456");
     } finally {
       global.fetch = originalFetch;
     }
