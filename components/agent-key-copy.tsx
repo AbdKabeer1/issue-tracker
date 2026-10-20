@@ -91,7 +91,6 @@ export function AgentKeyCopyButton({
           onClick={() => setPopoverOpen((prev) => !prev)}
           title="View Agent Key configuration details"
           aria-expanded={popoverOpen}
-          aria-label="Agent Key details"
           className="inline-flex h-full items-center gap-1.5 px-2.5 text-xs text-slate-700 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 rounded-l-lg"
         >
           <span className="text-sm" aria-hidden="true">🔑</span>
