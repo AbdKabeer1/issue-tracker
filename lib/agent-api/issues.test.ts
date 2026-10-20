@@ -21,6 +21,7 @@ import { GET as list, POST as create } from "@/app/api/v1/issues/route";
 import { GET as read } from "@/app/api/v1/issues/[id]/route";
 import { POST as comment } from "@/app/api/v1/issues/[id]/comments/route";
 import { encodeCursor } from "./create-policy";
+import { PROJECT_ID_REQUIRED } from "./issues";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -124,7 +125,11 @@ describe("agent issue reads", () => {
   });
 
   it("rejects absent/foreign projects, invalid enums, and malformed cursors", async () => {
-    expect((await list(request("GET", undefined, ""))).status).toBe(422);
+    // #563: a missing projectId names the parameter instead of a raw validation dump.
+    const missing = await list(request("GET", undefined, ""));
+    expect(missing.status).toBe(400);
+    expect(await missing.json()).toEqual({ error: PROJECT_ID_REQUIRED });
+    expect((await list(request("GET", undefined, "?projectId="))).status).toBe(400);
     db.project.findFirst.mockResolvedValueOnce(null);
     expect((await list(request())).status).toBe(404);
     expect(db.project.findFirst).toHaveBeenCalledWith({ where: { id: "project-a", tenantId: "tenant-a" }, select: { id: true } });
