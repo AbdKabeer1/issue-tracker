@@ -26,6 +26,8 @@ export type AgentDecision =
       /** #593: the delivery deadline, and whether the one extension was used. */
       deliverBy?: Date | string | null;
       extendedAt?: Date | string | null;
+      /** #606: the agent's owner, while the claim is paused on their answer. */
+      waitingOnName?: string | null;
     }
   | { id: string; at: Date | string; kind: "verdict"; agentName: string; personName: string; goodToMerge: boolean }
   | { id: string; at: Date | string; kind: "accepted"; agentName: string };
@@ -55,7 +57,12 @@ function sentence(decision: AgentDecision) {
         <>
           <span className="font-medium text-slate-900">{decision.agentName}</span> claimed this issue for{" "}
           {decision.personName}.
-          {decision.deliverBy ? (
+          {decision.waitingOnName ? (
+            <>
+              {" "}
+              Waiting for {decision.waitingOnName} to answer {decision.agentName}&apos;s question.
+            </>
+          ) : decision.deliverBy ? (
             <>
               {" "}
               <ClaimDeadline deliverBy={decision.deliverBy} />
