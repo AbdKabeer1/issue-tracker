@@ -60,10 +60,8 @@ import { dueDateValue } from "@/lib/milestones";
 import { canEditTicket } from "@/lib/ticket-editing";
 import { DeleteIssueButton } from "@/components/delete-issue-button";
 import { RestoreIssueButton } from "@/components/restore-issue-button";
-import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { canAssignTicket } from "@/lib/ticket-assignment";
 import { SelfAssignButton } from "@/components/self-assign-button";
-import { CopyLinkButton } from "@/components/copy-link-button";
 import { EditableIssueDescription } from "@/components/editable-issue-description";
 import { withCurrentOption } from "@/lib/triage-options";
 import { issueTenantHintFor } from "@/lib/issue-tenant-hint";
@@ -716,9 +714,6 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6 print:hidden">
-          {/* The canonical URL from the configured site, not the browser's
-              current one, which may carry a query string or a #comment. */}
-          <CopyLinkButton url={absoluteUrl(`/issues/${bug.id}`)} label="issue" />
           {!bug.isDeleted ? (
             <WatchButton
               bugId={bug.id}
@@ -728,13 +723,6 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           {canTriage && !bug.isDeleted && !bug.duplicateOf ? (
             <MarkDuplicateButton bugId={bug.id} />
           ) : null}
-          {canTriage && !bug.isDeleted ? (
-            <BoostTicketButton
-              bugId={bug.id}
-              isBoosted={bug.isBoosted}
-              size="sm"
-            />
-          ) : null}
           {!bug.isDeleted && userId && (bug.reporterId === userId || bug.assigneeId === userId) ? (
             <Link
               href={`/points/disputes/new?bug=${bug.number}`}
@@ -743,22 +731,6 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             >
               Dispute award
             </Link>
-          ) : null}
-          {canDelete ? (
-            bug.isDeleted ? (
-              <RestoreIssueButton
-                bugId={bug.id}
-                bugTitle={bug.title}
-                size="sm"
-              />
-            ) : (
-              <DeleteIssueButton
-                bugId={bug.id}
-                bugTitle={bug.title}
-                variant="danger-secondary"
-                size="sm"
-              />
-            )
           ) : null}
         </div>
       </div>
