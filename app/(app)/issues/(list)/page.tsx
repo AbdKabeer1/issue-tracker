@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import type { Prisma, Severity, Status } from "@prisma/client";
+import type { Prisma, Severity } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getIssueTypes, getPlatforms } from "@/lib/lookups";
 import { activeBulkOptions, loadBulkAssignees } from "@/lib/admin-list-lookups";
@@ -18,9 +18,9 @@ import {
   statusLabels,
 } from "@/lib/labels";
 import { LocalTime } from "@/components/local-time";
-import { severities, statuses } from "@/lib/validations/issue";
+import { severities } from "@/lib/validations/issue";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
-import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
+import { boundSearchTerm, escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
 import {
   hasMatch,
   highlightSegments,
@@ -30,8 +30,9 @@ import {
 } from "@/lib/search-snippet";
 import { Highlighted, SearchSnippet } from "@/components/search-highlight";
 import { formatIssueNumber, parseIssueNumberQuery } from "@/lib/issue-number";
-import { isDone, resultCountText } from "@/lib/issue-state";
+import { isDone, resultCountText, statusFilterWhere } from "@/lib/issue-state";
 import { calculatePagination } from "@/lib/pagination";
+import { issueListPaginationParams } from "@/lib/issue-list-pagination";
 import { DUPLICATES_PARAM, SHOW_DUPLICATES, duplicatesWhere, parseShowDuplicates } from "@/lib/duplicates";
 import { PaginationControls } from "@/components/pagination-controls";
 import { fetchVoterSummaries } from "@/lib/voter-summaries";
@@ -61,11 +62,15 @@ import { bugInTenant, currentTenantIdFor, isMissingTenantColumnError } from "@/l
 import { activeProjectIdFor } from "@/lib/project-context";
 import { RichText } from "@/components/rich-text";
 import { isOrganizationAdmin } from "@/lib/organization-role";
+import { cookies } from "next/headers";
+import { GettingStarted } from "@/components/getting-started";
+import { GETTING_STARTED_COOKIE, gettingStartedFor, parseDismissed, type GettingStartedStep } from "@/lib/onboarding";
 import {
   PLATFORM_PARAM,
   parsePlatformFilter,
   platformFilterWhere,
 } from "@/lib/platform-filter";
+import { AREA_PARAM, parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Issues" };
@@ -75,6 +80,7 @@ type SearchParams = Promise<{
   status?: string | string[];
   severity?: string | string[];
   platform?: string | string[];
+  area?: string | string[];
   sort?: string | string[];
   page?: string | string[];
   deleted?: string | string[];
@@ -82,10 +88,6 @@ type SearchParams = Promise<{
   tags?: string | string[];
   [key: string]: string | string[] | undefined;
 }>;
-
-function isStatus(value: string | undefined): value is Status {
-  return !!value && (statuses as readonly string[]).includes(value);
-}
 
 function isSeverity(value: string | undefined): value is Severity {
   return !!value && (severities as readonly string[]).includes(value);
@@ -143,6 +145,24 @@ export default async function BugsPage({
     ? await prisma.project.findFirst({ where: { id: projectId, tenantId }, select: { slug: true, name: true, goal: true } }).catch(() => null)
     : null;
 
+  // #641: a short checklist for a new workspace's owner or admin, until it's
+  // done or dismissed on this device.
+  let gettingStarted: { tenantId: string; workspaceName: string; steps: GettingStartedStep[] } | null = null;
+  if (tenantId && userId && membershipRole && isOrganizationAdmin(membershipRole, effectiveRole)) {
+    try {
+      const dismissed = parseDismissed((await cookies()).get(GETTING_STARTED_COOKIE)?.value);
+      if (!dismissed.includes(tenantId)) {
+        const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true } });
+        if (tenant) {
+          const checklist = await gettingStartedFor(prisma, tenantId, { tenantSlug: tenant.slug });
+          if (!checklist.complete) gettingStarted = { tenantId, workspaceName: tenant.name, steps: checklist.steps };
+        }
+      }
+    } catch (error) {
+      console.error("[bugs] getting-started checklist failed", error);
+    }
+  }
+
   const canDelete = canDeleteTicket(effectiveRole, membershipRole);
   const params = await searchParams;
   const qParam = toSingleQueryParam(params.q);
@@ -170,7 +190,7 @@ export default async function BugsPage({
   // These lookups are filters only. Each one fails on its own: Promise.all
   // used to throw away the ones that succeeded when Milestone was missing,
   // and the admin path below then queried them again outside this catch.
-  const [tagTypes, platforms, milestones] = await Promise.all([
+  const [tagTypes, platforms, milestones, areas, userPrefs] = await Promise.all([
     // Cached, expired by the admin actions that change them (#297).
     loadOrEmpty("issue types", () => getIssueTypes(), []),
     // Every platform, not just active ones: a link filtered on a platform
@@ -187,7 +207,23 @@ export default async function BugsPage({
         }),
       [],
     ),
+    loadOrEmpty(
+      "project areas",
+      () => projectId
+        ? prisma.projectArea.findMany({ where: { projectId }, select: { id: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }] })
+        : Promise.resolve([]),
+      [],
+    ),
+    userId && prisma.user?.findUnique
+      ? prisma.user
+          .findUnique({
+            where: { id: userId },
+            select: { keyboardShortcuts: true },
+          })
+          .catch(() => null)
+      : Promise.resolve(null),
   ]);
+  const shortcutsEnabled = userPrefs?.keyboardShortcuts ?? true;
   const selectedMilestone = parseMilestoneFilter(params[MILESTONE_PARAM], milestones);
   const milestoneParam = milestoneParamValue(selectedMilestone);
   const selectedTags = parseTagFilter(params.tags, tagTypes);
@@ -196,8 +232,9 @@ export default async function BugsPage({
   }
   const tagsParam = serializeTags(selectedTags.map((t) => t.name));
 
-  if (isStatus(statusParam)) {
-    where.status = statusParam;
+  const statusWhere = statusFilterWhere(statusParam);
+  if (statusWhere !== undefined) {
+    where.status = statusWhere;
   }
   if (isSeverity(severityParam)) {
     where.severity = severityParam;
@@ -205,9 +242,11 @@ export default async function BugsPage({
   // Platform filter: one category, or the issues with none set.
   const selectedPlatform = parsePlatformFilter(params.platform, platforms);
   Object.assign(where, platformFilterWhere(selectedPlatform));
+  const selectedArea = parseProjectAreaFilter(params[AREA_PARAM], areas);
+  Object.assign(where, projectAreaFilterWhere(selectedArea));
   Object.assign(where, milestoneWhere(selectedMilestone));
   if (qParam?.trim()) {
-    const q = escapeSearchQuery(qParam.trim());
+    const q = escapeSearchQuery(boundSearchTerm(qParam));
     where.OR = [
       { title: { contains: q, mode: "insensitive" } },
       { description: { contains: q, mode: "insensitive" } },
@@ -328,6 +367,7 @@ export default async function BugsPage({
         reporter: { select: { name: true, role: true, image: true } },
         assignee: { select: { name: true, role: true, image: true } },
         category: { select: { id: true, name: true } },
+        area: { select: { id: true, name: true } },
         votes: userId
           ? { where: { userId }, select: { id: true, value: true }, take: 1 }
           : false,
@@ -424,7 +464,7 @@ export default async function BugsPage({
   // query is the one extra read, and it must not take the list down either.
   const bulkTypes = canDelete ? activeBulkOptions(tagTypes) : [];
   const bulkPlatforms = canDelete ? activeBulkOptions(platforms) : [];
-  const bulkUsers = canDelete ? await loadBulkAssignees() : [];
+  const bulkUsers = canDelete ? await loadBulkAssignees(tenantId) : [];
 
   let voterSummaries = new Map<string, ReturnType<typeof createEmptyVoterSummary>>();
   try {
@@ -453,6 +493,7 @@ export default async function BugsPage({
 
   const page = (
     <div className="space-y-6">
+      {gettingStarted ? <GettingStarted {...gettingStarted} /> : null}
       {activeProject?.goal ? (
         <section aria-labelledby="project-goal-heading" className="rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -529,13 +570,15 @@ export default async function BugsPage({
               tagTypes={tagTypes}
               platforms={platforms}
               milestones={milestones}
+              areas={areas}
+              shortcutsEnabled={shortcutsEnabled}
             />
           </Suspense>
         )}
 
           <div className="flex items-center justify-between text-xs text-slate-500">
             <p>
-              {resultCountText(totalCount, isStatus(statusParam) ? statusParam : null)} · sorted by{" "}
+              {resultCountText(totalCount, statusWhere !== undefined ? statusParam ?? null : null)} · sorted by{" "}
               {bugSortDescriptions[currentSort]}
               {hiddenDuplicates > 0 || showDuplicates ? (
                 <>
@@ -681,6 +724,11 @@ export default async function BugsPage({
                                   {bug.category.name}
                                 </span>
                               ) : null}
+                              {bug.area ? (
+                                <span className="inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-900">
+                                  {bug.area.name}
+                                </span>
+                              ) : null}
                               <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-medium text-slate-700">
                                 <span
                                   className={`h-2 w-2 rounded-full shrink-0 ${
@@ -720,7 +768,7 @@ export default async function BugsPage({
                               )}
                               {(bug.proofLinks?.length ?? 0) > 0 ? (
                                 <span>
-                                  · {bug.proofLinks.length} proof link
+                                  · {bug.proofLinks.length} GitHub PR
                                   {bug.proofLinks.length === 1 ? "" : "s"}
                                 </span>
                               ) : null}
@@ -835,18 +883,19 @@ export default async function BugsPage({
                 totalCount={totalCount}
                 from={pagination.from}
                 to={pagination.to}
-                queryParams={{
-                  ...(statusParam ? { status: statusParam } : {}),
-                  ...(milestoneParam ? { [MILESTONE_PARAM]: milestoneParam } : {}),
-                  ...(severityParam ? { severity: severityParam } : {}),
-                  ...(mineFilter ? { mine: mineFilter } : {}),
-                  ...(qParam ? { q: qParam } : {}),
-                  ...(tagsParam ? { [TAGS_PARAM]: tagsParam } : {}),
-                  ...(selectedPlatform ? { [PLATFORM_PARAM]: selectedPlatform } : {}),
-                  ...(isDeletedView ? { deleted: "true" } : {}),
-                  ...(showDuplicates ? { [DUPLICATES_PARAM]: SHOW_DUPLICATES } : {}),
+                queryParams={issueListPaginationParams({
+                  status: statusParam,
+                  severity: severityParam,
+                  mine: mineFilter,
+                  q: qParam,
                   sort: sortParam,
-                }}
+                  milestone: milestoneParam,
+                  tags: tagsParam,
+                  platform: selectedPlatform,
+                  area: selectedArea,
+                  deleted: isDeletedView,
+                  showDuplicates,
+                })}
               />
             </>
           )}
@@ -914,7 +963,11 @@ function FirstRunWelcome({
       </div>
       {isAdmin ? (
         <p className="mx-auto mt-6 max-w-md text-sm text-slate-600">
-          Before people start reporting, you may want to set up the{" "}
+          Before people start reporting, you may want to set up your{" "}
+          <Link href="/projects" className="font-medium text-teal-700 underline">
+            projects
+          </Link>
+          , and the{" "}
           <Link href="/admin/categories" className="font-medium text-teal-700 underline">
             platforms
           </Link>{" "}

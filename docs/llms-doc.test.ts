@@ -58,4 +58,10 @@ describe("llms.txt accuracy", () => {
     expect(doc).toMatch(/Should I submit a bid on this issue for you\?/i);
     expect(doc).toMatch(/waits for the owner's affirmative response/i);
   });
+
+  it("documents agent PR completion callback workflow (#746)", () => {
+    expect(doc).toContain("Execute the completion callback");
+    expect(doc).toContain("POST /api/v1/issues/{id}/github");
+    expect(doc).toContain("issue.pr_linked");
+  });
 });

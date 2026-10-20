@@ -8,6 +8,7 @@ import { DisplayNameForm } from "@/components/display-name-form";
 import { WalletAddressForm } from "@/components/wallet-address-form";
 import { KeyboardShortcutSettings } from "@/components/keyboard-shortcut-settings";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
+import { AccountDataSettings } from "@/components/account-data-settings";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
 export const metadata = { title: "Settings" };
@@ -87,6 +88,19 @@ export default async function SettingsPage() {
       </section>
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Security
+        </h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Protect your account with a second step at sign-in.
+        </p>
+        <p className="mt-3 text-sm">
+          <Link href="/settings/security" className="font-medium text-teal-700 hover:underline">
+            Two-factor sign-in
+          </Link>
+        </p>
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Appearance
         </h2>
         <ThemeSettings initialTheme={parseTheme(settings?.theme)} />
@@ -137,6 +151,12 @@ export default async function SettingsPage() {
           Keyboard shortcuts
         </h2>
         <KeyboardShortcutSettings initialEnabled={settings?.keyboardShortcuts ?? true} />
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Account data &amp; deletion
+        </h2>
+        <AccountDataSettings />
       </section>
     </div>
   );

@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
-import { reviewerConflict, type ReviewedBug } from "@/lib/agents/independence";
+import { reviewerConflict, reviewerCreditConflict, ReviewerNotIndependentError, type ReviewedBug } from "@/lib/agents/independence";
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { IssueApiError } from "@/lib/agent-api/issues";
@@ -11,9 +11,12 @@ import { award } from "@/lib/points/award";
 import {
   MAX_REWARDED_REVIEWERS,
   pointSourceKey,
-  REVIEWER_POINTS,
-  solverPoints,
 } from "@/lib/points/rules";
+import {
+  calculateReviewerPoints,
+  calculateSolverPoints,
+  getProjectRewardConfig,
+} from "@/lib/points/project-rewards";
 import { assertRedesignOpen } from "@/lib/redesigns";
 import { statusChangedSummary } from "@/lib/activity-log";
 
@@ -21,7 +24,10 @@ import { statusChangedSummary } from "@/lib/activity-log";
  * A merger accepting a fix (#434). The gate: the issue is confirmed, no
  * redesign is waiting for a person, and at least two reviewers whose owners
  * differ said the fix is good to merge. Neither the agent holding the claim
- * nor any agent of the claim holder's owner may be one of those reviewers.
+ * nor any agent of the claim holder's owner may be one of those reviewers,
+ * and the merger itself must be independent of the fix it accepts (#493):
+ * a merger owned by the ticket's beneficiary, reporter, filer, or claim
+ * holder can't accept and pay that side.
  *
  * Accepting records the decision on Ziki: it sets the issue to `resolved` and
  * awards points through `award()` (#428) for the solver and for up to two
@@ -34,7 +40,9 @@ export const MERGE_VERDICTS_NEEDED = 2;
 const mergeBugSelect = {
   id: true,
   tenantId: true,
+  projectId: true,
   pullRequestUrl: true,
+  pullRequestHeadSha: true,
   severity: true,
   status: true,
   assigneeId: true,
@@ -68,12 +76,12 @@ export type AcceptFixResult =
       solverUserId: string | null;
       rewardedReviewerUserIds: string[];
     }
-  | { status: 403; error: "insufficient_level"; message: string }
+  | { status: 403; error: "insufficient_level" | "not_independent"; message: string }
   | { status: 404; error: "not_found"; message: string }
   | {
       status: 409;
       error: "not_ready";
-      missing: "already_accepted" | "redesign" | "confirmation" | "verdicts";
+      missing: "already_accepted" | "redesign" | "confirmation" | "verdicts" | "claim" | "pull_request";
       message: string;
     };
 
@@ -87,6 +95,14 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
     select: mergeBugSelect,
   });
   if (!bug) return { status: 404, error: "not_found", message: "No such issue in this agent's tenant." };
+  // #493: the merger is an independent reviewer too. The same rule that keeps
+  // a claim holder's side out of the verdicts keeps it out of the accept —
+  // otherwise an owner could accept their own fix and collect the solver
+  // points. Checked before anything is written.
+  const conflict = reviewerConflict({ id: agent.agentId, ownerUserId: agent.ownerId }, bug);
+  if (conflict) {
+    return { status: 403, error: "not_independent", message: new ReviewerNotIndependentError(conflict).message };
+  }
   if (bug.status === "resolved") {
     return {
       status: 409,
@@ -97,6 +113,22 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
   }
 
   const claim = activeClaim(bug);
+  if (!claim) {
+    return {
+      status: 409,
+      error: "not_ready",
+      missing: "claim",
+      message: "This issue needs an active claim before its fix can be accepted.",
+    };
+  }
+  if (!bug.pullRequestUrl) {
+    return {
+      status: 409,
+      error: "not_ready",
+      missing: "pull_request",
+      message: "This issue needs a linked pull request before its fix can be accepted.",
+    };
+  }
   const reviewed: ReviewedBug = bug;
 
   return prisma.$transaction(async (tx) => {
@@ -128,11 +160,13 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
       // earlier PR, or with none, says nothing about this code.
       where: { bugId: bug.id, goodToMerge: true, pullRequestUrl: bug.pullRequestUrl ?? "" },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      select: { id: true, onBehalfOfUserId: true, agent: { select: { id: true, ownerUserId: true } } },
+      select: { id: true, headSha: true, onBehalfOfUserId: true, agent: { select: { id: true, ownerUserId: true } } },
     });
 
     const owners = new Set<string>();
     const reviewers: string[] = [];
+    // #489: the acceptance is bound to the code the reviewers signed off on.
+    let acceptedHeadSha: string | null = bug.pullRequestHeadSha ?? null;
     for (const verdict of verdicts) {
       // Checked again now, not only when submitted: a claim taken since, or a
       // verdict from the claim holder's own side, no longer counts.
@@ -140,9 +174,12 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
         continue;
       }
       if (reviewerConflict({ id: verdict.agent.id, ownerUserId: verdict.agent.ownerUserId }, reviewed)) continue;
+      if (reviewerCreditConflict(verdict.onBehalfOfUserId, reviewed)) continue;
       if (owners.has(verdict.agent.ownerUserId)) continue;
       owners.add(verdict.agent.ownerUserId);
       reviewers.push(verdict.onBehalfOfUserId);
+      // The last counted verdict names the commit that may merge.
+      if (verdict.headSha) acceptedHeadSha = verdict.headSha;
     }
 
     if (reviewers.length < MERGE_VERDICTS_NEEDED) {
@@ -179,23 +216,25 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
     // The solver: the person the active claim is for, else whoever it is
     // assigned to. The sourceKey makes a second accept, or the backfill
     // (#435), a no-op.
+    const rewardConfig = await getProjectRewardConfig(tx, bug.projectId);
     if (solverUserId) {
       await award(tx, {
         tenantId: bug.tenantId,
         userId: solverUserId,
         bugId: bug.id,
         role: "solver",
-        points: solverPoints(bug.severity),
+        points: calculateSolverPoints(bug.severity, rewardConfig),
         sourceKey: pointSourceKey("solver", bug.id, solverUserId),
       });
     }
+    const reviewerPoints = calculateReviewerPoints(rewardConfig);
     for (const userId of rewardedReviewerUserIds) {
       await award(tx, {
         tenantId: bug.tenantId,
         userId,
         bugId: bug.id,
         role: "reviewer",
-        points: REVIEWER_POINTS,
+        points: reviewerPoints,
         sourceKey: pointSourceKey("reviewer", bug.id, userId),
       });
     }
@@ -204,13 +243,27 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
       agent,
       "issue.accepted",
       `bug:${bug.id}`,
-      { solverUserId, rewardedReviewerUserIds },
+      // #489: record which pull request and head commit were accepted, so a
+      // different PR (or new commits) can't merge afterwards.
+      {
+        solverUserId,
+        rewardedReviewerUserIds,
+        pullRequestUrl: bug.pullRequestUrl,
+        headSha: acceptedHeadSha,
+      },
       { bugId: bug.id, db: tx },
     );
     await publish(tx, {
       tenantId: bug.tenantId,
       type: "issue.accepted",
-      payload: { issueId: bug.id, solverUserId, rewardedReviewerUserIds, status: "resolved" },
+      payload: {
+        issueId: bug.id,
+        solverUserId,
+        rewardedReviewerUserIds,
+        pullRequestUrl: bug.pullRequestUrl,
+        headSha: acceptedHeadSha,
+        status: "resolved",
+      },
       actorAgentId: agent.agentId,
       bugId: bug.id,
     });

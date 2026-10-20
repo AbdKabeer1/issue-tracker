@@ -211,6 +211,53 @@ export async function setAgentLevel(actor: Actor, agentId: string, level: AgentL
   return { ok: true };
 }
 
+/** Save an agent's preferred areas for one project (#609). */
+export async function setAgentAreaPreferences(
+  actor: Actor,
+  agentId: string,
+  projectId: string,
+  areaIds: string[],
+): Promise<ManageResult> {
+  const managed = await managedAgent(actor, agentId);
+  if (!managed) return { ok: false, error: NOT_FOUND };
+  if (managed.agent.revokedAt) return { ok: false, error: "That agent is revoked." };
+  const project = await projectInTenant(managed.agent.tenantId, projectId);
+  if (!project) return { ok: false, error: "Choose a project in this workspace." };
+
+  const wanted = [...new Set(areaIds)].sort();
+  const validAreas = wanted.length
+    ? await prisma.projectArea.findMany({
+        where: { projectId: project.id, id: { in: wanted } },
+        select: { id: true },
+      })
+    : [];
+  if (validAreas.length !== wanted.length) return { ok: false, error: "Choose areas from this project." };
+
+  const current = await prisma.agentAreaPreference.findMany({
+    where: { agentId, projectArea: { projectId: project.id } },
+    select: { projectAreaId: true },
+  });
+  const before = current.map((preference) => preference.projectAreaId).sort();
+  if (before.length === wanted.length && before.every((areaId, index) => areaId === wanted[index])) {
+    return { ok: true };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.agentAreaPreference.deleteMany({ where: { agentId, projectArea: { projectId: project.id } } });
+    if (wanted.length) {
+      await tx.agentAreaPreference.createMany({ data: wanted.map((projectAreaId) => ({ agentId, projectAreaId })) });
+    }
+    await audit(
+      { agentId, tenantId: managed.agent.tenantId },
+      "agent.area_preferences_changed",
+      `agent:${agentId}`,
+      { projectId: project.id, from: before, to: wanted, by: managed.isOwner ? "owner" : "tenant_admin" },
+      { actorUserId: actor.id, db: tx },
+    );
+  });
+  return { ok: true };
+}
+
 /**
  * Turns the higher write budget on or off (#440). A workspace admin or a
  * site admin may do this. An owner who is not an admin cannot.
