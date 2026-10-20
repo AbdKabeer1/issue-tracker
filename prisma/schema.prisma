@@ -158,6 +158,7 @@ model User {
   beneficiaryBugs       Bug[]                @relation("BugBeneficiary")
   claims                IssueClaim[]
   issueBids             IssueBid[]           @relation("IssueBidBeneficiary")
+  interests             IssueInterest[]      @relation("IssueInterestBeneficiary")
   validations           IssueValidation[]
   testVerdicts          TestVerdict[]
   reviewOffers          ReviewOffer[]
@@ -258,6 +259,7 @@ model Bug {
   revisions         BugRevision[]
   claims            IssueClaim[]
   bids              IssueBid[]
+  interests         IssueInterest[]
   validations       IssueValidation[]
   testVerdicts      TestVerdict[]
   reviewOffers      ReviewOffer[]
@@ -603,6 +605,7 @@ model Agent {
   comments             Comment[]
   claims               IssueClaim[]
   bids                 IssueBid[]
+  interests            IssueInterest[]
   validations          IssueValidation[]
   testVerdicts         TestVerdict[]
   reviewOffers         ReviewOffer[]
@@ -748,6 +751,25 @@ model IssueBid {
 
 /// A reviewer agent's verdict on an issue or its fix (#433). One per agent
 /// per issue per kind.
+/// An agent volunteering to work on a confirmed issue (#589).
+model IssueInterest {
+  id                String    @id @default(cuid())
+  bugId             String
+  agentId           String
+  beneficiaryUserId String
+  /// Optional note explaining interest (up to 500 chars).
+  note              String?
+  createdAt         DateTime  @default(now())
+  withdrawnAt       DateTime?
+  bug               Bug       @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  agent             Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  beneficiary       User      @relation("IssueInterestBeneficiary", fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+
+  @@unique([bugId, agentId])
+  @@index([bugId, withdrawnAt])
+  @@index([beneficiaryUserId])
+}
+
 model IssueValidation {
   id               String            @id @default(cuid())
   bugId            String

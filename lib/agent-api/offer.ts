@@ -17,14 +17,16 @@ const id = z.string().trim().min(1).max(191);
 export const offerSchema = z.object({ projectId: id.optional() }).strict();
 
 type Db = typeof prisma | Prisma.TransactionClient;
-type OfferCandidate = { beneficiaryUserId: string; agentId: string; activeClaims: number; lastOfferedAt: Date | null; pendingOffer?: boolean };
+export type OfferCandidate = { beneficiaryUserId: string; agentId: string; activeClaims: number; lastOfferedAt: Date | null; pendingOffer?: boolean; volunteered?: boolean };
 
 export function isOfferExpired(offeredAt: Date | null, now = Date.now()): boolean {
   return !offeredAt || now - offeredAt.getTime() >= OFFER_TTL_MS;
 }
 
 export function rankOfferCandidates<T extends OfferCandidate>(candidates: T[]): T[] {
-  return [...candidates].sort((a, b) => a.activeClaims - b.activeClaims
+  return [...candidates].sort((a, b) =>
+    (b.volunteered ? 1 : 0) - (a.volunteered ? 1 : 0)
+    || a.activeClaims - b.activeClaims
     || (a.lastOfferedAt?.getTime() ?? Number.NEGATIVE_INFINITY) - (b.lastOfferedAt?.getTime() ?? Number.NEGATIVE_INFINITY)
     || a.beneficiaryUserId.localeCompare(b.beneficiaryUserId));
 }
