@@ -144,6 +144,7 @@ export async function GET(request: NextRequest) {
               severity: bug.severity,
               type: bug.type?.name ?? null,
               platform: bug.category?.name ?? null,
+              area: bug.area?.name ?? null,
               reporter: bug.reporter.name,
               assignee: bug.assignee?.name ?? null,
               votes: bug.voteCount,
