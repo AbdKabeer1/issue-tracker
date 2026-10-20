@@ -28,6 +28,7 @@ import {
   platformChoices,
   type PlatformOption,
 } from "@/lib/platform-filter";
+import { AREA_NONE, AREA_PARAM, parseProjectAreaFilter, type ProjectAreaOption } from "@/lib/project-area-filter";
 import { MILESTONE_NONE, MILESTONE_PARAM } from "@/lib/milestones";
 import {
   MIN_SUGGEST_LENGTH,
@@ -52,6 +53,7 @@ const FILTER_PARAMS = [
   "status",
   "severity",
   PLATFORM_PARAM,
+  AREA_PARAM,
   "sort",
   MILESTONE_PARAM,
 ];
@@ -75,12 +77,14 @@ export function IssueFilters({
   tagTypes = [],
   platforms = [],
   milestones = [],
+  areas = [],
   shortcutsEnabled = true,
 }: {
   tagTypes?: TagType[];
   platforms?: PlatformOption[];
   /** #289: open milestones first; closed ones stay selectable for history. */
   milestones?: { id: string; title: string; isClosed: boolean }[];
+  areas?: ProjectAreaOption[];
   shortcutsEnabled?: boolean;
 }) {
   const router = useRouter();
@@ -327,6 +331,7 @@ export function IssueFilters({
   const currentPlatform =
     parsePlatformFilter(params.get(PLATFORM_PARAM), platforms) ?? "";
   const platformOptions = platformChoices(platforms, currentPlatform || null);
+    const currentArea = parseProjectAreaFilter(params.get(AREA_PARAM), areas) ?? "";
   const currentMine = parseMineFilter(params.get("mine")) ?? "";
   const currentMilestone = params.get(MILESTONE_PARAM) ?? "";
 
@@ -336,6 +341,7 @@ export function IssueFilters({
     Boolean(currentMine),
     selectedNames.length > 0,
     Boolean(currentPlatform),
+      Boolean(currentArea),
     Boolean(currentMilestone),
     Boolean(params.get("sort")),
   ].filter(Boolean).length;
@@ -666,6 +672,25 @@ export function IssueFilters({
                   </div>
                 ) : null}
 
+                {/* Project area */}
+                {areas.length > 0 ? (
+                  <div>
+                    <label htmlFor="area" className="mb-1 block text-xs font-medium text-slate-600">
+                      Area
+                    </label>
+                    <select
+                      id="area"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      value={currentArea}
+                      onChange={(event) => update(AREA_PARAM, event.target.value)}
+                    >
+                      <option value="">All</option>
+                      {areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
+                      <option value={AREA_NONE}>No area</option>
+                    </select>
+                  </div>
+                ) : null}
+
                 {/* Milestone */}
                 {milestones.length > 0 ? (
                   <div>
@@ -817,6 +842,19 @@ export function IssueFilters({
                 onClick={() => update(PLATFORM_PARAM, "")}
                 aria-label="Remove platform filter"
                 className="ml-0.5 rounded-full p-0.5 text-sky-700 hover:bg-sky-200/60"
+              >
+                ✕
+              </button>
+            </span>
+          ) : null}
+          {currentArea ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-teal-900">
+              Area: {currentArea === AREA_NONE ? "No area" : areas.find((area) => area.id === currentArea)?.name ?? currentArea}
+              <button
+                type="button"
+                onClick={() => update(AREA_PARAM, "")}
+                aria-label="Remove area filter"
+                className="ml-0.5 rounded-full p-0.5 text-teal-700 hover:bg-teal-200/60"
               >
                 ✕
               </button>

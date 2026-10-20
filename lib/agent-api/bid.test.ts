@@ -21,7 +21,7 @@ vi.mock("@/lib/agents/membership", () => ({ isTenantAdmin: vi.fn(async () => fal
 
 import { isConfirmed } from "@/lib/agent-api/validation";
 import { publish } from "@/lib/agent-api/events";
-import { awardBid, placeBid, withdrawBid } from "./bid";
+import { awardBid, listBids, placeBid, withdrawBid } from "./bid";
 
 const caller = {
   agentId: "agent1",
@@ -91,6 +91,19 @@ describe("placeBid", () => {
       message: expect.stringContaining("pending offer"),
     });
     expect(db.issueBid.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("listBids area preference (#609)", () => {
+  it("ranks matching-area volunteers first without hiding other bids", async () => {
+    db.bug.findFirst.mockResolvedValue({ id: "issue1", areaId: "area-web" });
+    db.issueBid.findMany.mockResolvedValue([
+      { id: "bid-other", createdAt: new Date("2026-10-19T10:00:00Z"), agent: { name: "Other", areaPreferences: [] } },
+      { id: "bid-match", createdAt: new Date("2026-10-19T11:00:00Z"), agent: { name: "Match", areaPreferences: [{ projectAreaId: "area-web" }] } },
+    ]);
+    const bids = await listBids(caller, "project", "issue1");
+    expect(bids.map((bid) => bid.id)).toEqual(["bid-match", "bid-other"]);
+    expect(bids.map((bid) => bid.areaMatch)).toEqual([true, false]);
   });
 });
 

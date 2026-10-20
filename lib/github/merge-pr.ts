@@ -253,7 +253,8 @@ export function createInstallationClient(
   };
 }
 
-function clientFor(installationId: string | null | undefined, env?: NodeJS.ProcessEnv): GitHubClient | null {
+/** The client for a project's GitHub App installation, when it has one (#489). */
+export function clientForInstallation(installationId: string | null | undefined, env?: NodeJS.ProcessEnv): GitHubClient | null {
   if (!installationId) return null;
   try {
     return createInstallationClient(installationId, env);
@@ -271,6 +272,7 @@ export type MergeFailureReason =
   | "not_accepted"
   | "no_pull_request"
   | "repo_mismatch"
+  | "pull_request_changed"
   | "checks_failed"
   | "head_moved"
   | "no_permission"
@@ -359,15 +361,31 @@ async function recordMergeFailure(
  * Acceptance lives on the audit row rather than on `Bug.status`, so this is
  * the single test for "a merger accepted this fix". A tenant admin undo
  * (#450) stamps `undoneAt`; an undone acceptance must not gate anything.
+ *
+ * The payload carries what was accepted (#489): the pull request and its
+ * head commit at the time, so a different PR — or new commits — can't merge.
  */
 export async function standingAcceptance(
   db: PrismaClient,
   bugId: string,
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; payload: unknown } | null> {
   return db.agentAuditEvent.findFirst({
     where: { bugId, action: "issue.accepted", undoneAt: null },
-    select: { id: true },
+    select: { id: true, payload: true },
   });
+}
+
+/** What `acceptFix` recorded on the acceptance row (#489). */
+export type AcceptedFix = { pullRequestUrl?: string; headSha?: string | null };
+
+function acceptedFixOf(accepted: { payload: unknown } | null): AcceptedFix {
+  const payload = accepted?.payload;
+  if (!payload || typeof payload !== "object") return {};
+  const { pullRequestUrl, headSha } = payload as { pullRequestUrl?: unknown; headSha?: unknown };
+  return {
+    ...(typeof pullRequestUrl === "string" ? { pullRequestUrl } : {}),
+    ...(typeof headSha === "string" ? { headSha } : {}),
+  };
 }
 
 /**
@@ -396,6 +414,22 @@ export async function mergeAcceptedFix(
     return fail(409, "not_accepted", "The fix has not been accepted on the tracker yet.");
   }
 
+  // Gate 1b (#489): the acceptance names the pull request that was reviewed.
+  // If the issue now links a different one, the fix was swapped after
+  // acceptance — refuse, and merge nothing.
+  const acceptedFix = acceptedFixOf(accepted);
+  if (
+    acceptedFix.pullRequestUrl &&
+    bug.pullRequestUrl &&
+    acceptedFix.pullRequestUrl !== bug.pullRequestUrl
+  ) {
+    return fail(
+      409,
+      "pull_request_changed",
+      "This issue's accepted fix is bound to a different pull request — link the accepted one again.",
+    );
+  }
+
   // Gate 2: the issue links a pull request that belongs to the project's repo.
   const ref = parsePullRequestUrl(bug.pullRequestUrl);
   if (!ref) return fail(409, "no_pull_request", "No pull request is linked to this issue.");
@@ -404,7 +438,7 @@ export async function mergeAcceptedFix(
     return fail(422, "repo_mismatch", "That pull request is not in this project's repository.");
   }
 
-  const client = deps.client ?? clientFor(bug.project?.githubInstallationId, deps.env);
+  const client = deps.client ?? clientForInstallation(bug.project?.githubInstallationId, deps.env);
   let prFiles = deps.files ?? [];
   if (!prFiles.length && client?.getPullRequestFiles) {
     try {
@@ -439,6 +473,18 @@ export async function mergeAcceptedFix(
   } catch {
     await recordMergeFailure(agent, bug, "GitHub could not be reached.", db);
     return fail(409, "merge_failed", "GitHub could not be reached.");
+  }
+
+  // Gate 2b (#489): the head commit GitHub reports must be the one that was
+  // accepted. Commits pushed after acceptance were never reviewed by the
+  // acceptance, so the merge stays blocked until the fix is re-verified.
+  if (acceptedFix.headSha && pullRequest.headSha && acceptedFix.headSha !== pullRequest.headSha) {
+    await recordMergeFailure(agent, bug, "The pull request changed after the fix was accepted.", db);
+    return fail(
+      409,
+      "head_moved",
+      "The accepted pull request's head commit changed since acceptance — verify the new commits before merging.",
+    );
   }
 
   // Gate 3: the pull request's required checks are green.
