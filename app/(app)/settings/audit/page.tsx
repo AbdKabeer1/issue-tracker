@@ -13,13 +13,7 @@ export const metadata = { title: "Agent audit log" };
 /** The newest events shown; filter by agent or issue to look further back. */
 const LIMIT = 100;
 
-type Props = {
-  searchParams: Promise<{
-    agent?: string | string[];
-    issue?: string | string[];
-    show?: string | string[];
-  }>;
-};
+type Props = { searchParams: Promise<{ agent?: string | string[]; issue?: string | string[] }> };
 
 const single = (value: string | string[] | undefined): string | null => {
   const first = Array.isArray(value) ? value[0] : value;
@@ -58,12 +52,10 @@ export default async function AuditLogPage({ searchParams }: Props) {
   const params = await searchParams;
   const agentId = single(params.agent);
   const issueId = single(params.issue);
-  // Request rows are hidden by default so each action reads once (#575).
-  const includeRequests = single(params.show) === "requests";
 
   const [events, agents] = await Promise.all([
     prisma.agentAuditEvent.findMany({
-      where: auditWhere(access, { agentId, issueId, includeRequests }),
+      where: auditWhere(access, { agentId, issueId }),
       orderBy: { createdAt: "desc" },
       take: LIMIT,
       select: {
@@ -102,7 +94,7 @@ export default async function AuditLogPage({ searchParams }: Props) {
     payload: event.payload,
     undoneAt: event.undoneAt,
   }));
-  const filtered = Boolean(agentId || issueId) && !includeRequests;
+  const filtered = Boolean(agentId || issueId);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -133,16 +125,6 @@ export default async function AuditLogPage({ searchParams }: Props) {
               </option>
             ))}
           </select>
-        </label>
-        <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            name="show"
-            value="requests"
-            defaultChecked={includeRequests}
-            className="h-4 w-4 rounded border-slate-300"
-          />
-          Show request rows
         </label>
         <label className="text-sm">
           <span className="block font-medium text-slate-700">Issue id</span>

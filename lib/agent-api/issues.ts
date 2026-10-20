@@ -44,9 +44,7 @@ export async function agentIssueRequest(
     else response = agentErrorResponse(error);
   } finally {
     if (agent) {
-      // `request: true` marks the supplementary row so the audit page can hide
-      // it by default: the domain audit already records successful writes (#575).
-      const payload = { status: response?.status ?? 500, request: true as const };
+      const payload = { status: response?.status ?? 500 };
       try {
         // Required domain audits commit inside the domain transaction. This
         // supplementary request log must not turn a committed write into a failure.
