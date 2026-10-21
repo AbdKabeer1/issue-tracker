@@ -27,11 +27,6 @@ export const metadata: Metadata = {
     template: "%s · Ziki Issues",
   },
   description: "Ziki issue tracking interface — HNG15 mini-project",
-  alternates: {
-    types: {
-      "text/plain": [{ url: "/llms.txt", title: "LLM Integration Documentation" }],
-    },
-  },
   openGraph: {
     siteName: "Ziki Issues",
     type: "website",
@@ -43,7 +38,7 @@ export const metadata: Metadata = {
   },
   alternates: {
     types: {
-      "text/plain": "/llms.txt",
+      "text/plain": [{ url: "/llms.txt", title: "LLM Integration Documentation" }],
     },
   },
 };

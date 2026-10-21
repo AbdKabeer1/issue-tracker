@@ -18,8 +18,24 @@ import { smtpConfigured, sendMail } from "@/lib/mail";
 import { consumeAuthRateLimit } from "@/lib/rate-limit";
 import { changePasswordAction, setKeyboardShortcutsAction, setWalletAddressAction, updateDisplayNameAction } from "./settings";
 
+/**
+ * `bcryptjs`'s own declarations expose an overload pair per function: one
+ * returning a Promise, one returning `void` for the callback form. TypeScript
+ * refuses to disambiguate that pair for type-level operators, so
+ * `ReturnType<typeof compare>` (and every conditional/nullable variant of it)
+ * collapses to `void`, making `mockResolvedValue(true)` a TS2345 error.
+ *
+ * Declaring the mocked shape explicitly sidesteps the overload set entirely.
+ */
+type MockedAsync<Value> = {
+  mockResolvedValue: (value: Value) => void;
+  mockRejectedValue: (reason?: unknown) => void;
+};
+
 const update = prisma.user.update as unknown as ReturnType<typeof vi.fn>;
 const findUnique = prisma.user.findUnique as unknown as ReturnType<typeof vi.fn>;
+const mockedCompare = compare as unknown as MockedAsync<boolean>;
+const mockedHash = hash as unknown as MockedAsync<string>;
 const form = (name: string) => {
   const f = new FormData();
   f.set("name", name);
@@ -144,8 +160,8 @@ describe("changePasswordAction (#570)", () => {
 
   it("updates only the signed-in user's password and invalidates every session", async () => {
     findUnique.mockResolvedValue({ email: "ada@example.com", passwordHash: "old-hash" });
-    vi.mocked(compare).mockResolvedValue(true);
-    vi.mocked(hash).mockResolvedValue("new-hash");
+    mockedCompare.mockResolvedValue(true);
+    mockedHash.mockResolvedValue("new-hash");
 
     await expect(changePasswordAction(undefined, passwordForm())).resolves.toEqual({ ok: true });
 
@@ -158,7 +174,7 @@ describe("changePasswordAction (#570)", () => {
 
   it("rejects an incorrect current password without changing it", async () => {
     findUnique.mockResolvedValue({ email: "ada@example.com", passwordHash: "old-hash" });
-    vi.mocked(compare).mockResolvedValue(false);
+    mockedCompare.mockResolvedValue(false);
 
     await expect(changePasswordAction(undefined, passwordForm("wrong password"))).resolves.toMatchObject({
       field: "currentPassword",
@@ -179,8 +195,8 @@ describe("changePasswordAction (#570)", () => {
 
   it("sends a security notice when mail is available, without delaying the password change", async () => {
     findUnique.mockResolvedValue({ email: "ada@example.com", passwordHash: "old-hash" });
-    vi.mocked(compare).mockResolvedValue(true);
-    vi.mocked(hash).mockResolvedValue("new-hash");
+    mockedCompare.mockResolvedValue(true);
+    mockedHash.mockResolvedValue("new-hash");
     vi.mocked(smtpConfigured).mockReturnValue(true);
     vi.mocked(sendMail).mockResolvedValue(undefined);
 
