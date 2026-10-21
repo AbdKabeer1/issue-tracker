@@ -1,5 +1,11 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth-helpers";
+import {
+  StatusPage,
+  primaryActionClass,
+  secondaryActionClass,
+} from "@/components/status-page";
+import { databaseErrorReason } from "@/lib/db-error";
 import { prisma } from "@/lib/prisma";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { workflowFor } from "@/lib/workflow";
@@ -29,51 +35,80 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
   }
 
   const filters = await searchParams;
-  const context = await projectContextFor(prisma, tenantId);
-  const [members, areas] = await Promise.all([
-    prisma.membership.findMany({
-      where: { tenantId },
-      orderBy: { user: { name: "asc" } },
-      select: {
-        role: true,
-        user: { select: { id: true, name: true } },
-      },
-    }),
-    prisma.category.findMany({
-      where: { tenantId, isActive: true },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
-  ]);
-  const memberIds = members.map(({ user: member }) => member.id);
-  const since = teamMetricSince();
-  const [agentsMap, points, activeClaims] = await Promise.all([
-    teamAgentsForMembers(prisma, tenantId, memberIds),
-    prisma.pointEntry.groupBy({
-      by: ["userId"],
-      where: { tenantId, createdAt: { gte: since } },
-      _sum: { points: true },
-    }),
-    prisma.issueClaim.groupBy({
-      by: ["beneficiaryUserId"],
-      where: {
-        beneficiaryUserId: { in: memberIds },
-        status: "active",
-        releasedAt: null,
-        bug: { tenantId, ...(context.activeProjectId ? { projectId: context.activeProjectId } : {}) },
-      },
-      _count: { _all: true },
-    }),
-  ]);
+  let context;
+  let members;
+  let areas;
+  let agentsMap;
+  let points;
+  let activeClaims;
+  let maxActiveClaims;
+  try {
+    context = await projectContextFor(prisma, tenantId);
+    [members, areas] = await Promise.all([
+      prisma.membership.findMany({
+        where: { tenantId },
+        orderBy: { user: { name: "asc" } },
+        select: {
+          role: true,
+          user: { select: { id: true, name: true } },
+        },
+      }),
+      prisma.category.findMany({
+        where: { tenantId, isActive: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true },
+      }),
+    ]);
+    const memberIds = members.map(({ user: member }) => member.id);
+    const since = teamMetricSince();
+    [agentsMap, points, activeClaims] = await Promise.all([
+      teamAgentsForMembers(prisma, tenantId, memberIds),
+      prisma.pointEntry.groupBy({
+        by: ["userId"],
+        where: { tenantId, createdAt: { gte: since } },
+        _sum: { points: true },
+      }),
+      prisma.issueClaim.groupBy({
+        by: ["beneficiaryUserId"],
+        where: {
+          beneficiaryUserId: { in: memberIds },
+          status: "active",
+          releasedAt: null,
+          bug: { tenantId, ...(context.activeProjectId ? { projectId: context.activeProjectId } : {}) },
+        },
+        _count: { _all: true },
+      }),
+    ]);
+    maxActiveClaims = context.activeProjectId
+      ? (await workflowFor(context.activeProjectId)).maxActiveClaims
+      : DEFAULT_PROJECT_WORKFLOW.maxActiveClaims;
+  } catch (error) {
+    console.error("[team] directory failed", error);
+    const reason = databaseErrorReason(error) ?? "The team directory could not be read.";
+    return (
+      <StatusPage
+        title="This page didn't load"
+        actions={
+          <>
+            <Link href="/team" className={primaryActionClass}>
+              Try again
+            </Link>
+            <Link href="/issues" className={secondaryActionClass}>
+              Go to issues
+            </Link>
+          </>
+        }
+      >
+        <p>{reason}</p>
+      </StatusPage>
+    );
+  }
   const pointsMap = new Map(points.map((row) => [row.userId, row._sum.points ?? 0]));
   const activeClaimMap = new Map(activeClaims.map((row) => [row.beneficiaryUserId, row._count._all]));
   const selectedArea = areas.some((area) => area.id === filters.area) ? filters.area : "";
   const showOnlineOnly = filters.online === "1";
   const showCapacityOnly = filters.capacity === "1";
   const capacityScope = context.activeProjectId ? "selected project" : "workspace";
-  const { maxActiveClaims } = context.activeProjectId
-    ? await workflowFor(context.activeProjectId)
-    : DEFAULT_PROJECT_WORKFLOW;
 
   const visibleMembers = members.flatMap((membership) => {
     const { user: member } = membership;

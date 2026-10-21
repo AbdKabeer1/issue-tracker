@@ -6,7 +6,7 @@ import { reviewerConflict, reviewerCreditConflict, type ReviewedBug } from "@/li
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { award } from "@/lib/points/award";
-import { confirmationReviewerSourceKey, CONFIRMATION_REVIEWER_POINTS, pointSourceKey } from "@/lib/points/rules";
+import { confirmationReviewerSourceKey, CONFIRMATION_REVIEWER_POINTS, pointSourceKey, reviewerPointsAt } from "@/lib/points/rules";
 import {
   calculateReporterPoints,
   getProjectRewardConfig,
@@ -375,7 +375,22 @@ export async function submitValidation(
 
       const confirmed = (await countedConfirmations(tx, bug)) >= confirmationsNeeded;
       const newlyConfirmed = confirmed && !wasConfirmed;
-      if (newlyConfirmed && !(await isDuplicate(tx, bug))) {
+      const duplicate = await isDuplicate(tx, bug);
+      if (body.kind === "real" && body.verdict === "accept" && !duplicate) {
+        const reviewers = await countedConfirmationReviewers(tx, bug);
+        const index = reviewers.indexOf(onBehalfOfUserId);
+        if (index >= 0) {
+          await award(tx, {
+            tenantId: bug.tenantId,
+            userId: onBehalfOfUserId,
+            bugId: bug.id,
+            role: "reviewer",
+            points: reviewerPointsAt(index, CONFIRMATION_REVIEWER_POINTS),
+            sourceKey: confirmationReviewerSourceKey(bug.id, onBehalfOfUserId),
+          });
+        }
+      }
+      if (newlyConfirmed && !duplicate) {
         // The person the issue is for earns the reporter points (#422), once:
         // the sourceKey makes a second award, or the backfill (#435), a no-op.
         const userId = bug.beneficiaryUserId ?? bug.reporterId;
@@ -389,17 +404,6 @@ export async function submitValidation(
           points,
           sourceKey: pointSourceKey("reporter", bug.id, userId),
         });
-        const reviewers = (await countedConfirmationReviewers(tx, bug)).slice(0, confirmationsNeeded);
-        for (const reviewerUserId of reviewers) {
-          await award(tx, {
-            tenantId: bug.tenantId,
-            userId: reviewerUserId,
-            bugId: bug.id,
-            role: "reviewer",
-            points: CONFIRMATION_REVIEWER_POINTS,
-            sourceKey: confirmationReviewerSourceKey(bug.id, reviewerUserId),
-          });
-        }
       }
 
       await audit(
