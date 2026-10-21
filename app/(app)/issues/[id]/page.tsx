@@ -157,7 +157,7 @@ export async function generateMetadata({
       description,
       url: canonical,
       type: "article",
-      siteName: "Ziki Issues",
+      siteName: "Ziki",
       modifiedTime: bug.updatedAt.toISOString(),
       images: [{ ...SHARE_IMAGE, url: image }],
     },

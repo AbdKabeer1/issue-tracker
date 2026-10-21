@@ -78,7 +78,7 @@ import { AREA_PARAM, parseProjectAreaFilter, projectAreaFilterWhere } from "@/li
 import { IssueStageNav } from "@/components/issue-stage-nav";
 import { issueStageLabels, openIssueStages, parseIssueStageView, type IssueStage } from "@/lib/issue-stage";
 
-/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Issues" };
 
 type SearchParams = Promise<{
@@ -566,7 +566,8 @@ export default async function BugsPage({
                   : "text-2xl sm:text-3xl font-bold tracking-tight text-slate-900"
               }
             >
-              {isDeletedView ? "Deleted Issues" : "Issues"}
+              {/* #1063: the project is the heading; "Ziki" is in the header. */}
+              {isDeletedView ? "Deleted Issues" : (activeProject?.name ?? "Issues")}
             </h1>
             {isDeletedView ? (
               <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800">
@@ -574,9 +575,6 @@ export default async function BugsPage({
               </span>
             ) : null}
           </div>
-          <p className="mt-0.5 text-sm text-slate-500">
-            Track, triage, and resolve product issues and bug reports.
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
           {canDelete ? (

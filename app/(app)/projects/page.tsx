@@ -17,7 +17,7 @@ import { MissionCoverage } from "./mission-coverage";
 import { ProjectRewardRulesDisplay } from "@/components/project-reward-rules-display";
 import { parseProjectRewardConfig } from "@/lib/points/project-rewards";
 
-/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Projects" };
 
 export default async function ProjectsPage({
