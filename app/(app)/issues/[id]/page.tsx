@@ -44,8 +44,6 @@ import { IssueBids } from "@/components/issue-bids";
 import { GoalBudgetSection } from "@/components/goal-budgets";
 import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
-import { WatchButton } from "@/components/watch-button";
-import { isWatchingIssue } from "@/lib/watch";
 import { UpdateIssueForm } from "@/components/update-issue-form";
 import { CommentThread } from "@/components/comment-thread";
 import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
@@ -373,7 +371,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
     Boolean(bug.areaId && bid.agent.areaPreferences.length);
   const canAwardBid = bug.status === "open" && !bug.isDeleted && (bug.reporterId === user.id || canChooseRedesign);
 
-  const [users, categories, areas, types, voterSummary, activities, activityCount, watchRow, comments, latestStatusChange, attachments, lastRevision, agentDecisions, escalations, volunteerCount, pendingApproval] =
+  const [users, categories, areas, types, voterSummary, activities, activityCount, comments, latestStatusChange, attachments, lastRevision, agentDecisions, escalations, volunteerCount, pendingApproval] =
     await Promise.all([
       canTriage
         ? loadOptional("users", [], () =>
@@ -404,12 +402,6 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         }),
       ),
       loadOptional("activity count", 0, () => prisma.bugActivity.count({ where: { bugId: id } })),
-      loadOptional<{ userId: string; watching: boolean } | null>("watch", null, () =>
-        prisma.issueWatch.findUnique({
-          where: { userId_bugId: { userId: user.id, bugId: id } },
-          select: { userId: true, watching: true },
-        }),
-      ),
       // The newest threads only (#280); a permalink widens the window to
       // reach its comment.
       loadOptional("comments", NO_COMMENTS, () =>
@@ -636,12 +628,6 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           bugId={bug.id}
           isAssignedToMe={isAssignee}
           size="sm"
-        />
-      ) : null}
-      {!bug.isDeleted ? (
-        <WatchButton
-          bugId={bug.id}
-          watching={isWatchingIssue(user.id, [bug.reporterId, bug.assigneeId], watchRow)}
         />
       ) : null}
       {canTriage && !bug.isDeleted && !bug.duplicateOf ? (

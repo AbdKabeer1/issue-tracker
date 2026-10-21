@@ -107,7 +107,6 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn().mockResolvedValue([]),
       findFirst: vi.fn().mockResolvedValue(null),
     },
-    issueWatch: { findUnique: vi.fn().mockResolvedValue(null) },
     attachment: { findMany: vi.fn().mockResolvedValue([]) },
     bugRevision: { findFirst: vi.fn().mockResolvedValue(null) },
     milestone: { findMany: vi.fn().mockResolvedValue([]) },
@@ -155,6 +154,16 @@ describe("BugDetailPage conditional user query (#349)", () => {
     // Danger zone still retains DeleteIssueButton
     expect(pageSourceFresh).toContain("Danger zone");
     expect(pageSourceFresh).toMatch(/Danger zone[\s\S]*?<DeleteIssueButton/);
+  });
+
+  it("does not render a Watch button or read the viewer's watch row (#417)", () => {
+    const pageSourceFresh = readFileSync(
+      path.resolve(__dirname, "page.tsx"),
+      "utf8",
+    );
+    expect(pageSourceFresh).not.toContain("WatchButton");
+    expect(pageSourceFresh).not.toContain("issueWatch");
+    expect(pageSourceFresh).not.toContain("isWatchingIssue");
   });
 
   it("renders Conversation section heading and supports conversation anchor (#753)", () => {
