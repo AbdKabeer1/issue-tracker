@@ -8,7 +8,6 @@ import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import type { AppRole } from "@/lib/roles";
 import { IssueFilters } from "@/components/issue-filters";
-import { IssueStats } from "@/components/issue-stats";
 import {
   IssueRowMeta,
   MetaSeparator,
@@ -312,40 +311,6 @@ export default async function BugsPage({
     }
   }
 
-  const baseTenantWhere: Prisma.BugWhereInput = {
-    ...bugInTenant(tenantId),
-    ...(projectId ? { projectId } : {}),
-    isDeleted: isDeletedView,
-  };
-
-  let statsTotal = 0;
-  let statsOpen = 0;
-  let statsInProgress = 0;
-  let statsClosed = 0;
-
-  try {
-    const [
-      totalCountAll,
-      openCount,
-      inProgressCount,
-      closedCount,
-    ] = await Promise.all([
-      prisma.bug.count({ where: baseTenantWhere }),
-      prisma.bug.count({ where: { ...baseTenantWhere, status: "open" } }),
-      prisma.bug.count({ where: { ...baseTenantWhere, status: "in_progress" } }),
-      prisma.bug.count({
-        where: { ...baseTenantWhere, status: { in: ["closed", "resolved"] } },
-      }),
-    ]);
-
-    statsTotal = totalCountAll;
-    statsOpen = openCount;
-    statsInProgress = inProgressCount;
-    statsClosed = closedCount;
-  } catch (error) {
-    console.error("[bugs] dashboard stats/counts failed", error);
-  }
-
   // How many the default view is hiding, so "Show duplicates" can say so.
   let hiddenDuplicates = 0;
   if (!showDuplicates) {
@@ -530,8 +495,9 @@ export default async function BugsPage({
     low: "bg-emerald-500",
   };
 
+  // #1056: one centred column, a simple list going down; no stats card.
   const page = (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-3xl space-y-6">
       {gettingStarted ? <GettingStarted {...gettingStarted} /> : null}
       {activeProject?.goal ? (
         <section aria-labelledby="project-goal-heading" className="rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
@@ -581,15 +547,6 @@ export default async function BugsPage({
           {/* #1057: "New issue" lives in the header on every page; no second one here. */}
         </div>
       </div>
-
-      {!isFirstRun ? (
-        <IssueStats
-          total={statsTotal}
-          open={statsOpen}
-          inProgress={statsInProgress}
-          closed={statsClosed}
-        />
-      ) : null}
 
       {/* #1054: no sidebar. Reported / Confirmed are a Stage filter now. */}
       <div className="space-y-4">

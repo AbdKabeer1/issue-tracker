@@ -127,4 +127,13 @@ describe("issue list layout", () => {
     const listQuery = findMany.mock.calls.at(-1)![0];
     expect(listQuery.where.id).toEqual({ in: ["bug-1"] });
   });
+
+  it("is one centred column without the stats card (#1056)", async () => {
+    const html = await renderList();
+    expect(html).not.toContain("Total issues");
+    expect(html).toMatch(/^<div class="mx-auto w-full max-w-3xl /);
+    // The four stats counts are no longer queried.
+    const statusOnly = count.mock.calls.filter(([args]) => args?.where?.status === "in_progress");
+    expect(statusOnly).toHaveLength(0);
+  });
 });
