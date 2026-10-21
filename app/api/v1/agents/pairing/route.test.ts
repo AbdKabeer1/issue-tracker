@@ -37,7 +37,7 @@ describe("POST /api/v1/agents/pairing", () => {
       verification_uri: "https://ziki.dev/settings/agents/pair",
       verification_uri_complete: "https://ziki.dev/settings/agents/pair?code=KX7P-2MQD",
       interval: 5,
-      message: expect.stringContaining("Open verification_uri_complete in the owner's browser"),
+      message: expect.stringContaining("If you can open a browser, also open verification_uri_complete"),
     });
     expect(startPairing).toHaveBeenCalledWith({ name: "Claude", model: "Claude", level: undefined });
   });
