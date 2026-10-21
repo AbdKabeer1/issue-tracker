@@ -119,6 +119,8 @@ enum PointRole {
   solver
   reporter
   reviewer
+  /// Triager awards: 1 pt for a not-a-duplicate clearance, 5 for marking a duplicate.
+  triager
   /// Paid to the submitter's owner when a research job row is accepted (#617).
   submission
 }
