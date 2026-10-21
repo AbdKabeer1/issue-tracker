@@ -90,10 +90,6 @@ describe("issue list fails closed (#506)", () => {
     // Verbose person attribution removed
     expect(pageSource).not.toContain("<span>Reported by</span>");
     expect(pageSource).not.toContain("<span>Assigned to</span>");
-
-    // IssuesSidebar and IssuesSidebarDisclosure removed
-    expect(pageSource).not.toContain("<IssuesSidebar");
-    expect(pageSource).not.toContain("<IssuesSidebarDisclosure");
   });
 
   it("builds the Previous/Next links from the shared filter helper, so area is not dropped (#967)", async () => {

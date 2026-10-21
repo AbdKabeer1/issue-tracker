@@ -101,7 +101,7 @@ describe("VoteButton interactive optimistic updates (#219)", () => {
     const indicator = screen.getByTestId("readiness-gate-indicator");
     expect(indicator).toHaveTextContent("2 of 3 upvotes to unlock work");
 
-    // The large button's name starts with its visible text ("Upvote 2").
+    // The large button's name starts with its visible "Upvote 2" (WCAG 2.5.3).
     const likeButton = screen.getByRole("button", { name: /^upvote 2 votes/i });
     await user.click(likeButton);
 
