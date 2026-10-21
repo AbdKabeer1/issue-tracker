@@ -168,4 +168,28 @@ describe("issue list layout", () => {
     const html = await renderList();
     expect(html).not.toContain('aria-label="Platforms"');
   });
+
+  it("hides resolved and closed issues by default, and says how many (#1058)", async () => {
+    count.mockImplementation(async (args: { where?: { status?: unknown } }) =>
+      JSON.stringify(args?.where?.status) === JSON.stringify({ in: ["resolved", "closed"] }) ? 4 : 1,
+    );
+    const html = await renderList({ q: "login", page: "3" });
+    expect(findMany.mock.calls.at(-1)![0].where.status).toEqual({ in: ["open", "in_progress"] });
+    expect(html).toContain('href="/issues?q=login&amp;resolved=1"');
+    expect(html).toContain("Show 4 resolved");
+  });
+
+  it("shows everything with ?resolved=1, and offers to hide them again (#1058)", async () => {
+    const html = await renderList({ resolved: "1" });
+    expect(findMany.mock.calls.at(-1)![0].where).not.toHaveProperty("status");
+    expect(html).toContain("Hide resolved");
+    expect(html).toContain('href="/issues"');
+  });
+
+  it("lets an explicit status filter win over the default (#1058)", async () => {
+    const html = await renderList({ status: "resolved" });
+    expect(findMany.mock.calls.at(-1)![0].where.status).toBe("resolved");
+    expect(html).not.toContain("Show 0 resolved");
+    expect(html).not.toContain("Hide resolved");
+  });
 });

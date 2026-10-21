@@ -33,7 +33,15 @@ import {
 } from "@/lib/search-snippet";
 import { Highlighted, SearchSnippet } from "@/components/search-highlight";
 import { formatIssueNumber, parseIssueNumberQuery } from "@/lib/issue-number";
-import { isDone, resultCountText, statusFilterWhere } from "@/lib/issue-state";
+import {
+  SHOW_RESOLVED,
+  SHOW_RESOLVED_PARAM,
+  defaultStatusWhere,
+  isDone,
+  parseShowResolved,
+  resultCountText,
+  statusFilterWhere,
+} from "@/lib/issue-state";
 import { calculatePagination } from "@/lib/pagination";
 import { issueListPaginationParams } from "@/lib/issue-list-pagination";
 import { DUPLICATES_PARAM, SHOW_DUPLICATES, duplicatesWhere, parseShowDuplicates } from "@/lib/duplicates";
@@ -243,8 +251,14 @@ export default async function BugsPage({
   const tagsParam = serializeTags(selectedTags.map((t) => t.name));
 
   const statusWhere = statusFilterWhere(statusParam);
+  // #1058: with no status filter, only live work shows unless resolved
+  // issues were asked for. The deleted view keeps showing everything.
+  const showResolved = parseShowResolved(params[SHOW_RESOLVED_PARAM]);
+  const hidesResolved = statusWhere === undefined && !isDeletedView && !showResolved;
   if (statusWhere !== undefined) {
     where.status = statusWhere;
+  } else if (hidesResolved) {
+    where.status = defaultStatusWhere(false);
   }
   if (isSeverity(severityParam)) {
     where.severity = severityParam;
@@ -357,6 +371,28 @@ export default async function BugsPage({
     const qs = next.toString();
     return qs ? `/issues?${qs}` : "/issues";
   };
+
+  // How many resolved/closed issues the default view hides (#1058).
+  let hiddenResolved = 0;
+  if (hidesResolved) {
+    try {
+      hiddenResolved = await prisma.bug.count({
+        where: { ...platformTabWhere, ...platformFilterWhere(selectedPlatform), status: { in: ["resolved", "closed"] } },
+      });
+    } catch (error) {
+      console.error("[bugs] resolved count failed", error);
+    }
+  }
+  const resolvedHref = (() => {
+    const next = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      const single = toSingleQueryParam(value);
+      if (single && key !== SHOW_RESOLVED_PARAM && key !== "page") next.set(key, single);
+    }
+    if (!showResolved) next.set(SHOW_RESOLVED_PARAM, SHOW_RESOLVED);
+    const qs = next.toString();
+    return qs ? `/issues?${qs}` : "/issues";
+  })();
 
   // How many the default view is hiding, so "Show duplicates" can say so.
   let hiddenDuplicates = 0;
@@ -620,6 +656,14 @@ export default async function BugsPage({
             <p role="status" aria-live="polite">
               {resultCountText(totalCount, statusWhere !== undefined ? statusParam ?? null : null)} · sorted by{" "}
               {bugSortDescriptions[currentSort]}
+              {hiddenResolved > 0 || (showResolved && statusWhere === undefined && !isDeletedView) ? (
+                <>
+                  {" · "}
+                  <Link href={resolvedHref} className="font-medium text-blue-600 hover:underline print:hidden">
+                    {showResolved ? "Hide resolved" : `Show ${hiddenResolved} resolved`}
+                  </Link>
+                </>
+              ) : null}
               {hiddenDuplicates > 0 || showDuplicates ? (
                 <>
                   {" · "}
@@ -944,6 +988,7 @@ export default async function BugsPage({
                   stage: stageView,
                   deleted: isDeletedView,
                   showDuplicates,
+                  showResolved,
                 })}
               />
             </>
