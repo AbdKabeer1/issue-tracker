@@ -447,4 +447,15 @@ describe("IssueFilters without a platform select (#1055)", () => {
     fireEvent.click(screen.getByRole("button", { name: /^filter/i }));
     expect(within(screen.getByRole("dialog", { name: "Filter issues" })).queryByLabelText("Platform")).not.toBeInTheDocument();
   });
+
+  it("allows filtering by untagged platform when platforms are provided (#473)", () => {
+    const platforms = [{ id: "cat-web", name: "Web" }];
+    nav.params = new URLSearchParams("platform=none");
+    render(<IssueFilters platforms={platforms} />);
+    expect(screen.getByRole("button", { name: /filter \(1 active\)/i })).toBeInTheDocument();
+    const remove = screen.getByRole("button", { name: "Remove platform filter" });
+    expect(remove.parentElement).toHaveTextContent("Platform: No platform");
+    fireEvent.click(remove);
+    expect(nav.push).toHaveBeenCalledWith("/issues");
+  });
 });

@@ -22,7 +22,13 @@ import {
   parseMineFilter,
   defaultSortFor,
 } from "@/lib/mine-filter";
-import { PLATFORM_PARAM } from "@/lib/platform-filter";
+import {
+  PLATFORM_NONE,
+  PLATFORM_PARAM,
+  parsePlatformFilter,
+  platformChoices,
+  type PlatformOption,
+} from "@/lib/platform-filter";
 import { AREA_NONE, AREA_PARAM, parseProjectAreaFilter, type ProjectAreaOption } from "@/lib/project-area-filter";
 import { MILESTONE_NONE, MILESTONE_PARAM } from "@/lib/milestones";
 import {
@@ -83,12 +89,14 @@ function hrefWithChanges(
 
 export function IssueFilters({
   tagTypes = [],
+  platforms = [],
   milestones = [],
   areas = [],
   shortcutsEnabled = true,
   stageCounts,
 }: {
   tagTypes?: TagType[];
+  platforms?: PlatformOption[];
   /** #289: open milestones first; closed ones stay selectable for history. */
   milestones?: { id: string; title: string; isClosed: boolean }[];
   areas?: ProjectAreaOption[];
@@ -345,7 +353,9 @@ export function IssueFilters({
     params.get("sort"),
     defaultSortFor(parseMineFilter(params.get("mine"))),
   );
-    const currentArea = parseProjectAreaFilter(params.get(AREA_PARAM), areas) ?? "";
+  const currentPlatform = parsePlatformFilter(params.get(PLATFORM_PARAM), platforms) ?? "";
+  const platformOptions = platformChoices(platforms, currentPlatform || null);
+  const currentArea = parseProjectAreaFilter(params.get(AREA_PARAM), areas) ?? "";
   const currentMine = parseMineFilter(params.get("mine")) ?? "";
   const currentMilestone = params.get(MILESTONE_PARAM) ?? "";
 
@@ -357,7 +367,8 @@ export function IssueFilters({
     Boolean(params.get("severity")),
     Boolean(currentMine),
     selectedNames.length > 0,
-      Boolean(currentArea),
+    currentPlatform === PLATFORM_NONE,
+    Boolean(currentArea),
     Boolean(currentMilestone),
     Boolean(params.get("sort")),
   ].filter(Boolean).length;
@@ -728,7 +739,28 @@ export function IssueFilters({
                   </select>
                 </div>
 
-                {/* Platform: tabs above the list since #1055, so not repeated here. */}
+                {/* Platform */}
+                {platformOptions.length > 0 ? (
+                  <div>
+                    <label htmlFor="platform" className="mb-1 block text-xs font-medium text-slate-600">
+                      Platform
+                    </label>
+                    <select
+                      id="platform"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      value={currentPlatform}
+                      onChange={(event) => update(PLATFORM_PARAM, event.target.value)}
+                    >
+                      <option value="">All</option>
+                      {platformOptions.map((platform) => (
+                        <option key={platform.id} value={platform.id}>
+                          {platform.name}
+                        </option>
+                      ))}
+                      <option value={PLATFORM_NONE}>No platform</option>
+                    </select>
+                  </div>
+                ) : null}
 
                 {/* Project area */}
                 {areas.length > 0 ? (
@@ -909,6 +941,19 @@ export function IssueFilters({
               </button>
             </span>
           ))}
+          {currentPlatform === PLATFORM_NONE ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-sky-900">
+              Platform: No platform
+              <button
+                type="button"
+                onClick={() => update(PLATFORM_PARAM, "")}
+                aria-label="Remove platform filter"
+                className="ml-0.5 rounded-full p-0.5 text-sky-700 hover:bg-sky-200/60"
+              >
+                ✕
+              </button>
+            </span>
+          ) : null}
           {currentArea ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-teal-900">
               Area: {currentArea === AREA_NONE ? "No area" : areas.find((area) => area.id === currentArea)?.name ?? currentArea}
