@@ -5,6 +5,7 @@ export type HeaderNavSubItem = {
   href: string;
   label: string;
   description?: string;
+  badge?: number;
 };
 
 export type HeaderNavItem = {
@@ -43,30 +44,40 @@ export function headerNavItems(
     });
   }
 
+  const pending =
+    typeof options?.pendingEscalations === "number" && options.pendingEscalations > 0
+      ? options.pendingEscalations
+      : undefined;
+
   const items: HeaderNavItem[] = [
     { href: "/issues", label: "Issues" },
     { href: "/team", label: "Team" },
     {
       href: "/projects",
-      label: "Manage Project",
+      label: "Project",
       children: manageProjectChildren,
     },
   ];
 
   if (options?.agentPlatform ?? isAgentPlatformEnabled()) {
-    items.push(
-      {
-        href: "/escalations",
-        label: "Escalations",
-        ...(typeof options?.pendingEscalations === "number" && options.pendingEscalations > 0
-          ? { badge: options.pendingEscalations }
-          : {}),
-      },
-      { href: "/redesigns", label: "Redesigns" },
-    );
+    items.push({
+      href: "/escalations",
+      label: "Agents",
+      ...(pending ? { badge: pending } : {}),
+      children: [
+        {
+          href: "/escalations",
+          label: "Escalations",
+          description: "Questions an agent is waiting on",
+          ...(pending ? { badge: pending } : {}),
+        },
+        { href: "/redesigns", label: "Redesigns", description: "Proposed changes to review" },
+        { href: "/docs", label: "API Docs", description: "Agent API and /llms.txt" },
+      ],
+    });
+  } else {
+    items.push({ href: "/docs", label: "API Docs" });
   }
-
-  items.push({ href: "/docs", label: "API Docs" });
 
   if (isSuperAdmin(role)) {
     items.push({ href: "/admin/users", label: "Admins" });

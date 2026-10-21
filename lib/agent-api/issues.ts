@@ -99,7 +99,7 @@ export async function issueJson(request: NextRequest): Promise<unknown> {
 
 /** The 400 for an issue route called without a project. */
 export const PROJECT_ID_REQUIRED =
-  "projectId is required. Pass it as ?projectId= or in the JSON body. Your owner can copy it from the agent key menu in the Ziki header.";
+  "projectId is required. Pass it as ?projectId= or in the JSON body. Your owner can copy it from Settings, under Agents.";
 
 /** Every call names a project; a project id alone never grants access to its tenant. */
 export async function issueProject(agent: AgentContext, params: URLSearchParams, bodyProjectId?: string) {
