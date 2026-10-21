@@ -212,7 +212,7 @@ async function attachApprovedAgent(
 }
 
 export type CollectResult =
-  | { status: "issued"; key: IssuedKey; projectId: string }
+  | { status: "issued"; key: IssuedKey; projectId: string; level: AgentLevel }
   | { status: "pending" }
   | { status: "expired" }
   | { status: "used" }
@@ -266,10 +266,13 @@ export async function collectPairing(deviceCode: unknown, now = new Date()): Pro
       await tx.agentApiKey.create({
         data: { agentId, projectId, keyHash: key.hash, prefix: key.prefix },
       });
+      // #429: the level the owner set at approval, which can differ from the paired default.
+      const approved = await tx.agent.findUnique({ where: { id: agentId }, select: { level: true } });
       return {
         status: "issued",
         key: { agentId, name: pairing.proposedName, rawKey: key.raw, prefix: key.prefix },
         projectId,
+        level: (approved?.level ?? PAIRED_AGENT_LEVEL) as AgentLevel,
       } as const;
     }
     const key = await insertAgentWithKey(tx, {
@@ -288,7 +291,7 @@ export async function collectPairing(deviceCode: unknown, now = new Date()): Pro
       { name: key.name, model: pairing.proposedModel, level: PAIRED_AGENT_LEVEL, projectId, via: "pairing" },
       { actorUserId: ownerUserId, db: tx },
     );
-    return { status: "issued", key, projectId } as const;
+    return { status: "issued", key, projectId, level: PAIRED_AGENT_LEVEL } as const;
   });
 }
 

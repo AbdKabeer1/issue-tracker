@@ -12,7 +12,7 @@ const db = vi.hoisted(() => {
       updateMany: vi.fn(),
       deleteMany: vi.fn(),
     },
-    agent: { create: vi.fn(), delete: vi.fn(), count: vi.fn(async () => 0) },
+    agent: { create: vi.fn(), delete: vi.fn(), findUnique: vi.fn(), count: vi.fn(async () => 0) },
     agentApiKey: { create: vi.fn() },
     agentAuditEvent: { create: vi.fn() },
     membership: { findMany: vi.fn(), findUnique: vi.fn() },
@@ -168,8 +168,11 @@ describe("collectPairing (#427)", () => {
   it("adds the key to the agent created at approval, without creating another agent", async () => {
     db.agentPairing.findUnique.mockResolvedValue({ ...approved, agentId: "agent9" });
     db.agentPairing.updateMany.mockResolvedValue({ count: 1 });
+    db.agent.findUnique.mockResolvedValue({ level: "reviewer" });
     const result = await collectPairing(DEVICE, NOW);
     expect(result.status).toBe("issued");
+    // #429: the level the owner set at approval is reported, not the paired default.
+    expect(result).toMatchObject({ level: "reviewer" });
     expect(db.agent.create).not.toHaveBeenCalled();
     expect(db.agentApiKey.create.mock.calls[0][0].data).toMatchObject({ agentId: "agent9", projectId: "project_zedu" });
   });
@@ -179,6 +182,7 @@ describe("collectPairing (#427)", () => {
     db.agentPairing.updateMany.mockResolvedValue({ count: 1 });
     const result = await collectPairing(DEVICE, NOW);
     expect(result.status).toBe("issued");
+    expect(result).toMatchObject({ level: "contributor" });
     expect(db.agentPairing.updateMany.mock.calls[0][0].where).toEqual({ id: "p1", consumedAt: null });
     expect(db.agent.create.mock.calls[0][0].data).toMatchObject({
       ownerUserId: "ada",
