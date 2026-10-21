@@ -157,7 +157,7 @@ export async function generateMetadata({
       description,
       url: canonical,
       type: "article",
-      siteName: "Ziki Issues",
+      siteName: "Ziki",
       modifiedTime: bug.updatedAt.toISOString(),
       images: [{ ...SHARE_IMAGE, url: image }],
     },
@@ -849,9 +849,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 voteCount={bug.voteCount}
                 userVote={userVote}
                 likeCount={voterSummary.likes.count}
-                dislikeCount={voterSummary.dislikes.count}
                 likeVoters={voterSummary.likes.voters}
-                dislikeVoters={voterSummary.dislikes.voters}
                 size="md"
                 showAvatars
                 readOnly={bug.isDeleted}

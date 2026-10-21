@@ -11,7 +11,7 @@ import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 import { ChangePasswordForm } from "@/components/change-password-form";
 import { AccountDataSettings } from "@/components/account-data-settings";
 
-/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {

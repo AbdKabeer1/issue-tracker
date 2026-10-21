@@ -5,7 +5,7 @@ import { loadMilestoneSummaries, milestoneScopeFor } from "@/lib/milestone-stats
 import { dueDateValue } from "@/lib/milestones";
 import { MilestoneManager } from "@/components/milestone-manager";
 
-/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Milestones" };
 
 export default async function AdminMilestonesPage() {

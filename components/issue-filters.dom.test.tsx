@@ -365,3 +365,51 @@ describe("IssueFilters search commit + feedback (#690)", () => {
     expect(screen.getByTestId("search-box")).toHaveAttribute("aria-busy", "false");
   });
 });
+
+describe("IssueFilters stage filter (#1054)", () => {
+  beforeEach(() => {
+    nav.params = new URLSearchParams();
+    nav.push.mockReset();
+    nav.replace.mockReset();
+  });
+  afterEach(cleanup);
+
+  it("offers Reported and Confirmed, with their counts, in the Filter popover", () => {
+    render(<IssueFilters stageCounts={{ reported: 7, confirmed: 2 }} />);
+    fireEvent.click(screen.getByRole("button", { name: /^filter/i }));
+    const stage = within(screen.getByRole("dialog", { name: "Filter issues" })).getByLabelText("Stage");
+    expect(within(stage).getByRole("option", { name: "Reported (7)" })).toBeInTheDocument();
+    expect(within(stage).getByRole("option", { name: "Confirmed (2)" })).toBeInTheDocument();
+
+    fireEvent.change(stage, { target: { value: "reported" } });
+    expect(nav.push).toHaveBeenCalledWith("/issues?stage=reported");
+  });
+
+  it("keeps old ?stage= links working, counted and removable", () => {
+    nav.params = new URLSearchParams("stage=confirmed&page=2");
+    render(<IssueFilters />);
+    expect(screen.getByRole("button", { name: /filter \(1 active\)/i })).toBeInTheDocument();
+    const remove = screen.getByRole("button", { name: "Remove stage filter" });
+    expect(remove.parentElement).toHaveTextContent("Stage: Confirmed");
+    fireEvent.click(remove);
+    expect(nav.push).toHaveBeenCalledWith("/issues");
+  });
+});
+
+describe("IssueFilters without a platform select (#1055)", () => {
+  beforeEach(() => {
+    nav.params = new URLSearchParams();
+    nav.push.mockReset();
+  });
+  afterEach(cleanup);
+
+  it("leaves the platform to the tabs above the list", () => {
+    nav.params = new URLSearchParams("platform=cat-web");
+    render(<IssueFilters />);
+    // A chosen tab isn't counted as a filter or shown as a chip.
+    expect(screen.getByRole("button", { name: /^filter$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove platform filter" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^filter/i }));
+    expect(within(screen.getByRole("dialog", { name: "Filter issues" })).queryByLabelText("Platform")).not.toBeInTheDocument();
+  });
+});
