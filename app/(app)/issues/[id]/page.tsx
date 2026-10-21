@@ -58,6 +58,7 @@ import { createEmptyVoterSummary } from "@/lib/voters";
 import {
   canDeleteTicket,
   deletedSummary,
+  deletionCounts,
   deleteSummary,
 } from "@/lib/ticket-deletion";
 import { currentTenantAccess } from "@/lib/tenant-access";
@@ -638,10 +639,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   );
 
   // What a delete keeps, shown the same way in every delete/restore message (#692).
-  const deletionCounts = {
-    comments: comments.visibleCount,
-    votes: voterSummary.likes.count + voterSummary.dislikes.count,
-  };
+  const keptCounts = deletionCounts(comments.visibleCount, voterSummary);
 
   return (
     <div className="space-y-6">
@@ -655,14 +653,14 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                   This issue was deleted
                 </h3>
                 <p className="text-xs text-red-700">
-                  {deletedSummary(deletionCounts)}
+                  {deletedSummary(keptCounts)}
                 </p>
               </div>
             </div>
             <RestoreIssueButton
               bugId={bug.id}
               bugTitle={bug.title}
-              counts={deletionCounts}
+              counts={keptCounts}
               size="sm"
             />
           </div>
@@ -1087,13 +1085,13 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 Danger zone
               </h2>
               <p className="text-sm text-slate-600">
-                Delete this issue. {deleteSummary(deletionCounts)}
+                Delete this issue. {deleteSummary(keptCounts)}
               </p>
             </div>
             <DeleteIssueButton
               bugId={bug.id}
               bugTitle={bug.title}
-              counts={deletionCounts}
+              counts={keptCounts}
               variant="danger"
             />
           </div>

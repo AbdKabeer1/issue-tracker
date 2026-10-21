@@ -49,7 +49,8 @@ vi.mock("@/lib/agents/membership", () => ({
   isTenantAdminRole: vi.fn().mockReturnValue(true),
 }));
 
-vi.mock("@/lib/ticket-deletion", () => ({
+vi.mock("@/lib/ticket-deletion", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/ticket-deletion")>()),
   canDeleteTicket: vi.fn().mockReturnValue(false),
 }));
 
