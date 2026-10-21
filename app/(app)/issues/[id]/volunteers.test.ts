@@ -45,7 +45,8 @@ vi.mock("@/lib/roles", () => ({
   isSuperAdmin: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock("@/lib/ticket-deletion", () => ({
+vi.mock("@/lib/ticket-deletion", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/ticket-deletion")>()),
   canDeleteTicket: vi.fn().mockReturnValue(false),
 }));
 
