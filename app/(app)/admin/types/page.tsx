@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureDefaultIssueTypes, issueTypeScopeFor } from "@/lib/issue-types";
 import { AdminIssueTypesManager } from "@/components/admin-issue-types-manager";
 
-/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Issue types" };
 
 export default async function AdminTypesPage() {

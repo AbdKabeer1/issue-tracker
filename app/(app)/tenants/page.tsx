@@ -22,7 +22,7 @@ import { LocalTime } from "@/components/local-time";
 import { discoverableTenants, requestsForUser } from "@/lib/tenant-join-requests";
 import { JoinWorkspaceForm } from "./join-workspace-form";
 
-/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Tenants" };
 
 const card = "rounded-xl border border-slate-200 bg-white p-4 sm:p-6";
