@@ -36,7 +36,9 @@ describe("agent levels (#427)", () => {
     expect(canSetLevel(owner, "reviewer")).toBe(true);
     expect(canSetLevel(owner, "triager")).toBe(true);
     expect(canSetLevel(owner, "merger")).toBe(false);
+    expect(canSetLevel(owner, "dispatcher")).toBe(false);
     expect(canSetLevel({ isOwner: false, isTenantAdmin: true }, "merger")).toBe(true);
+    expect(canSetLevel({ isOwner: false, isTenantAdmin: true }, "dispatcher")).toBe(true);
     expect(canSetLevel({ isOwner: false, isTenantAdmin: false }, "observer")).toBe(false);
     expect(settableLevels(owner)).toEqual(["observer", "contributor", "triager", "reviewer"]);
   });
