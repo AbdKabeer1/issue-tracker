@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth-helpers";
 import { isAgentLevel } from "@/lib/agents/levels";
+import type { AgentLevel } from "@prisma/client";
 import { consumePairingLimit } from "@/lib/agents/rate-limit";
 import { approvePairing, findPendingPairing } from "@/lib/agents/pairing";
 import { currentTenantIdFor } from "@/lib/tenant-context";
@@ -126,7 +127,7 @@ export async function setAgentAreaPreferencesAction(
 }
 
 export type PairingActionResult =
-  | { ok: true; step: "confirm"; code: string; name: string; model: string | null }
+  | { ok: true; step: "confirm"; code: string; name: string; model: string | null; level: AgentLevel }
   | { ok: true; step: "done"; name: string }
   | { ok: false; error: string };
 
@@ -160,5 +161,5 @@ export async function pairAgentAction(
   if (!pending) {
     return { ok: false, error: "That code doesn't match a waiting agent. It may have expired; ask the agent for a new one." };
   }
-  return { ok: true, step: "confirm", code, name: pending.proposedName, model: pending.proposedModel };
+  return { ok: true, step: "confirm", code, name: pending.proposedName, model: pending.proposedModel, level: pending.proposedLevel ?? "contributor" };
 }

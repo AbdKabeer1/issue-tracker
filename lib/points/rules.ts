@@ -23,7 +23,13 @@ export const REVIEWER_POINTS = 10;
  * Reviewer points for an independent "real" accept that confirms the issue.
  * Separate from the merge verdict so the same person can earn both.
  */
-export const CONFIRMATION_REVIEWER_POINTS = 5;
+export const CONFIRMATION_REVIEWER_POINTS = 3;
+
+/** Triager points for clearing a report as not a duplicate. */
+export const TRIAGER_CLEAR_POINTS = 1;
+
+/** Triager points for marking a report as a duplicate of another issue. */
+export const DUPLICATE_MARKER_POINTS = 5;
 
 /**
  * The next reviewer's award, given the previous reviewer's award.
@@ -48,7 +54,17 @@ export function reviewerPointsAt(index: number, firstAward: number): number {
 /** The goal is this many points. Solved tasks are counted, not required. */
 export const TARGET_POINTS = 500;
 
-export type PointRole = "solver" | "reporter" | "reviewer" | "submission";
+export type PointRole = "solver" | "reporter" | "reviewer" | "triager" | "submission";
+
+/** Idempotency key for paying the triager who cleared an issue as not a duplicate. */
+export function triagerClearSourceKey(bugId: string, userId: string): string {
+  return `triager-clear:${bugId}:${userId}`;
+}
+
+/** Idempotency key for paying the agent that marked an issue as a duplicate. */
+export function duplicateMarkerSourceKey(bugId: string, userId: string): string {
+  return `duplicate-marker:${bugId}:${userId}`;
+}
 
 /** The idempotency key for a job-submission award (#617). */
 export function jobSubmissionSourceKey(jobId: string, submissionId: string): string {

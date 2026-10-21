@@ -3,6 +3,8 @@ import {
   confirmationReviewerSourceKey,
   CONFIRMATION_REVIEWER_POINTS,
   diminishedReviewerPoints,
+  DUPLICATE_MARKER_POINTS,
+  TRIAGER_CLEAR_POINTS,
   pointSourceKey,
   pointsProgress,
   REPORTER_POINTS,
@@ -23,7 +25,9 @@ describe("point rules (#428)", () => {
   it("has the reporter, reviewer and target numbers from the epic", () => {
     expect(REPORTER_POINTS).toBe(5);
     expect(REVIEWER_POINTS).toBe(10);
-    expect(CONFIRMATION_REVIEWER_POINTS).toBe(5);
+    expect(CONFIRMATION_REVIEWER_POINTS).toBe(3);
+    expect(TRIAGER_CLEAR_POINTS).toBe(1);
+    expect(DUPLICATE_MARKER_POINTS).toBe(5);
     expect(TARGET_POINTS).toBe(500);
   });
 
