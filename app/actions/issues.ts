@@ -42,6 +42,7 @@ import {
 } from "@/lib/validations/issue";
 import {
   calculateVoteChange,
+  DOWNVOTES_REMOVED_MESSAGE,
   isValidVoteDirection,
   reconcileVoteCount,
 } from "@/lib/voting";
@@ -1398,6 +1399,10 @@ export async function toggleVoteAction(
 ): Promise<ToggleVoteResult> {
   if (!isValidVoteDirection(direction)) {
     return { error: "Invalid vote" };
+  }
+  // #1059: only upvotes now. A stale page can still send -1; refuse it.
+  if (direction === -1) {
+    return { error: DOWNVOTES_REMOVED_MESSAGE };
   }
 
   // Do not redirect here — VoteButton needs a clear error for stale JWTs

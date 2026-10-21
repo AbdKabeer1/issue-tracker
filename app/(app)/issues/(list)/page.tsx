@@ -832,7 +832,6 @@ export default async function BugsPage({
                           voteCount={bug.voteCount}
                           userVote={userVote}
                           likeCount={voterSummary.likes.count}
-                          dislikeCount={voterSummary.dislikes.count}
                           size="sm"
                           readOnly={isDeletedView}
                         />
