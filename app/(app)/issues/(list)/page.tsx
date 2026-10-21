@@ -513,11 +513,15 @@ export default async function BugsPage({
   // "No issues match" and "there are no issues yet" need different pages
   // (#292): filter advice on an empty tracker sends people looking for a
   // filter that is not there. The extra count only runs when the page is
-  // already empty, so a populated list pays nothing for it.
+  // already empty, so a populated list pays nothing for it. It counts the
+  // project the list shows, so a new project in a busy workspace is "no
+  // issues yet" too, not "no issues match".
   let isFirstRun = false;
   if (totalCount === 0 && !isDeletedView) {
     try {
-      isFirstRun = (await prisma.bug.count({ where: { ...bugInTenant(tenantId), isDeleted: false } })) === 0;
+      isFirstRun = (await prisma.bug.count({
+        where: { ...bugInTenant(tenantId), ...(projectId ? { projectId } : {}), isDeleted: false },
+      })) === 0;
     } catch {
       isFirstRun = false;
     }
