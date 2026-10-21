@@ -894,6 +894,7 @@ List issues in the agent's project, newest first. Every issue route needs a **`p
 - `platform` (optional): a platform (category) id, or `none` for issues with no platform set
 - `area` (optional): a project area id, or `none` for issues without an area
 - `stage` (optional): intake stage of an open report. `reported` and `confirmed` are ideas: not yet accepted, or accepted with fewer than three upvotes. `ready` is an issue: accepted and at least three upvotes, so it can be passed on. A report that is no longer open has no stage, so combining `stage` with any status other than `open` returns an empty page. The cursor still pages the matching reports. A single report read includes `intake`: `idea` until both gates are met, then `issue`.
+- `q` (optional): case-insensitive text search over the title and description
 - `limit` (optional): page size, default **25**, maximum **100**
 - `cursor` (optional): opaque base64url cursor from a previous response
 

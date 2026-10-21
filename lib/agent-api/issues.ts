@@ -9,6 +9,7 @@ import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/ra
 import { withAgentBudgetHeaders, type AgentBudgetQuota } from "@/lib/agents/rate-budget-headers";
 import { createBugSchema, commentSchema, statusSchema, severitySchema } from "@/lib/validations/issue";
 import { parsePlatformFilter, platformFilterWhere } from "@/lib/platform-filter";
+import { boundSearchTerm, escapeSearchQuery } from "@/lib/search";
 import { parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
 import { intakeKind, openIssueStages, type IssueStage } from "@/lib/issue-stage";
 import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, hashCreateRequest, pageSize, toPage, type IssueCursor } from "@/lib/agent-api/create-policy";
@@ -153,8 +154,16 @@ export async function listAgentIssues(scope: Scope, params: URLSearchParams) {
   const cursor = decodeCursor(cursorRaw);
   if (cursorRaw !== null && !cursor) throw new IssueApiError(400, "Invalid cursor.");
   const limit = pageSize(params.get("limit"));
+  const q = params.get("q")?.trim();
+  // #460: same escaped, bounded title/description match the app list uses. AND keeps it apart from the cursor's OR.
+  const search: Prisma.BugWhereInput = q
+    ? { AND: [{ OR: [
+        { title: { contains: escapeSearchQuery(boundSearchTerm(q)), mode: "insensitive" } },
+        { description: { contains: escapeSearchQuery(boundSearchTerm(q)), mode: "insensitive" } },
+      ] }] }
+    : {};
   const filtered: Prisma.BugWhereInput = {
-    ...scope, isDeleted: false,
+    ...scope, isDeleted: false, ...search,
     ...(status ? { status: statusSchema.parse(status) } : {}),
     ...(severity ? { severity: severitySchema.parse(severity) } : {}),
     ...(assignee ? { assigneeId: assignee === "none" ? null : idSchema.parse(assignee) } : {}),

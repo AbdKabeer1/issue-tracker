@@ -198,6 +198,19 @@ describe("agent issue reads", () => {
     expect(db.bug.findMany).not.toHaveBeenCalled();
   });
 
+  it("filters by a case-insensitive text search on title and description (#460)", async () => {
+    const cursor = encodeCursor({ id: "previous", createdAt: issue.createdAt });
+    await list(request("GET", undefined, `?projectId=project-a&q=%20Login%25&cursor=${cursor}`));
+    const where = db.bug.findMany.mock.lastCall?.[0].where;
+    expect(where.AND).toEqual([{ OR: [
+      { title: { contains: "Login\\%", mode: "insensitive" } },
+      { description: { contains: "Login\\%", mode: "insensitive" } },
+    ] }]);
+    expect(where.OR).toHaveLength(2);
+    await list(request("GET", undefined, "?projectId=project-a&q=%20%20"));
+    expect(db.bug.findMany.mock.lastCall?.[0].where).not.toHaveProperty("AND");
+  });
+
   it("keeps only open issues in the requested intake stage, then pages them", async () => {
     const open = {
       id: "issue-a",
