@@ -12,12 +12,10 @@ import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { isAdmin } from "@/lib/roles";
 import { isTenantAdminRole } from "@/lib/agents/membership";
 import { prisma } from "@/lib/prisma";
-import type { AgentKeyHint } from "@/components/agent-key-copy";
-import { ensureDefaultProjectKey } from "@/lib/agents/default-key";
-import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 import { projectContextFor, type ProjectChoice } from "@/lib/project-context";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { countPendingEscalations } from "@/lib/agent-questions";
+import { pointTotals } from "@/lib/points/leaderboard";
 
 export default async function AppLayout({
   children,
@@ -46,9 +44,6 @@ export default async function AppLayout({
   let projects: ProjectChoice[] = [];
   let activeProjectId: string | null = null;
   let canManagePlatforms = false;
-  let agentKeys: AgentKeyHint[] = [];
-  let apiKey: string | null = null;
-  let keyPrefix: string | null = null;
   let tenantId: string | null = null;
   try {
     tenantId = await currentTenantIdFor(user.id);
@@ -65,39 +60,6 @@ export default async function AppLayout({
   } catch (error) {
     console.error("[layout] project context failed", error);
   }
-  // Create this person's agent for the active project, so the header can copy its key.
-  if (tenantId && activeProjectId && isAgentPlatformEnabled()) {
-    try {
-      const personal = await ensureDefaultProjectKey({
-        userId: user.id,
-        tenantId,
-        projectId: activeProjectId,
-      });
-      if (personal) {
-        apiKey = personal.rawKey;
-        keyPrefix = personal.prefix;
-      }
-    } catch (error) {
-      console.error("[layout] default agent key failed", error);
-    }
-  }
-  if (tenantId && activeProjectId) {
-    try {
-      const keys = await prisma.agentApiKey.findMany({
-        where: {
-          revokedAt: null,
-          agent: { ownerUserId: user.id, revokedAt: null, tenantId },
-          OR: [{ projectId: activeProjectId }, { projectId: null }],
-        },
-        select: { prefix: true, project: { select: { name: true } } },
-        orderBy: { createdAt: "desc" },
-        take: 5,
-      });
-      agentKeys = keys.map((key) => ({ prefix: key.prefix, projectName: key.project?.name ?? null }));
-    } catch (error) {
-      console.error("[layout] agent key prefixes failed", error);
-    }
-  }
   // A missing Notification table must not take down every signed-in page.
   let unreadCount = 0;
   try {
@@ -109,11 +71,20 @@ export default async function AppLayout({
   }
 
   let pendingEscalationsCount = 0;
+  let points = 0;
+  let solvedTasks = 0;
   if (tenantId) {
     try {
       pendingEscalationsCount = await countPendingEscalations(user.id, tenantId);
     } catch (error) {
       console.error("[layout] pending escalations count failed", error);
+    }
+    try {
+      const totals = await pointTotals(prisma, tenantId, user.id);
+      points = totals.points;
+      solvedTasks = totals.solvedTasks;
+    } catch (error) {
+      console.error("[layout] points failed", error);
     }
   }
 
@@ -144,9 +115,8 @@ export default async function AppLayout({
         projects={projects}
         activeProjectId={activeProjectId}
         canManagePlatforms={canManagePlatforms}
-        agentKeys={agentKeys}
-        apiKey={apiKey}
-        keyPrefix={keyPrefix}
+        points={points}
+        solvedTasks={solvedTasks}
       />
       <main
         id={MAIN_CONTENT_ID}

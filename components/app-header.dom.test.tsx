@@ -74,19 +74,20 @@ describe("account menu role switch", () => {
     expect(switchRole).toHaveBeenCalledWith("user", `${window.location.pathname}${window.location.search}`);
   });
 
-  it("renders Escalations navigation tab with pending count badge (#763)", () => {
+  it("renders Escalations inside Agents, with the pending count on the menu (#763)", async () => {
+    const user = userEvent.setup();
     renderHeader({ pendingEscalationsCount: 5 });
-    const escalationsLink = screen.getAllByRole("link", { name: /escalations/i })[0];
-    expect(escalationsLink).toBeTruthy();
+    expect(screen.getAllByLabelText("5 pending").length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: /agents/i }));
+    const escalationsLink = screen.getByRole("menuitem", { name: /escalations/i });
     expect(escalationsLink.getAttribute("href")).toBe("/escalations");
-    expect(screen.getByLabelText("5 pending")).toBeTruthy();
   });
 
-  it("renders Manage Project dropdown and displays grouped links (#761)", async () => {
+  it("renders the Project menu and its grouped links (#761)", async () => {
     const user = userEvent.setup();
     renderHeader();
 
-    const manageBtn = screen.getByRole("button", { name: /manage project/i });
+    const manageBtn = screen.getByRole("button", { name: "Project" });
     expect(manageBtn).toBeTruthy();
 
     await user.click(manageBtn);
@@ -95,6 +96,13 @@ describe("account menu role switch", () => {
     expect(screen.getByRole("menuitem", { name: /milestones/i })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: /platforms/i })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: /types/i })).toBeTruthy();
+  });
+
+  it("shows this person's points in the bar", () => {
+    renderHeader({ userId: "ada", points: 128, solvedTasks: 4 });
+    const link = screen.getByRole("link", { name: /128 points of 500/i });
+    expect(link.getAttribute("href")).toBe("/users/ada");
+    expect(link.textContent).toContain("128");
   });
 
   it("renders Docs & /llms.txt link in the account menu (#625)", async () => {
