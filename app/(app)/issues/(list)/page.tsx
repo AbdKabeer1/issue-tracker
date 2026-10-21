@@ -83,8 +83,10 @@ import {
   platformFilterWhere,
 } from "@/lib/platform-filter";
 import { PlatformTabs, type PlatformTab } from "@/components/platform-tabs";
+import { LoadError } from "@/components/load-error";
+import { logLoadFailure } from "@/lib/load-error";
 import { AREA_PARAM, parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
-import { issueStageLabels, openIssueStages, parseIssueStageView, type IssueStage } from "@/lib/issue-stage";
+import { intakeDetail, intakeLabel, openIssueStages, parseIssueStageView, type IssueStage } from "@/lib/issue-stage";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Issues" };
@@ -116,17 +118,12 @@ async function loadOrEmpty<T>(label: string, load: () => Promise<T>, empty: T): 
   }
 }
 
-function issuesQueryError(detail: string) {
+/** The database error stays in the server log under `reference` (#506). */
+function issuesQueryError(reference: string, message?: string) {
   return (
-    <div className="rounded-xl border border-red-200 bg-white px-6 py-10">
-      <h1 className="text-xl font-semibold text-slate-900">Issues could not be loaded</h1>
-      <p className="mt-2 text-sm text-slate-600">
-        The issues query failed. The message below is the database error.
-      </p>
-      <pre className="mt-4 overflow-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-800">
-        {detail}
-      </pre>
-    </div>
+    <LoadError title="Issues could not be loaded" reference={reference}>
+      {message}
+    </LoadError>
   );
 }
 
@@ -290,7 +287,7 @@ export default async function BugsPage({
   try {
     totalCount = await prisma.bug.count({ where });
   } catch (error) {
-    console.error("[bugs] list count failed", error);
+    const reference = logLoadFailure("[bugs] list count failed", error);
     const missingColumn = isMissingTenantColumnError(error);
     if (!tenantId) {
       // No membership: nothing to show either way (#439).
@@ -304,11 +301,11 @@ export default async function BugsPage({
       // #506: never retry without the tenant filter. That used to show every
       // tenant's issues to anyone whose query error mentioned the column.
       return issuesQueryError(
+        reference,
         "The issue list is unavailable while the database finishes upgrading. Try again in a minute.",
       );
     } else {
-      const detail = error instanceof Error ? error.message : "Could not load issues";
-      return issuesQueryError(detail);
+      return issuesQueryError(reference);
     }
   }
 
@@ -458,13 +455,9 @@ export default async function BugsPage({
       take: pagination.take,
     })
     .then((bugs) => ({ bugs }))
-    .catch((error: unknown) => {
-      console.error("[bugs] list query failed", error);
-      const detail = error instanceof Error ? error.message : "Could not load issues";
-      return { detail };
-    });
-  if ("detail" in listed) {
-    return issuesQueryError(listed.detail);
+    .catch((error: unknown) => ({ reference: logLoadFailure("[bugs] list query failed", error) }));
+  if ("reference" in listed) {
+    return issuesQueryError(listed.reference);
   }
   const bugs = listed.bugs;
 
@@ -513,11 +506,15 @@ export default async function BugsPage({
   // "No issues match" and "there are no issues yet" need different pages
   // (#292): filter advice on an empty tracker sends people looking for a
   // filter that is not there. The extra count only runs when the page is
-  // already empty, so a populated list pays nothing for it.
+  // already empty, so a populated list pays nothing for it. It counts the
+  // project the list shows, so a new project in a busy workspace is "no
+  // issues yet" too, not "no issues match".
   let isFirstRun = false;
   if (totalCount === 0 && !isDeletedView) {
     try {
-      isFirstRun = (await prisma.bug.count({ where: { ...bugInTenant(tenantId), isDeleted: false } })) === 0;
+      isFirstRun = (await prisma.bug.count({
+        where: { ...bugInTenant(tenantId), ...(projectId ? { projectId } : {}), isDeleted: false },
+      })) === 0;
     } catch {
       isFirstRun = false;
     }
@@ -563,6 +560,7 @@ export default async function BugsPage({
 
   const reportedCount = [...stages.values()].filter((stage) => stage === "reported").length;
   const confirmedCount = [...stages.values()].filter((stage) => stage === "confirmed").length;
+  const readyCount = [...stages.values()].filter((stage) => stage === "ready").length;
   const stageClass: Record<IssueStage, string> = {
     reported: "bg-slate-100 text-slate-700",
     confirmed: "bg-amber-50 text-amber-900",
@@ -581,7 +579,7 @@ export default async function BugsPage({
     <div className="mx-auto w-full max-w-3xl space-y-6">
       {gettingStarted ? <GettingStarted {...gettingStarted} /> : null}
       {activeProject?.goal ? (
-        <section aria-labelledby="project-goal-heading" className="rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
+        <section aria-labelledby="project-goal-heading" className="rounded-xl border border-slate-200 bg-white px-4 py-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <h2 id="project-goal-heading" className="text-sm font-semibold text-slate-900">{activeProject.name} goal</h2>
             {membershipRole && isOrganizationAdmin(membershipRole, effectiveRole) ? (
@@ -610,12 +608,17 @@ export default async function BugsPage({
               </span>
             ) : null}
           </div>
+          {isDeletedView ? null : (
+            <p className="mt-1 max-w-xl text-sm font-normal text-slate-600">
+              A report stays an idea until reviewers accept it and three people upvote it. Then it is an issue and can be passed on.
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
           {canDelete ? (
             <Link
               href={isDeletedView ? "/issues" : "/issues?deleted=true"}
-              className={`inline-flex items-center justify-center rounded-lg px-3.5 py-2 text-sm font-medium border transition ${
+              className={`inline-flex h-9 items-center justify-center rounded-full px-3.5 text-sm font-medium border transition ${
                 isDeletedView
                   ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                   : "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
@@ -643,7 +646,7 @@ export default async function BugsPage({
               milestones={milestones}
               areas={areas}
               shortcutsEnabled={shortcutsEnabled}
-              stageCounts={isDeletedView ? undefined : { reported: reportedCount, confirmed: confirmedCount }}
+              stageCounts={isDeletedView ? undefined : { reported: reportedCount, confirmed: confirmedCount, ready: readyCount }}
             />
           </Suspense>
         )}
@@ -699,8 +702,8 @@ export default async function BugsPage({
           {isFirstRun ? (
             <FirstRunWelcome isAdmin={canDelete} hasTenant={Boolean(tenantId)} />
           ) : bugs.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
-              <p className="font-medium text-slate-800">
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-5">
+              <p className="text-sm font-medium text-slate-800">
                 {isWatchingView && !qParam && !statusParam && !severityParam && !tagsParam && !selectedPlatform && !selectedMilestone
                   ? "You're not watching any issues."
                   : "No issues match these filters."}
@@ -710,7 +713,7 @@ export default async function BugsPage({
                   ? "You watch issues you report, are assigned to or comment on, and any you choose to watch from the issue page."
                   : "Try clearing filters, or report it with New issue at the top."}
               </p>
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+              <div className="mt-3 flex flex-wrap items-center gap-3">
                 <Link
                   href="/issues"
                   className="text-sm font-medium text-blue-600 hover:underline"
@@ -721,7 +724,7 @@ export default async function BugsPage({
             </div>
           ) : (
             <>
-              <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+              <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
                 {bugs.map((bug) => {
                   const userVote =
                     Array.isArray(bug.votes) && bug.votes.length > 0
@@ -870,8 +873,11 @@ export default async function BugsPage({
                                 <>
                                   {stage ? (
                                     <>
-                                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${stageClass[stage]}`}>
-                                        {issueStageLabels[stage]}
+                                      <span
+                                        title={intakeDetail(stage, bug.voteCount)}
+                                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${stageClass[stage]}`}
+                                      >
+                                        {intakeLabel(stage)}
                                       </span>
                                       <MetaSeparator />
                                     </>
@@ -984,7 +990,7 @@ function FirstRunWelcome({
 }) {
   if (!hasTenant) {
     return (
-      <section className="rounded-xl border border-amber-200 bg-amber-50/70 px-6 py-12 text-center">
+      <section className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-5">
         <h2 className="text-lg font-semibold text-slate-900">No workspace yet</h2>
         <p className="mx-auto mt-2 max-w-md text-sm text-slate-600">
           You are not currently a member of any workspace. Join a workspace via an invite from your team,
@@ -993,7 +999,7 @@ function FirstRunWelcome({
         <div className="mt-5">
           <Link
             href="/tenants"
-            className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+            className="inline-flex h-9 items-center justify-center rounded-full bg-teal-700 px-4 text-sm font-medium text-white hover:bg-teal-800"
           >
             Create or join a workspace
           </Link>
@@ -1003,7 +1009,7 @@ function FirstRunWelcome({
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white px-6 py-12 text-center">
+    <section className="rounded-xl border border-slate-200 bg-white px-4 py-5">
       <h2 className="text-lg font-semibold text-slate-900">No issues yet</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-slate-600">
         This is where reported issues will appear. A good report says what you
@@ -1012,7 +1018,7 @@ function FirstRunWelcome({
       <div className="mt-5">
         <Link
           href="/issues/new"
-          className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+          className="inline-flex h-9 items-center justify-center rounded-full bg-teal-700 px-4 text-sm font-medium text-white hover:bg-teal-800"
         >
           Report the first issue
         </Link>

@@ -10,7 +10,7 @@ import { withAgentBudgetHeaders, type AgentBudgetQuota } from "@/lib/agents/rate
 import { createBugSchema, commentSchema, statusSchema, severitySchema } from "@/lib/validations/issue";
 import { parsePlatformFilter, platformFilterWhere } from "@/lib/platform-filter";
 import { parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
-import { openIssueStages, type IssueStage } from "@/lib/issue-stage";
+import { intakeKind, openIssueStages, type IssueStage } from "@/lib/issue-stage";
 import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, hashCreateRequest, pageSize, toPage, type IssueCursor } from "@/lib/agent-api/create-policy";
 import { createdSummary, commentedSummary, commentPreview } from "@/lib/activity-log";
 import { extractMentionedUserIds, normalizeMentions } from "@/lib/mentions";
@@ -99,7 +99,7 @@ export async function issueJson(request: NextRequest): Promise<unknown> {
 
 /** The 400 for an issue route called without a project. */
 export const PROJECT_ID_REQUIRED =
-  "projectId is required. Pass it as ?projectId= or in the JSON body. Your owner can copy it from the agent key menu in the Ziki header.";
+  "projectId is required. Pass it as ?projectId= or in the JSON body. Your owner can copy it from Settings, under Agents.";
 
 /** Every call names a project; a project id alone never grants access to its tenant. */
 export async function issueProject(agent: AgentContext, params: URLSearchParams, bodyProjectId?: string) {
@@ -122,6 +122,18 @@ const issueSelect = {
   createdByAgentId: true, projectId: true, areaId: true, createdAt: true, updatedAt: true, proofLinks: true,
   area: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.BugSelect;
+
+/**
+ * #409: the shared parsers turn an unknown id into "no filter" so a stale web
+ * link shows everything. An API client that sends a mistyped id must be told,
+ * not handed the whole backlog.
+ */
+export function requireKnownFilter(name: "platform" | "area", raw: string | null, parsed: string | null): string | null {
+  if (raw?.trim() && parsed === null) {
+    throw new IssueApiError(422, `Unknown ${name} id "${raw.trim()}". Use an id from this project, or "none".`);
+  }
+  return parsed;
+}
 
 export async function listAgentIssues(scope: Scope, params: URLSearchParams) {
   const status = params.get("status");
@@ -146,8 +158,8 @@ export async function listAgentIssues(scope: Scope, params: URLSearchParams) {
     ...(status ? { status: statusSchema.parse(status) } : {}),
     ...(severity ? { severity: severitySchema.parse(severity) } : {}),
     ...(assignee ? { assigneeId: assignee === "none" ? null : idSchema.parse(assignee) } : {}),
-    ...platformFilterWhere(parsePlatformFilter(params.get("platform"), platforms)),
-    ...projectAreaFilterWhere(parseProjectAreaFilter(requestedArea, areas)),
+    ...platformFilterWhere(requireKnownFilter("platform", params.get("platform"), parsePlatformFilter(params.get("platform"), platforms))),
+    ...projectAreaFilterWhere(requireKnownFilter("area", requestedArea, parseProjectAreaFilter(requestedArea, areas))),
   };
   if (stage) {
     // A stage only exists on an open issue. Any other status is an empty page.
@@ -177,7 +189,7 @@ const validationSelect = {
 export async function readAgentIssue(scope: Scope, id: string) {
   const issue = await prisma.bug.findFirst({
     where: { ...scope, id, isDeleted: false },
-    select: { ...issueSelect, comments: {
+    select: { ...issueSelect, voteCount: true, comments: {
       where: { deletedAt: null }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 100,
       select: { id: true, body: true, authorId: true, agentId: true, parentId: true, type: true, metadata: true, createdAt: true, editedAt: true },
     }, attachments: {
@@ -190,7 +202,13 @@ export async function readAgentIssue(scope: Scope, id: string) {
     }, _count: { select: { comments: { where: { deletedAt: null } } } } },
   });
   if (!issue) throw new IssueApiError(404, "Issue not found.");
-  return { ...issue, confirmed: await isConfirmed(issue.id) };
+  const confirmed = await isConfirmed(issue.id);
+  const { voteCount, ...publicIssue } = issue;
+  return {
+    ...publicIssue,
+    confirmed,
+    intake: intakeKind({ status: issue.status, voteCount, confirmed }),
+  };
 }
 
 /** What a paged comment carries: the embedded read's fields plus who wrote it. */

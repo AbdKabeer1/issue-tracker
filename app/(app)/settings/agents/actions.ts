@@ -6,7 +6,7 @@ import { isAgentLevel } from "@/lib/agents/levels";
 import { consumePairingLimit } from "@/lib/agents/rate-limit";
 import { approvePairing, findPendingPairing } from "@/lib/agents/pairing";
 import { currentTenantIdFor } from "@/lib/tenant-context";
-import { createAgent, regenerateKey, revokeAgent, setAgentAreaPreferences, setAgentBurst, setAgentLevel } from "@/lib/agents/registry";
+import { createAgent, deleteAgent, regenerateKey, revokeAgent, setAgentAreaPreferences, setAgentBurst, setAgentLevel } from "@/lib/agents/registry";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 
@@ -42,6 +42,14 @@ export async function revokeAgentAction(agentId: unknown): Promise<AgentActionRe
   if (typeof agentId !== "string") return { ok: false, error: "Invalid agent." };
   const user = await requireUser();
   const result = await revokeAgent(user, agentId);
+  if (result.ok) revalidatePath("/settings/agents");
+  return result;
+}
+
+export async function deleteAgentAction(agentId: unknown): Promise<AgentActionResult> {
+  if (typeof agentId !== "string") return { ok: false, error: "Invalid agent." };
+  const user = await requireUser();
+  const result = await deleteAgent(user, agentId);
   if (result.ok) revalidatePath("/settings/agents");
   return result;
 }

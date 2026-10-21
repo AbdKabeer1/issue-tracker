@@ -116,6 +116,27 @@ describe("issue list layout", () => {
     expect(html).not.toContain('href="/issues/new"');
   });
 
+  it("welcomes a new, empty project even when the workspace has issues elsewhere", async () => {
+    // Other projects in tenant-acme have 5 issues; project-acme has none.
+    count.mockImplementation(async (args: { where?: { projectId?: unknown } }) =>
+      args?.where?.projectId === "project-acme" ? 0 : 5,
+    );
+    findMany.mockResolvedValue([]);
+    const html = await renderList();
+    expect(html).toContain("No issues yet");
+    expect(html).not.toContain("No issues match these filters.");
+    const firstRunCount = count.mock.calls.find(([args]) => args?.where?.isDeleted === false && !args?.where?.status);
+    expect(firstRunCount?.[0].where).toMatchObject({ tenantId: "tenant-acme", projectId: "project-acme" });
+  });
+
+  it("says no issues match when the project has issues but the filters hide them", async () => {
+    count.mockImplementation(async (args: { where?: { severity?: unknown } }) => (args?.where?.severity ? 0 : 3));
+    findMany.mockResolvedValue([]);
+    const html = await renderList({ severity: "critical" });
+    expect(html).toContain("No issues match these filters.");
+    expect(html).not.toContain("No issues yet");
+  });
+
   it("has no stage sidebar beside the list (#1054)", async () => {
     const html = await renderList();
     expect(html).not.toContain('aria-label="Issue stages"');

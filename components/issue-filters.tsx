@@ -43,12 +43,13 @@ const SEARCH_DEBOUNCE_MS = 300;
 /**
  * #1054: the intake stage used to be a sidebar beside the list. It is a
  * filter now, with the same `?stage=` values so old links keep working.
- * Kept as literals here: lib/issue-stage reads the database.
+ * Ideas are reports that are not ready to pass on. Issues are.
  */
 const STAGE_PARAM = "stage";
 const STAGE_OPTIONS = [
-  { value: "reported", label: "Reported" },
-  { value: "confirmed", label: "Confirmed" },
+  { value: "reported", label: "Ideas" },
+  { value: "confirmed", label: "Ideas awaiting upvotes" },
+  { value: "ready", label: "Issues" },
 ] as const;
 
 /** URL params owned by the filter bar. `page` is paging, not a filter. */
@@ -93,7 +94,7 @@ export function IssueFilters({
   areas?: ProjectAreaOption[];
   shortcutsEnabled?: boolean;
   /** Open issues in each intake stage, shown beside the Stage choices (#1054). */
-  stageCounts?: { reported: number; confirmed: number };
+  stageCounts?: { reported: number; confirmed: number; ready: number };
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -637,7 +638,7 @@ export function IssueFilters({
                 {/* Stage (#1054): was the sidebar beside the list. */}
                 <div>
                   <label htmlFor="stage" className="mb-1 block text-xs font-medium text-slate-600">
-                    Stage
+                    Kind
                   </label>
                   <select
                     id="stage"
@@ -645,7 +646,7 @@ export function IssueFilters({
                     value={currentStage}
                     onChange={(event) => update(STAGE_PARAM, event.target.value)}
                   >
-                    <option value="">Any stage</option>
+                    <option value="">Ideas and issues</option>
                     {STAGE_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
                         {stageCounts ? `${option.label} (${stageCounts[option.value]})` : option.label}
@@ -852,7 +853,7 @@ export function IssueFilters({
           ) : null}
           {currentStage ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-slate-800">
-              Stage: {STAGE_OPTIONS.find((option) => option.value === currentStage)?.label}
+              Kind: {STAGE_OPTIONS.find((option) => option.value === currentStage)?.label}
               <button
                 type="button"
                 onClick={() => update(STAGE_PARAM, "")}

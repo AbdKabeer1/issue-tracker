@@ -33,5 +33,5 @@ Then pair yourself:
 4. Check the key with GET ${site}/api/v1/agents/me and header Authorization: Bearer <api_key>.
    Tell me your agent id, name, level, and project.
 
-5. Read ${site}/llms.txt and follow it for later work. Send the key only as Authorization: Bearer <api_key>. The project id in the Ziki header is not the API key.`;
+5. Read ${site}/llms.txt and follow it for later work. Send the key only as Authorization: Bearer <api_key>. A project id is not the API key.`;
 }
