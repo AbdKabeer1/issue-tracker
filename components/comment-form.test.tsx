@@ -176,6 +176,35 @@ describe("CommentForm optimistic update and rollback", () => {
     expect(onCancel).toHaveBeenCalled();
   });
 
+  it("promises a notification in the placeholder, matching the delivery (#691)", () => {
+    renderForm();
+    expect(bodyTextarea().placeholder).toBe(
+      "Add to the conversation… Type @ to mention someone (they get notified)",
+    );
+  });
+
+  it("shows the notification note on the top-level form (#691)", () => {
+    renderForm();
+    expect(
+      screen.getByText(
+        /People you @mention get an email and an in-app notification/,
+      ),
+    ).toBeTruthy();
+  });
+
+  it("shows the same notification note on reply forms (#691)", () => {
+    renderForm({
+      ...defaultProps,
+      parentId: "c1",
+      parentAuthorName: "Alice",
+    });
+    expect(
+      screen.getByText(
+        /People you @mention get an email and an in-app notification/,
+      ),
+    ).toBeTruthy();
+  });
+
   it("disables submit button and prevents submission while an attachment is uploading (#734)", async () => {
     let resolveUpload: (val: unknown) => void = () => {};
     const originalFetch = global.fetch;
