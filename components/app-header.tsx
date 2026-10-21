@@ -271,16 +271,16 @@ function PointsChip({
 }) {
   if (!userId) return null;
   const progress = pointsProgress(points, solvedTasks);
-  const label = `${points} point${points === 1 ? "" : "s"} of ${TARGET_POINTS}. ${solvedTasks} solved.`;
+  const label = `${points} pts of ${TARGET_POINTS}, ${solvedTasks} solved`;
   return (
     <Link
       href={`/users/${userId}`}
-      aria-label={label}
       title={label}
       className={`inline-flex h-9 items-center gap-2 rounded-lg px-2 text-slate-700 hover:bg-slate-100 ${linkFocus}`}
     >
       <span className="text-sm font-semibold tabular-nums text-slate-900">{points}</span>
       <span className="text-xs text-slate-500">pts</span>
+      <span className="sr-only"> of {TARGET_POINTS}, {solvedTasks} solved</span>
       <span className="hidden h-1.5 w-10 overflow-hidden rounded-full bg-slate-200 md:block" aria-hidden="true">
         <span className="block h-full rounded-full bg-teal-700" style={{ width: `${progress.pointsPercent}%` }} />
       </span>

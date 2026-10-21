@@ -100,7 +100,7 @@ describe("account menu role switch", () => {
 
   it("shows this person's points in the bar", () => {
     renderHeader({ userId: "ada", points: 128, solvedTasks: 4 });
-    const link = screen.getByRole("link", { name: /128 points of 500/i });
+    const link = screen.getByRole("link", { name: /128 pts of 500, 4 solved/i });
     expect(link.getAttribute("href")).toBe("/users/ada");
     expect(link.textContent).toContain("128");
   });
