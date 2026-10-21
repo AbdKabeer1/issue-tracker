@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
-import { severities, statuses } from "@/lib/validations/issue";
+import { severities } from "@/lib/validations/issue";
+import { statusFilterWhere } from "@/lib/issue-state";
 import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
 import { MILESTONE_PARAM, milestoneWhere, parseMilestoneFilter } from "@/lib/milestones";
 import {
@@ -74,8 +75,12 @@ export function parseBugListFilters({
     where.typeId = { in: tagTypeIds(selectedTags, tagTypes) };
   }
 
-  if (status && (statuses as readonly string[]).includes(status)) {
-    where.status = status as Prisma.BugWhereInput["status"];
+  // The same status parsing the list uses, so the export understands the
+  // `finished` aggregate the stat grid links to (#685) and cannot drift from
+  // what is on screen.
+  const statusWhere = statusFilterWhere(status);
+  if (statusWhere !== undefined) {
+    where.status = statusWhere;
   }
   if (severity && (severities as readonly string[]).includes(severity)) {
     where.severity = severity as Prisma.BugWhereInput["severity"];

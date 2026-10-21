@@ -45,6 +45,16 @@ describe("parseBugListFilters", () => {
     expect(parse({ severity: "spicy" }).where.severity).toBeUndefined();
   });
 
+  it("understands the finished aggregate the stat grid links to (#685)", () => {
+    // The Closed tile counts resolved + closed and links to ?status=finished;
+    // the export has to return that same set, not every status.
+    expect(parse({ status: "finished" }).where.status).toEqual({
+      in: ["resolved", "closed"],
+    });
+    // Same parsing as the list, so an unknown token still means no filter.
+    expect(parse({ status: "done" }).where.status).toBeUndefined();
+  });
+
   it("scopes to the signed-in user for the mine filter", () => {
     expect(parse({ mine: "assigned" }).where.assigneeId).toBe("u1");
     expect(parse({ mine: "reported" }).where.reporterId).toBe("u1");

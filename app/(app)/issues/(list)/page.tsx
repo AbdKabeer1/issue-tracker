@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import type { Prisma, Severity, Status } from "@prisma/client";
+import type { Prisma, Severity } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getIssueTypes, getPlatforms } from "@/lib/lookups";
 import { activeBulkOptions, loadBulkAssignees } from "@/lib/admin-list-lookups";
@@ -19,7 +19,7 @@ import {
   statusLabels,
 } from "@/lib/labels";
 import { LocalTime } from "@/components/local-time";
-import { severities, statuses } from "@/lib/validations/issue";
+import { severities } from "@/lib/validations/issue";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
@@ -32,7 +32,7 @@ import {
 } from "@/lib/search-snippet";
 import { Highlighted, SearchSnippet } from "@/components/search-highlight";
 import { formatIssueNumber, parseIssueNumberQuery } from "@/lib/issue-number";
-import { isDone, resultCountText } from "@/lib/issue-state";
+import { isDone, resultCountText, statusFilterWhere } from "@/lib/issue-state";
 import { calculatePagination } from "@/lib/pagination";
 import { DUPLICATES_PARAM, SHOW_DUPLICATES, duplicatesWhere, parseShowDuplicates } from "@/lib/duplicates";
 import { PaginationControls } from "@/components/pagination-controls";
@@ -84,10 +84,6 @@ type SearchParams = Promise<{
   tags?: string | string[];
   [key: string]: string | string[] | undefined;
 }>;
-
-function isStatus(value: string | undefined): value is Status {
-  return !!value && (statuses as readonly string[]).includes(value);
-}
 
 function isSeverity(value: string | undefined): value is Severity {
   return !!value && (severities as readonly string[]).includes(value);
@@ -194,8 +190,9 @@ export default async function BugsPage({
   }
   const tagsParam = serializeTags(selectedTags.map((t) => t.name));
 
-  if (isStatus(statusParam)) {
-    where.status = statusParam;
+  const statusWhere = statusFilterWhere(statusParam);
+  if (statusWhere !== undefined) {
+    where.status = statusWhere;
   }
   if (isSeverity(severityParam)) {
     where.severity = severityParam;
@@ -646,7 +643,7 @@ export default async function BugsPage({
 
           <div className="flex items-center justify-between text-xs text-slate-500">
             <p>
-              {resultCountText(totalCount, isStatus(statusParam) ? statusParam : null)} · sorted by{" "}
+              {resultCountText(totalCount, statusWhere !== undefined ? statusParam ?? null : null)} · sorted by{" "}
               {bugSortDescriptions[currentSort]}
               {hiddenDuplicates > 0 || showDuplicates ? (
                 <>
