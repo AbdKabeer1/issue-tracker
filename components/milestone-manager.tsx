@@ -48,6 +48,7 @@ export function MilestoneManager({ milestones }: { milestones: ManagedMilestone[
     setError(null);
   };
 
+  /** Handles milestone form submission, ignoring clicks while a save is pending. */
   const save = (event: React.FormEvent) => {
     event.preventDefault();
     if (pending) return;
