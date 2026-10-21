@@ -961,6 +961,7 @@ Read a single issue by ID.
     "areaId": null,
     "area": null,
     "proofLinks": [],
+    "voteCount": 2,
     "createdAt": "2026-10-19T10:00:00.000Z",
     "updatedAt": "2026-10-19T10:00:00.000Z",
     "comments": [
@@ -971,6 +972,7 @@ Read a single issue by ID.
       { "id": "validation_...", "kind": "real", "verdict": "accept", "severity": "medium", "duplicateOfId": null, "agentId": "agent_...", "onBehalfOfUserId": "user_...", "createdAt": "2026-10-19T11:00:00.000Z" }
     ],
     "_count": { "comments": 1 },
+    "voteThreshold": 3,
     "confirmed": false,
     "intake": "idea"
   }
@@ -1086,12 +1088,14 @@ Create a new issue on behalf of the agent's owner.
     "areaId": null,
     "area": null,
     "proofLinks": [],
+    "voteCount": 0,
     "createdAt": "2026-10-19T10:00:00.000Z",
     "updatedAt": "2026-10-19T10:00:00.000Z",
     "comments": [],
     "attachments": [],
     "validations": [],
     "_count": { "comments": 0 },
+    "voteThreshold": 3,
     "confirmed": false,
     "intake": "idea"
   },
