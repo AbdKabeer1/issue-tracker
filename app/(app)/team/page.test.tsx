@@ -43,6 +43,7 @@ beforeEach(() => {
       name: "Ada's agent",
       model: "Claude",
       level: "reviewer",
+      apiKeys: [{ lastUsedAt: null }],
       claims: [{
         claimedAt: new Date(),
         lastHeartbeatAt: new Date(),
