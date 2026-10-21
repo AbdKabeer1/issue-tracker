@@ -45,6 +45,7 @@ describe("TwoFactorSettings (#648)", () => {
     const list = await screen.findByRole("list", { name: "Backup codes" });
     expect(list).toHaveTextContent("AAAAA-BBBBB");
     expect(screen.getByText(/They are shown only now/)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("You've been signed out on your other devices.");
     await user.click(screen.getByRole("button", { name: "I've saved them" }));
     expect(actions.refresh).toHaveBeenCalled();
     expect(screen.queryByRole("list", { name: "Backup codes" })).toBeNull();
@@ -78,6 +79,7 @@ describe("TwoFactorSettings (#648)", () => {
     expect(sent.get("password")).toBe("pw");
     expect(sent.get("code")).toBe("123456");
     await waitFor(() => expect(actions.refresh).toHaveBeenCalled());
+    expect(screen.getByRole("status")).toHaveTextContent("You've been signed out on your other devices.");
   });
 
   it("makes new backup codes after re-authentication and shows them", async () => {
@@ -89,6 +91,7 @@ describe("TwoFactorSettings (#648)", () => {
     await user.type(screen.getByLabelText("Authenticator or backup code"), "123456");
     await user.click(screen.getByRole("button", { name: "Make new codes" }));
     expect(await screen.findByRole("list", { name: "Backup codes" })).toHaveTextContent("XXXXX-YYYYY");
+    expect(screen.getByRole("status")).toHaveTextContent("You've been signed out on your other devices.");
   });
 
   it("can be cancelled without calling anything", async () => {
@@ -98,5 +101,6 @@ describe("TwoFactorSettings (#648)", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByText("On")).toBeInTheDocument();
     expect(actions.disableTwoFactorAction).not.toHaveBeenCalled();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });
