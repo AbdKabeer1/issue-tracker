@@ -68,6 +68,15 @@ export function TwoFactorSettings({
     </p>
   ) : null;
 
+  async function copyBackupCodes(codes: string[]) {
+    setError(null);
+    const success = await copyText(codes.join("\n"));
+    setCopied(success);
+    if (!success) {
+      setError("Couldn't copy the codes. They are still shown here so you can select and copy them manually.");
+    }
+  }
+
   if (step.name === "codes") {
     return (
       <div className="mt-4 space-y-3">
@@ -84,11 +93,12 @@ export function TwoFactorSettings({
             <li key={code}>{code}</li>
           ))}
         </ul>
+        {errorLine}
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
             variant="secondary"
-            onClick={async () => setCopied(await copyText(step.codes.join("\n")))}
+            onClick={() => void copyBackupCodes(step.codes)}
           >
             {copied ? "✓ Copied" : "Copy codes"}
           </Button>

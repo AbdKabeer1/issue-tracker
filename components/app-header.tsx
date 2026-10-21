@@ -7,6 +7,7 @@ import { SignOutButton } from "@/components/sign-out-button";
 import { BrandLockup } from "@/components/brand-lockup";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { AgentKeyCopyButton, type AgentKeyHint } from "@/components/agent-key-copy";
+import { PAGE_CONTAINER_CLASS } from "@/components/page-container";
 import { RoleSwitcher } from "@/components/role-switcher";
 import type { ProjectChoice } from "@/lib/project-context";
 import {
@@ -236,13 +237,15 @@ export function AppHeader({
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 -z-10 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80"
       />
-      <div className="relative mx-auto flex h-14 max-w-7xl items-center gap-4 px-4 sm:gap-6">
+      <div className={`relative flex h-14 items-center gap-4 sm:gap-6 ${PAGE_CONTAINER_CLASS}`}>
         <div className="shrink-0">
           <BrandLockup href="/issues" size="sm" />
         </div>
 
-        {/* #426: the active project and agent key, visible wherever projects change what a page shows. */}
-        <div className="hidden shrink-0 items-center gap-2 md:flex">
+        {/* #426: the active project and agent key, visible wherever projects change what a page shows.
+            #1070: the full bar (project, key, nav, account) needs about 940px, so below
+            lg (1024px) it all lives in the menu instead of pushing the page sideways. */}
+        <div className="hidden shrink-0 items-center gap-2 lg:flex">
           <ProjectSwitcher
             projects={projects}
             activeProjectId={activeProjectId}
@@ -259,7 +262,7 @@ export function AppHeader({
         {/* Desktop navigation: the active page is underlined on the header's edge. */}
         <nav
           aria-label="Main"
-          className="hidden h-full min-w-0 flex-1 items-stretch gap-1 overflow-x-auto md:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="hidden h-full min-w-0 flex-1 items-stretch gap-1 overflow-x-auto lg:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {items.map((item) => {
             if (item.children && item.children.length > 0) {
@@ -383,7 +386,7 @@ export function AppHeader({
           </Link>
 
           {/* Desktop account menu */}
-          <div ref={accountRef} className="relative hidden md:block">
+          <div ref={accountRef} className="relative hidden lg:block">
             <button
               ref={accountButtonRef}
               type="button"
@@ -457,7 +460,7 @@ export function AppHeader({
             aria-expanded={menuOpen}
             aria-controls="mobile-menu"
             aria-label={menuOpen ? "Close menu" : "Open menu"}
-            className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 md:hidden ${linkFocus}`}
+            className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 lg:hidden ${linkFocus}`}
           >
             {viewingAsOther ? (
               <span
@@ -481,7 +484,7 @@ export function AppHeader({
         <div
           id="mobile-menu"
           ref={menuPanelRef}
-          className="relative max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-4 pt-2 md:hidden"
+          className="relative max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-4 pt-2 lg:hidden"
         >
           {projects.length > 0 ? (
             <div className="flex flex-col gap-2 border-b border-slate-200 pb-3">

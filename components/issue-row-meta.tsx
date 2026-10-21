@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Avatar } from "@/components/avatar";
-import { LocalTime } from "@/components/local-time";
+import { ShortTime } from "@/components/short-time";
 
 /**
  * Taxonomy a row shows as a coloured pill. Ordered: the three that answer
@@ -82,21 +82,23 @@ export function MetaSeparator() {
   return <span aria-hidden="true">·</span>;
 }
 
-/** Assignee with a face and a name on one muted line (#686). */
+/**
+ * The assignee as a face only (#1061): who it is matters less than that
+ * someone has it. The name is in the tooltip and read out in full.
+ */
 export function RowAssignee({ name, image }: { name: string; image?: string | null }) {
   return (
-    <span className="inline-flex items-center gap-1" title={`Assigned to ${name}`}>
-      <Avatar name={name} image={image} size="xs" />
-      <span className="max-w-[10rem] truncate">{name}</span>
+    <span className="inline-flex shrink-0" title={`Assigned to ${name}`}>
+      <Avatar name={name} image={image} size="sm" />
+      <span className="sr-only">Assigned to {name}</span>
     </span>
   );
 }
 
-/** Age, on the muted line: opened or updated, matching the current sort. */
+/**
+ * The row's little date (#1061): opened or updated, matching the sort, shown
+ * short ("2d") with the full date on hover and for screen readers.
+ */
 export function RowAge({ date, sort }: { date: Date; sort: "newest" | "updated" }) {
-  return (
-    <span>
-      {sort === "newest" ? "opened" : "updated"} <LocalTime date={date} />
-    </span>
-  );
+  return <ShortTime date={date} label={sort === "newest" ? "Opened" : "Updated"} />;
 }

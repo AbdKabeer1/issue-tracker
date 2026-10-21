@@ -1,4 +1,5 @@
 import { DUPLICATES_PARAM, SHOW_DUPLICATES } from "@/lib/duplicates";
+import { SHOW_RESOLVED, SHOW_RESOLVED_PARAM } from "@/lib/issue-state";
 import { MILESTONE_PARAM } from "@/lib/milestones";
 import { PLATFORM_PARAM } from "@/lib/platform-filter";
 import { AREA_PARAM } from "@/lib/project-area-filter";
@@ -23,6 +24,8 @@ export type IssueListFilterValues = {
   stage: string | null | undefined;
   deleted: boolean;
   showDuplicates: boolean;
+  /** #1058: resolved and closed issues are hidden unless this is set. */
+  showResolved: boolean;
 };
 
 /** The query string the pagination links carry, without empty values. */
@@ -39,6 +42,7 @@ export function issueListPaginationParams(values: IssueListFilterValues): Record
     ["stage", values.stage],
     ["deleted", values.deleted ? "true" : undefined],
     [DUPLICATES_PARAM, values.showDuplicates ? SHOW_DUPLICATES : undefined],
+    [SHOW_RESOLVED_PARAM, values.showResolved ? SHOW_RESOLVED : undefined],
     ["sort", values.sort],
   ];
   return Object.fromEntries(entries.filter((entry): entry is [string, string] => Boolean(entry[1])));

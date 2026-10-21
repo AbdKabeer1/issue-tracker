@@ -23,6 +23,40 @@ const tagTypes = [
   { id: "t2", name: "Fixes" },
 ];
 
+describe("IssueFilters Show menu (#1104)", () => {
+  beforeEach(() => {
+    nav.params = new URLSearchParams();
+    nav.push.mockReset();
+    nav.replace.mockReset();
+  });
+  afterEach(cleanup);
+
+  it("shows only the four supported views and falls back for old mine links", () => {
+    nav.params = new URLSearchParams("mine=mine");
+    render(<IssueFilters />);
+    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+    const show = screen.getByRole("combobox", { name: "Show" });
+    expect(within(show).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "All issues", "Assigned to me", "Created by me", "Issues I'm watching",
+    ]);
+    expect(show).toHaveValue("");
+    expect(screen.queryByRole("button", { name: "Remove view filter" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear all filters" })).not.toBeInTheDocument();
+  });
+
+  it.each(["", "assigned", "created", "watching"])("navigates when selecting %s", (value) => {
+    nav.params = new URLSearchParams("mine=reported&status=open&page=3");
+    render(<IssueFilters />);
+    fireEvent.click(screen.getByRole("button", { name: /Filter \(/ }));
+    const show = screen.getByRole("combobox", { name: "Show" });
+    expect(show).toHaveValue("created");
+    fireEvent.change(show, { target: { value } });
+    expect(nav.push).toHaveBeenCalledWith(
+      value ? `/issues?mine=${value}&status=open` : "/issues?status=open",
+    );
+  });
+});
+
 describe("IssueFilters milestone filters (#728)", () => {
   const milestones = [
     { id: "m1", title: "Release 1", isClosed: false },
@@ -363,5 +397,53 @@ describe("IssueFilters search commit + feedback (#690)", () => {
     // synchronously, so the true case is asserted via source in the unit test
     // below rather than here.)
     expect(screen.getByTestId("search-box")).toHaveAttribute("aria-busy", "false");
+  });
+});
+
+describe("IssueFilters stage filter (#1054)", () => {
+  beforeEach(() => {
+    nav.params = new URLSearchParams();
+    nav.push.mockReset();
+    nav.replace.mockReset();
+  });
+  afterEach(cleanup);
+
+  it("offers Reported and Confirmed, with their counts, in the Filter popover", () => {
+    render(<IssueFilters stageCounts={{ reported: 7, confirmed: 2 }} />);
+    fireEvent.click(screen.getByRole("button", { name: /^filter/i }));
+    const stage = within(screen.getByRole("dialog", { name: "Filter issues" })).getByLabelText("Stage");
+    expect(within(stage).getByRole("option", { name: "Reported (7)" })).toBeInTheDocument();
+    expect(within(stage).getByRole("option", { name: "Confirmed (2)" })).toBeInTheDocument();
+
+    fireEvent.change(stage, { target: { value: "reported" } });
+    expect(nav.push).toHaveBeenCalledWith("/issues?stage=reported");
+  });
+
+  it("keeps old ?stage= links working, counted and removable", () => {
+    nav.params = new URLSearchParams("stage=confirmed&page=2");
+    render(<IssueFilters />);
+    expect(screen.getByRole("button", { name: /filter \(1 active\)/i })).toBeInTheDocument();
+    const remove = screen.getByRole("button", { name: "Remove stage filter" });
+    expect(remove.parentElement).toHaveTextContent("Stage: Confirmed");
+    fireEvent.click(remove);
+    expect(nav.push).toHaveBeenCalledWith("/issues");
+  });
+});
+
+describe("IssueFilters without a platform select (#1055)", () => {
+  beforeEach(() => {
+    nav.params = new URLSearchParams();
+    nav.push.mockReset();
+  });
+  afterEach(cleanup);
+
+  it("leaves the platform to the tabs above the list", () => {
+    nav.params = new URLSearchParams("platform=cat-web");
+    render(<IssueFilters />);
+    // A chosen tab isn't counted as a filter or shown as a chip.
+    expect(screen.getByRole("button", { name: /^filter$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove platform filter" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^filter/i }));
+    expect(within(screen.getByRole("dialog", { name: "Filter issues" })).queryByLabelText("Platform")).not.toBeInTheDocument();
   });
 });

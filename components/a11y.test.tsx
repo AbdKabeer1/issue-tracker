@@ -74,11 +74,9 @@ describe("component accessibility (axe)", () => {
         bugId="b1"
         voteCount={3}
         likeCount={2}
-        dislikeCount={1}
         size="md"
         showAvatars
         likeVoters={[{ id: "u1", name: "Alice", image: null }]}
-        dislikeVoters={[{ id: "u2", name: "Bob", image: null }]}
       />,
     );
     await expectNoA11yViolations(container);
