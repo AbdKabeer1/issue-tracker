@@ -39,13 +39,17 @@ export function WebhookManagement() {
   const [listError, setListError] = useState<string | null>(null);
 
   async function load() {
-    const result: ListWebhooksResult = await listWebhooksAction();
-    if (result.ok) {
-      setSubscriptions(result.subscriptions);
-      setAgents(result.agents);
-      setListError(null);
-    } else {
-      setListError(result.error);
+    try {
+      const result: ListWebhooksResult = await listWebhooksAction();
+      if (result.ok) {
+        setSubscriptions(result.subscriptions);
+        setAgents(result.agents);
+        setListError(null);
+      } else {
+        setListError(result.error);
+      }
+    } catch {
+      setListError("Couldn't load webhook subscriptions. Please try again.");
     }
   }
 
@@ -132,8 +136,11 @@ export function WebhookManagement() {
 
   if (listError) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-        {listError}
+      <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">
+        <p>{listError}</p>
+        <Button type="button" variant="secondary" onClick={() => void load()}>
+          Try again
+        </Button>
       </div>
     );
   }
