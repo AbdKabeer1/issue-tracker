@@ -29,30 +29,50 @@ describe("Bug detail header responsive layout (#698)", () => {
     );
   });
 
-  it("collapses secondary badges on mobile behind a +N overflow control while keeping status and severity visible", () => {
-    // Badges section has workflow badges (status and severity) visible
+  it("keeps status and severity visible at every width, folding only supplementary workflow badges into +N", () => {
+    // Workflow row leads with status then severity, both unconditionally visible.
     expect(pageSource).toMatch(
       /statusClass\[bug\.status\][\s\S]*?severityClass\[bug\.severity\]/
     );
 
-    // Details summary with +extraBadgeCount exists on mobile and is hidden on desktop (sm:hidden)
+    // The +N control still exists for mobile, and now counts only boost/volunteer.
     expect(pageSource).toMatch(
       /<details className="group sm:contents">[\s\S]*?<summary[\s\S]*?\+\{extraBadgeCount\}[\s\S]*?<\/summary>/
     );
-
-    // Secondary badges are wrapped in sm:contents so on desktop they flow inline naturally without element duplication
     expect(pageSource).toMatch(
-      /<span className="contents">[\s\S]*?bug\.type[\s\S]*?bug\.category[\s\S]*?voteCount/
+      /const extraBadgeCount =[\s\S]*?isBoosted[\s\S]*?volunteerCount/
     );
+
+    // Taxonomy no longer hides inside the overflow control's `contents` span.
+    const contentsSpan = pageSource.match(
+      /<span className="contents">([\s\S]*?)<\/span>\s*<\/details>/
+    );
+    expect(contentsSpan).toBeTruthy();
+    expect(contentsSpan![1]).not.toMatch(/bug\.type|bug\.category|voteCount/);
   });
 
-  it("preserves the desktop header action layout and danger zone position", () => {
-    // Desktop header action container is preserved
+  it("anchors the desktop action cluster to the title's top edge (#687)", () => {
+    // The back-link sits above the title, so the action cluster needs enough
+    // top padding to clear it and share the title's top edge.
     expect(pageSource).toContain(
-      '<div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-6 print:hidden">'
+      '<div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-9 print:hidden">'
     );
 
     // Danger zone remains at the bottom of the page
     expect(pageSource).toMatch(/Danger zone[\s\S]*?<DeleteIssueButton/);
+  });
+});
+
+describe("Bug detail header hierarchy (#687)", () => {
+  it("keeps workflow badges and taxonomy on separate rows", () => {
+    // The workflow row closes, then a muted taxonomy line follows it.
+    expect(pageSource).toMatch(
+      /flex flex-wrap items-center gap-2[\s\S]*?severityClass\[bug\.severity\][\s\S]*?<\/div>[\s\S]*?text-xs text-slate-500[\s\S]*?bug\.type\.name[\s\S]*?bug\.category\.name/
+    );
+  });
+
+  it("drops the redundant score pill so only VoteButton shows the vote total", () => {
+    expect(pageSource).not.toMatch(/score \(\{/);
+    expect(pageSource).not.toMatch(/\{bug\.voteCount\} score/);
   });
 });
