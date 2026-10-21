@@ -350,7 +350,7 @@ describe("createTenant (#444)", () => {
       ok: false,
       field: "name",
       duplicateName: "acme",
-      error: `You're already in a workspace called "Acme" (acme). Choose another name, or select Create anyway to have both.`,
+      error: `You're already in an organization called "Acme" (acme). Choose another name, or select Create anyway to have both.`,
     });
     expect(db.membership.findFirst.mock.calls[0]![0]).toMatchObject({
       where: { userId: "ada", tenant: { name: { equals: "acme", mode: "insensitive" } } },

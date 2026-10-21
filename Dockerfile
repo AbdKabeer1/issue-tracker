@@ -47,7 +47,7 @@ RUN mkdir -p ./node_modules/.bin \
 
 EXPOSE 3000
 
-# Traefik routing labels for Coolify
+# Traefik routing labels for Coolify (#586)
 LABEL "traefik.enable"="true"
 LABEL "traefik.http.routers.ziki.rule"="Host(`ziki.dev`) || Host(`www.ziki.dev`) || Host(`issues.zedu.chat`) || (Host(`contributors.zedu.chat`) && PathPrefix(`/bug-tracker`))"
 LABEL "traefik.http.routers.ziki.priority"="1000"

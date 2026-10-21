@@ -3,6 +3,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { switchActiveRoleAction } from "@/app/actions/auth";
+import { selectTenantAction } from "@/app/(app)/tenants/actions";
 import { labelInNameMismatches } from "@/lib/a11y/label-in-name";
 import { AppHeader } from "./app-header";
 
@@ -14,8 +15,8 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/issues",
 }));
 
-vi.mock("@/app/(app)/projects/actions", () => ({
-  switchProjectAction: vi.fn(),
+vi.mock("@/app/(app)/tenants/actions", () => ({
+  selectTenantAction: vi.fn(),
 }));
 
 vi.mock("@/app/actions/auth", () => ({
@@ -28,6 +29,7 @@ vi.mock("@/app/actions/settings", () => ({
 }));
 
 const switchRole = vi.mocked(switchActiveRoleAction);
+const selectTenant = vi.mocked(selectTenantAction);
 
 afterEach(() => cleanup());
 
@@ -44,8 +46,8 @@ function renderHeader(props?: Partial<Parameters<typeof AppHeader>[0]>) {
         role: "super_admin" as const,
         isRealSuperAdmin: true,
         isRealAdmin: true,
-        projects: [{ id: "p1", name: "Ziki", slug: "ziki" }],
-        activeProjectId: "p1",
+        workspaces: [{ id: "t1", name: "Ziki", slug: "ziki" }],
+        activeTenantId: "t1",
         ...props,
       }}
     />,
@@ -115,6 +117,47 @@ describe("account menu role switch", () => {
       pendingEscalationsCount: 5,
     });
     expect(labelInNameMismatches(container)).toEqual([]);
+    const workspace = screen.getByRole("combobox", { name: /active workspace, ziki/i });
+    expect(workspace.getAttribute("aria-label")).toBeNull();
+    expect(workspace.querySelector("option[selected], option")?.textContent).toBe("Ziki");
+  });
+
+  it("switches the active workspace as soon as one is chosen", async () => {
+    const user = userEvent.setup();
+    renderHeader({
+      workspaces: [
+        { id: "t1", name: "Ziki", slug: "ziki" },
+        { id: "t2", name: "Acme", slug: "acme" },
+      ],
+      activeTenantId: "t1",
+    });
+
+    const workspace = screen.getByRole("combobox", { name: /active workspace, ziki/i });
+    expect((workspace as HTMLSelectElement).value).toBe("t1");
+    await user.selectOptions(workspace, "t2");
+
+    expect(selectTenant).toHaveBeenCalledTimes(1);
+    const data = selectTenant.mock.calls[0][0] as FormData;
+    expect(data.get("tenantId")).toBe("t2");
+  });
+
+  it("links to workspaces when the person has none", () => {
+    renderHeader({ workspaces: [], activeTenantId: null });
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByRole("link", { name: "Workspaces" }).getAttribute("href")).toBe("/tenants");
+  });
+
+  it("shows the slug when two workspaces share a name", () => {
+    renderHeader({
+      workspaces: [
+        { id: "t1", name: "Acme", slug: "acme" },
+        { id: "t2", name: "Acme", slug: "acme-eu" },
+      ],
+      activeTenantId: "t1",
+    });
+    expect(screen.getByRole("option", { name: "Acme (acme)" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Acme (acme-eu)" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: /active workspace, acme \(acme\)/i })).toBeTruthy();
   });
 
   it("renders Docs & /llms.txt link in the account menu (#625)", async () => {

@@ -129,7 +129,7 @@ export default async function AgentsSettingsPage() {
                   where: { tenantId, revokedAt: null },
                   orderBy: { createdAt: "asc" },
                   select: {
-                    id: true, name: true, model: true, level: true, burst: true, burstUntil: true,
+                    id: true, name: true, model: true, level: true, burst: true, burstUntil: true, defaultProjectId: true,
                     areaPreferences: { select: { projectAreaId: true, projectArea: { select: { projectId: true } } } },
                   },
                 },
@@ -312,9 +312,22 @@ export default async function AgentsSettingsPage() {
                       )}
                     </div>
                     {agent.revokedAt ? (
-                      <Badge className="bg-red-50 text-red-700">Revoked</Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-red-50 text-red-700">Revoked</Badge>
+                        <AgentControls
+                          revoked
+                          personal={Boolean(agent.defaultProjectId)}
+                          agentId={agent.id}
+                          agentName={agent.name}
+                          level={agent.level}
+                          levels={ownLevels}
+                          projects={projects}
+                          now={now}
+                        />
+                      </div>
                     ) : (
                       <AgentControls
+                        personal={Boolean(agent.defaultProjectId)}
                         agentId={agent.id}
                         agentName={agent.name}
                         level={agent.level}
@@ -370,6 +383,7 @@ export default async function AgentsSettingsPage() {
                           </span>
                           {isAdmin && member.id !== user.id ? (
                             <AgentControls
+                              personal={Boolean(agent.defaultProjectId)}
                               agentId={agent.id}
                               agentName={agent.name}
                               level={agent.level}

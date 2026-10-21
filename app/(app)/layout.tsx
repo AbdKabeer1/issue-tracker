@@ -11,9 +11,10 @@ import { FocusMainOnNavigate } from "@/components/focus-main-on-navigate";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { isAdmin } from "@/lib/roles";
 import { isTenantAdminRole } from "@/lib/agents/membership";
+import type { WorkspaceChoice } from "@/components/workspace-switcher";
 import { prisma } from "@/lib/prisma";
-import { projectContextFor, type ProjectChoice } from "@/lib/project-context";
 import { currentTenantIdFor } from "@/lib/tenant-context";
+import { tenantsForUser } from "@/lib/tenants";
 import { countPendingEscalations } from "@/lib/agent-questions";
 import { pointTotals } from "@/lib/points/leaderboard";
 
@@ -40,16 +41,19 @@ export default async function AppLayout({
   }
 
   const user = await requireUser();
-  // #426: the header switcher and the issue list read the same active project.
-  let projects: ProjectChoice[] = [];
-  let activeProjectId: string | null = null;
+  // The header lists this person's workspaces. Pages still resolve the active
+  // project inside the current workspace, so a foreign project id is ignored.
+  let workspaces: WorkspaceChoice[] = [];
+  let activeTenantId: string | null = null;
   let canManagePlatforms = false;
   let tenantId: string | null = null;
   try {
     tenantId = await currentTenantIdFor(user.id);
-    const context = await projectContextFor(prisma, tenantId);
-    projects = context.projects;
-    activeProjectId = context.activeProjectId;
+    activeTenantId = tenantId;
+    const memberships = await tenantsForUser(prisma, user.id);
+    workspaces = memberships
+      .filter((tenant) => tenant.archivedAt === null)
+      .map((tenant) => ({ id: tenant.id, name: tenant.name, slug: tenant.slug }));
     if (tenantId) {
       const membership = await prisma.membership.findUnique({
         where: { tenantId_userId: { tenantId, userId: user.id } },
@@ -58,7 +62,7 @@ export default async function AppLayout({
       canManagePlatforms = isTenantAdminRole(membership?.role, user.role);
     }
   } catch (error) {
-    console.error("[layout] project context failed", error);
+    console.error("[layout] workspace context failed", error);
   }
   // A missing Notification table must not take down every signed-in page.
   let unreadCount = 0;
@@ -112,8 +116,8 @@ export default async function AppLayout({
         unreadCount={unreadCount}
         pendingEscalationsCount={pendingEscalationsCount}
         userId={user.id}
-        projects={projects}
-        activeProjectId={activeProjectId}
+        workspaces={workspaces}
+        activeTenantId={activeTenantId}
         canManagePlatforms={canManagePlatforms}
         points={points}
         solvedTasks={solvedTasks}
