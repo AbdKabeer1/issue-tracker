@@ -41,11 +41,18 @@ describe("llms.txt issue examples match the API (#407)", () => {
     for (const gone of ["assignee", "labels", "claim", "commentCount"]) expect(issue).not.toHaveProperty(gone);
   });
 
-  it("shows the create response as { issue, replayed }", () => {
-    const example = exampleAfter("### POST /api/v1/issues", "**Response (201):**");
+  it("shows the full create response as { issue, replayed }", () => {
+    const example = exampleAfter("### POST /api/v1/issues", "**Response (201 Created");
     expect(Object.keys(example).sort()).toEqual(["issue", "replayed"]);
-    // Only route-returned fields, even in the shortened example.
-    const allowed = new Set([...Object.keys(issueSelect), ...READ_EXTRAS]);
-    for (const key of Object.keys(example.issue as object)) expect(allowed).toContain(key);
+    // The full issue shape, the same fields as the read (CodeRabbit on #1164).
+    expect(Object.keys(example.issue as object).sort()).toEqual([...Object.keys(issueSelect), ...READ_EXTRAS].sort());
+  });
+});
+
+describe("llms.txt create statuses (#407)", () => {
+  it("documents both 201 for a new issue and 200 for a replay", () => {
+    const section = doc.slice(doc.search(/^### POST \/api\/v1\/issues\r?$/m));
+    expect(section).toMatch(/`201 Created` \| `false`/);
+    expect(section).toMatch(/`200 OK` \| `true`/);
   });
 });

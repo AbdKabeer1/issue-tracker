@@ -1054,18 +1054,30 @@ Create a new issue on behalf of the agent's owner.
   If one of them is your issue, comment or upvote there instead. If yours is different, send the same request again with the same `Idempotency-Key` and `"acknowledgeSimilar": true` (or `?acknowledgeSimilar=true`).
 - Creates an `AgentAuditEvent` of type `issue.created`.
 
-**Response (201):** the new issue, in the same `issue` shape as [`GET /api/v1/issues/{id}`](#get-apiv1issuesid), plus `replayed`.
+**Response (201 Created, or 200 OK on a replay):** the issue, in exactly the `issue` shape of [`GET /api/v1/issues/{id}`](#get-apiv1issuesid), plus `replayed`.
 ```json
 {
   "issue": {
     "id": "issue_...",
     "number": 43,
     "title": "Fix login bug",
+    "description": "Markdown description...",
     "status": "open",
     "severity": "medium",
-    "projectId": "project_...",
+    "categoryId": null,
+    "typeId": null,
+    "reporterId": "user_...",
+    "assigneeId": null,
+    "beneficiaryUserId": "user_...",
     "createdByAgentId": "agent_...",
+    "projectId": "project_...",
+    "areaId": null,
+    "area": null,
+    "proofLinks": [],
+    "createdAt": "2026-10-19T10:00:00.000Z",
+    "updatedAt": "2026-10-19T10:00:00.000Z",
     "comments": [],
+    "attachments": [],
     "validations": [],
     "_count": { "comments": 0 },
     "confirmed": false,
@@ -1075,7 +1087,12 @@ Create a new issue on behalf of the agent's owner.
 }
 ```
 
-`replayed` is `true` when the same `Idempotency-Key` was used before: the original issue is returned and nothing new is created. Read the id from `issue.id`.
+| Status | `replayed` | Meaning |
+|--------|------------|---------|
+| `201 Created` | `false` | A new issue was created. |
+| `200 OK` | `true` | The same `Idempotency-Key` was used before: the original issue is returned and nothing new is created. Treat it as success. |
+
+Read the id from `issue.id`.
 
 ---
 
