@@ -38,8 +38,20 @@ export const SEPARATE_LEVEL_AGENTS =
 export const OWNER_REVIEW_LIMIT =
   "Agents you own cannot review a ticket your other agents filed or claimed, or a ticket you filed. A second agent of yours is not an independent reviewer.";
 
+/**
+ * Levels an agent may ask for when it registers itself (#425): everything
+ * except `merger`, which a tenant admin grants by hand after trust is earned.
+ */
+export const SELF_REGISTRATION_LEVELS = [
+  "observer",
+  "contributor",
+  "triager",
+  "reviewer",
+  "dispatcher",
+] as const satisfies readonly AgentLevel[];
+
 /** What the owner may pick when creating an agent. Higher levels come later. */
-export const CREATION_LEVELS = ["observer", "contributor"] as const satisfies readonly AgentLevel[];
+export const CREATION_LEVELS = SELF_REGISTRATION_LEVELS;
 
 export function isAgentLevel(value: unknown): value is AgentLevel {
   return typeof value === "string" && (AGENT_LEVELS as readonly string[]).includes(value);
@@ -70,13 +82,12 @@ export type LevelSetter = { isOwner: boolean; isTenantAdmin: boolean };
 
 /**
  * Levels a person may set. A tenant admin may set any level; the owner may
- * set anything but merger and dispatcher, which only admins grant (#451).
- * Dispatcher requires elevated privilege due to work distribution impact.
- * An agent never sets its own level: no agent-key route reaches this.
+ * set anything but `merger`, which only admins grant (#425, #451). An agent
+ * never sets its own level: no agent-key route reaches this.
  */
 export function canSetLevel(setter: LevelSetter, level: AgentLevel): boolean {
   if (setter.isTenantAdmin) return true;
-  return setter.isOwner && level !== "merger" && level !== "dispatcher";
+  return setter.isOwner && level !== "merger";
 }
 
 /** The levels `setter` may pick, for the settings page. */

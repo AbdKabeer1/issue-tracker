@@ -22,9 +22,8 @@ describe("POST /api/v1/agents/pairing/token", () => {
   it("returns the key once, with the agent's level (#429)", async () => {
     collectPairing.mockResolvedValue({
       status: "issued",
-      key: { agentId: "agent_1", name: "Ada's Claude", rawKey: "ziki_raw", prefix: "ziki_raw" },
+      key: { agentId: "agent_1", name: "Ada's Claude", level: "reviewer", rawKey: "ziki_raw", prefix: "ziki_raw" },
       projectId: "project_1",
-      level: "reviewer",
     });
     const response = await call(JSON.stringify({ device_code: "d".repeat(24) }));
     expect(response.status).toBe(200);
