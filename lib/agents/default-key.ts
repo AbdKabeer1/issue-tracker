@@ -1,10 +1,7 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { audit } from "@/lib/agents/audit";
-import { generateApiKey } from "@/lib/agents/keys";
-import { openSecret, sealSecret } from "@/lib/secret-box";
+import { openSecret } from "@/lib/secret-box";
 
-/** The agent created for a person in a project, so they do not register one. */
+/** The name previously given to agents auto-created on sign-in (see #442). */
 export const PERSONAL_AGENT_NAME = "Personal agent";
 
 export type DefaultProjectKey = {
@@ -15,11 +12,13 @@ export type DefaultProjectKey = {
 };
 
 /**
- * The person's copyable agent key for one project. The first visit creates a
- * contributor agent and seals the key. Later visits open the same seal.
- * A missing membership or project returns null and creates nothing.
+ * The person's existing agent key for one project, opened for the header's
+ * copy control. Since #442, signing in never creates an agent: people pair
+ * (or register) their own agent on the Agents settings page, and this read
+ * only surfaces a key when that agent already exists.
+ * A missing membership or project — or a missing agent — returns null.
  */
-export async function ensureDefaultProjectKey(input: {
+export async function findDefaultProjectKey(input: {
   userId: string;
   tenantId: string;
   projectId: string;
@@ -34,85 +33,26 @@ export async function ensureDefaultProjectKey(input: {
     select: { id: true },
   });
   if (!project) return null;
-
-  const existing = await findPersonalAgent(input.userId, input.tenantId, input.projectId);
-  const opened = openLiveKey(existing, input.projectId);
-  if (opened) return opened;
-  if (existing?.apiKeys.length) return null;
-  if (existing) return issueKey(existing.id, input);
-
-  try {
-    const key = generateApiKey();
-    const agent = await prisma.agent.create({
-      data: {
-        tenantId: input.tenantId,
+  return openLiveKey(
+    await prisma.agent.findFirst({
+      where: {
         ownerUserId: input.userId,
-        name: PERSONAL_AGENT_NAME,
-        level: "contributor",
+        tenantId: input.tenantId,
         defaultProjectId: input.projectId,
+        revokedAt: null,
+      },
+      select: {
+        id: true,
         apiKeys: {
-          create: {
-            projectId: input.projectId,
-            keyHash: key.hash,
-            prefix: key.prefix,
-            sealedKey: sealSecret(key.raw),
-          },
+          where: { revokedAt: null, projectId: input.projectId },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { prefix: true, sealedKey: true },
         },
       },
-      select: { id: true },
-    });
-    await audit(
-      { agentId: agent.id, tenantId: input.tenantId },
-      "agent.created",
-      `agent:${agent.id}`,
-      { name: PERSONAL_AGENT_NAME, level: "contributor", projectId: input.projectId, via: "default" },
-      { actorUserId: input.userId },
-    );
-    return { projectId: input.projectId, agentId: agent.id, rawKey: key.raw, prefix: key.prefix };
-  } catch (error) {
-    if (!isUnique(error)) throw error;
-    const raced = await findPersonalAgent(input.userId, input.tenantId, input.projectId);
-    return openLiveKey(raced, input.projectId);
-  }
-}
-
-async function issueKey(
-  agentId: string,
-  input: { userId: string; tenantId: string; projectId: string },
-): Promise<DefaultProjectKey> {
-  const key = generateApiKey();
-  await prisma.agentApiKey.create({
-    data: {
-      agentId,
-      projectId: input.projectId,
-      keyHash: key.hash,
-      prefix: key.prefix,
-      sealedKey: sealSecret(key.raw),
-    },
-  });
-  await audit(
-    { agentId, tenantId: input.tenantId },
-    "agent.key_rotated",
-    `agent:${agentId}`,
-    { prefix: key.prefix, projectId: input.projectId, via: "default" },
-    { actorUserId: input.userId },
+    }),
+    input.projectId,
   );
-  return { projectId: input.projectId, agentId, rawKey: key.raw, prefix: key.prefix };
-}
-
-function findPersonalAgent(userId: string, tenantId: string, projectId: string) {
-  return prisma.agent.findFirst({
-    where: { ownerUserId: userId, tenantId, defaultProjectId: projectId, revokedAt: null },
-    select: {
-      id: true,
-      apiKeys: {
-        where: { revokedAt: null, projectId },
-        orderBy: { createdAt: "desc" },
-        take: 1,
-        select: { prefix: true, sealedKey: true },
-      },
-    },
-  });
 }
 
 function openLiveKey(
@@ -126,8 +66,4 @@ function openLiveKey(
   } catch {
     return null;
   }
-}
-
-function isUnique(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }

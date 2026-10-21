@@ -17,7 +17,7 @@ import { isTenantAdminRole } from "@/lib/agents/membership";
 import { projectContextFor } from "@/lib/project-context";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { openSecret } from "@/lib/secret-box";
-import { ensureDefaultProjectKey } from "@/lib/agents/default-key";
+import { findDefaultProjectKey } from "@/lib/agents/default-key";
 import { materializeApprovedPairings } from "@/lib/agents/pairing";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 import { CreateAgentForm } from "./create-agent-form";
@@ -72,7 +72,8 @@ export default async function AgentsSettingsPage() {
 
   if (tenantId && context.activeProjectId) {
     try {
-      await ensureDefaultProjectKey({
+      // Surfacing an existing key only — sign-in must not create agents (#442).
+      await findDefaultProjectKey({
         userId: user.id,
         tenantId,
         projectId: context.activeProjectId,

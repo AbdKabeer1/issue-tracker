@@ -14,7 +14,7 @@ import { isAdmin } from "@/lib/roles";
 import { isTenantAdminRole } from "@/lib/agents/membership";
 import { prisma } from "@/lib/prisma";
 import type { AgentKeyHint } from "@/components/agent-key-copy";
-import { ensureDefaultProjectKey } from "@/lib/agents/default-key";
+import { findDefaultProjectKey } from "@/lib/agents/default-key";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 import { projectContextFor, type ProjectChoice } from "@/lib/project-context";
 import { currentTenantIdFor } from "@/lib/tenant-context";
@@ -69,10 +69,11 @@ export default async function AppLayout({
   } catch (error) {
     console.error("[layout] project context failed", error);
   }
-  // Create this person's agent for the active project, so the header can copy its key.
+  // Open this person's existing agent key so the header can copy it. Nothing
+  // is created on sign-in; people pair their own agent on the settings page (#442).
   if (tenantId && activeProjectId && isAgentPlatformEnabled()) {
     try {
-      const personal = await ensureDefaultProjectKey({
+      const personal = await findDefaultProjectKey({
         userId: user.id,
         tenantId,
         projectId: activeProjectId,
