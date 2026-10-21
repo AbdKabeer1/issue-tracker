@@ -935,6 +935,8 @@ model AgentPairing {
   /// SHA-256 of the secret the waiting agent polls with to collect its key.
   deviceCodeHash String    @unique
   proposedModel  String?
+  /// The level the agent asked for at pairing start (#425); owner sees it on approval.
+  proposedLevel  AgentLevel?
   /// Set when the waiting agent has collected its key; single use.
   consumedAt     DateTime?
   approvedAt     DateTime?
