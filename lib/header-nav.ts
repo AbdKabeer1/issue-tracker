@@ -16,7 +16,7 @@ export type HeaderNavItem = {
 };
 
 /** #444: pick another tenant, create one, or accept an invite. */
-export const SWITCH_TENANT_LINK: HeaderNavItem = { href: "/tenants", label: "Switch tenant" };
+export const SWITCH_TENANT_LINK: HeaderNavItem = { href: "/tenants", label: "Switch workspace" };
 
 /** Links shown in the header for the role the user is currently viewing as (#761). */
 export function headerNavItems(
@@ -24,15 +24,23 @@ export function headerNavItems(
   options?: { agentPlatform?: boolean; managePlatforms?: boolean; pendingEscalations?: number },
 ): HeaderNavItem[] {
   const manageProjectChildren: HeaderNavSubItem[] = [
-    { href: "/projects", label: "Projects", description: "View, switch, and create workspace projects" },
-    { href: "/milestones", label: "Milestones", description: "Track release goals and milestones" },
+    {
+      href: "/projects",
+      label: "Projects",
+      description: "A product in this workspace, such as a web app. The switcher picks the active one.",
+    },
+    {
+      href: "/milestones",
+      label: "Milestones",
+      description: "A release for this workspace. It can include issues from more than one project.",
+    },
   ];
 
   if (options?.managePlatforms || isAdmin(role)) {
     manageProjectChildren.push({
       href: "/admin/categories",
       label: "Platforms",
-      description: "Manage target platforms (Web, Mobile, Desktop, Backend)",
+      description: "A label on an issue, such as Web or Mobile. Not a product, and shared by every project here.",
     });
   }
 
@@ -40,7 +48,7 @@ export function headerNavItems(
     manageProjectChildren.push({
       href: "/admin/types",
       label: "Types",
-      description: "Manage issue classifications",
+      description: "How an issue is classified, such as bug or task.",
     });
   }
 
@@ -54,7 +62,7 @@ export function headerNavItems(
     { href: "/team", label: "Team" },
     {
       href: "/projects",
-      label: "Project",
+      label: "Workspace",
       children: manageProjectChildren,
     },
   ];

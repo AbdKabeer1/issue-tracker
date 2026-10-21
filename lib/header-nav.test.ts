@@ -9,7 +9,7 @@ import {
 
 describe("SWITCH_TENANT_LINK (#444)", () => {
   it("goes to the tenant picker, and is marked current on it and its pages", () => {
-    expect(SWITCH_TENANT_LINK).toEqual({ href: "/tenants", label: "Switch tenant" });
+    expect(SWITCH_TENANT_LINK).toEqual({ href: "/tenants", label: "Switch workspace" });
     expect(isNavItemActive("/tenants", SWITCH_TENANT_LINK.href)).toBe(true);
     expect(isNavItemActive("/tenants/acme", SWITCH_TENANT_LINK.href)).toBe(true);
     expect(isNavItemActive("/issues", SWITCH_TENANT_LINK.href)).toBe(false);
@@ -23,10 +23,10 @@ describe("SWITCH_TENANT_LINK (#444)", () => {
 });
 
 describe("headerNavItems (#761)", () => {
-  it("shows Issues, Team, Project, and Agents to normal users by default", () => {
+  it("shows Issues, Team, Workspace, and Agents to normal users by default", () => {
     const items = headerNavItems("user");
-    expect(items.map((i) => i.label)).toEqual(["Issues", "Team", "Project", "Agents"]);
-    const project = items.find((i) => i.label === "Project");
+    expect(items.map((i) => i.label)).toEqual(["Issues", "Team", "Workspace", "Agents"]);
+    const project = items.find((i) => i.label === "Workspace");
     expect(project?.children?.map((c) => c.label)).toEqual(["Projects", "Milestones"]);
     const agents = items.find((i) => i.label === "Agents");
     expect(agents?.children?.map((c) => c.label)).toEqual(["Escalations", "Redesigns", "API Docs"]);
@@ -36,7 +36,7 @@ describe("headerNavItems (#761)", () => {
     expect(headerNavItems("user", { agentPlatform: false }).map((i) => i.label)).toEqual([
       "Issues",
       "Team",
-      "Project",
+      "Workspace",
       "API Docs",
     ]);
   });
@@ -60,10 +60,10 @@ describe("headerNavItems (#761)", () => {
     expect(quiet?.children?.find((c) => c.href === "/escalations")?.badge).toBeUndefined();
   });
 
-  it("adds Platforms and Types under Project for admins (#761)", () => {
+  it("adds Platforms and Types under Workspace for admins (#761)", () => {
     const items = headerNavItems("admin");
-    expect(items.map((i) => i.label)).toEqual(["Issues", "Team", "Project", "Agents"]);
-    const project = items.find((i) => i.label === "Project");
+    expect(items.map((i) => i.label)).toEqual(["Issues", "Team", "Workspace", "Agents"]);
+    const project = items.find((i) => i.label === "Workspace");
     expect(project?.children?.map((c) => c.label)).toEqual([
       "Projects",
       "Milestones",
@@ -72,9 +72,9 @@ describe("headerNavItems (#761)", () => {
     ]);
   });
 
-  it("shows Platforms under Project to an organization owner who is not a site admin (#761)", () => {
+  it("shows Platforms under Workspace to an organization owner who is not a site admin (#761)", () => {
     const items = headerNavItems("user", { managePlatforms: true });
-    const project = items.find((i) => i.label === "Project");
+    const project = items.find((i) => i.label === "Workspace");
     expect(project?.children?.map((c) => c.label)).toEqual(["Projects", "Milestones", "Platforms"]);
   });
 
@@ -82,7 +82,7 @@ describe("headerNavItems (#761)", () => {
     expect(headerNavItems("super_admin").map((i) => i.label)).toEqual([
       "Issues",
       "Team",
-      "Project",
+      "Workspace",
       "Agents",
       "Admins",
     ]);
@@ -115,7 +115,7 @@ describe("isNavItemActive", () => {
     expect(isNavItemActive("/issues", "/escalations")).toBe(false);
   });
 
-  it("marks Manage Project active on grouped sub-routes (#761)", () => {
+  it("marks Manage Workspace active on grouped sub-routes (#761)", () => {
     expect(isNavItemActive("/projects", "/manage-project")).toBe(true);
     expect(isNavItemActive("/projects/p1", "/manage-project")).toBe(true);
     expect(isNavItemActive("/milestones", "/manage-project")).toBe(true);

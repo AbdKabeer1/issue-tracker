@@ -209,7 +209,7 @@ describe("createTenantAction (#444)", () => {
 
   it("points at the field to fix, without counting a typo against the limit", async () => {
     const result = await createTenantAction(undefined, form({ name: "A" }));
-    expect(result).toMatchObject({ field: "name", error: "Tenant name must be at least 2 characters." });
+    expect(result).toMatchObject({ field: "name", error: "Workspace name must be at least 2 characters." });
     expect(mocks.consumeRateLimit).not.toHaveBeenCalled();
     expect(mocks.createTenant).not.toHaveBeenCalled();
   });
@@ -219,12 +219,12 @@ describe("createTenantAction (#444)", () => {
       ok: false,
       field: "name",
       duplicateName: "Acme",
-      error: "You're already in a tenant called \"Acme\" (acme).",
+      error: "You're already in a workspace called \"Acme\" (acme).",
     });
     expect(await createTenantAction(undefined, form({ name: "Acme" }))).toMatchObject({
       field: "name",
       duplicateName: "Acme",
-      fieldErrors: { name: expect.stringContaining("already in a tenant") },
+      fieldErrors: { name: expect.stringContaining("already in a workspace") },
     });
 
     mocks.createTenant.mockResolvedValueOnce({ ok: true, tenant: ACME, projectId: "project-acme" });
