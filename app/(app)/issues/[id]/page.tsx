@@ -444,18 +444,20 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           select: { editedAt: true },
         }),
       ),
-      // #448: what agents decided on this issue — confirmations, the claim,
-      // test verdicts, and whether an agent accepted the fix. Sentences only;
-      // the raw audit payloads live on the audit page (#447).
+      // #448: what agents decided on this issue — confirmations and rejections
+      // (#1122), the claim, test verdicts, and whether an agent accepted the
+      // fix. Sentences only; the raw audit payloads live on the audit page (#447).
       loadOptional<AgentDecision[]>("agent decisions", [], async () => {
         const [validations, claims, verdicts, accepted] = await Promise.all([
           prisma.issueValidation.findMany({
-            where: { bugId: id, kind: "real", verdict: "accept" },
+            where: { bugId: id, kind: "real" },
             orderBy: { createdAt: "asc" },
             select: {
               id: true,
               createdAt: true,
+              verdict: true,
               severity: true,
+              notes: true,
               agent: { select: { name: true } },
               onBehalfOf: { select: { name: true } },
             },
@@ -491,14 +493,25 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           }),
         ]);
         return [
-          ...validations.map<AgentDecision>((v) => ({
-            id: `validation-${v.id}`,
-            at: v.createdAt,
-            kind: "confirmed",
-            agentName: v.agent.name,
-            personName: v.onBehalfOf.name,
-            severity: v.severity,
-          })),
+          ...validations.map<AgentDecision>((v) =>
+            v.verdict === "reject"
+              ? {
+                  id: `validation-${v.id}`,
+                  at: v.createdAt,
+                  kind: "rejected",
+                  agentName: v.agent.name,
+                  personName: v.onBehalfOf.name,
+                  notes: v.notes,
+                }
+              : {
+                  id: `validation-${v.id}`,
+                  at: v.createdAt,
+                  kind: "confirmed",
+                  agentName: v.agent.name,
+                  personName: v.onBehalfOf.name,
+                  severity: v.severity,
+                },
+          ),
           ...claims.map<AgentDecision>((c) => ({
             id: `claim-${c.id}`,
             at: c.createdAt,
