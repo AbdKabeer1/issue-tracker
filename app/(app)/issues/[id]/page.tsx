@@ -63,7 +63,7 @@ import {
 } from "@/lib/ticket-deletion";
 import { currentTenantAccess } from "@/lib/tenant-access";
 import { MilestoneDue } from "@/components/milestone-due";
-import { dueDateValue } from "@/lib/milestones";
+import { dueDateValue, milestoneIssuesHref } from "@/lib/milestones";
 import { canEditTicket } from "@/lib/ticket-editing";
 import { DeleteIssueButton } from "@/components/delete-issue-button";
 import { RestoreIssueButton } from "@/components/restore-issue-button";
@@ -444,18 +444,20 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           select: { editedAt: true },
         }),
       ),
-      // #448: what agents decided on this issue — confirmations, the claim,
-      // test verdicts, and whether an agent accepted the fix. Sentences only;
-      // the raw audit payloads live on the audit page (#447).
+      // #448: what agents decided on this issue — confirmations and rejections
+      // (#1122), the claim, test verdicts, and whether an agent accepted the
+      // fix. Sentences only; the raw audit payloads live on the audit page (#447).
       loadOptional<AgentDecision[]>("agent decisions", [], async () => {
         const [validations, claims, verdicts, accepted] = await Promise.all([
           prisma.issueValidation.findMany({
-            where: { bugId: id, kind: "real", verdict: "accept" },
+            where: { bugId: id, kind: "real" },
             orderBy: { createdAt: "asc" },
             select: {
               id: true,
               createdAt: true,
+              verdict: true,
               severity: true,
+              notes: true,
               agent: { select: { name: true } },
               onBehalfOf: { select: { name: true } },
             },
@@ -491,14 +493,25 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           }),
         ]);
         return [
-          ...validations.map<AgentDecision>((v) => ({
-            id: `validation-${v.id}`,
-            at: v.createdAt,
-            kind: "confirmed",
-            agentName: v.agent.name,
-            personName: v.onBehalfOf.name,
-            severity: v.severity,
-          })),
+          ...validations.map<AgentDecision>((v) =>
+            v.verdict === "reject"
+              ? {
+                  id: `validation-${v.id}`,
+                  at: v.createdAt,
+                  kind: "rejected",
+                  agentName: v.agent.name,
+                  personName: v.onBehalfOf.name,
+                  notes: v.notes,
+                }
+              : {
+                  id: `validation-${v.id}`,
+                  at: v.createdAt,
+                  kind: "confirmed",
+                  agentName: v.agent.name,
+                  personName: v.onBehalfOf.name,
+                  severity: v.severity,
+                },
+          ),
           ...claims.map<AgentDecision>((c) => ({
             id: `claim-${c.id}`,
             at: c.createdAt,
@@ -945,7 +958,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             <div>
               <dt className="font-medium text-slate-500">Milestone</dt>
               <dd className="flex flex-wrap items-center gap-2">
-                <Link href={`/issues?milestone=${bug.milestone.id}`} className="text-teal-700 hover:underline">
+                <Link href={milestoneIssuesHref(bug.milestone.id)} className="text-teal-700 hover:underline">
                   {bug.milestone.title}
                 </Link>
                 <MilestoneDue due={dueDateValue(bug.milestone.dueDate) || null} isClosed={bug.milestone.isClosed} />

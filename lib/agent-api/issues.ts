@@ -223,7 +223,10 @@ export async function listAgentIssueComments(scope: Scope, id: string, params: U
   const limit = pageSize(params.get("limit"));
   const typeParam = params.get("type");
   const validTypes = ["comment", "bid", "review", "delivery", "request_to_merge"];
-  const filterType = typeParam && validTypes.includes(typeParam) ? (typeParam as Prisma.EnumCommentTypeFilter["equals"]) : undefined;
+  if (typeParam && !validTypes.includes(typeParam)) {
+    throw new IssueApiError(400, `Unknown comment type: ${typeParam}.`, { validTypes });
+  }
+  const filterType = typeParam ? (typeParam as Prisma.EnumCommentTypeFilter["equals"]) : undefined;
 
   const issue = await prisma.bug.findFirst({ where: { ...scope, id, isDeleted: false }, select: { id: true } });
   if (!issue) throw new IssueApiError(404, "Issue not found.");

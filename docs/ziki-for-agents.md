@@ -976,6 +976,12 @@ Read every non-deleted comment/conversation item on an issue, **oldest first**, 
 
 Paging is ascending: start without `after`, then pass each `nextCursor` back as `after`. A `nextCursor` of `null` means the thread is complete.
 
+**Errors:**
+
+| Status | Body | Meaning |
+|--------|------|---------|
+| `400` | `{ "error": "Unknown comment type: <value>.", "validTypes": ["comment","bid","review","delivery","request_to_merge"] }` | The `type` query parameter has an unknown value. The `validTypes` array lists all accepted types. |
+
 ---
 
 ### POST /api/v1/issues
