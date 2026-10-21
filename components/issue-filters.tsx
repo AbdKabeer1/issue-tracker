@@ -22,13 +22,7 @@ import {
   parseMineFilter,
   defaultSortFor,
 } from "@/lib/mine-filter";
-import {
-  PLATFORM_NONE,
-  PLATFORM_PARAM,
-  parsePlatformFilter,
-  platformChoices,
-  type PlatformOption,
-} from "@/lib/platform-filter";
+import { PLATFORM_PARAM } from "@/lib/platform-filter";
 import { AREA_NONE, AREA_PARAM, parseProjectAreaFilter, type ProjectAreaOption } from "@/lib/project-area-filter";
 import { MILESTONE_NONE, MILESTONE_PARAM } from "@/lib/milestones";
 import {
@@ -46,9 +40,21 @@ type Suggestion =
 /** Long enough not to query on every keystroke, short enough to feel live. */
 const SEARCH_DEBOUNCE_MS = 300;
 
+/**
+ * #1054: the intake stage used to be a sidebar beside the list. It is a
+ * filter now, with the same `?stage=` values so old links keep working.
+ * Kept as literals here: lib/issue-stage reads the database.
+ */
+const STAGE_PARAM = "stage";
+const STAGE_OPTIONS = [
+  { value: "reported", label: "Reported" },
+  { value: "confirmed", label: "Confirmed" },
+] as const;
+
 /** URL params owned by the filter bar. `page` is paging, not a filter. */
 const FILTER_PARAMS = [
   "q",
+  STAGE_PARAM,
   TAGS_PARAM,
   "mine",
   "status",
@@ -76,17 +82,18 @@ function hrefWithChanges(
 
 export function IssueFilters({
   tagTypes = [],
-  platforms = [],
   milestones = [],
   areas = [],
   shortcutsEnabled = true,
+  stageCounts,
 }: {
   tagTypes?: TagType[];
-  platforms?: PlatformOption[];
   /** #289: open milestones first; closed ones stay selectable for history. */
   milestones?: { id: string; title: string; isClosed: boolean }[];
   areas?: ProjectAreaOption[];
   shortcutsEnabled?: boolean;
+  /** Open issues in each intake stage, shown beside the Stage choices (#1054). */
+  stageCounts?: { reported: number; confirmed: number };
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -337,19 +344,18 @@ export function IssueFilters({
     params.get("sort"),
     defaultSortFor(parseMineFilter(params.get("mine"))),
   );
-  const currentPlatform =
-    parsePlatformFilter(params.get(PLATFORM_PARAM), platforms) ?? "";
-  const platformOptions = platformChoices(platforms, currentPlatform || null);
     const currentArea = parseProjectAreaFilter(params.get(AREA_PARAM), areas) ?? "";
   const currentMine = parseMineFilter(params.get("mine")) ?? "";
   const currentMilestone = params.get(MILESTONE_PARAM) ?? "";
 
+  const currentStage = STAGE_OPTIONS.find((option) => option.value === params.get(STAGE_PARAM))?.value ?? "";
+
   const activeFilterCount = [
+    Boolean(currentStage),
     Boolean(params.get("status")),
     Boolean(params.get("severity")),
     Boolean(currentMine),
     selectedNames.length > 0,
-    Boolean(currentPlatform),
       Boolean(currentArea),
     Boolean(currentMilestone),
     Boolean(params.get("sort")),
@@ -626,6 +632,26 @@ export function IssueFilters({
                   </select>
                 </div>
 
+                {/* Stage (#1054): was the sidebar beside the list. */}
+                <div>
+                  <label htmlFor="stage" className="mb-1 block text-xs font-medium text-slate-600">
+                    Stage
+                  </label>
+                  <select
+                    id="stage"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    value={currentStage}
+                    onChange={(event) => update(STAGE_PARAM, event.target.value)}
+                  >
+                    <option value="">Any stage</option>
+                    {STAGE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {stageCounts ? `${option.label} (${stageCounts[option.value]})` : option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Status */}
                 <div>
                   <label htmlFor="status" className="mb-1 block text-xs font-medium text-slate-600">
@@ -699,28 +725,7 @@ export function IssueFilters({
                   </select>
                 </div>
 
-                {/* Platform */}
-                {platformOptions.length > 0 ? (
-                  <div>
-                    <label htmlFor="platform" className="mb-1 block text-xs font-medium text-slate-600">
-                      Platform
-                    </label>
-                    <select
-                      id="platform"
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                      value={currentPlatform}
-                      onChange={(event) => update(PLATFORM_PARAM, event.target.value)}
-                    >
-                      <option value="">All</option>
-                      {platformOptions.map((platform) => (
-                        <option key={platform.id} value={platform.id}>
-                          {platform.name}
-                        </option>
-                      ))}
-                      <option value={PLATFORM_NONE}>No platform</option>
-                    </select>
-                  </div>
-                ) : null}
+                {/* Platform: tabs above the list since #1055, so not repeated here. */}
 
                 {/* Project area */}
                 {areas.length > 0 ? (
@@ -843,6 +848,19 @@ export function IssueFilters({
               </button>
             </span>
           ) : null}
+          {currentStage ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-slate-800">
+              Stage: {STAGE_OPTIONS.find((option) => option.value === currentStage)?.label}
+              <button
+                type="button"
+                onClick={() => update(STAGE_PARAM, "")}
+                aria-label="Remove stage filter"
+                className="ml-0.5 rounded-full p-0.5 text-slate-600 hover:bg-slate-200/60"
+              >
+                ✕
+              </button>
+            </span>
+          ) : null}
           {params.get("status") ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-emerald-900">
               Status:{" "}
@@ -888,19 +906,6 @@ export function IssueFilters({
               </button>
             </span>
           ))}
-          {currentPlatform ? (
-            <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-sky-900">
-              Platform: {platforms.find((p) => p.id === currentPlatform)?.name ?? currentPlatform}
-              <button
-                type="button"
-                onClick={() => update(PLATFORM_PARAM, "")}
-                aria-label="Remove platform filter"
-                className="ml-0.5 rounded-full p-0.5 text-sky-700 hover:bg-sky-200/60"
-              >
-                ✕
-              </button>
-            </span>
-          ) : null}
           {currentArea ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-teal-900">
               Area: {currentArea === AREA_NONE ? "No area" : areas.find((area) => area.id === currentArea)?.name ?? currentArea}

@@ -9,7 +9,7 @@ import { tenantMemberWhere } from "@/lib/tenant-mentions";
 import { CreateIssueForm } from "@/components/create-issue-form";
 import { activeProjectIdFor } from "@/lib/project-context";
 
-/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Report an issue" };
 
 type MentionUser = { id: string; name: string; role: Role; image: string | null };

@@ -6,7 +6,7 @@ import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 import { isGoogleOAuthConfigured } from "@/lib/google-oauth";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
 
-/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Sign in" };
 
 /**
@@ -42,7 +42,7 @@ export default async function LoginPage({
         </div>
         <BrandLockup href="/" size="md" />
         <h1 className="mt-4 text-xl font-semibold text-slate-900">
-          Sign in to Ziki Issues
+          Sign in to Ziki
         </h1>
         <p className="mt-1.5 text-sm text-slate-600">
           Sign in with your Google account to report, vote, and track issues.

@@ -15,6 +15,7 @@ const everything: IssueListFilterValues = {
   stage: "reported",
   deleted: true,
   showDuplicates: true,
+  showResolved: true,
 };
 
 const nothing: IssueListFilterValues = {
@@ -30,6 +31,7 @@ const nothing: IssueListFilterValues = {
   stage: null,
   deleted: false,
   showDuplicates: false,
+  showResolved: false,
 };
 
 describe("issueListPaginationParams (#967)", () => {
@@ -46,6 +48,7 @@ describe("issueListPaginationParams (#967)", () => {
       stage: "reported",
       deleted: "true",
       duplicates: "show",
+      resolved: "1",
       sort: "newest",
     });
   });

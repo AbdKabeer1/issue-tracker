@@ -8,7 +8,6 @@ import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import type { AppRole } from "@/lib/roles";
 import { IssueFilters } from "@/components/issue-filters";
-import { IssueStats } from "@/components/issue-stats";
 import {
   IssueRowMeta,
   MetaSeparator,
@@ -34,7 +33,15 @@ import {
 } from "@/lib/search-snippet";
 import { Highlighted, SearchSnippet } from "@/components/search-highlight";
 import { formatIssueNumber, parseIssueNumberQuery } from "@/lib/issue-number";
-import { isDone, resultCountText, statusFilterWhere } from "@/lib/issue-state";
+import {
+  SHOW_RESOLVED,
+  SHOW_RESOLVED_PARAM,
+  defaultStatusWhere,
+  isDone,
+  parseShowResolved,
+  resultCountText,
+  statusFilterWhere,
+} from "@/lib/issue-state";
 import { calculatePagination } from "@/lib/pagination";
 import { issueListPaginationParams } from "@/lib/issue-list-pagination";
 import { DUPLICATES_PARAM, SHOW_DUPLICATES, duplicatesWhere, parseShowDuplicates } from "@/lib/duplicates";
@@ -45,7 +52,6 @@ import { loadMilestoneSummaries } from "@/lib/milestone-stats";
 import { MilestoneProgressBar } from "@/components/milestone-progress";
 import { MilestoneDue } from "@/components/milestone-due";
 import { createEmptyVoterSummary } from "@/lib/voters";
-import { VoterAvatars } from "@/components/voter-avatars";
 import {
   bugSortDescriptions,
   getBugOrderBy,
@@ -70,15 +76,17 @@ import { cookies } from "next/headers";
 import { GettingStarted } from "@/components/getting-started";
 import { GETTING_STARTED_COOKIE, gettingStartedFor, parseDismissed, type GettingStartedStep } from "@/lib/onboarding";
 import {
+  PLATFORM_NONE,
   PLATFORM_PARAM,
   parsePlatformFilter,
+  platformChoices,
   platformFilterWhere,
 } from "@/lib/platform-filter";
+import { PlatformTabs, type PlatformTab } from "@/components/platform-tabs";
 import { AREA_PARAM, parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
-import { IssueStageNav } from "@/components/issue-stage-nav";
 import { issueStageLabels, openIssueStages, parseIssueStageView, type IssueStage } from "@/lib/issue-stage";
 
-/* Distinct browser-tab title; the root layout appends "· Ziki Issues". */
+/* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Issues" };
 
 type SearchParams = Promise<{
@@ -242,8 +250,14 @@ export default async function BugsPage({
   const tagsParam = serializeTags(selectedTags.map((t) => t.name));
 
   const statusWhere = statusFilterWhere(statusParam);
+  // #1058: with no status filter, only live work shows unless resolved
+  // issues were asked for. The deleted view keeps showing everything.
+  const showResolved = parseShowResolved(params[SHOW_RESOLVED_PARAM]);
+  const hidesResolved = statusWhere === undefined && !isDeletedView && !showResolved;
   if (statusWhere !== undefined) {
     where.status = statusWhere;
+  } else if (hidesResolved) {
+    where.status = defaultStatusWhere(false);
   }
   if (isSeverity(severityParam)) {
     where.severity = severityParam;
@@ -266,6 +280,11 @@ export default async function BugsPage({
     const asNumber = parseIssueNumberQuery(qParam);
     if (asNumber !== null) where.OR.push({ number: asNumber });
   }
+
+  // #1055: every tab counts what the other filters match, whatever platform
+  // is picked, so switching tabs never surprises.
+  const { categoryId: _platformClause, ...platformTabWhere } = where;
+  void _platformClause;
 
   let totalCount = 0;
   try {
@@ -313,39 +332,66 @@ export default async function BugsPage({
     }
   }
 
-  const baseTenantWhere: Prisma.BugWhereInput = {
-    ...bugInTenant(tenantId),
-    ...(projectId ? { projectId } : {}),
-    isDeleted: isDeletedView,
+  let platformTabs: PlatformTab[] = [];
+  if (!isDeletedView) {
+    try {
+      const grouped = await prisma.bug.groupBy({
+        by: ["categoryId"],
+        where: platformTabWhere,
+        _count: { _all: true },
+      });
+      const counts = new Map(grouped.map((row) => [row.categoryId, row._count._all]));
+      const all = grouped.reduce((sum, row) => sum + row._count._all, 0);
+      const noPlatform = counts.get(null) ?? 0;
+      platformTabs = [
+        { id: null, name: "All", count: all },
+        // Active platforms, plus a deactivated one if a link picked it.
+        ...platformChoices(platforms, selectedPlatform).map((platform) => ({
+          id: platform.id,
+          name: platform.name,
+          count: counts.get(platform.id) ?? 0,
+        })),
+        ...(noPlatform > 0 || selectedPlatform === PLATFORM_NONE
+          ? [{ id: PLATFORM_NONE, name: "No platform", count: noPlatform }]
+          : []),
+      ];
+    } catch (error) {
+      console.error("[bugs] platform tab counts failed", error);
+    }
+  }
+  const platformHref = (id: string | null) => {
+    const next = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (key === "page" || key === PLATFORM_PARAM) continue;
+      const single = toSingleQueryParam(value);
+      if (single) next.set(key, single);
+    }
+    if (id) next.set(PLATFORM_PARAM, id);
+    const qs = next.toString();
+    return qs ? `/issues?${qs}` : "/issues";
   };
 
-  let statsTotal = 0;
-  let statsOpen = 0;
-  let statsInProgress = 0;
-  let statsClosed = 0;
-
-  try {
-    const [
-      totalCountAll,
-      openCount,
-      inProgressCount,
-      closedCount,
-    ] = await Promise.all([
-      prisma.bug.count({ where: baseTenantWhere }),
-      prisma.bug.count({ where: { ...baseTenantWhere, status: "open" } }),
-      prisma.bug.count({ where: { ...baseTenantWhere, status: "in_progress" } }),
-      prisma.bug.count({
-        where: { ...baseTenantWhere, status: { in: ["closed", "resolved"] } },
-      }),
-    ]);
-
-    statsTotal = totalCountAll;
-    statsOpen = openCount;
-    statsInProgress = inProgressCount;
-    statsClosed = closedCount;
-  } catch (error) {
-    console.error("[bugs] dashboard stats/counts failed", error);
+  // How many resolved/closed issues the default view hides (#1058).
+  let hiddenResolved = 0;
+  if (hidesResolved) {
+    try {
+      hiddenResolved = await prisma.bug.count({
+        where: { ...platformTabWhere, ...platformFilterWhere(selectedPlatform), status: { in: ["resolved", "closed"] } },
+      });
+    } catch (error) {
+      console.error("[bugs] resolved count failed", error);
+    }
   }
+  const resolvedHref = (() => {
+    const next = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      const single = toSingleQueryParam(value);
+      if (single && key !== SHOW_RESOLVED_PARAM && key !== "page") next.set(key, single);
+    }
+    if (!showResolved) next.set(SHOW_RESOLVED_PARAM, SHOW_RESOLVED);
+    const qs = next.toString();
+    return qs ? `/issues?${qs}` : "/issues";
+  })();
 
   // How many the default view is hiding, so "Show duplicates" can say so.
   let hiddenDuplicates = 0;
@@ -386,7 +432,6 @@ export default async function BugsPage({
         status: true,
         severity: true,
         voteCount: true,
-        proofLinks: true,
         isDeleted: true,
         isBoosted: true,
         duplicateOf: showDuplicates ? { select: { number: true } } : false,
@@ -523,17 +568,6 @@ export default async function BugsPage({
     confirmed: "bg-amber-50 text-amber-900",
     ready: "bg-emerald-50 text-emerald-800",
   };
-  const stageHref = (stage: "reported" | "confirmed" | null) => {
-    const next = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (key === "page" || key === "stage") continue;
-      const single = toSingleQueryParam(value);
-      if (single) next.set(key, single);
-    }
-    if (stage) next.set("stage", stage);
-    const qs = next.toString();
-    return qs ? `/issues?${qs}` : "/issues";
-  };
 
   const severityDotColors: Record<string, string> = {
     critical: "bg-red-500",
@@ -542,8 +576,9 @@ export default async function BugsPage({
     low: "bg-emerald-500",
   };
 
+  // #1056: one centred column, a simple list going down; no stats card.
   const page = (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-3xl space-y-6">
       {gettingStarted ? <GettingStarted {...gettingStarted} /> : null}
       {activeProject?.goal ? (
         <section aria-labelledby="project-goal-heading" className="rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
@@ -566,7 +601,8 @@ export default async function BugsPage({
                   : "text-2xl sm:text-3xl font-bold tracking-tight text-slate-900"
               }
             >
-              {isDeletedView ? "Deleted Issues" : "Issues"}
+              {/* #1063: the project is the heading; "Ziki" is in the header. */}
+              {isDeletedView ? "Deleted Issues" : (activeProject?.name ?? "Issues")}
             </h1>
             {isDeletedView ? (
               <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800">
@@ -574,9 +610,6 @@ export default async function BugsPage({
               </span>
             ) : null}
           </div>
-          <p className="mt-0.5 text-sm text-slate-500">
-            Track, triage, and resolve product issues and bug reports.
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
           {canDelete ? (
@@ -592,45 +625,25 @@ export default async function BugsPage({
             </Link>
           ) : null}
           {finishedWatched > 0 ? <UnwatchFinishedButton count={finishedWatched} /> : null}
-          {!isDeletedView ? (
-            <Link
-              href="/issues/new"
-              className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-xs hover:bg-blue-700 transition-colors"
-            >
-              New Issue
-            </Link>
-          ) : null}
+          {/* #1057: "New issue" lives in the header on every page; no second one here. */}
         </div>
       </div>
 
-      {!isFirstRun ? (
-        <IssueStats
-          total={statsTotal}
-          open={statsOpen}
-          inProgress={statsInProgress}
-          closed={statsClosed}
-        />
-      ) : null}
-
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-        {!isDeletedView ? (
-          <IssueStageNav
-            current={stageView}
-            counts={{ all: statsTotal, reported: reportedCount, confirmed: confirmedCount }}
-            hrefFor={stageHref}
-          />
-        ) : null}
-        <div className="min-w-0 flex-1 space-y-4">
+      {/* #1054: no sidebar. Reported / Confirmed are a Stage filter now. */}
+      <div className="space-y-4">
+        {isFirstRun ? null : (
+          <PlatformTabs tabs={platformTabs} current={selectedPlatform} hrefFor={platformHref} />
+        )}
         {isFirstRun ? null : (
           <Suspense
             fallback={<div className="h-12 animate-pulse rounded-lg bg-slate-100" />}
           >
             <IssueFilters
               tagTypes={tagTypes}
-              platforms={platforms}
               milestones={milestones}
               areas={areas}
               shortcutsEnabled={shortcutsEnabled}
+              stageCounts={isDeletedView ? undefined : { reported: reportedCount, confirmed: confirmedCount }}
             />
           </Suspense>
         )}
@@ -641,6 +654,14 @@ export default async function BugsPage({
             <p role="status" aria-live="polite">
               {resultCountText(totalCount, statusWhere !== undefined ? statusParam ?? null : null)} · sorted by{" "}
               {bugSortDescriptions[currentSort]}
+              {hiddenResolved > 0 || (showResolved && statusWhere === undefined && !isDeletedView) ? (
+                <>
+                  {" · "}
+                  <Link href={resolvedHref} className="font-medium text-blue-600 hover:underline print:hidden">
+                    {showResolved ? "Hide resolved" : `Show ${hiddenResolved} resolved`}
+                  </Link>
+                </>
+              ) : null}
               {hiddenDuplicates > 0 || showDuplicates ? (
                 <>
                   {" · "}
@@ -687,7 +708,7 @@ export default async function BugsPage({
               <p className="mt-1 text-sm text-slate-600">
                 {isWatchingView
                   ? "You watch issues you report, are assigned to or comment on, and any you choose to watch from the issue page."
-                  : "Try clearing filters or report a new issue."}
+                  : "Try clearing filters, or report it with New issue at the top."}
               </p>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
                 <Link
@@ -695,12 +716,6 @@ export default async function BugsPage({
                   className="text-sm font-medium text-blue-600 hover:underline"
                 >
                   Clear filters
-                </Link>
-                <Link
-                  href="/issues/new"
-                  className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                >
-                  New Issue
                 </Link>
               </div>
             </div>
@@ -817,7 +832,6 @@ export default async function BugsPage({
                           voteCount={bug.voteCount}
                           userVote={userVote}
                           likeCount={voterSummary.likes.count}
-                          dislikeCount={voterSummary.dislikes.count}
                           size="sm"
                           readOnly={isDeletedView}
                         />
@@ -863,7 +877,7 @@ export default async function BugsPage({
                                     </>
                                   ) : null}
                                   <RowAge
-                                    date={bug.createdAt}
+                                    date={currentSort === "newest" ? bug.createdAt : bug.updatedAt}
                                     sort={currentSort === "newest" ? "newest" : "updated"}
                                   />
                                   {(bug._count?.comments ?? 0) > 0 ? (
@@ -884,59 +898,24 @@ export default async function BugsPage({
                                       </span>
                                     </>
                                   ) : null}
-                                  {(bug.proofLinks?.length ?? 0) > 0 ? (
-                                    <>
-                                      <MetaSeparator />
-                                      <span
-                                        title={`${bug.proofLinks.length} linked proof${bug.proofLinks.length === 1 ? "" : "s"}`}
-                                      >
-                                        🔗 {bug.proofLinks.length}
-                                      </span>
-                                    </>
-                                  ) : null}
-                                  {bug.assignee ? (
-                                    <>
-                                      <MetaSeparator />
-                                      <RowAssignee
-                                        name={bug.assignee.name}
-                                        image={bug.assignee.image}
-                                      />
-                                    </>
-                                  ) : null}
                                 </>
                               }
                             />
 
-                            {(voterSummary.likes.count > 0 ||
-                              voterSummary.dislikes.count > 0) && (
-                              <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-slate-500">
-                                {voterSummary.likes.count > 0 && (
-                                  <div className="flex items-center gap-1.5">
-                                    <span>👍 {voterSummary.likes.count}</span>
-                                    <VoterAvatars
-                                      voters={voterSummary.likes.voters}
-                                      totalCount={voterSummary.likes.count}
-                                      size="sm"
-                                    />
-                                  </div>
-                                )}
-                                {voterSummary.dislikes.count > 0 && (
-                                  <div className="flex items-center gap-1.5">
-                                    <span>👎 {voterSummary.dislikes.count}</span>
-                                    <VoterAvatars
-                                      voters={voterSummary.dislikes.voters}
-                                      totalCount={voterSummary.dislikes.count}
-                                      size="sm"
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                            {/* #1060: the vote count lives in the vote button only;
+                                who voted is on the issue page. */}
                           </div>
                         </div>
                       </Link>
 
-                      <div className="flex w-full basis-full shrink-0 items-center justify-end gap-3 self-center border-t border-slate-100 pt-2 md:basis-auto md:w-auto md:border-0 md:pt-0 md:pl-2">
+                      {/* #1061: the assignee's face, at the right of the row on every width. */}
+                      {bug.assignee ? (
+                        <div className="shrink-0 self-start pt-0.5">
+                          <RowAssignee name={bug.assignee.name} image={bug.assignee.image} />
+                        </div>
+                      ) : null}
+
+                      <div className="flex w-full basis-full shrink-0 items-center justify-end gap-3 self-center border-t border-slate-100 pt-2 empty:hidden md:basis-auto md:w-auto md:border-0 md:pt-0 md:pl-2">
                         {isWatchingView ? (
                           <div className="flex items-center gap-2">
                             {isWatchingView && !bug.isDeleted ? (
@@ -971,11 +950,11 @@ export default async function BugsPage({
                   stage: stageView,
                   deleted: isDeletedView,
                   showDuplicates,
+                  showResolved,
                 })}
               />
             </>
           )}
-        </div>
       </div>
     </div>
   );

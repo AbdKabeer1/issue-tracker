@@ -55,3 +55,23 @@ export function resultCountText(count: number, status: string | null): string {
       : ((statusLabel as Record<string, string>)[status] ?? status).toLowerCase();
   return `${count} ${label} ${count === 1 ? "issue" : "issues"}`;
 }
+
+/**
+ * #1058: the list shows live work by default. Resolved and closed issues are
+ * hidden until `?resolved=1`, or until a status filter asks for them.
+ */
+export const SHOW_RESOLVED_PARAM = "resolved";
+export const SHOW_RESOLVED = "1";
+export const LIVE_STATUS_VALUES = ["open", "in_progress"] as const;
+
+export function parseShowResolved(raw: string | string[] | null | undefined): boolean {
+  return (Array.isArray(raw) ? raw[0] : raw) === SHOW_RESOLVED;
+}
+
+/**
+ * The status clause the list uses when no status filter is set: live work
+ * only, unless resolved issues were asked for. `undefined` means no clause.
+ */
+export function defaultStatusWhere(showResolved: boolean): Prisma.BugWhereInput["status"] | undefined {
+  return showResolved ? undefined : { in: [...LIVE_STATUS_VALUES] };
+}
