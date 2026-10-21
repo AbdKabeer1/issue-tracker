@@ -52,7 +52,6 @@ import { loadMilestoneSummaries } from "@/lib/milestone-stats";
 import { MilestoneProgressBar } from "@/components/milestone-progress";
 import { MilestoneDue } from "@/components/milestone-due";
 import { createEmptyVoterSummary } from "@/lib/voters";
-import { VoterAvatars } from "@/components/voter-avatars";
 import {
   bugSortDescriptions,
   getBugOrderBy,
@@ -433,7 +432,6 @@ export default async function BugsPage({
         status: true,
         severity: true,
         voteCount: true,
-        proofLinks: true,
         isDeleted: true,
         isBoosted: true,
         duplicateOf: showDuplicates ? { select: { number: true } } : false,
@@ -901,16 +899,6 @@ export default async function BugsPage({
                                       </span>
                                     </>
                                   ) : null}
-                                  {(bug.proofLinks?.length ?? 0) > 0 ? (
-                                    <>
-                                      <MetaSeparator />
-                                      <span
-                                        title={`${bug.proofLinks.length} linked proof${bug.proofLinks.length === 1 ? "" : "s"}`}
-                                      >
-                                        🔗 {bug.proofLinks.length}
-                                      </span>
-                                    </>
-                                  ) : null}
                                   {bug.assignee ? (
                                     <>
                                       <MetaSeparator />
@@ -924,31 +912,8 @@ export default async function BugsPage({
                               }
                             />
 
-                            {(voterSummary.likes.count > 0 ||
-                              voterSummary.dislikes.count > 0) && (
-                              <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-slate-500">
-                                {voterSummary.likes.count > 0 && (
-                                  <div className="flex items-center gap-1.5">
-                                    <span>👍 {voterSummary.likes.count}</span>
-                                    <VoterAvatars
-                                      voters={voterSummary.likes.voters}
-                                      totalCount={voterSummary.likes.count}
-                                      size="sm"
-                                    />
-                                  </div>
-                                )}
-                                {voterSummary.dislikes.count > 0 && (
-                                  <div className="flex items-center gap-1.5">
-                                    <span>👎 {voterSummary.dislikes.count}</span>
-                                    <VoterAvatars
-                                      voters={voterSummary.dislikes.voters}
-                                      totalCount={voterSummary.dislikes.count}
-                                      size="sm"
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                            {/* #1060: the vote count lives in the vote button only;
+                                who voted is on the issue page. */}
                           </div>
                         </div>
                       </Link>

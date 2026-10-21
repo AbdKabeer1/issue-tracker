@@ -192,4 +192,15 @@ describe("issue list layout", () => {
     expect(html).not.toContain("Show 0 resolved");
     expect(html).not.toContain("Hide resolved");
   });
+
+  it("shows the vote count once and no proof-link count in rows (#1060)", async () => {
+    const html = await renderList();
+    expect(html).not.toContain("🔗");
+    expect(html).not.toContain("linked proof");
+    expect(html).not.toContain("👍");
+    expect(html).not.toContain("👎");
+    // The voters' faces aren't repeated under the row.
+    expect(html).not.toContain(">Ann<");
+    expect(findMany.mock.calls.at(-1)![0].select).not.toHaveProperty("proofLinks");
+  });
 });
