@@ -44,6 +44,8 @@ export function TwoFactorSettings({
     onOk: (result: Extract<T, { ok: true }>) => void,
   ) {
     setError(null);
+    // The notice is about the last change; a new attempt starts without it.
+    setSignedOutOthers(false);
     startTransition(async () => {
       try {
         const result = await action(formData);
@@ -57,6 +59,7 @@ export function TwoFactorSettings({
 
   function cancel() {
     setError(null);
+    setSignedOutOthers(false);
     setStep({ name: "idle" });
   }
 
