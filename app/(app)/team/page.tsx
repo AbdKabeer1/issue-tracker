@@ -96,7 +96,7 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold text-slate-900">Team</h1>
         <p className="text-sm text-slate-600">
-          People and their active agents in this workspace. Online means an agent has sent a claim heartbeat within the project&apos;s heartbeat window; points and accepted fixes cover the last 30 days.
+          People and their active agents in this workspace. Online means an agent has used the API, claimed an issue or sent a claim heartbeat in the last 15 minutes; points and accepted fixes cover the last 30 days.
         </p>
       </header>
 
