@@ -123,6 +123,18 @@ const issueSelect = {
   area: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.BugSelect;
 
+/**
+ * #409: the shared parsers turn an unknown id into "no filter" so a stale web
+ * link shows everything. An API client that sends a mistyped id must be told,
+ * not handed the whole backlog.
+ */
+export function requireKnownFilter(name: "platform" | "area", raw: string | null, parsed: string | null): string | null {
+  if (raw?.trim() && parsed === null) {
+    throw new IssueApiError(422, `Unknown ${name} id "${raw.trim()}". Use an id from this project, or "none".`);
+  }
+  return parsed;
+}
+
 export async function listAgentIssues(scope: Scope, params: URLSearchParams) {
   const status = params.get("status");
   const severity = params.get("severity");
@@ -146,8 +158,8 @@ export async function listAgentIssues(scope: Scope, params: URLSearchParams) {
     ...(status ? { status: statusSchema.parse(status) } : {}),
     ...(severity ? { severity: severitySchema.parse(severity) } : {}),
     ...(assignee ? { assigneeId: assignee === "none" ? null : idSchema.parse(assignee) } : {}),
-    ...platformFilterWhere(parsePlatformFilter(params.get("platform"), platforms)),
-    ...projectAreaFilterWhere(parseProjectAreaFilter(requestedArea, areas)),
+    ...platformFilterWhere(requireKnownFilter("platform", params.get("platform"), parsePlatformFilter(params.get("platform"), platforms))),
+    ...projectAreaFilterWhere(requireKnownFilter("area", requestedArea, parseProjectAreaFilter(requestedArea, areas))),
   };
   if (stage) {
     // A stage only exists on an open issue. Any other status is an empty page.

@@ -42,6 +42,9 @@ export async function GET(request: NextRequest) {
       ? await prisma.projectArea.findMany({ where: { projectId: project.id }, select: { id: true, name: true } })
       : [];
     const area = parseProjectAreaFilter(requestedArea, areas);
+    if (requestedArea?.trim() && area === null) {
+      throw new FeedInputError(`Unknown area id "${requestedArea.trim()}". Use an id from this project, or "none".`);
+    }
     return withAgentBudgetHeaders(
       NextResponse.json(await readFeed(tenantId, project.id, cursor, area), {
         headers: { "Cache-Control": "private, no-store" },
