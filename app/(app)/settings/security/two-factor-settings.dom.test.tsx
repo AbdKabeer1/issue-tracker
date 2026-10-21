@@ -11,6 +11,7 @@ const actions = vi.hoisted(() => ({
   regenerateBackupCodesAction: vi.fn(),
   refresh: vi.fn(),
 }));
+const copyTextMock = vi.hoisted(() => vi.fn(async () => true));
 vi.mock("./actions", () => ({
   startTwoFactorAction: actions.startTwoFactorAction,
   confirmTwoFactorAction: actions.confirmTwoFactorAction,
@@ -18,7 +19,7 @@ vi.mock("./actions", () => ({
   regenerateBackupCodesAction: actions.regenerateBackupCodesAction,
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: actions.refresh }) }));
-vi.mock("@/lib/clipboard", () => ({ copyText: vi.fn(async () => true) }));
+vi.mock("@/lib/clipboard", () => ({ copyText: copyTextMock }));
 
 import { TwoFactorSettings } from "./two-factor-settings";
 
@@ -89,6 +90,23 @@ describe("TwoFactorSettings (#648)", () => {
     await user.type(screen.getByLabelText("Authenticator or backup code"), "123456");
     await user.click(screen.getByRole("button", { name: "Make new codes" }));
     expect(await screen.findByRole("list", { name: "Backup codes" })).toHaveTextContent("XXXXX-YYYYY");
+  });
+
+  it("explains when copying backup codes fails and keeps them available", async () => {
+    const user = userEvent.setup();
+    copyTextMock.mockResolvedValueOnce(false);
+    actions.regenerateBackupCodesAction.mockResolvedValue({ ok: true, codes: ["XXXXX-YYYYY"] });
+    render(<TwoFactorSettings enabled backupCodesLeft={5} />);
+    await user.click(screen.getByRole("button", { name: "Make new backup codes" }));
+    await user.type(screen.getByLabelText("Password"), "pw");
+    await user.type(screen.getByLabelText("Authenticator or backup code"), "123456");
+    await user.click(screen.getByRole("button", { name: "Make new codes" }));
+    await screen.findByRole("list", { name: "Backup codes" });
+
+    await user.click(screen.getByRole("button", { name: "Copy codes" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't copy the codes");
+    expect(screen.getByRole("list", { name: "Backup codes" })).toHaveTextContent("XXXXX-YYYYY");
   });
 
   it("can be cancelled without calling anything", async () => {

@@ -113,6 +113,9 @@ export function VoteButton({
     : upvoted
       ? `Upvoted, ${count} ${voteWord}, click to remove your vote`
       : `Upvote this issue, ${count} ${voteWord}`;
+  // The large button shows "Upvote 2" / "Upvoted 3", so its name has to start
+  // with that text (WCAG 2.5.3, axe label-content-name-mismatch).
+  const mdLabel = `${upvoted ? "Upvoted" : "Upvote"} ${count} ${voteWord}${upvoted ? ", click to remove your vote" : ""}`;
   const tone = upvoted
     ? "border-blue-200 bg-blue-50 text-blue-600 hover:border-blue-300 hover:bg-blue-100"
     : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-blue-600";
@@ -136,7 +139,7 @@ export function VoteButton({
             type="button"
             disabled={pending || readOnly}
             aria-pressed={upvoted}
-            aria-label={label}
+            aria-label={mdLabel}
             title={upvoted ? "Remove your upvote" : "Upvote"}
             aria-describedby={error ? errorId : undefined}
             onClick={handleVote}
