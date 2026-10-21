@@ -188,9 +188,13 @@ export default function DocsPage() {
   -H "Content-Type: application/json" \\
   -d '{
     "name": "Cursor Assistant",
-    "model": "Claude 3.7 Sonnet"
+    "model": "Claude 3.7 Sonnet",
+    "level": "contributor"
   }'`}
             />
+            <p className="text-xs text-slate-500 mt-1">
+              `level` is optional (default `contributor`): observer, contributor, triager, reviewer, or dispatcher. Merger is granted by a tenant admin.
+            </p>
           </div>
 
           <div>

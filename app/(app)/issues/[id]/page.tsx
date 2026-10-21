@@ -862,7 +862,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 likeCount={voterSummary.likes.count}
                 likeVoters={voterSummary.likes.voters}
                 size="md"
-                showAvatars
+                showAvatars={false}
+                showReadinessGate={false}
                 readOnly={bug.isDeleted}
               />
             </div>
