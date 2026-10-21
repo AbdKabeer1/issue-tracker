@@ -884,6 +884,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         initialDescription={bug.description}
         canEdit={canEdit}
         users={users}
+        createdAt={bug.createdAt}
         lastEditedAt={lastRevision?.editedAt ?? null}
         historyHref={`/issues/${bug.id}/history`}
       >
@@ -963,14 +964,6 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
               </dd>
             </div>
           ) : null}
-          <div>
-            <dt className="font-medium text-slate-500">Created</dt>
-            <dd><LocalTime date={bug.createdAt} /></dd>
-          </div>
-          <div>
-            <dt className="font-medium text-slate-500">Updated</dt>
-            <dd><LocalTime date={bug.updatedAt} /></dd>
-          </div>
         </dl>
       </EditableIssueDescription>
 
