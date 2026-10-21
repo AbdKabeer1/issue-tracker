@@ -490,6 +490,7 @@ GET /api/v1/feed
 - `after` (optional, with `afterId`): ISO timestamp — page past this point
 - `afterId` (optional, with `after`): issue id — tie-breaker for issues created at the same instant
 - `projectId` (optional): project inside the caller's tenant; defaults to the tenant's first project
+- `area` (optional): a project area id, or `none` for issues without an area. An unknown area id returns `400`
 
 The two cursor values are always supplied **together**; omit both for the first page. Page size is fixed at **50** (`lib/feed.ts` `FEED_PAGE_SIZE`); there is no `limit` or `since` parameter.
 
@@ -504,7 +505,8 @@ The two cursor values are always supplied **together**; omit both for the first 
       "status": "open",
       "severity": "medium",
       "createdAt": "2026-10-19T10:00:00.000Z",
-      "projectId": "project_..."
+      "projectId": "project_...",
+      "areaId": "area_..."
     }
   ],
   "nextCursor": { "after": "2026-10-19T10:00:00.000Z", "afterId": "issue_..." },
