@@ -48,11 +48,14 @@ export function MilestoneManager({ milestones }: { milestones: ManagedMilestone[
     setError(null);
   };
 
-  /** Handles milestone form submission, ignoring clicks while a save is pending. */
+   /**
+   * Handles milestone form submission.
+   * Ignores clicks while a save action is pending to prevent duplicates.
+   */
   const save = (event: React.FormEvent) => {
     event.preventDefault();
     if (pending) return;
-
+    // ...
     const fd = new FormData();
     fd.set("title", draft.title);
     fd.set("description", draft.description);
