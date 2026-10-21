@@ -288,6 +288,41 @@ describe("agent comment paging (#604)", () => {
   const newer = { id: "comment-c", body: "newer", createdAt: new Date("2026-10-19T10:01:00Z"), authorId: "person-b", parentId: comment.id };
   beforeEach(() => db.comment.findMany.mockResolvedValue([comment]));
 
+  it("returns 400 with validTypes for an unknown type parameter (#414)", async () => {
+    const response = await comments(request("GET", undefined, "?projectId=project-a&type=bogus"), context);
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toBe("Unknown comment type: bogus.");
+    expect(body.validTypes).toEqual(["comment", "bid", "review", "delivery", "request_to_merge"]);
+    expect(db.comment.findMany).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 with validTypes for another unknown type", async () => {
+    const response = await comments(request("GET", undefined, "?projectId=project-a&type=reviews"), context);
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toBe("Unknown comment type: reviews.");
+    expect(body.validTypes).toEqual(["comment", "bid", "review", "delivery", "request_to_merge"]);
+  });
+
+  it("valid types and absent type work as before", async () => {
+    db.comment.findMany.mockResolvedValueOnce([comment, newer]);
+    // valid type = review
+    const r1 = await comments(request("GET", undefined, "?projectId=project-a&type=review&limit=1"), context);
+    expect(r1.status).toBe(200);
+    expect(db.comment.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ type: "review" }) }));
+    // valid type = delivery
+    db.comment.findMany.mockResolvedValueOnce([comment]);
+    const r2 = await comments(request("GET", undefined, "?projectId=project-a&type=delivery"), context);
+    expect(r2.status).toBe(200);
+    expect(db.comment.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ type: "delivery" }) }));
+    // no type = all types
+    db.comment.findMany.mockResolvedValueOnce([comment, newer]);
+    const r3 = await comments(request("GET", undefined, "?projectId=project-a"), context);
+    expect(r3.status).toBe(200);
+    expect(db.comment.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.not.objectContaining({ type: expect.anything() }) }));
+  });
+
   it("returns comments oldest first under the issue's scope, with an author and a cursor", async () => {
     db.comment.findMany.mockResolvedValueOnce([comment, newer]);
     const response = await comments(request("GET", undefined, "?projectId=project-a&limit=1"), context);
