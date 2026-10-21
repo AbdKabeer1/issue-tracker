@@ -50,6 +50,8 @@ export function MilestoneManager({ milestones }: { milestones: ManagedMilestone[
 
   const save = (event: React.FormEvent) => {
     event.preventDefault();
+    if (pending) return;
+
     const fd = new FormData();
     fd.set("title", draft.title);
     fd.set("description", draft.description);
