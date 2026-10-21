@@ -281,8 +281,10 @@ export async function sweepStaleClaims(limit = 50): Promise<ClaimSweepResult> {
   }
 
   const candidates = new Map<string, { id: string; bugId: string; cutoff: Date; bug: { tenantId: string; projectId: string } }>();
+  let lastCutoff = heartbeatCutoff(now, DEFAULT_PROJECT_WORKFLOW.heartbeatMinutes);
   for (const [heartbeatMinutes, projectIds] of groups) {
     const cutoff = heartbeatCutoff(now, heartbeatMinutes);
+    lastCutoff = cutoff;
     const rows = await prisma.issueClaim.findMany({
       where: claimSweepWhere(now, cutoff, projectIds ? { projectIds } : {}),
       select: { id: true, bugId: true, bug: { select: { tenantId: true, projectId: true } } },
@@ -303,6 +305,6 @@ export async function sweepStaleClaims(limit = 50): Promise<ClaimSweepResult> {
     if (outcome.released) released++;
     if (outcome.offered) offered++;
   }
-  const waits = await sweepOwnerWaits(now, cutoff, {}, { limit });
+  const waits = await sweepOwnerWaits(now, lastCutoff, {}, { limit });
   return { released: released + waits.released, offered: offered + waits.offered };
 }
