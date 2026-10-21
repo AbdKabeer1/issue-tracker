@@ -3,6 +3,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { switchActiveRoleAction } from "@/app/actions/auth";
+import { labelInNameMismatches } from "@/lib/a11y/label-in-name";
 import { AppHeader } from "./app-header";
 
 vi.mock("next/image", () => ({
@@ -83,11 +84,11 @@ describe("account menu role switch", () => {
     expect(escalationsLink.getAttribute("href")).toBe("/escalations");
   });
 
-  it("renders the Project menu and its grouped links (#761)", async () => {
+  it("renders the Workspace menu and its grouped links (#761)", async () => {
     const user = userEvent.setup();
     renderHeader();
 
-    const manageBtn = screen.getByRole("button", { name: "Project" });
+    const manageBtn = screen.getByRole("button", { name: "Workspace" });
     expect(manageBtn).toBeTruthy();
 
     await user.click(manageBtn);
@@ -103,6 +104,17 @@ describe("account menu role switch", () => {
     const link = screen.getByRole("link", { name: /128 pts of 500, 4 solved/i });
     expect(link.getAttribute("href")).toBe("/users/ada");
     expect(link.textContent).toContain("128");
+  });
+
+  it("keeps each control's visible text inside its accessible name", () => {
+    const { container } = renderHeader({
+      userId: "ada",
+      points: 0,
+      solvedTasks: 0,
+      unreadCount: 3,
+      pendingEscalationsCount: 5,
+    });
+    expect(labelInNameMismatches(container)).toEqual([]);
   });
 
   it("renders Docs & /llms.txt link in the account menu (#625)", async () => {

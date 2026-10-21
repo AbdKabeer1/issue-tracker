@@ -297,7 +297,7 @@ function nameRules(label: string, { optional = false } = {}) {
 export const tenantNameSchema = z
   .string()
   .transform(collapse)
-  .pipe(nameRules("Tenant name"));
+  .pipe(nameRules("Workspace name"));
 
 export const createTenantSchema = z.object({
   name: tenantNameSchema,
@@ -401,7 +401,7 @@ export async function createTenant(
     const issue = parsed.error.issues[0];
     return {
       ok: false,
-      error: issue?.message ?? "Check the tenant's name.",
+      error: issue?.message ?? "Check the workspace's name.",
       field: issue?.path[0] === "projectName" ? "projectName" : "name",
     };
   }
@@ -423,7 +423,7 @@ export async function createTenant(
         ok: false,
         field: "name",
         duplicateName: name,
-        error: `You're already in a tenant called "${same.tenant.name}" (${same.tenant.slug}). Choose another name, or select Create anyway to have both.`,
+        error: `You're already in a workspace called "${same.tenant.name}" (${same.tenant.slug}). Choose another name, or select Create anyway to have both.`,
       };
     }
   }
@@ -454,7 +454,7 @@ export async function createTenant(
       throw error;
     }
   }
-  return { ok: false, error: "Couldn't create that tenant. Try a different name.", field: "name" };
+  return { ok: false, error: "Couldn't create that workspace. Try a different name.", field: "name" };
 }
 
 // ---------------------------------------------------------------------------
