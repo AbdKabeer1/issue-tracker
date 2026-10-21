@@ -63,7 +63,7 @@ import {
 } from "@/lib/ticket-deletion";
 import { currentTenantAccess } from "@/lib/tenant-access";
 import { MilestoneDue } from "@/components/milestone-due";
-import { dueDateValue } from "@/lib/milestones";
+import { dueDateValue, milestoneIssuesHref } from "@/lib/milestones";
 import { canEditTicket } from "@/lib/ticket-editing";
 import { DeleteIssueButton } from "@/components/delete-issue-button";
 import { RestoreIssueButton } from "@/components/restore-issue-button";
@@ -958,7 +958,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             <div>
               <dt className="font-medium text-slate-500">Milestone</dt>
               <dd className="flex flex-wrap items-center gap-2">
-                <Link href={`/issues?milestone=${bug.milestone.id}`} className="text-teal-700 hover:underline">
+                <Link href={milestoneIssuesHref(bug.milestone.id)} className="text-teal-700 hover:underline">
                   {bug.milestone.title}
                 </Link>
                 <MilestoneDue due={dueDateValue(bug.milestone.dueDate) || null} isClosed={bug.milestone.isClosed} />
