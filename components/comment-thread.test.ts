@@ -141,3 +141,42 @@ describe("CommentThread read-only mode (#122)", () => {
     expect(html).toContain('href="https://github.com/pr/1"');
   });
 });
+
+describe("CommentThread Admin label (#489)", () => {
+  const comment = (id: string, authorId: string, role: "user" | "admin"): CommentNode => ({
+    id,
+    authorId,
+    parentId: null,
+    body: `Comment ${id}`,
+    createdAt: new Date("2026-10-21T12:00:00Z"),
+    editedAt: null,
+    deletedAt: null,
+    depth: 0,
+    author: { name: `Person ${authorId}`, role },
+    parent: null,
+    children: [],
+  });
+
+  const render = (organizationRoles?: Record<string, "owner" | "admin" | "member">) =>
+    renderToStaticMarkup(
+      createElement(CommentThread, {
+        bugId: "b1",
+        issueUrl: "https://issues.example/bugs/b1",
+        reporterId: "r1",
+        comments: [comment("c1", "u1", "admin"), comment("c2", "u2", "user")],
+        users: [],
+        organizationRoles,
+      }),
+    );
+
+  it("labels only authors who are admins of this organization", () => {
+    const html = render({ u1: "member", u2: "admin" });
+    expect(html.match(/aria-label="Administrator"/g)).toHaveLength(1);
+    const second = html.slice(html.indexOf('id="comment-c2"'));
+    expect(second).toContain('aria-label="Administrator"');
+  });
+
+  it("does not label an account-wide admin when no organization role is known", () => {
+    expect(render()).not.toContain('aria-label="Administrator"');
+  });
+});

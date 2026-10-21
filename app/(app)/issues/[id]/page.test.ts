@@ -99,7 +99,7 @@ vi.mock("@/lib/platforms", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     bug: { findUnique: vi.fn() },
-    membership: { findUnique: vi.fn().mockResolvedValue({ role: "member", userId: "user-123" }) },
+    membership: { findUnique: vi.fn().mockResolvedValue({ role: "member", userId: "user-123" }), findMany: vi.fn().mockResolvedValue([]) },
     redesignProposal: { findMany: vi.fn().mockResolvedValue([]) },
     issueBid: { findMany: vi.fn().mockResolvedValue([]) },
     user: { findMany: vi.fn() },
@@ -166,6 +166,16 @@ describe("BugDetailPage conditional user query (#349)", () => {
     expect(pageSourceFresh).not.toContain("WatchButton");
     expect(pageSourceFresh).not.toContain("issueWatch");
     expect(pageSourceFresh).not.toContain("isWatchingIssue");
+  });
+
+  it("labels people by their role in this issue's organization, not their account-wide role (#489)", () => {
+    const pageSourceFresh = readFileSync(path.resolve(__dirname, "page.tsx"), "utf8");
+    expect(pageSourceFresh).toMatch(
+      /prisma\.membership\.findMany\(\{\s*where: \{ tenantId: bug\.tenantId, userId: \{ in: namedUserIds \} \}/,
+    );
+    expect(pageSourceFresh).toContain("organizationRole={organizationRoles[bug.reporterId]}");
+    expect(pageSourceFresh).toContain("organizationRole={bug.assigneeId ? organizationRoles[bug.assigneeId] : null}");
+    expect(pageSourceFresh).toContain("organizationRoles={organizationRoles}");
   });
 
   it("renders Conversation section heading and supports conversation anchor (#753)", () => {

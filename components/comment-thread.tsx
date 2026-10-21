@@ -9,6 +9,7 @@ import {
 } from "@/lib/comments";
 import { canDeleteComment, canEditComment } from "@/lib/comment-permissions";
 import type { AppRole } from "@/lib/roles";
+import type { OrganizationRole } from "@/lib/organization-role";
 import type { CommentType } from "@/lib/validations/issue";
 import { deleteCommentAction, updateCommentAction } from "@/app/actions/comments";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,8 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 
 type AttachmentsByComment = Record<string, AttachmentView[]>;
+/** Each author's role in the issue's organization, by user id (#489). */
+type OrganizationRoles = Record<string, OrganizationRole>;
 
 type UserOption = { id: string; name: string };
 
@@ -168,6 +171,7 @@ function CommentItem({
   currentUserRole,
   tenantAdmin = false,
   attachmentsByComment = {},
+  organizationRoles = {},
   readOnly = false,
 }: {
   comment: CommentNode;
@@ -177,6 +181,7 @@ function CommentItem({
   reporterId: string;
   users: UserOption[];
   attachmentsByComment?: AttachmentsByComment;
+  organizationRoles?: OrganizationRoles;
 } & ViewerProps) {
   const [replying, setReplying] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -236,6 +241,7 @@ function CommentItem({
                 <UserNameWithBadges
                   name={comment.author.name}
                   role={comment.author.role}
+                  organizationRole={organizationRoles[comment.authorId]}
                   image={comment.author.image}
                   avatar="sm"
                   userId={comment.authorId}
@@ -362,6 +368,7 @@ function CommentItem({
               currentUserRole={currentUserRole}
               tenantAdmin={tenantAdmin}
               attachmentsByComment={attachmentsByComment}
+              organizationRoles={organizationRoles}
               readOnly={readOnly}
             />
           ))}
@@ -381,6 +388,7 @@ export function CommentThread({
   currentUserRole,
   tenantAdmin = false,
   attachmentsByComment = {},
+  organizationRoles = {},
   readOnly = false,
 }: {
   bugId: string;
@@ -390,6 +398,7 @@ export function CommentThread({
   users: UserOption[];
   /** Files attached to each comment, by comment id (#215). */
   attachmentsByComment?: AttachmentsByComment;
+  organizationRoles?: OrganizationRoles;
 } & ViewerProps) {
   const [typeFilter, setTypeFilter] = useState<string>("all");
 
@@ -450,6 +459,7 @@ export function CommentThread({
               currentUserRole={currentUserRole}
               tenantAdmin={tenantAdmin}
               attachmentsByComment={attachmentsByComment}
+              organizationRoles={organizationRoles}
               readOnly={readOnly}
             />
           ))}

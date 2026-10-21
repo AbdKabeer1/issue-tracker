@@ -92,7 +92,7 @@ vi.mock("@/lib/platforms", () => ({
 
 const mockDb = vi.hoisted(() => ({
   bug: { findUnique: vi.fn() },
-  membership: { findUnique: vi.fn().mockResolvedValue({ role: "member", userId: "user-123" }) },
+  membership: { findUnique: vi.fn().mockResolvedValue({ role: "member", userId: "user-123" }), findMany: vi.fn().mockResolvedValue([]) },
   redesignProposal: { findMany: vi.fn().mockResolvedValue([]) },
   issueBid: { findMany: vi.fn().mockResolvedValue([]) },
   issueInterest: { count: vi.fn() },
