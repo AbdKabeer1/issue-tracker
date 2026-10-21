@@ -50,6 +50,7 @@ beforeEach(() => {
   mocks.requireUser.mockResolvedValue({ id: "u1", email: "ada@example.com" });
   mocks.confirmIdentity.mockResolvedValue({ ok: true });
   mocks.findUser.mockResolvedValue({ email: "ada@example.com" });
+  mocks.disableTwoFactor.mockResolvedValue(1);
 });
 
 describe("startTwoFactorAction", () => {
@@ -109,11 +110,13 @@ describe("confirmTwoFactorAction", () => {
 
 describe("disableTwoFactorAction and regenerateBackupCodesAction", () => {
   it("need the password and a current code, checked inside the call", async () => {
-    mocks.regenerateBackupCodes.mockResolvedValue({ ok: true, codes: [] });
+    mocks.regenerateBackupCodes.mockResolvedValue({ ok: true, codes: [], sessionVersion: 2 });
     await disableTwoFactorAction(form({ password: "pw", code: "123456" }));
     expect(mocks.confirmIdentity).toHaveBeenCalledWith("u1", { password: "pw", code: "123456" });
+    expect(refreshedTo(0)).toBe(1);
     await regenerateBackupCodesAction(form({ password: "pw", code: "ABCDE-FGHJK" }));
     expect(mocks.confirmIdentity).toHaveBeenLastCalledWith("u1", { password: "pw", code: "ABCDE-FGHJK" });
+    expect(refreshedTo(1)).toBe(2);
   });
 
   it("change nothing when re-authentication fails", async () => {
@@ -122,6 +125,7 @@ describe("disableTwoFactorAction and regenerateBackupCodesAction", () => {
     expect(await regenerateBackupCodesAction(form({ password: "pw", code: "000000" }))).toEqual({ ok: false, error: "That code isn't right." });
     expect(mocks.disableTwoFactor).not.toHaveBeenCalled();
     expect(mocks.regenerateBackupCodes).not.toHaveBeenCalled();
+    expect(mocks.updateSession).not.toHaveBeenCalled();
   });
 
   it("turn off and make new codes once re-authenticated", async () => {
