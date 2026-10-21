@@ -79,6 +79,31 @@ describe("IssueFilters live search (#671)", () => {
   });
 });
 
+describe("IssueFilters search commit + feedback (#690)", () => {
+  it("wires a busy state, an explicit Search button, and no blur commit", async () => {
+    const { readFileSync } = await import("fs");
+    const source = readFileSync("components/issue-filters.tsx", "utf8");
+
+    // Busy state comes from a navigation transition around the router calls.
+    expect(source).toContain("useTransition");
+    expect(source).toContain("aria-busy={isSearching}");
+
+    // An explicit Search button commits the query.
+    expect(source).toContain("onClick={applyQueryNow}");
+
+    // Blurring the box closes the dropdown but must not commit the search.
+    const blurBody = source.match(/onBlur=\{\(\) => \{([\s\S]*?)\}\}/)?.[1] ?? "";
+    expect(blurBody).toContain("setOpen(false)");
+    expect(blurBody).not.toContain("applyQueryNow");
+  });
+
+  it("announces the result count as a live region on the list page (#690)", async () => {
+    const { readFileSync } = await import("fs");
+    const source = readFileSync("app/(app)/issues/(list)/page.tsx", "utf8");
+    expect(source).toMatch(/role="status" aria-live="polite"[\s\S]*?resultCountText/);
+  });
+});
+
 describe("IssueFilters clear all filters (#336)", () => {
   it("shows the button when a filter is set", async () => {
     const html = await renderFilters("page=2&q=crash");
