@@ -185,11 +185,17 @@ describe("agent issue reads", () => {
     expect(response.headers.get("cache-control")).toContain("no-store");
   });
 
-  it("supports no-platform/no-assignee and the same unknown-platform fallback as the app", async () => {
+  it("supports no-platform/no-assignee and rejects an unknown platform or area id (#409)", async () => {
     await list(request("GET", undefined, "?projectId=project-a&platform=none&assignee=none"));
     expect(db.bug.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ categoryId: null, assigneeId: null }) }));
-    await list(request("GET", undefined, "?projectId=project-a&platform=unknown"));
-    expect(db.bug.findMany.mock.lastCall?.[0].where).not.toHaveProperty("categoryId");
+    db.bug.findMany.mockClear();
+    const platform = await list(request("GET", undefined, "?projectId=project-a&platform=unknown"));
+    expect(platform.status).toBe(422);
+    expect((await platform.json()).error).toContain('Unknown platform id "unknown"');
+    const area = await list(request("GET", undefined, "?projectId=project-a&area=unknown"));
+    expect(area.status).toBe(422);
+    expect((await area.json()).error).toContain('Unknown area id "unknown"');
+    expect(db.bug.findMany).not.toHaveBeenCalled();
   });
 
   it("keeps only open issues in the requested intake stage, then pages them", async () => {
