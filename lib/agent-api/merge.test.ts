@@ -13,7 +13,7 @@ type VerdictRow = {
 
 const state = vi.hoisted(() => ({
   verdicts: [] as VerdictRow[],
-  confirmations: [] as { agentId: string; agent: { id: string; ownerUserId: string } }[],
+  confirmations: [] as { agentId: string; agent: { id: string; ownerUserId: string; level?: string } }[],
 }));
 
 const db = vi.hoisted(() => ({
@@ -68,11 +68,12 @@ function merger(id: string, ownerId: string, level: "observer" | "contributor" |
   return { agentId: id, name: id, ownerId, tenantId: "tenant_zedu", level, burst: false, keyId: `key-${id}` };
 }
 
-/** The two independent accepts that confirm an issue. */
+/** The two independent accepts plus a triage clear that confirm an issue. */
 function confirmWith(ownerA: string, ownerB: string) {
   state.confirmations = [
     { agentId: `a-${ownerA}`, agent: { id: `a-${ownerA}`, ownerUserId: ownerA } },
     { agentId: `a-${ownerB}`, agent: { id: `a-${ownerB}`, ownerUserId: ownerB } },
+    { agentId: "a-tia", agent: { id: "a-tia", ownerUserId: "tia", level: "triager" } },
   ];
 }
 
@@ -348,19 +349,20 @@ describe("acceptFix: a successful accept (#434)", () => {
     });
   });
 
-  it("pays up to two reviewers, each for the person they acted for", async () => {
+  it("pays every good-to-merge reviewer, each less than the one before", async () => {
     confirmWith("rob", "sam");
     verdict("r1", "rob", "rob");
     verdict("r2", "sam", "sam");
     verdict("r3", "tia", "tia");
 
     const result = await acceptFix(merger("m1", "mo", "merger"), "bug1");
-    expect(result).toMatchObject({ status: 200, rewardedReviewerUserIds: ["rob", "sam"] });
+    expect(result).toMatchObject({ status: 200, rewardedReviewerUserIds: ["rob", "sam", "tia"] });
     const awards = db.pointEntry.createMany.mock.calls.map((call) => call[0].data[0]);
     const reviewerAwards = awards.filter((a) => a.role === "reviewer");
-    expect(reviewerAwards).toHaveLength(2);
+    expect(reviewerAwards).toHaveLength(3);
     expect(reviewerAwards[0]).toMatchObject({ userId: "rob", points: 10, sourceKey: "reviewer:bug1:rob" });
-    expect(reviewerAwards[1]).toMatchObject({ userId: "sam", points: 10, sourceKey: "reviewer:bug1:sam" });
+    expect(reviewerAwards[1]).toMatchObject({ userId: "sam", points: 7, sourceKey: "reviewer:bug1:sam" });
+    expect(reviewerAwards[2]).toMatchObject({ userId: "tia", points: 4, sourceKey: "reviewer:bug1:tia" });
   });
 
   it("does not count or pay a verdict credited to the active claim beneficiary (#495)", async () => {

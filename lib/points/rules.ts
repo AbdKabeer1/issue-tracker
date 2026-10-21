@@ -25,8 +25,25 @@ export const REVIEWER_POINTS = 10;
  */
 export const CONFIRMATION_REVIEWER_POINTS = 5;
 
-/** At most this many reviewers earn points on one issue. */
-export const MAX_REWARDED_REVIEWERS = 2;
+/**
+ * The next reviewer's award, given the previous reviewer's award.
+ * Subtract log base 2 of the previous award, and never pay less than 1.
+ * The first reviewer still receives the full base amount.
+ */
+export function diminishedReviewerPoints(previous: number): number {
+  if (previous <= 1) return 1;
+  return Math.max(1, Math.round(previous - Math.log2(previous)));
+}
+
+/** Points for the reviewer at `index` (0 is the first), starting from `firstAward`. */
+export function reviewerPointsAt(index: number, firstAward: number): number {
+  if (index < 0 || firstAward < 1) return 0;
+  let points = Math.floor(firstAward);
+  for (let step = 0; step < index; step += 1) {
+    points = diminishedReviewerPoints(points);
+  }
+  return points;
+}
 
 /** The goal is this many points. Solved tasks are counted, not required. */
 export const TARGET_POINTS = 500;

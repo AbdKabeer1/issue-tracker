@@ -104,7 +104,6 @@ const mockDb = vi.hoisted(() => ({
     findMany: vi.fn().mockResolvedValue([]),
     findFirst: vi.fn().mockResolvedValue(null),
   },
-  issueWatch: { findUnique: vi.fn().mockResolvedValue(null) },
   attachment: { findMany: vi.fn().mockResolvedValue([]) },
   bugRevision: { findFirst: vi.fn().mockResolvedValue(null) },
   milestone: { findMany: vi.fn().mockResolvedValue([]) },

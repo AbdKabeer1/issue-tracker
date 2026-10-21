@@ -8,10 +8,7 @@ import { IssueApiError } from "@/lib/agent-api/issues";
 import { publish } from "@/lib/agent-api/events";
 import { isConfirmed } from "@/lib/agent-api/validation";
 import { award } from "@/lib/points/award";
-import {
-  MAX_REWARDED_REVIEWERS,
-  pointSourceKey,
-} from "@/lib/points/rules";
+import { pointSourceKey, reviewerPointsAt } from "@/lib/points/rules";
 import {
   calculateReviewerPoints,
   calculateSolverPoints,
@@ -190,7 +187,7 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
       };
     }
 
-    const rewardedReviewerUserIds = reviewers.slice(0, MAX_REWARDED_REVIEWERS);
+    const rewardedReviewerUserIds = reviewers;
     const solverUserId = claim?.beneficiaryUserId ?? bug.assigneeId;
 
     await tx.bug.update({ where: { id: bug.id }, data: { status: "resolved" } });
@@ -227,13 +224,13 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
       });
     }
     const reviewerPoints = calculateReviewerPoints(rewardConfig);
-    for (const userId of rewardedReviewerUserIds) {
+    for (const [index, userId] of rewardedReviewerUserIds.entries()) {
       await award(tx, {
         tenantId: bug.tenantId,
         userId,
         bugId: bug.id,
         role: "reviewer",
-        points: reviewerPoints,
+        points: reviewerPointsAt(index, reviewerPoints),
         sourceKey: pointSourceKey("reviewer", bug.id, userId),
       });
     }
