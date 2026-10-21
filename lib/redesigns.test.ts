@@ -81,6 +81,20 @@ describe("redesign proposal creation", () => {
     expect(db.bug.findFirst).toHaveBeenCalledWith({ where: { id: "issue", tenantId: "tenant", projectId: "project", isDeleted: false }, select: { id: true } });
     expect(db.redesignProposal.create).not.toHaveBeenCalled();
   });
+  it("refuses a key restricted to another project (#412)", async () => {
+    const key = await db.agentApiKey.findUnique();
+    db.agentApiKey.findUnique.mockResolvedValue({ ...key, projectId: "other-project", project: { slug: "other" } });
+    const response = await propose(request(input, true));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: "project_forbidden" });
+    expect(db.project.findFirst).not.toHaveBeenCalled();
+    expect(db.redesignProposal.create).not.toHaveBeenCalled();
+  });
+  it("lets a key restricted to the same project propose (#412)", async () => {
+    const key = await db.agentApiKey.findUnique();
+    db.agentApiKey.findUnique.mockResolvedValue({ ...key, projectId: "project", project: { slug: "project" } });
+    expect((await propose(request(input, true))).status).toBe(201);
+  });
   it("accepts HTTPS previews and up to five image attachment ids only", () => {
     expect(redesignSchema.safeParse({ ...input, previewUrl: "https://figma.com/file/example", attachmentIds: ["file1", "file2"] }).success).toBe(true);
     expect(redesignSchema.safeParse({ ...input, previewUrl: "http://figma.com/file/example" }).success).toBe(false);
