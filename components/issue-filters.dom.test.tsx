@@ -395,3 +395,21 @@ describe("IssueFilters stage filter (#1054)", () => {
     expect(nav.push).toHaveBeenCalledWith("/issues");
   });
 });
+
+describe("IssueFilters without a platform select (#1055)", () => {
+  beforeEach(() => {
+    nav.params = new URLSearchParams();
+    nav.push.mockReset();
+  });
+  afterEach(cleanup);
+
+  it("leaves the platform to the tabs above the list", () => {
+    nav.params = new URLSearchParams("platform=cat-web");
+    render(<IssueFilters />);
+    // A chosen tab isn't counted as a filter or shown as a chip.
+    expect(screen.getByRole("button", { name: /^filter$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove platform filter" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^filter/i }));
+    expect(within(screen.getByRole("dialog", { name: "Filter issues" })).queryByLabelText("Platform")).not.toBeInTheDocument();
+  });
+});

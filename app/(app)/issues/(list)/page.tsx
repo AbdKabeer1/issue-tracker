@@ -69,10 +69,13 @@ import { cookies } from "next/headers";
 import { GettingStarted } from "@/components/getting-started";
 import { GETTING_STARTED_COOKIE, gettingStartedFor, parseDismissed, type GettingStartedStep } from "@/lib/onboarding";
 import {
+  PLATFORM_NONE,
   PLATFORM_PARAM,
   parsePlatformFilter,
+  platformChoices,
   platformFilterWhere,
 } from "@/lib/platform-filter";
+import { PlatformTabs, type PlatformTab } from "@/components/platform-tabs";
 import { AREA_PARAM, parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
 import { issueStageLabels, openIssueStages, parseIssueStageView, type IssueStage } from "@/lib/issue-stage";
 
@@ -265,6 +268,11 @@ export default async function BugsPage({
     if (asNumber !== null) where.OR.push({ number: asNumber });
   }
 
+  // #1055: every tab counts what the other filters match, whatever platform
+  // is picked, so switching tabs never surprises.
+  const { categoryId: _platformClause, ...platformTabWhere } = where;
+  void _platformClause;
+
   let totalCount = 0;
   try {
     totalCount = await prisma.bug.count({ where });
@@ -310,6 +318,45 @@ export default async function BugsPage({
       }
     }
   }
+
+  let platformTabs: PlatformTab[] = [];
+  if (!isDeletedView) {
+    try {
+      const grouped = await prisma.bug.groupBy({
+        by: ["categoryId"],
+        where: platformTabWhere,
+        _count: { _all: true },
+      });
+      const counts = new Map(grouped.map((row) => [row.categoryId, row._count._all]));
+      const all = grouped.reduce((sum, row) => sum + row._count._all, 0);
+      const noPlatform = counts.get(null) ?? 0;
+      platformTabs = [
+        { id: null, name: "All", count: all },
+        // Active platforms, plus a deactivated one if a link picked it.
+        ...platformChoices(platforms, selectedPlatform).map((platform) => ({
+          id: platform.id,
+          name: platform.name,
+          count: counts.get(platform.id) ?? 0,
+        })),
+        ...(noPlatform > 0 || selectedPlatform === PLATFORM_NONE
+          ? [{ id: PLATFORM_NONE, name: "No platform", count: noPlatform }]
+          : []),
+      ];
+    } catch (error) {
+      console.error("[bugs] platform tab counts failed", error);
+    }
+  }
+  const platformHref = (id: string | null) => {
+    const next = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (key === "page" || key === PLATFORM_PARAM) continue;
+      const single = toSingleQueryParam(value);
+      if (single) next.set(key, single);
+    }
+    if (id) next.set(PLATFORM_PARAM, id);
+    const qs = next.toString();
+    return qs ? `/issues?${qs}` : "/issues";
+  };
 
   // How many the default view is hiding, so "Show duplicates" can say so.
   let hiddenDuplicates = 0;
@@ -551,12 +598,14 @@ export default async function BugsPage({
       {/* #1054: no sidebar. Reported / Confirmed are a Stage filter now. */}
       <div className="space-y-4">
         {isFirstRun ? null : (
+          <PlatformTabs tabs={platformTabs} current={selectedPlatform} hrefFor={platformHref} />
+        )}
+        {isFirstRun ? null : (
           <Suspense
             fallback={<div className="h-12 animate-pulse rounded-lg bg-slate-100" />}
           >
             <IssueFilters
               tagTypes={tagTypes}
-              platforms={platforms}
               milestones={milestones}
               areas={areas}
               shortcutsEnabled={shortcutsEnabled}
