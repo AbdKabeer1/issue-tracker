@@ -83,6 +83,8 @@ import {
   platformFilterWhere,
 } from "@/lib/platform-filter";
 import { PlatformTabs, type PlatformTab } from "@/components/platform-tabs";
+import { LoadError } from "@/components/load-error";
+import { logLoadFailure } from "@/lib/load-error";
 import { AREA_PARAM, parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
 import { intakeDetail, intakeLabel, openIssueStages, parseIssueStageView, type IssueStage } from "@/lib/issue-stage";
 
@@ -116,17 +118,12 @@ async function loadOrEmpty<T>(label: string, load: () => Promise<T>, empty: T): 
   }
 }
 
-function issuesQueryError(detail: string) {
+/** The database error stays in the server log under `reference` (#506). */
+function issuesQueryError(reference: string, message?: string) {
   return (
-    <div className="rounded-xl border border-red-200 bg-white px-6 py-10">
-      <h1 className="text-xl font-semibold text-slate-900">Issues could not be loaded</h1>
-      <p className="mt-2 text-sm text-slate-600">
-        The issues query failed. The message below is the database error.
-      </p>
-      <pre className="mt-4 overflow-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-800">
-        {detail}
-      </pre>
-    </div>
+    <LoadError title="Issues could not be loaded" reference={reference}>
+      {message}
+    </LoadError>
   );
 }
 
@@ -290,7 +287,7 @@ export default async function BugsPage({
   try {
     totalCount = await prisma.bug.count({ where });
   } catch (error) {
-    console.error("[bugs] list count failed", error);
+    const reference = logLoadFailure("[bugs] list count failed", error);
     const missingColumn = isMissingTenantColumnError(error);
     if (!tenantId) {
       // No membership: nothing to show either way (#439).
@@ -304,11 +301,11 @@ export default async function BugsPage({
       // #506: never retry without the tenant filter. That used to show every
       // tenant's issues to anyone whose query error mentioned the column.
       return issuesQueryError(
+        reference,
         "The issue list is unavailable while the database finishes upgrading. Try again in a minute.",
       );
     } else {
-      const detail = error instanceof Error ? error.message : "Could not load issues";
-      return issuesQueryError(detail);
+      return issuesQueryError(reference);
     }
   }
 
@@ -458,13 +455,9 @@ export default async function BugsPage({
       take: pagination.take,
     })
     .then((bugs) => ({ bugs }))
-    .catch((error: unknown) => {
-      console.error("[bugs] list query failed", error);
-      const detail = error instanceof Error ? error.message : "Could not load issues";
-      return { detail };
-    });
-  if ("detail" in listed) {
-    return issuesQueryError(listed.detail);
+    .catch((error: unknown) => ({ reference: logLoadFailure("[bugs] list query failed", error) }));
+  if ("reference" in listed) {
+    return issuesQueryError(listed.reference);
   }
   const bugs = listed.bugs;
 

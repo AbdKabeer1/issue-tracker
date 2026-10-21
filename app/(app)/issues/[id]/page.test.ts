@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import type { ReactElement } from "react";
 
 // #425: run as a member of the Zedu tenant.
 vi.mock("@/lib/tenant-context", async (importOriginal) => ({
@@ -342,6 +344,28 @@ describe("BugDetailPage conditional user query (#349)", () => {
           }),
         }),
       );
+    });
+
+    it("shows a reference instead of the database error when the issue can't load", async () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+      mockRequireUser.mockResolvedValue({
+        id: "user-123",
+        role: "user",
+      } as unknown as Awaited<ReturnType<typeof requireUser>>);
+      const dbError = new Error('relation "Bug" violates constraint "Bug_tenantId_fkey" on column secret_col');
+      mockBugFindUnique.mockRejectedValueOnce(dbError);
+
+      const element = await BugDetailPage({ params: Promise.resolve({ id: "bug-1" }) });
+      const html = renderToStaticMarkup(element as ReactElement);
+
+      expect(html).toContain("This issue could not be loaded");
+      expect(html).not.toContain("Bug_tenantId_fkey");
+      expect(html).not.toContain("secret_col");
+      // The full error is logged, under the reference the page shows.
+      const reference = html.match(/<code[^>]*>([0-9a-f]{8})<\/code>/)?.[1];
+      expect(reference).toBeDefined();
+      expect(consoleError).toHaveBeenCalledWith(`[issue] detail query failed (ref ${reference})`, dbError);
+      consoleError.mockRestore();
     });
   });
 });
