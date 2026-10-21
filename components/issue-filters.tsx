@@ -497,7 +497,7 @@ export function IssueFilters({
           type="button"
           onClick={applyQueryNow}
           disabled={isSearching}
-          className="inline-flex h-[38px] shrink-0 items-center gap-1.5 rounded-lg border border-teal-600 bg-teal-600 px-3 text-sm font-medium text-white shadow-xs transition-colors hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 disabled:cursor-default disabled:opacity-70"
+          className="inline-flex h-[38px] shrink-0 items-center gap-1.5 rounded-lg border border-teal-700 bg-teal-700 px-3 text-sm font-medium text-white shadow-xs transition-colors hover:bg-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 disabled:cursor-default disabled:opacity-70"
         >
           {isSearching ? (
             <svg
