@@ -203,4 +203,20 @@ describe("issue list layout", () => {
     expect(html).not.toContain(">Ann<");
     expect(findMany.mock.calls.at(-1)![0].select).not.toHaveProperty("proofLinks");
   });
+
+  it("shows the assignee as a face only, and a short updated date (#1061)", async () => {
+    const html = await renderList();
+    // The name is only in the tooltip and for screen readers.
+    expect(html).toContain('title="Assigned to Bob Builder"');
+    expect(html).toContain('<span class="sr-only">Assigned to Bob Builder</span>');
+    expect(html).not.toContain("max-w-[10rem] truncate");
+    // "Updated" means updatedAt (Oct 20), not when it was opened (Oct 1).
+    expect(html).toMatch(/<time dateTime="2026-10-20T10:00:00.000Z" title="Updated Oct 20, 2026/);
+    expect(html).not.toContain(">updated<");
+  });
+
+  it("dates rows by when they were opened when sorted by newest (#1061)", async () => {
+    const html = await renderList({ sort: "newest" });
+    expect(html).toMatch(/<time dateTime="2026-10-01T10:00:00.000Z" title="Opened /);
+  });
 });

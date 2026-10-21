@@ -878,7 +878,7 @@ export default async function BugsPage({
                                     </>
                                   ) : null}
                                   <RowAge
-                                    date={bug.createdAt}
+                                    date={currentSort === "newest" ? bug.createdAt : bug.updatedAt}
                                     sort={currentSort === "newest" ? "newest" : "updated"}
                                   />
                                   {(bug._count?.comments ?? 0) > 0 ? (
@@ -899,15 +899,6 @@ export default async function BugsPage({
                                       </span>
                                     </>
                                   ) : null}
-                                  {bug.assignee ? (
-                                    <>
-                                      <MetaSeparator />
-                                      <RowAssignee
-                                        name={bug.assignee.name}
-                                        image={bug.assignee.image}
-                                      />
-                                    </>
-                                  ) : null}
                                 </>
                               }
                             />
@@ -918,7 +909,14 @@ export default async function BugsPage({
                         </div>
                       </Link>
 
-                      <div className="flex w-full basis-full shrink-0 items-center justify-end gap-3 self-center border-t border-slate-100 pt-2 md:basis-auto md:w-auto md:border-0 md:pt-0 md:pl-2">
+                      {/* #1061: the assignee's face, at the right of the row on every width. */}
+                      {bug.assignee ? (
+                        <div className="shrink-0 self-start pt-0.5">
+                          <RowAssignee name={bug.assignee.name} image={bug.assignee.image} />
+                        </div>
+                      ) : null}
+
+                      <div className="flex w-full basis-full shrink-0 items-center justify-end gap-3 self-center border-t border-slate-100 pt-2 empty:hidden md:basis-auto md:w-auto md:border-0 md:pt-0 md:pl-2">
                         {isWatchingView ? (
                           <div className="flex items-center gap-2">
                             {isWatchingView && !bug.isDeleted ? (
