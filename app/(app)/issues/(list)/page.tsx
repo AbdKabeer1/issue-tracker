@@ -590,14 +590,7 @@ export default async function BugsPage({
             </Link>
           ) : null}
           {finishedWatched > 0 ? <UnwatchFinishedButton count={finishedWatched} /> : null}
-          {!isDeletedView ? (
-            <Link
-              href="/issues/new"
-              className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-xs hover:bg-blue-700 transition-colors"
-            >
-              New Issue
-            </Link>
-          ) : null}
+          {/* #1057: "New issue" lives in the header on every page; no second one here. */}
         </div>
       </div>
 
@@ -685,7 +678,7 @@ export default async function BugsPage({
               <p className="mt-1 text-sm text-slate-600">
                 {isWatchingView
                   ? "You watch issues you report, are assigned to or comment on, and any you choose to watch from the issue page."
-                  : "Try clearing filters or report a new issue."}
+                  : "Try clearing filters, or report it with New issue at the top."}
               </p>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
                 <Link
@@ -693,12 +686,6 @@ export default async function BugsPage({
                   className="text-sm font-medium text-blue-600 hover:underline"
                 >
                   Clear filters
-                </Link>
-                <Link
-                  href="/issues/new"
-                  className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                >
-                  New Issue
                 </Link>
               </div>
             </div>
