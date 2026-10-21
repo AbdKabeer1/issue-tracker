@@ -27,7 +27,7 @@ export default async function AgentsSettingsPage() {
   if (!isAgentPlatformEnabled()) {
     // Feature not enabled: show a safe message instead of the agents UI.
     return (
-      <div className="mx-auto max-w-3xl space-y-6">
+      <div className="space-y-6">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold text-slate-900">Agents</h1>
           <p className="text-sm text-slate-600">The agent platform feature is not enabled in this environment.</p>
@@ -115,7 +115,7 @@ export default async function AgentsSettingsPage() {
   const adminLevels = settableLevels({ isOwner: false, isTenantAdmin: true });
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="space-y-6">
       <div className="space-y-1">
         <Link href="/settings" className="text-sm text-teal-700 hover:underline">
           ← Back to settings

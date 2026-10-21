@@ -7,6 +7,7 @@ import { SignOutButton } from "@/components/sign-out-button";
 import { BrandLockup } from "@/components/brand-lockup";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { AgentKeyCopyButton, type AgentKeyHint } from "@/components/agent-key-copy";
+import { PAGE_CONTAINER_CLASS } from "@/components/page-container";
 import { RoleSwitcher } from "@/components/role-switcher";
 import type { ProjectChoice } from "@/lib/project-context";
 import {
@@ -230,7 +231,7 @@ export function AppHeader({
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 -z-10 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80"
       />
-      <div className="relative mx-auto flex h-14 max-w-7xl items-center gap-4 px-4 sm:gap-6">
+      <div className={`relative flex h-14 items-center gap-4 sm:gap-6 ${PAGE_CONTAINER_CLASS}`}>
         <div className="shrink-0">
           <BrandLockup href="/issues" size="sm" />
         </div>
