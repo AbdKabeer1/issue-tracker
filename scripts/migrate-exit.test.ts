@@ -15,9 +15,13 @@ function run(prismaExitCode: number, env: Record<string, string | undefined>) {
   dirs.push(dir);
   mkdirSync(join(dir, "scripts"));
   cpSync("scripts/migrate.mjs", join(dir, "scripts/migrate.mjs"));
+  cpSync("scripts/migration-database-url.mjs", join(dir, "scripts/migration-database-url.mjs"));
   mkdirSync(join(dir, "node_modules/.bin"), { recursive: true });
   const prisma = join(dir, "node_modules/.bin/prisma");
-  writeFileSync(prisma, `#!/bin/sh\necho "prisma $*" >> "${join(dir, "calls.log")}"\nexit ${prismaExitCode}\n`);
+  writeFileSync(
+    prisma,
+    `#!/bin/sh\necho "url=$DATABASE_URL" >> "${join(dir, "calls.log")}"\necho "prisma $*" >> "${join(dir, "calls.log")}"\nexit ${prismaExitCode}\n`,
+  );
   chmodSync(prisma, 0o755);
   const result = spawnSync(process.execPath, ["scripts/migrate.mjs"], {
     cwd: dir,
@@ -69,6 +73,16 @@ describe("scripts/migrate.mjs exit code (#580)", () => {
     const { status, calls } = run(0, { NODE_ENV: "production" });
     expect(status).toBe(1);
     expect(calls).toBe("");
+  });
+
+  it("migrates through the direct Neon host when DATABASE_URL is pooled", () => {
+    const pooled =
+      "postgresql://user:secret-pooler@ep-example-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require";
+    const { status, calls, output } = run(0, { NODE_ENV: "production", DATABASE_URL: pooled });
+    expect(status).toBe(0);
+    expect(calls).toContain("ep-example.c-7.us-east-2.aws.neon.tech");
+    expect(calls).not.toContain("ep-example-pooler");
+    expect(output).toContain("direct connection");
   });
 
   it("the Dockerfile only starts the server when the script succeeds", () => {
