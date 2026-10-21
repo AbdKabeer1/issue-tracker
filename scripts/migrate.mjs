@@ -1,5 +1,6 @@
 import { execSync } from "child_process";
 import { existsSync } from "fs";
+import { databaseHost, migrationDatabaseUrl } from "./migration-database-url.mjs";
 
 /**
  * Container start step: apply pending Prisma migrations, nothing else (#112).
@@ -31,16 +32,15 @@ function stopOnFailure() {
   );
 }
 
-let url = process.env.DATABASE_URL;
-if (url) {
-  url = url.trim();
-  if (
-    (url.startsWith('"') && url.endsWith('"')) ||
-    (url.startsWith("'") && url.endsWith("'"))
-  ) {
-    url = url.slice(1, -1).trim();
+const pooledUrl = process.env.DATABASE_URL;
+const migrationUrl = migrationDatabaseUrl(pooledUrl, process.env.DIRECT_URL);
+if (migrationUrl) {
+  process.env.DATABASE_URL = migrationUrl;
+  if (migrationUrl !== pooledUrl) {
+    console.log(
+      `[db:migrate] Migrations use a direct connection (${databaseHost(migrationUrl)}). The app keeps the pooled URL.`,
+    );
   }
-  process.env.DATABASE_URL = url;
 }
 
 if (!process.env.DATABASE_URL) {
