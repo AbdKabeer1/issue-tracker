@@ -27,9 +27,17 @@ export async function resolveIssuesForMergedPullRequest(
     select: { id: true, tenantId: true, projectId: true, status: true, assigneeId: true, reporterId: true,
       claims: { where: { status: "active", releasedAt: null }, select: { id: true, agentId: true, beneficiaryUserId: true } } },
   });
+  const resolved: string[] = [];
   for (const bug of bugs) {
-    await db.$transaction(async (tx) => {
-      await tx.bug.update({ where: { id: bug.id }, data: { status: "resolved" } });
+    const didResolve = await db.$transaction(async (tx) => {
+      // Re-check inside the transaction: a person resolving the issue, or a
+      // redelivered webhook, may have won since the read above. Then there is
+      // nothing to record or publish.
+      const changed = await tx.bug.updateMany({
+        where: { id: bug.id, status: { not: "resolved" } },
+        data: { status: "resolved" },
+      });
+      if (changed.count !== 1) return false;
       await tx.bugActivity.create({
         data: {
           bugId: bug.id,
@@ -53,7 +61,9 @@ export async function resolveIssuesForMergedPullRequest(
         tenantId: bug.tenantId, type: "issue.updated", bugId: bug.id,
         payload: { issueId: bug.id, projectId: bug.projectId, changed: ["status"], values: { status: "resolved" }, source: "github" },
       });
+      return true;
     });
+    if (didResolve) resolved.push(bug.id);
   }
-  return bugs.map((bug) => bug.id);
+  return resolved;
 }
