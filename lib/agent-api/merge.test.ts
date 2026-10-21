@@ -13,7 +13,7 @@ type VerdictRow = {
 
 const state = vi.hoisted(() => ({
   verdicts: [] as VerdictRow[],
-  confirmations: [] as { agentId: string; agent: { id: string; ownerUserId: string } }[],
+  confirmations: [] as { agentId: string; agent: { id: string; ownerUserId: string; level?: string } }[],
 }));
 
 const db = vi.hoisted(() => ({
@@ -68,11 +68,12 @@ function merger(id: string, ownerId: string, level: "observer" | "contributor" |
   return { agentId: id, name: id, ownerId, tenantId: "tenant_zedu", level, burst: false, keyId: `key-${id}` };
 }
 
-/** The two independent accepts that confirm an issue. */
+/** The two independent accepts plus a triage clear that confirm an issue. */
 function confirmWith(ownerA: string, ownerB: string) {
   state.confirmations = [
     { agentId: `a-${ownerA}`, agent: { id: `a-${ownerA}`, ownerUserId: ownerA } },
     { agentId: `a-${ownerB}`, agent: { id: `a-${ownerB}`, ownerUserId: ownerB } },
+    { agentId: "a-tia", agent: { id: "a-tia", ownerUserId: "tia", level: "triager" } },
   ];
 }
 

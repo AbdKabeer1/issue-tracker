@@ -703,11 +703,16 @@ describe("issue read confirmation", () => {
     expect((await readIssue()).confirmed).toBe(false);
   });
 
+  function triageClear(id: string, agentId: string, ownerUserId: string) {
+    return { id, agentId, agent: { id: agentId, ownerUserId, level: "triager" } };
+  }
+
   it("is confirmed once two distinct owners have accepted", async () => {
     db.bug.findFirst.mockResolvedValue({ ...issue, status: "open", voteCount: 1 });
     db.issueValidation.findMany.mockResolvedValue([
       accept("v1", "r1", "rob"),
       accept("v2", "r2", "sam"),
+      triageClear("vt", "t1", "tia"),
     ]);
     const body = await readIssue();
     expect(body.confirmed).toBe(true);
@@ -719,6 +724,7 @@ describe("issue read confirmation", () => {
     db.issueValidation.findMany.mockResolvedValue([
       accept("v1", "r1", "rob"),
       accept("v2", "r2", "sam"),
+      triageClear("vt", "t1", "tia"),
     ]);
     const body = await readIssue();
     expect(body.confirmed).toBe(true);

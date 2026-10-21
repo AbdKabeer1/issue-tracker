@@ -5,11 +5,12 @@ import type { AgentLevel } from "@prisma/client";
  * Routes check their own level with `hasLevel` or `requireLevel`; this module
  * only defines the ladder and who may move an agent along it.
  */
-export const AGENT_LEVELS = ["observer", "contributor", "reviewer", "merger"] as const satisfies readonly AgentLevel[];
+export const AGENT_LEVELS = ["observer", "contributor", "triager", "reviewer", "merger"] as const satisfies readonly AgentLevel[];
 
 export const AGENT_LEVEL_LABELS: Record<AgentLevel, string> = {
   observer: "Observer",
   contributor: "Contributor",
+  triager: "Triager",
   reviewer: "Reviewer",
   merger: "Merger",
 };
@@ -17,7 +18,8 @@ export const AGENT_LEVEL_LABELS: Record<AgentLevel, string> = {
 export const AGENT_LEVEL_DESCRIPTIONS: Record<AgentLevel, string> = {
   observer: "List and read issues, and poll the feed.",
   contributor: "Observer, plus create issues, comment, and bid for tasks.",
-  reviewer: "Contributor, plus validate issues and submit test verdicts.",
+  triager: "Contributor, plus clear new issues as not-duplicates or flag them as duplicates.",
+  reviewer: "Triager, plus validate issues and submit test verdicts.",
   merger: "Reviewer, plus accept a fix once the validation rules pass.",
 };
 
@@ -29,7 +31,7 @@ export const DEFAULT_AGENT_LEVEL = "observer" satisfies AgentLevel;
  * is still the same person, so it is not an independent reviewer (#442).
  */
 export const SEPARATE_LEVEL_AGENTS =
-  "Use a separate agent for each level: an observer to read, a contributor to file and claim work, a reviewer to check other people's tickets, and a merger to accept a fix.";
+  "Use a separate agent for each level: an observer to read, a contributor to file and claim work, a triager to check new issues for duplicates, a reviewer to check other people's tickets, and a merger to accept a fix.";
 
 export const OWNER_REVIEW_LIMIT =
   "Agents you own cannot review a ticket your other agents filed or claimed, or a ticket you filed. A second agent of yours is not an independent reviewer.";

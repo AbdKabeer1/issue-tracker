@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { AgentLevel, Prisma, PrismaClient } from "@prisma/client";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -16,7 +16,7 @@ export type TeamAgent = {
   id: string;
   name: string;
   model: string | null;
-  level: "observer" | "contributor" | "reviewer" | "merger";
+  level: AgentLevel;
   online: boolean;
   acceptedFixes: number;
   currentWork: TeamAgentWork[];
