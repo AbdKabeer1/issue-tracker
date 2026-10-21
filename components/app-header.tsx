@@ -5,9 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SignOutButton } from "@/components/sign-out-button";
 import { BrandLockup } from "@/components/brand-lockup";
-import { ProjectSwitcher } from "@/components/project-switcher";
+import { WorkspaceSwitcher, type WorkspaceChoice } from "@/components/workspace-switcher";
 import { RoleSwitcher } from "@/components/role-switcher";
-import type { ProjectChoice } from "@/lib/project-context";
 import {
   SWITCH_TENANT_LINK,
   headerNavItems,
@@ -161,10 +160,10 @@ function CountBadge({ count }: { count: number }) {
 }
 
 function tabClass(active: boolean) {
-  return `relative inline-flex h-full items-center gap-1.5 px-3 text-sm transition-colors ${linkFocus} ${
+  return `relative inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm transition-colors ${linkFocus} ${
     active
-      ? "font-medium text-slate-900 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-teal-700"
-      : "text-slate-600 hover:text-slate-900"
+      ? "bg-teal-50 font-medium text-teal-900"
+      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
   }`;
 }
 
@@ -228,7 +227,7 @@ function NavMenu({
           id={menuId}
           role="menu"
           aria-label={item.label}
-          className="absolute left-0 top-full z-50 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg ring-1 ring-black/5"
+          className="absolute left-0 top-full z-50 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm"
         >
           {item.children?.map((sub) => {
             const subActive = isNavItemActive(pathname, sub.href);
@@ -276,7 +275,7 @@ function PointsChip({
     <Link
       href={`/users/${userId}`}
       title={label}
-      className={`inline-flex h-9 items-center gap-2 rounded-lg px-2 text-slate-700 hover:bg-slate-100 ${linkFocus}`}
+      className={`inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-slate-700 hover:bg-slate-50 ${linkFocus}`}
     >
       <span className="text-sm font-semibold tabular-nums text-slate-900">{points}</span>
       <span className="text-xs text-slate-500">pts</span>
@@ -297,8 +296,8 @@ export function AppHeader({
   unreadCount = 0,
   pendingEscalationsCount = 0,
   userId,
-  projects = [],
-  activeProjectId = null,
+  workspaces = [],
+  activeTenantId = null,
   canManagePlatforms = false,
   points = 0,
   solvedTasks = 0,
@@ -314,9 +313,9 @@ export function AppHeader({
   /** Unresolved escalations from agents (#763). */
   pendingEscalationsCount?: number;
   userId?: string | null;
-  /** The tenant's projects and the one currently active (#426). */
-  projects?: ProjectChoice[];
-  activeProjectId?: string | null;
+  /** Workspaces this person can open, and the one currently active. */
+  workspaces?: WorkspaceChoice[];
+  activeTenantId?: string | null;
   /** Owner or admin of the organization currently open. */
   canManagePlatforms?: boolean;
   /** This person's points in the open workspace. */
@@ -374,15 +373,12 @@ export function AppHeader({
           <BrandLockup href="/issues" size="sm" />
         </div>
 
-        {/* #426: the active project. Below lg the project, agent key, and links move into the menu. */}
+        {/* Active workspace. Below lg it moves into the menu. */}
         <div className="hidden shrink-0 lg:block">
-          <ProjectSwitcher
-            projects={projects}
-            activeProjectId={activeProjectId}
-          />
+          <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} />
         </div>
 
-        <nav aria-label="Main" className="hidden h-full min-w-0 items-stretch lg:flex">
+        <nav aria-label="Main" className="hidden h-full min-w-0 items-center lg:flex">
           {items.map((item) =>
             item.children && item.children.length > 0 ? (
               <NavMenu
@@ -423,7 +419,7 @@ export function AppHeader({
             href="/issues/new"
             aria-current={onNewIssue ? "page" : undefined}
             aria-label="New issue"
-            className={`inline-flex h-9 items-center gap-1.5 rounded-lg bg-teal-700 px-2.5 text-sm font-medium text-white shadow-xs transition-colors hover:bg-teal-800 sm:px-3.5 ${linkFocus}`}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-full bg-teal-700 px-2.5 text-sm font-medium text-white transition-colors hover:bg-teal-800 sm:px-3.5 ${linkFocus}`}
           >
             <PlusIcon />
             <span className="hidden sm:inline">New issue</span>
@@ -460,7 +456,7 @@ export function AppHeader({
             {accountOpen ? (
               <div
                 id="account-menu"
-                className="absolute right-0 top-full z-50 mt-2 w-64 origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg ring-1 ring-black/5 motion-safe:animate-[header-pop_120ms_ease-out]"
+                className="absolute right-0 top-full z-50 mt-2 w-64 origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm motion-safe:animate-[header-pop_120ms_ease-out]"
               >
                 <AccountSummary userName={userName} userImage={userImage} role={effectiveRole} realRole={realRole} />
                 {canSwitchRole ? (
@@ -530,15 +526,13 @@ export function AppHeader({
           ref={menuPanelRef}
           className="relative max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-4 pt-2 lg:hidden"
         >
-          {projects.length > 0 ? (
-            <div className="border-b border-slate-200 pb-3">
-              <ProjectSwitcher
-                projects={projects}
-                activeProjectId={activeProjectId}
-                fullWidth
-              />
-            </div>
-          ) : null}
+          <div className="border-b border-slate-200 pb-3">
+            <WorkspaceSwitcher
+              workspaces={workspaces}
+              activeTenantId={activeTenantId}
+              fullWidth
+            />
+          </div>
           <nav aria-label="Main" className="flex flex-col py-1">
             {items.map((item) => {
               if (item.children && item.children.length > 0) {

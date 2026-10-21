@@ -373,7 +373,6 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
   it("one accepting reviewer does not confirm; two do, and the reporter is paid once", async () => {
     const first = await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal);
     expect(first).toMatchObject({ status: 201, confirmed: false, newlyConfirmed: false });
-    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
     expect(await isConfirmed("bug1")).toBe(false);
 
     const second = await submitValidation(reviewer("r2", "sam"), "bug1", { ...acceptReal, severity: "low" });
@@ -382,14 +381,6 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
     expect(db.$queryRaw).toHaveBeenCalled();
     const awards = db.pointEntry.createMany.mock.calls.map((call) => call[0].data[0]);
     expect(awards).toEqual([
-      {
-        tenantId: "tenant_zedu",
-        userId: "ada",
-        bugId: "bug1",
-        role: "reporter",
-        points: 5,
-        sourceKey: "reporter:bug1:ada",
-      },
       {
         tenantId: "tenant_zedu",
         userId: "rob",
@@ -403,15 +394,29 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
         userId: "sam",
         bugId: "bug1",
         role: "reviewer",
-        points: 5,
+        points: 3,
         sourceKey: "reviewer-confirm:bug1:sam",
+      },
+      {
+        tenantId: "tenant_zedu",
+        userId: "ada",
+        bugId: "bug1",
+        role: "reporter",
+        points: 5,
+        sourceKey: "reporter:bug1:ada",
       },
     ]);
 
-    // A third accept keeps it confirmed and pays nobody again.
+    // A third accept keeps it confirmed and pays that reviewer 1 point.
     const third = await submitValidation(reviewer("r3", "tia"), "bug1", acceptReal);
     expect(third).toMatchObject({ confirmed: true, newlyConfirmed: false });
-    expect(db.pointEntry.createMany).toHaveBeenCalledTimes(3);
+    expect(db.pointEntry.createMany).toHaveBeenCalledTimes(4);
+    expect(db.pointEntry.createMany.mock.calls[3][0].data[0]).toMatchObject({
+      userId: "tia",
+      role: "reviewer",
+      points: 1,
+      sourceKey: "reviewer-confirm:bug1:tia",
+    });
   });
 
   it("two agents of the same owner count once", async () => {

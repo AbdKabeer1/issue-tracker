@@ -10,7 +10,7 @@ import { withAgentBudgetHeaders, type AgentBudgetQuota } from "@/lib/agents/rate
 import { createBugSchema, commentSchema, statusSchema, severitySchema } from "@/lib/validations/issue";
 import { parsePlatformFilter, platformFilterWhere } from "@/lib/platform-filter";
 import { parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
-import { openIssueStages, type IssueStage } from "@/lib/issue-stage";
+import { intakeKind, openIssueStages, type IssueStage } from "@/lib/issue-stage";
 import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, hashCreateRequest, pageSize, toPage, type IssueCursor } from "@/lib/agent-api/create-policy";
 import { createdSummary, commentedSummary, commentPreview } from "@/lib/activity-log";
 import { extractMentionedUserIds, normalizeMentions } from "@/lib/mentions";
@@ -177,7 +177,7 @@ const validationSelect = {
 export async function readAgentIssue(scope: Scope, id: string) {
   const issue = await prisma.bug.findFirst({
     where: { ...scope, id, isDeleted: false },
-    select: { ...issueSelect, comments: {
+    select: { ...issueSelect, voteCount: true, comments: {
       where: { deletedAt: null }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 100,
       select: { id: true, body: true, authorId: true, agentId: true, parentId: true, type: true, metadata: true, createdAt: true, editedAt: true },
     }, attachments: {
@@ -190,7 +190,13 @@ export async function readAgentIssue(scope: Scope, id: string) {
     }, _count: { select: { comments: { where: { deletedAt: null } } } } },
   });
   if (!issue) throw new IssueApiError(404, "Issue not found.");
-  return { ...issue, confirmed: await isConfirmed(issue.id) };
+  const confirmed = await isConfirmed(issue.id);
+  const { voteCount, ...publicIssue } = issue;
+  return {
+    ...publicIssue,
+    confirmed,
+    intake: intakeKind({ status: issue.status, voteCount, confirmed }),
+  };
 }
 
 /** What a paged comment carries: the embedded read's fields plus who wrote it. */

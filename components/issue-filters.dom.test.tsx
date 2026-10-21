@@ -374,12 +374,13 @@ describe("IssueFilters stage filter (#1054)", () => {
   });
   afterEach(cleanup);
 
-  it("offers Reported and Confirmed, with their counts, in the Filter popover", () => {
-    render(<IssueFilters stageCounts={{ reported: 7, confirmed: 2 }} />);
+  it("offers Ideas and Issues, with their counts, in the Filter popover", () => {
+    render(<IssueFilters stageCounts={{ reported: 7, confirmed: 2, ready: 4 }} />);
     fireEvent.click(screen.getByRole("button", { name: /^filter/i }));
-    const stage = within(screen.getByRole("dialog", { name: "Filter issues" })).getByLabelText("Stage");
-    expect(within(stage).getByRole("option", { name: "Reported (7)" })).toBeInTheDocument();
-    expect(within(stage).getByRole("option", { name: "Confirmed (2)" })).toBeInTheDocument();
+    const stage = within(screen.getByRole("dialog", { name: "Filter issues" })).getByLabelText("Kind");
+    expect(within(stage).getByRole("option", { name: "Ideas (7)" })).toBeInTheDocument();
+    expect(within(stage).getByRole("option", { name: "Ideas awaiting upvotes (2)" })).toBeInTheDocument();
+    expect(within(stage).getByRole("option", { name: "Issues (4)" })).toBeInTheDocument();
 
     fireEvent.change(stage, { target: { value: "reported" } });
     expect(nav.push).toHaveBeenCalledWith("/issues?stage=reported");
@@ -390,7 +391,7 @@ describe("IssueFilters stage filter (#1054)", () => {
     render(<IssueFilters />);
     expect(screen.getByRole("button", { name: /filter \(1 active\)/i })).toBeInTheDocument();
     const remove = screen.getByRole("button", { name: "Remove stage filter" });
-    expect(remove.parentElement).toHaveTextContent("Stage: Confirmed");
+    expect(remove.parentElement).toHaveTextContent("Kind: Ideas awaiting upvotes");
     fireEvent.click(remove);
     expect(nav.push).toHaveBeenCalledWith("/issues");
   });
