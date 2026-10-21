@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const db = vi.hoisted(() => ({
   agentApiKey: { findUnique: vi.fn() }, agentAuditEvent: { create: vi.fn() }, agentEvent: { findMany: vi.fn() }, $queryRaw: vi.fn(),
+  bug: { findUnique: vi.fn() },
   webhookSubscription: { findMany: vi.fn(), findFirst: vi.fn(), count: vi.fn(), create: vi.fn(), delete: vi.fn(), update: vi.fn() },
 }));
 const budget = vi.hoisted(() => vi.fn());
@@ -23,8 +24,8 @@ function request(path = "/events", method = "GET", body?: unknown, key = true) {
 }
 const context = { params: Promise.resolve({ id: "subscription-a" }) };
 const event = { id: "event-a", txid: BigInt("100"), createdAt: new Date("2026-10-19T12:00:00Z"), type: "issue.created", payload: {}, actorAgentId: "agent-a", bugId: "issue-a" };
-function key(level = "contributor") {
-  return { id: "key-a", revokedAt: null, agent: { id: "agent-a", name: "Agent", ownerUserId: "owner", tenantId: "tenant-a", level, burst: false, revokedAt: null, owner: { memberships: [{ tenantId: "tenant-a" }] } } };
+function key(level = "contributor", project: { id: string; slug: string } | null = null) {
+  return { id: "key-a", revokedAt: null, projectId: project?.id ?? null, project: project ? { slug: project.slug } : null, agent: { id: "agent-a", name: "Agent", ownerUserId: "owner", tenantId: "tenant-a", level, burst: false, revokedAt: null, owner: { memberships: [{ tenantId: "tenant-a" }] } } };
 }
 beforeEach(() => {
   vi.resetAllMocks();
@@ -132,6 +133,69 @@ describe("events endpoint", () => {
     const pending = GET(request(`/events?wait=1&after=${cursor}`));
     await vi.advanceTimersByTimeAsync(1000);
     expect(await (await pending).json()).toEqual({ events: [], cursor, hasMore: false });
+  });
+});
+
+describe("events endpoint project scope (#405)", () => {
+  beforeEach(() => {
+    db.agentApiKey.findUnique.mockResolvedValue(key("observer", { id: "proj-ziki", slug: "ziki" }));
+    db.bug.findUnique.mockReset();
+    db.agentEvent.findMany.mockResolvedValue([]);
+  });
+
+  it("rejects a foreign projectId with 403 project_forbidden and does not touch the feed", async () => {
+    const response = await GET(request("/events?projectId=proj-web"));
+    expect(response.status).toBe(403);
+    expect((await response.json()).error).toBe("project_forbidden");
+    expect(db.agentEvent.findMany).not.toHaveBeenCalled();
+    expect(db.bug.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("rejects a foreign project's bugId with 403 and an unknown bugId with 404", async () => {
+    db.bug.findUnique.mockResolvedValueOnce({ projectId: "proj-web" });
+    const foreign = await GET(request("/events?bugId=issue-web"));
+    expect(foreign.status).toBe(403);
+    expect((await foreign.json()).error).toBe("project_forbidden");
+    expect(db.agentEvent.findMany).not.toHaveBeenCalled();
+
+    db.bug.findUnique.mockResolvedValueOnce(null);
+    const unknown = await GET(request("/events?bugId=issue-missing"));
+    expect(unknown.status).toBe(404);
+    expect((await unknown.json()).error).toBe("Issue not found.");
+    expect(db.agentEvent.findMany).not.toHaveBeenCalled();
+  });
+
+  it("lets a scoped key use its own projectId and filters an explicit bugId to it", async () => {
+    db.agentEvent.findMany.mockResolvedValueOnce([event]);
+    const own = await GET(request("/events?projectId=proj-ziki"));
+    expect(own.status).toBe(200);
+    expect(db.bug.findUnique).not.toHaveBeenCalled();
+    expect(db.agentEvent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ projectId: "proj-ziki", tenantId: "tenant-a" }) }));
+
+    db.bug.findUnique.mockResolvedValueOnce({ projectId: "proj-ziki" });
+    db.agentEvent.findMany.mockResolvedValueOnce([{ ...event, id: "event-b" }]);
+    const withBug = await GET(request("/events?bugId=issue-ziki"));
+    expect(withBug.status).toBe(200);
+    expect(db.agentEvent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ projectId: "proj-ziki", bugId: "issue-ziki" }) }));
+  });
+
+  it("narrows an unfiltered scoped poll to the key's project", async () => {
+    db.agentEvent.findMany.mockResolvedValue([event]);
+    const response = await GET(request("/events"));
+    expect(response.status).toBe(200);
+    expect(db.agentEvent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-a", projectId: "proj-ziki", txid: { lt: BigInt("1000") } }) }));
+  });
+
+  it("reads only the project of a bugId and keeps legacy keys tenant-wide", async () => {
+    await GET(request("/events?bugId=issue-ziki"));
+    expect(db.bug.findUnique).toHaveBeenCalledWith({ where: { id: "issue-ziki" }, select: { projectId: true } });
+
+    db.bug.findUnique.mockClear();
+    db.agentApiKey.findUnique.mockResolvedValueOnce(key("observer"));
+    db.agentEvent.findMany.mockResolvedValueOnce([]);
+    expect((await GET(request("/events?projectId=proj-web"))).status).toBe(200);
+    expect(db.agentEvent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-a", projectId: "proj-web" }) }));
+    expect(db.bug.findUnique).not.toHaveBeenCalled();
   });
 });
 
