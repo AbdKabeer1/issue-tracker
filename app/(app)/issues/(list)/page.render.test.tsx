@@ -115,4 +115,16 @@ describe("issue list layout", () => {
     expect(html).toContain("No issues match these filters.");
     expect(html).not.toContain('href="/issues/new"');
   });
+
+  it("has no stage sidebar beside the list (#1054)", async () => {
+    const html = await renderList();
+    expect(html).not.toContain('aria-label="Issue stages"');
+    expect(html).not.toContain("lg:w-56");
+  });
+
+  it("still filters by ?stage= from old links (#1054)", async () => {
+    await renderList({ stage: "reported" });
+    const listQuery = findMany.mock.calls.at(-1)![0];
+    expect(listQuery.where.id).toEqual({ in: ["bug-1"] });
+  });
 });

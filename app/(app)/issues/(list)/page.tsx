@@ -75,7 +75,6 @@ import {
   platformFilterWhere,
 } from "@/lib/platform-filter";
 import { AREA_PARAM, parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
-import { IssueStageNav } from "@/components/issue-stage-nav";
 import { issueStageLabels, openIssueStages, parseIssueStageView, type IssueStage } from "@/lib/issue-stage";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki". */
@@ -523,17 +522,6 @@ export default async function BugsPage({
     confirmed: "bg-amber-50 text-amber-900",
     ready: "bg-emerald-50 text-emerald-800",
   };
-  const stageHref = (stage: "reported" | "confirmed" | null) => {
-    const next = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (key === "page" || key === "stage") continue;
-      const single = toSingleQueryParam(value);
-      if (single) next.set(key, single);
-    }
-    if (stage) next.set("stage", stage);
-    const qs = next.toString();
-    return qs ? `/issues?${qs}` : "/issues";
-  };
 
   const severityDotColors: Record<string, string> = {
     critical: "bg-red-500",
@@ -603,15 +591,8 @@ export default async function BugsPage({
         />
       ) : null}
 
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-        {!isDeletedView ? (
-          <IssueStageNav
-            current={stageView}
-            counts={{ all: statsTotal, reported: reportedCount, confirmed: confirmedCount }}
-            hrefFor={stageHref}
-          />
-        ) : null}
-        <div className="min-w-0 flex-1 space-y-4">
+      {/* #1054: no sidebar. Reported / Confirmed are a Stage filter now. */}
+      <div className="space-y-4">
         {isFirstRun ? null : (
           <Suspense
             fallback={<div className="h-12 animate-pulse rounded-lg bg-slate-100" />}
@@ -622,6 +603,7 @@ export default async function BugsPage({
               milestones={milestones}
               areas={areas}
               shortcutsEnabled={shortcutsEnabled}
+              stageCounts={isDeletedView ? undefined : { reported: reportedCount, confirmed: confirmedCount }}
             />
           </Suspense>
         )}
@@ -960,7 +942,6 @@ export default async function BugsPage({
               />
             </>
           )}
-        </div>
       </div>
     </div>
   );
