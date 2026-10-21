@@ -284,13 +284,16 @@ export async function collectPairing(deviceCode: unknown, now = new Date()): Pro
     });
     if (claimed.count !== 1) return { status: "used" } as const;
     if (agentId) {
+      // The owner may have changed the agent's level after approval; report
+      // the level the key actually works at, not the one asked for (#1182).
+      const agent = await tx.agent.findUnique({ where: { id: agentId }, select: { level: true } });
       const key = generateApiKey();
       await tx.agentApiKey.create({
         data: { agentId, projectId, keyHash: key.hash, prefix: key.prefix },
       });
       return {
         status: "issued",
-        key: { agentId, name: pairing.proposedName, level: pairing.proposedLevel ?? PAIRED_AGENT_LEVEL, rawKey: key.raw, prefix: key.prefix },
+        key: { agentId, name: pairing.proposedName, level: agent?.level ?? pairing.proposedLevel ?? PAIRED_AGENT_LEVEL, rawKey: key.raw, prefix: key.prefix },
         projectId,
       } as const;
     }

@@ -12,7 +12,7 @@ const db = vi.hoisted(() => {
       updateMany: vi.fn(),
       deleteMany: vi.fn(),
     },
-    agent: { create: vi.fn(), delete: vi.fn(), count: vi.fn(async () => 0) },
+    agent: { create: vi.fn(), delete: vi.fn(), count: vi.fn(async () => 0), findUnique: vi.fn() },
     agentApiKey: { create: vi.fn() },
     agentAuditEvent: { create: vi.fn() },
     membership: { findMany: vi.fn(), findUnique: vi.fn() },
@@ -46,6 +46,7 @@ beforeEach(() => {
   db.membership.findMany.mockResolvedValue([{ tenantId: "tenant_zedu", role: "member", tenant: { slug: "zedu" } }]);
   db.project.findFirst.mockResolvedValue({ id: "project_zedu" });
   db.agent.create.mockResolvedValue({ id: "agent9", name: "Ada's Claude" });
+  db.agent.findUnique.mockResolvedValue({ level: "contributor" });
 });
 
 describe("startPairing (#427)", () => {
@@ -199,6 +200,15 @@ describe("collectPairing (#427)", () => {
     expect(result.status).toBe("issued");
     expect(db.agent.create).not.toHaveBeenCalled();
     expect(db.agentApiKey.create.mock.calls[0][0].data).toMatchObject({ agentId: "agent9", projectId: "project_zedu" });
+  });
+
+  it("reports the level the agent actually has, if the owner changed it after approval", async () => {
+    db.agentPairing.findUnique.mockResolvedValue({ ...approved, agentId: "agent9", proposedLevel: "dispatcher" });
+    db.agent.findUnique.mockResolvedValue({ level: "observer" });
+    db.agentPairing.updateMany.mockResolvedValue({ count: 1 });
+    const result = await collectPairing(DEVICE, NOW);
+    expect(result.status).toBe("issued");
+    if (result.status === "issued") expect(result.key.level).toBe("observer");
   });
 
   it("creates the agent for the approver, as a contributor, and returns its key once", async () => {
