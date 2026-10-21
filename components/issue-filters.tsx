@@ -363,7 +363,9 @@ export function IssueFilters({
   ].filter(Boolean).length;
 
   // Only worth offering when there is something to clear (#336).
-  const hasActiveFilters = FILTER_PARAMS.some((key) => (params.get(key) ?? "") !== "");
+  const hasActiveFilters = FILTER_PARAMS.some((key) =>
+    key === "mine" ? Boolean(currentMine) : (params.get(key) ?? "") !== "",
+  );
 
   function clearAllFilters() {
     // Empty the box straight away: until the navigation lands, the local draft

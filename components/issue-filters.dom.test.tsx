@@ -23,6 +23,40 @@ const tagTypes = [
   { id: "t2", name: "Fixes" },
 ];
 
+describe("IssueFilters Show menu (#1104)", () => {
+  beforeEach(() => {
+    nav.params = new URLSearchParams();
+    nav.push.mockReset();
+    nav.replace.mockReset();
+  });
+  afterEach(cleanup);
+
+  it("shows only the four supported views and falls back for old mine links", () => {
+    nav.params = new URLSearchParams("mine=mine");
+    render(<IssueFilters />);
+    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+    const show = screen.getByRole("combobox", { name: "Show" });
+    expect(within(show).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "All issues", "Assigned to me", "Created by me", "Issues I'm watching",
+    ]);
+    expect(show).toHaveValue("");
+    expect(screen.queryByRole("button", { name: "Remove view filter" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear all filters" })).not.toBeInTheDocument();
+  });
+
+  it.each(["", "assigned", "created", "watching"])("navigates when selecting %s", (value) => {
+    nav.params = new URLSearchParams("mine=reported&status=open&page=3");
+    render(<IssueFilters />);
+    fireEvent.click(screen.getByRole("button", { name: /Filter \(/ }));
+    const show = screen.getByRole("combobox", { name: "Show" });
+    expect(show).toHaveValue("created");
+    fireEvent.change(show, { target: { value } });
+    expect(nav.push).toHaveBeenCalledWith(
+      value ? `/issues?mine=${value}&status=open` : "/issues?status=open",
+    );
+  });
+});
+
 describe("IssueFilters milestone filters (#728)", () => {
   const milestones = [
     { id: "m1", title: "Release 1", isClosed: false },

@@ -59,9 +59,13 @@ describe("parseBugListFilters", () => {
     expect(parse({ mine: "assigned" }).where.assigneeId).toBe("u1");
     expect(parse({ mine: "reported" }).where.reporterId).toBe("u1");
     expect(parse({ mine: "created" }).where.reporterId).toBe("u1");
-    expect(parse({ mine: "mine" }).where.AND).toEqual([
-      { OR: [{ reporterId: "u1" }, { assigneeId: "u1" }] },
-    ]);
+  });
+
+  it("treats the retired mine view as all issues and preserves other filters", () => {
+    expect(parse({ mine: "mine" })).toEqual(parse({}));
+    expect(parse({ mine: "mine", status: "open", q: "login" })).toEqual(
+      parse({ status: "open", q: "login" }),
+    );
   });
 
   it("ignores the mine filter when there is no user to scope to", () => {

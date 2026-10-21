@@ -183,7 +183,7 @@ export function EditableIssueDescription({
           </div>
         </form>
       ) : (
-        <div className="mt-2">
+        <div className="mt-2 max-w-3xl">
           <ExpandableText maxLines={6} expandText="View more" collapseText="View less">
             <RichText
               content={initialDescription}
