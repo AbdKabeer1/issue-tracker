@@ -69,6 +69,7 @@ const BLOCK_TAGS = new Set([
 ]);
 
 const FORMATTING_TAGS = new Set([
+  "a",
   "b",
   "blockquote",
   "code",
@@ -108,17 +109,22 @@ const ENTITIES: Record<string, string> = {
   ndash: "–",
 };
 
+function isValidCodePoint(code: number): boolean {
+  // Reject non-finite, out of range, and UTF-16 surrogate halves (0xD800 - 0xDFFF)
+  return Number.isFinite(code) && code >= 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff);
+}
+
 function decodeEntities(text: string): string {
-  return text.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, entity: string) => {
+  return text.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (match, entity: string) => {
     const key = entity.toLowerCase();
     if (ENTITIES[key]) return ENTITIES[key];
     if (key.startsWith("#x")) {
       const code = Number.parseInt(key.slice(2), 16);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+      return isValidCodePoint(code) ? String.fromCodePoint(code) : match;
     }
     if (key.startsWith("#")) {
       const code = Number.parseInt(key.slice(1), 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+      return isValidCodePoint(code) ? String.fromCodePoint(code) : match;
     }
     return match;
   });
@@ -126,8 +132,8 @@ function decodeEntities(text: string): string {
 
 function parseAttrs(raw: string): Record<string, string> {
   const attrs: Record<string, string> = {};
-  for (const match of raw.matchAll(/([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*("[^"]*"|'[^']*'|[^\s"'>]+)/g)) {
-    attrs[match[1].toLowerCase()] = decodeEntities(match[2].replace(/^["']|["']$/g, ""));
+  for (const match of raw.matchAll(/([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'>]+))?/g)) {
+    attrs[match[1].toLowerCase()] = decodeEntities((match[2] ?? "").replace(/^["']|["']$/g, ""));
   }
   return attrs;
 }
@@ -423,8 +429,12 @@ export function pasteToMarkdown({
   html: string;
 }): string {
   if (html.trim() && hasRichFormatting(html)) {
-    const markdown = htmlToMarkdown(html);
-    if (markdown) return markdown;
+    try {
+      const markdown = htmlToMarkdown(html);
+      if (markdown) return markdown;
+    } catch {
+      // Keep the plain clipboard flavor available if rich conversion fails.
+    }
   }
   return text.replace(/\r\n/g, "\n").replace(/\t/g, "  ");
 }

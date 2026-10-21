@@ -13,6 +13,17 @@ vi.mock("@/lib/tenant-viewer", () => ({
   viewerBugScope: vi.fn(async () => ({ tenantId: "tenant-zedu" })),
 }));
 
+const tenantAccess = vi.hoisted(() => ({
+  currentTenantAccess: vi.fn(async (_id: string, role: string) => ({
+    tenantId: "tenant-zedu",
+    tenantName: "Zedu",
+    tenantSlug: "zedu",
+    membershipRole: "member" as "owner" | "admin" | "member",
+    admin: role === "super_admin",
+  })),
+}));
+vi.mock("@/lib/tenant-access", () => tenantAccess);
+
 const pageSource = readFileSync(
   path.resolve(__dirname, "page.tsx"),
   "utf8",
@@ -88,6 +99,7 @@ vi.mock("@/lib/prisma", () => ({
     bug: { findUnique: vi.fn() },
     membership: { findUnique: vi.fn().mockResolvedValue({ role: "member", userId: "user-123" }) },
     redesignProposal: { findMany: vi.fn().mockResolvedValue([]) },
+    issueBid: { findMany: vi.fn().mockResolvedValue([]) },
     user: { findMany: vi.fn() },
     category: { findMany: vi.fn().mockResolvedValue([]) },
     bugActivity: {
@@ -99,6 +111,7 @@ vi.mock("@/lib/prisma", () => ({
     attachment: { findMany: vi.fn().mockResolvedValue([]) },
     bugRevision: { findFirst: vi.fn().mockResolvedValue(null) },
     milestone: { findMany: vi.fn().mockResolvedValue([]) },
+    goal: { findMany: vi.fn().mockResolvedValue([]) },
     issueValidation: { findMany: vi.fn().mockResolvedValue([]) },
     issueClaim: { findMany: vi.fn().mockResolvedValue([]) },
     testVerdict: { findMany: vi.fn().mockResolvedValue([]) },
@@ -122,6 +135,38 @@ describe("BugDetailPage conditional user query (#349)", () => {
     expect(pageSource).toMatch(/canTriage[\s\S]*?prisma\.user\.findMany/);
   });
 
+  it("does not render CopyLinkButton, BoostTicketButton, or DeleteIssueButton in the header (#760)", () => {
+    const pageSourceFresh = readFileSync(
+      path.resolve(__dirname, "page.tsx"),
+      "utf8",
+    );
+    // Find the header action bar container
+    const headerActionBlockMatch = pageSourceFresh.match(
+      /<div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-9 print:hidden">([\s\S]*?)<\/div>/,
+    );
+    expect(headerActionBlockMatch).toBeTruthy();
+    const headerActionBlock = headerActionBlockMatch![1];
+
+    expect(headerActionBlock).not.toContain("CopyLinkButton");
+    expect(headerActionBlock).not.toContain("BoostTicketButton");
+    expect(headerActionBlock).not.toContain("DeleteIssueButton");
+    expect(headerActionBlock).not.toContain("RestoreIssueButton");
+
+    // Danger zone still retains DeleteIssueButton
+    expect(pageSourceFresh).toContain("Danger zone");
+    expect(pageSourceFresh).toMatch(/Danger zone[\s\S]*?<DeleteIssueButton/);
+  });
+
+  it("renders Conversation section heading and supports conversation anchor (#753)", () => {
+    const pageSourceFresh = readFileSync(
+      path.resolve(__dirname, "page.tsx"),
+      "utf8",
+    );
+    expect(pageSourceFresh).toContain('id="conversation"');
+    expect(pageSourceFresh).toContain('id="comments"');
+    expect(pageSourceFresh).toContain("Conversation ({comments.visibleCount})");
+  });
+
   describe("runtime execution", () => {
     beforeEach(() => {
       vi.clearAllMocks();
@@ -129,6 +174,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
       mockBugFindUnique.mockResolvedValue({
         id: "bug-1",
         number: 42,
+        tenantId: "tenant-zedu",
         title: "Test Bug",
         description: "Test Description",
         status: "open",
@@ -165,10 +211,30 @@ describe("BugDetailPage conditional user query (#349)", () => {
       expect(mockUserFindMany).not.toHaveBeenCalled();
     });
 
-    it("queries database users when viewer is an admin", async () => {
+    it("does not query database users when a site admin is only a member", async () => {
       mockRequireUser.mockResolvedValue({
         id: "admin-123",
         role: "admin",
+      } as unknown as Awaited<ReturnType<typeof requireUser>>);
+
+      await BugDetailPage({
+        params: Promise.resolve({ id: "bug-1" }),
+      });
+
+      expect(mockUserFindMany).not.toHaveBeenCalled();
+    });
+
+    it("queries database users when the viewer administers this organization", async () => {
+      tenantAccess.currentTenantAccess.mockResolvedValueOnce({
+        tenantId: "tenant-zedu",
+        tenantName: "Zedu",
+        tenantSlug: "zedu",
+        membershipRole: "owner",
+        admin: true,
+      });
+      mockRequireUser.mockResolvedValue({
+        id: "admin-123",
+        role: "user",
       } as unknown as Awaited<ReturnType<typeof requireUser>>);
       mockUserFindMany.mockResolvedValue([
         { id: "u-1", name: "Alice", role: "admin", image: null },
@@ -179,7 +245,9 @@ describe("BugDetailPage conditional user query (#349)", () => {
       });
 
       expect(mockUserFindMany).toHaveBeenCalledTimes(1);
+      // #502: only the issue's tenant can be mentioned or assigned.
       expect(mockUserFindMany).toHaveBeenCalledWith({
+        where: { memberships: { some: { tenantId: "tenant-zedu" } } },
         orderBy: { name: "asc" },
         select: { id: true, name: true, role: true, image: true },
       });
@@ -199,7 +267,9 @@ describe("BugDetailPage conditional user query (#349)", () => {
       });
 
       expect(mockUserFindMany).toHaveBeenCalledTimes(1);
+      // #502: only the issue's tenant can be mentioned or assigned.
       expect(mockUserFindMany).toHaveBeenCalledWith({
+        where: { memberships: { some: { tenantId: "tenant-zedu" } } },
         orderBy: { name: "asc" },
         select: { id: true, name: true, role: true, image: true },
       });

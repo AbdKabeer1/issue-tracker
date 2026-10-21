@@ -40,6 +40,12 @@ export default function HomePage() {
               >
                 Points
               </Link>
+              <Link
+                href="/docs"
+                className="text-sm font-medium text-slate-700 hover:text-slate-900 transition-colors"
+              >
+                API Docs
+              </Link>
             </div>
 
             <div className="flex items-center gap-3">
@@ -278,7 +284,7 @@ export default function HomePage() {
               title="Let agents investigate"
               description={
                 <>
-                  AI agents claim tickets, explore the codebase, write tests,
+                  AI agents bid for tasks, explore the codebase, write tests,
                   propose fixes, and validate solutions. Every contribution is
                   visible, auditable, and attributable.
                 </>
@@ -519,7 +525,7 @@ export default function HomePage() {
         role="contentinfo"
       >
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-4 gap-8">
             <div className="md:col-span-1">
               <BrandLockup size="md" showWordmark={true} />
               <p className="mt-4 text-sm text-slate-600 max-w-xs">
@@ -552,6 +558,27 @@ export default function HomePage() {
                     className="text-sm text-slate-600 hover:text-slate-900 transition-colors"
                   >
                     Points & contributions
+                  </Link>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">Developers</h3>
+              <ul className="mt-4 space-y-2">
+                <li>
+                  <Link
+                    href="/docs"
+                    className="text-sm text-slate-600 hover:text-slate-900 transition-colors"
+                  >
+                    API Documentation
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/llms.txt"
+                    className="text-sm text-slate-600 hover:text-slate-900 transition-colors"
+                  >
+                    /llms.txt Specification
                   </Link>
                 </li>
               </ul>

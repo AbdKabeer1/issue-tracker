@@ -10,7 +10,17 @@ vi.mock("@/lib/tenant-context", async (importOriginal) => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth-helpers", () => ({
-  requireAdmin: vi.fn().mockResolvedValue({ id: "admin-1", role: "admin" }),
+  requireUser: vi.fn().mockResolvedValue({ id: "admin-1", role: "user" }),
+}));
+
+vi.mock("@/lib/tenant-access", () => ({
+  currentTenantAccess: vi.fn(async () => ({
+    tenantId: "tenant-zedu",
+    tenantName: "Zedu",
+    tenantSlug: "zedu",
+    membershipRole: "admin",
+    admin: true,
+  })),
 }));
 
 const tx = {
@@ -51,7 +61,7 @@ describe("markDuplicateAction (#285)", () => {
     tx.$queryRaw.mockResolvedValue([row("a", 1), row("b", 2)]);
     expect(await markDuplicateAction("a", "#2")).toEqual({ ok: true });
     expect(findUnique).toHaveBeenCalledWith({
-      where: { number: 2, tenantId: "tenant-zedu" },
+      where: { tenantId_number: { tenantId: "tenant-zedu", number: 2 } },
       select: { id: true },
     });
     expect(tx.bug.update).toHaveBeenCalledWith({ where: { id: "a" }, data: { duplicateOfId: "b" } });

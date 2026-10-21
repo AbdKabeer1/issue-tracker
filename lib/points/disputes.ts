@@ -20,6 +20,8 @@ export const ALREADY_RESOLVED = "That dispute has already been resolved.";
 export const NOT_YOUR_ENTRY = "That points entry isn't yours.";
 export const NOBODY_TO_AWARD = "This issue has nobody to award: it has no assignee.";
 export const NO_ENTRY_ON_THIS_DISPUTE = "This dispute isn't about a points entry.";
+export const ALREADY_CORRECTED = "That points entry has already been corrected.";
+export const DISPUTE_ALREADY_OPEN = "An open dispute already exists for this entry.";
 
 export const disputeInputSchema = z
   .object({
@@ -96,8 +98,8 @@ export function missingAwardEntry(
 }
 
 /** A correction is a new row that reverses an entry; the original is never edited. */
-export function correctionSourceKey(disputeId: string): string {
-  return `correction:${disputeId}`;
+export function correctionSourceKey(pointEntryId: string): string {
+  return `undo:${pointEntryId}`;
 }
 
 /** Opens a dispute on an issue in the member's workspace. */
@@ -115,10 +117,17 @@ export async function openDispute(
 
   if (input.kind === "wrong") {
     const entry = await db.pointEntry.findFirst({
-      where: { id: input.pointEntryId, userId, tenantId },
-      select: { id: true },
+      where: { id: input.pointEntryId, userId, tenantId, bugId: bug.id },
+      select: { id: true, correctedAt: true },
     });
     if (!entry) return { ok: false, error: NOT_YOUR_ENTRY };
+    if (entry.correctedAt) return { ok: false, error: ALREADY_CORRECTED };
+
+    const existingDispute = await db.pointDispute.findFirst({
+      where: { pointEntryId: input.pointEntryId, status: "open" },
+      select: { id: true },
+    });
+    if (existingDispute) return { ok: false, error: DISPUTE_ALREADY_OPEN };
   }
 
   const dispute = await db.pointDispute.create({
@@ -127,6 +136,10 @@ export async function openDispute(
       userId,
       bugId: bug.id,
       pointEntryId: input.kind === "wrong" ? input.pointEntryId : null,
+      requestedRole:
+        input.kind === "missing" && (input.role === "solver" || input.role === "reporter")
+          ? input.role
+          : null,
       reason: input.reason,
     },
     select: { id: true },
@@ -181,6 +194,7 @@ export async function correctEntry(
       bugId: string | null;
       role: PointRole;
       points: number;
+      correctedAt?: Date | null;
     };
     resolvedById: string;
     note?: string | null;
@@ -192,6 +206,21 @@ export async function correctEntry(
     return { ok: false, error: NO_ENTRY_ON_THIS_DISPUTE };
   }
   if (entry.tenantId !== dispute.tenantId) return { ok: false, error: NOT_IN_WORKSPACE };
+  if (entry.correctedAt) return { ok: false, error: ALREADY_CORRECTED };
+
+  if (typeof db.pointEntry.findUnique === "function") {
+    const currentEntry = await db.pointEntry.findUnique({
+      where: { id: entry.id },
+      select: { correctedAt: true },
+    });
+    if (currentEntry?.correctedAt) return { ok: false, error: ALREADY_CORRECTED };
+  } else if (typeof db.pointEntry.findFirst === "function") {
+    const currentEntry = await db.pointEntry.findFirst({
+      where: { id: entry.id },
+      select: { correctedAt: true },
+    });
+    if (currentEntry?.correctedAt) return { ok: false, error: ALREADY_CORRECTED };
+  }
 
   await db.pointEntry.update({
     where: { id: entry.id },
@@ -203,7 +232,7 @@ export async function correctEntry(
     bugId: entry.bugId,
     role: entry.role,
     points: -entry.points,
-    sourceKey: correctionSourceKey(dispute.id),
+    sourceKey: correctionSourceKey(entry.id),
   });
   await db.pointDispute.update({
     where: { id: dispute.id },
@@ -245,6 +274,7 @@ const disputeSelect = {
   resolvedAt: true,
   createdAt: true,
   pointEntryId: true,
+  requestedRole: true,
   bug: { select: { id: true, number: true, title: true } },
   user: { select: { id: true, name: true } },
   pointEntry: { select: { id: true, points: true, role: true } },
@@ -259,6 +289,8 @@ export type DisputeView = {
   createdAt: Date;
   /** "wrong" when it disputes an entry, "missing" otherwise. */
   kind: DisputeKind;
+  /** The award a missing-points dispute asked for. */
+  requestedRole: DisputeRole | null;
   bugId: string;
   bugNumber: number;
   bugTitle: string;
@@ -278,6 +310,8 @@ function toView(row: DisputeRowWithRelations): DisputeView {
     resolvedAt: row.resolvedAt,
     createdAt: row.createdAt,
     kind: row.pointEntryId ? "wrong" : "missing",
+    requestedRole:
+      row.requestedRole === "solver" || row.requestedRole === "reporter" ? row.requestedRole : null,
     bugId: row.bug.id,
     bugNumber: row.bug.number,
     bugTitle: row.bug.title,
@@ -346,4 +380,103 @@ export async function entriesForMember(
     createdAt: row.createdAt,
     bugNumber: row.bug?.number ?? null,
   }));
+}
+
+/** How many issue numbers one credit request may name. */
+export const MAX_CREDIT_NUMBERS = 50;
+
+export type CreditSkip = { number: number; reason: string };
+
+export type CreditResult = {
+  credited: number[];
+  already: number[];
+  skipped: CreditSkip[];
+};
+
+/** Pulls positive issue numbers out of a list like "#269, 270 10". */
+export function parseIssueNumbers(raw: string): number[] {
+  const numbers = [
+    ...new Set(
+      raw
+        .split(/[^0-9]+/)
+        .map((part) => Number(part))
+        .filter((value) => Number.isInteger(value) && value > 0),
+    ),
+  ];
+  return numbers.slice(0, MAX_CREDIT_NUMBERS);
+}
+
+type CreditBug = DisputableBug & {
+  status: string;
+  isDeleted: boolean;
+  duplicateOfId: string | null;
+};
+
+/**
+ * Writes the missing solver or reporter award for the named issues.
+ * The canonical sourceKey means an issue that already has the award is skipped
+ * rather than paid twice. Solver points need a resolved or closed issue with
+ * an assignee. Reporter points are withheld on duplicates.
+ */
+export async function creditMissingAwards(
+  db: Db,
+  args: { tenantId: string; numbers: number[]; role: DisputeRole },
+): Promise<CreditResult> {
+  const numbers = [...new Set(args.numbers)].slice(0, MAX_CREDIT_NUMBERS);
+  const credited: number[] = [];
+  const already: number[] = [];
+  const skipped: CreditSkip[] = [];
+  if (numbers.length === 0) return { credited, already, skipped };
+
+  const bugs = (await db.bug.findMany({
+    where: { tenantId: args.tenantId, number: { in: numbers } },
+    select: {
+      id: true,
+      number: true,
+      tenantId: true,
+      reporterId: true,
+      assigneeId: true,
+      severity: true,
+      status: true,
+      isDeleted: true,
+      duplicateOfId: true,
+    },
+  })) as CreditBug[];
+  const byNumber = new Map(bugs.map((bug) => [bug.number, bug]));
+
+  for (const number of numbers) {
+    const bug = byNumber.get(number);
+    if (!bug) {
+      skipped.push({ number, reason: "not in this workspace" });
+      continue;
+    }
+    if (bug.isDeleted) {
+      skipped.push({ number, reason: "deleted" });
+      continue;
+    }
+    if (args.role === "solver") {
+      if (bug.status !== "resolved" && bug.status !== "closed") {
+        skipped.push({ number, reason: "not resolved" });
+        continue;
+      }
+      if (!bug.assigneeId) {
+        skipped.push({ number, reason: "no assignee" });
+        continue;
+      }
+    } else if (bug.duplicateOfId) {
+      skipped.push({ number, reason: "duplicate" });
+      continue;
+    }
+
+    const entry = missingAwardEntry(bug, args.role);
+    if (!entry) {
+      skipped.push({ number, reason: "no assignee" });
+      continue;
+    }
+    const awarded = await award(db, entry);
+    if (awarded) credited.push(number);
+    else already.push(number);
+  }
+
+  return { credited, already, skipped };
 }

@@ -35,6 +35,7 @@ function input(overrides: Partial<CreatePolicyInput> = {}): CreatePolicyInput {
     agent,
     projectId: "project_zedu",
     idempotencyKey: "3f1c-key",
+    requestHash: "request-hash",
     title: "Login button does nothing on Safari",
     insert,
     now: NOW,
@@ -78,18 +79,18 @@ describe("createIssueWithPolicy: idempotency (#441)", () => {
   it("creates once and records the key against the new issue", async () => {
     expect(await createIssueWithPolicy(input())).toEqual({ status: 201, bugId: "new-bug", replayed: false });
     expect(db.idempotencyKey.create).toHaveBeenCalledWith({
-      data: { agentId: "agent1", key: "3f1c-key", createdAt: NOW },
+      data: { agentId: "agent1", key: "3f1c-key", requestHash: "request-hash", createdAt: NOW },
       select: { id: true },
     });
     expect(db.idempotencyKey.update).toHaveBeenCalledWith({ where: { id: "ik1" }, data: { bugId: "new-bug" } });
   });
 
-  it("replays the same issue for the same key within 24 hours, without inserting", async () => {
-    db.idempotencyKey.findUnique.mockResolvedValue({ bugId: "first-bug", createdAt: new Date(NOW.getTime() - 23 * HOUR) });
-    expect(await createIssueWithPolicy(input({ title: "anything else" }))).toEqual({
-      status: 200,
-      bugId: "first-bug",
-      replayed: true,
+  it("rejects a different request body for a key within 24 hours", async () => {
+    db.idempotencyKey.findUnique.mockResolvedValue({ bugId: "first-bug", requestHash: "original-hash", createdAt: new Date(NOW.getTime() - 23 * HOUR) });
+    expect(await createIssueWithPolicy(input({ requestHash: "different-hash" }))).toEqual({
+      status: 409,
+      error: "idempotency_conflict",
+      message: "This Idempotency-Key was already used with a different request body.",
     });
     expect(db.idempotencyKey.findUnique.mock.calls[0][0].where).toEqual({
       agentId_key: { agentId: "agent1", key: "3f1c-key" },
@@ -112,7 +113,7 @@ describe("createIssueWithPolicy: idempotency (#441)", () => {
     );
     db.idempotencyKey.findUnique
       .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ bugId: "winner-bug", createdAt: NOW });
+      .mockResolvedValueOnce({ bugId: "winner-bug", requestHash: "request-hash", createdAt: NOW });
     expect(await createIssueWithPolicy(input())).toEqual({ status: 200, bugId: "winner-bug", replayed: true });
     expect(insert).not.toHaveBeenCalled();
   });
@@ -148,7 +149,7 @@ describe("createIssueWithPolicy: similar issues (#441)", () => {
     db.$queryRaw.mockResolvedValue([similarRow]);
     db.idempotencyKey.findUnique
       .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ bugId: "b1", createdAt: NOW });
+      .mockResolvedValueOnce({ bugId: "b1", requestHash: "request-hash", createdAt: NOW });
     expect(await createIssueWithPolicy(input())).toEqual({ status: 200, bugId: "b1", replayed: true });
     expect(insert).not.toHaveBeenCalled();
   });
@@ -163,6 +164,21 @@ describe("createIssueWithPolicy: similar issues (#441)", () => {
   it("ignores weak matches", async () => {
     db.$queryRaw.mockResolvedValue([{ ...similarRow, score: 0.1 }]);
     expect(await createIssueWithPolicy(input())).toMatchObject({ status: 201 });
+  });
+
+  it("retries trigram matching after a transient error", async () => {
+    db.$queryRaw
+      .mockRejectedValueOnce(new Error("temporary database error"))
+      .mockResolvedValueOnce([similarRow]);
+    db.bug.findMany.mockResolvedValue([]);
+
+    expect(await createIssueWithPolicy(input())).toMatchObject({ status: 201 });
+    expect(await createIssueWithPolicy(input({ idempotencyKey: "retry-key" }))).toMatchObject({
+      status: 409,
+      error: "similar_issues",
+    });
+    expect(db.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(db.bug.findMany).toHaveBeenCalledTimes(1);
   });
 
   it("accepts acknowledgeSimilar from a query string too", () => {

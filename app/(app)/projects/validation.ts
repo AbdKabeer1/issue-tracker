@@ -13,6 +13,36 @@ export const projectNameSchema = z.object({
     .max(PROJECT_NAME_MAX, `Project name must be ${PROJECT_NAME_MAX} characters or fewer.`),
 });
 
+const optionalUrl = (check: (url: URL) => boolean, message: string) =>
+  z.string().trim().transform((value) => value || null).pipe(
+    z.string().nullable().refine((value) => {
+      if (value === null) return true;
+      try { return check(new URL(value)); } catch { return false; }
+    }, message),
+  );
+
+export const projectSettingsSchema = z.object({
+  name: z.string().trim().min(PROJECT_NAME_MIN, `Project name must be at least ${PROJECT_NAME_MIN} characters.`).max(PROJECT_NAME_MAX, `Project name must be ${PROJECT_NAME_MAX} characters or fewer.`),
+  goal: z.string().trim().max(4000, "The project goal must be 4,000 characters or fewer.").transform((value) => value || null),
+  repoUrl: optionalUrl((url) =>
+    url.protocol === "https:" && url.hostname === "github.com" && !url.port && !url.username && !url.password &&
+    /^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?\/?$/.test(url.pathname) && !url.search && !url.hash,
+  "Enter a GitHub repository URL, such as https://github.com/owner/repository."),
+  stagingUrl: optionalUrl((url) => url.protocol === "https:",
+    "Enter a valid HTTPS staging URL."),
+});
+
+const areaPathPattern = z.string().trim().min(1).max(256).refine(
+  (path) => !path.startsWith("/") && !path.split(/[\\/]/).includes(".."),
+  "Use a project-relative path pattern without parent-directory segments.",
+);
+
+export const projectAreaSchema = z.object({
+  name: z.string().trim().min(2, "Area name must be at least 2 characters.").max(60, "Area name must be 60 characters or fewer."),
+  description: z.string().trim().max(1000, "The area description must be 1,000 characters or fewer.").transform((value) => value || null),
+  paths: z.string().trim().max(5000, "Area paths must be 5,000 characters or fewer.").transform((value) => [...new Set(value.split(/\r?\n/).map((path) => path.trim()).filter(Boolean))]).pipe(z.array(areaPathPattern).max(25, "An area can have at most 25 path patterns.")),
+});
+
 /**
  * A URL-safe slug from a display name. Kept deterministic so the same name
  * gets the same base; collisions are resolved by `nextProjectSlug`.
@@ -42,4 +72,37 @@ export function nextProjectSlug(
   }
 
   throw new Error(`Could not find a free slug for "${base}".`);
+}
+
+export function parseRewardConfigFromFormData(formData: FormData) {
+  const hasCustomRewards =
+    formData.has("solverPointsLow") ||
+    formData.has("solverPointsMedium") ||
+    formData.has("solverPointsHigh") ||
+    formData.has("solverPointsCritical") ||
+    formData.has("reporterPoints") ||
+    formData.has("reviewerPoints") ||
+    formData.has("rewardGuidelines");
+
+  if (!hasCustomRewards) return null;
+
+  const low = formData.get("solverPointsLow");
+  const medium = formData.get("solverPointsMedium");
+  const high = formData.get("solverPointsHigh");
+  const critical = formData.get("solverPointsCritical");
+  const reporter = formData.get("reporterPoints");
+  const reviewer = formData.get("reviewerPoints");
+  const guidelines = String(formData.get("rewardGuidelines") ?? "").trim();
+
+  return {
+    solver: {
+      low: low ? Number(low) : undefined,
+      medium: medium ? Number(medium) : undefined,
+      high: high ? Number(high) : undefined,
+      critical: critical ? Number(critical) : undefined,
+    },
+    reporter: reporter ? Number(reporter) : undefined,
+    reviewer: reviewer ? Number(reviewer) : undefined,
+    guidelines: guidelines || null,
+  };
 }

@@ -22,6 +22,10 @@ vi.mock("@/app/actions/auth", () => ({
   logoutAction: vi.fn(),
 }));
 
+vi.mock("@/app/actions/settings", () => ({
+  setThemeAction: vi.fn(),
+}));
+
 const switchRole = vi.mocked(switchActiveRoleAction);
 
 afterEach(() => cleanup());
@@ -31,7 +35,7 @@ beforeEach(() => {
   switchRole.mockResolvedValue({ error: "refused" });
 });
 
-function renderHeader() {
+function renderHeader(props?: Partial<Parameters<typeof AppHeader>[0]>) {
   return render(
     <AppHeader
       {...{
@@ -41,6 +45,7 @@ function renderHeader() {
         isRealAdmin: true,
         projects: [{ id: "p1", name: "Ziki", slug: "ziki" }],
         activeProjectId: "p1",
+        ...props,
       }}
     />,
   );
@@ -67,5 +72,58 @@ describe("account menu role switch", () => {
     await user.click(screen.getByRole("radio", { name: /normal user/i }));
 
     expect(switchRole).toHaveBeenCalledWith("user", `${window.location.pathname}${window.location.search}`);
+  });
+
+  it("renders Escalations navigation tab with pending count badge (#763)", () => {
+    renderHeader({ pendingEscalationsCount: 5 });
+    const escalationsLink = screen.getAllByRole("link", { name: /escalations/i })[0];
+    expect(escalationsLink).toBeTruthy();
+    expect(escalationsLink.getAttribute("href")).toBe("/escalations");
+    expect(screen.getByLabelText("5 pending")).toBeTruthy();
+  });
+
+  it("renders Manage Project dropdown and displays grouped links (#761)", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    const manageBtn = screen.getByRole("button", { name: /manage project/i });
+    expect(manageBtn).toBeTruthy();
+
+    await user.click(manageBtn);
+
+    expect(screen.getByRole("menuitem", { name: /projects/i })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /milestones/i })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /platforms/i })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /types/i })).toBeTruthy();
+  });
+
+  it("renders Docs & /llms.txt link in the account menu (#625)", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    await user.click(screen.getByRole("button", { name: /account menu/i }));
+
+    const docsLink = screen.getByRole("link", { name: /docs & \/llms\.txt/i });
+    expect(docsLink).toBeTruthy();
+    expect(docsLink.getAttribute("href")).toBe("/docs");
+  });
+});
+
+describe("theme toggle in header (#659)", () => {
+  it("renders the theme toggle button in the header toolbar", () => {
+    renderHeader();
+    const toggle = screen.getByTestId("theme-toggle");
+    expect(toggle).toBeTruthy();
+    expect(toggle.getAttribute("aria-label")).toMatch(/switch to (dark|light) mode/i);
+  });
+
+  it("renders the theme options in the account menu", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    await user.click(screen.getByRole("button", { name: /account menu/i }));
+
+    expect(screen.getByRole("group", { name: /theme preference/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Dark" })).toBeTruthy();
   });
 });

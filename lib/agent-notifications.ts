@@ -19,14 +19,18 @@ type Issue = { bugId?: string | null; bugTitle?: string | null };
 export type AgentQuestionInput = Issue & {
   id: string;
   body: string;
+  tenantId: string;
   /** The owner being asked; the only person who may answer (#446). */
   ownerUserId: string;
   agent: Agent;
+  /** #606: a reminder for a question still unanswered after 30 minutes. */
+  reminder?: boolean;
 };
 
 export type ApprovalInput = Issue & {
   id: string;
   title: string;
+  tenantId?: string;
   /** The person the proposing agent acts for (#431). */
   onBehalfOfUserId: string;
   agent: Agent;
@@ -35,6 +39,7 @@ export type ApprovalInput = Issue & {
 export type TenantInviteInput = {
   id: string;
   tenantName: string;
+  tenantId?: string;
   /** The account the invite went to, when one exists for its email (#444). */
   inviteeUserId: string;
   invitedBy: { id: string; name: string };
@@ -70,10 +75,12 @@ export function agentQuestionEvent(question: AgentQuestionInput): NotificationEv
     actorId: null,
     actorName: question.agent.name,
     recipientId: question.ownerUserId,
+    tenantId: question.tenantId,
     questionId: question.id,
     excerpt: excerpt(question.body) || undefined,
     bugId: question.bugId ?? null,
     bugTitle: question.bugTitle ?? null,
+    ...(question.reminder ? { reminder: true } : {}),
   };
 }
 
@@ -83,6 +90,7 @@ export function approvalNeededEvent(proposal: ApprovalInput): NotificationEvent 
     actorId: null,
     actorName: proposal.agent.name,
     recipientId: proposal.onBehalfOfUserId,
+    tenantId: proposal.tenantId,
     proposalId: proposal.id,
     proposalTitle: proposal.title,
     bugId: proposal.bugId ?? null,
@@ -96,6 +104,7 @@ export function tenantInviteEvent(invite: TenantInviteInput): NotificationEvent 
     actorId: invite.invitedBy.id,
     actorName: invite.invitedBy.name,
     recipientId: invite.inviteeUserId,
+    tenantId: invite.tenantId,
     inviteId: invite.id,
     tenantName: invite.tenantName,
   };
@@ -141,6 +150,7 @@ export function notifyApprovalNeeded(proposal: ApprovalInput): void {
 export async function notifyTenantInvite(invite: {
   id: string;
   tenantName: string;
+  tenantId?: string;
   email: string;
   invitedBy: { id: string; name: string };
 }): Promise<void> {

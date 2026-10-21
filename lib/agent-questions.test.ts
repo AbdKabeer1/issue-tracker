@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
-  agentQuestion: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
+  agentQuestion: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
   membership: { findUnique: vi.fn() },
   bug: { findFirst: vi.fn() },
+  issueClaim: { updateMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
+  $queryRaw: vi.fn(),
   agentAuditEvent: { create: vi.fn() },
   agentEvent: { create: vi.fn() },
   webhookSubscription: { findMany: vi.fn() },
@@ -18,6 +20,9 @@ vi.mock("@/lib/notify", () => ({ notifyLater: notify.notifyLater }));
 import {
   answerAgentQuestion,
   askAgentQuestion,
+  classifyEscalation,
+  countPendingEscalations,
+  listBugEscalations,
   readAgentQuestion,
   type AskAgentQuestionInput,
 } from "./agent-questions";
@@ -137,5 +142,120 @@ describe("answerAgentQuestion (#446)", () => {
 
     await expect(answerAgentQuestion("owner", "t1", "q1", "hi")).rejects.toMatchObject({ status: 403 });
     expect(db.agentQuestion.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("pausing a claim while the agent waits on its owner (#606)", () => {
+  const now = new Date("2026-10-20T12:00:00Z");
+  const minutesAgo = (minutes: number) => new Date(now.getTime() - minutes * 60_000);
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
+    db.$queryRaw.mockResolvedValue([{ id: "b1" }]);
+    db.issueClaim.updateMany.mockResolvedValue({ count: 1 });
+    db.agentQuestion.count.mockResolvedValue(0);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("marks the agent's active claim on the issue as waiting when it asks", async () => {
+    db.agentQuestion.create.mockResolvedValue({ id: "q1", bugId: "b1", body: "Which API?", createdAt: now });
+
+    await askAgentQuestion(agent, { body: "Which API?", bugId: "b1" });
+
+    expect(db.issueClaim.updateMany).toHaveBeenCalledWith({
+      where: { bugId: "b1", agentId: "a1", status: "active", releasedAt: null, waitingOnOwnerSince: null },
+      data: { waitingOnOwnerSince: now },
+    });
+    expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(db.issueClaim.updateMany.mock.invocationCallOrder[0]);
+  });
+
+  it("leaves claims alone for a question about no issue", async () => {
+    await askAgentQuestion(agent, { body: "Should I fix the header?" });
+    expect(db.issueClaim.updateMany).not.toHaveBeenCalled();
+  });
+
+  function answeredOnIssue() {
+    db.agentQuestion.findFirst.mockResolvedValue({ id: "q1", agentId: "a1", bugId: "b1", ownerUserId: "owner" });
+  }
+
+  it("resumes the claim on answer, adding the wait back to both clocks", async () => {
+    answeredOnIssue();
+    db.issueClaim.findFirst.mockResolvedValue({
+      id: "c1", waitingOnOwnerSince: minutesAgo(60), deliverBy: minutesAgo(50), lastHeartbeatAt: minutesAgo(65), claimedAt: minutesAgo(70),
+    });
+
+    await answerAgentQuestion("owner", "t1", "q1", "Use v2.");
+
+    expect(db.agentQuestion.count).toHaveBeenCalledWith({ where: { agentId: "a1", bugId: "b1", answeredAt: null } });
+    expect(db.issueClaim.update).toHaveBeenCalledWith({
+      where: { id: "c1" },
+      data: {
+        waitingOnOwnerSince: null,
+        deliverBy: new Date(now.getTime() + 10 * 60_000),
+        lastHeartbeatAt: minutesAgo(5),
+      },
+    });
+  });
+
+  it("caps a heartbeat sent during the wait at the time of the answer", async () => {
+    answeredOnIssue();
+    db.issueClaim.findFirst.mockResolvedValue({
+      id: "c1", waitingOnOwnerSince: minutesAgo(60), deliverBy: null, lastHeartbeatAt: minutesAgo(10), claimedAt: minutesAgo(70),
+    });
+
+    await answerAgentQuestion("owner", "t1", "q1", "Use v2.");
+
+    expect(db.issueClaim.update).toHaveBeenCalledWith({
+      where: { id: "c1" },
+      data: { waitingOnOwnerSince: null, deliverBy: null, lastHeartbeatAt: now },
+    });
+  });
+
+  it("stays paused while the agent has another open question on the issue", async () => {
+    answeredOnIssue();
+    db.agentQuestion.count.mockResolvedValue(1);
+
+    await answerAgentQuestion("owner", "t1", "q1", "Use v2.");
+
+    expect(db.issueClaim.findFirst).not.toHaveBeenCalled();
+    expect(db.issueClaim.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("countPendingEscalations (#763)", () => {
+  it("counts unresolved questions for an owner in tenant", async () => {
+    db.agentQuestion.count.mockResolvedValue(4);
+
+    const count = await countPendingEscalations("owner", "t1");
+    expect(count).toBe(4);
+    expect(db.agentQuestion.count).toHaveBeenCalledWith({
+      where: { ownerUserId: "owner", answeredAt: null, agent: { tenantId: "t1" } },
+    });
+  });
+});
+
+describe("listBugEscalations (#763)", () => {
+  it("queries escalations linked to the bug in tenant", async () => {
+    db.agentQuestion.findMany.mockResolvedValue([{ id: "q1", body: "Need approval" }]);
+
+    const list = await listBugEscalations("b1", "t1");
+    expect(list).toEqual([{ id: "q1", body: "Need approval" }]);
+    expect(db.agentQuestion.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { bugId: "b1", agent: { tenantId: "t1" } },
+      }),
+    );
+  });
+});
+
+describe("classifyEscalation (#763)", () => {
+  it("identifies blockers, work authorizations, scope expansion, and human approval", () => {
+    expect(classifyEscalation("I am blocked by missing API keys")).toBe("Blocker");
+    expect(classifyEscalation("Need authorization to proceed on issue")).toBe("Work Authorization");
+    expect(classifyEscalation("May I have permission to start work?")).toBe("Work Authorization");
+    expect(classifyEscalation("This requires out of scope refactoring")).toBe("Scope Expansion");
+    expect(classifyEscalation("Please review and confirm sign off on this design")).toBe("Human Approval");
+    expect(classifyEscalation("What database dialect should I use?")).toBe("Question");
   });
 });

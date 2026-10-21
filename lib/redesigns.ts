@@ -43,7 +43,14 @@ export async function proposeRedesign(agent: AgentContext, input: z.infer<typeof
       bugId: created.bugId, payload: { proposalId: created.id, projectId: input.projectId, onBehalfOfUserId } });
     return created;
   });
-  notifyApprovalNeeded({ id: proposal.id, title: proposal.title, onBehalfOfUserId, agent: { name: agent.name }, bugId: proposal.bugId });
+  notifyApprovalNeeded({
+    id: proposal.id,
+    title: proposal.title,
+    onBehalfOfUserId,
+    tenantId: agent.tenantId,
+    agent: { name: agent.name },
+    bugId: proposal.bugId,
+  });
   return proposal;
 }
 
@@ -52,9 +59,15 @@ export async function decideRedesign(userId: string, tenantId: string, proposalI
   return prisma.$transaction(async (tx) => {
     const member = await tx.membership.findUnique({ where: { tenantId_userId: { tenantId, userId } }, select: { userId: true, role: true } });
     if (!member) throw new IssueApiError(403, "Workspace membership required.");
-    if (decision === "chosen" && !isTenantAdminRole(member.role)) throw new IssueApiError(403, "A workspace admin must choose a design.");
-    const proposal = await tx.redesignProposal.findFirst({ where: { id: proposalId, tenantId } });
+    if (!isTenantAdminRole(member.role)) throw new IssueApiError(403, "A workspace admin must decide this proposal.");
+    const proposal = await tx.redesignProposal.findFirst({
+      where: { id: proposalId, tenantId },
+      include: { authorAgent: { select: { ownerUserId: true } } },
+    });
     if (!proposal) throw new IssueApiError(404, "Proposal not found.");
+    if (proposal.authorAgent.ownerUserId === userId) {
+      throw new IssueApiError(403, "The proposing agent's owner cannot decide this proposal.");
+    }
     if (decision === "chosen" && !proposal.bugId) throw new IssueApiError(422, "Only proposals linked to an issue can be chosen.");
     if (decision === "approved" && proposal.bugId) throw new IssueApiError(422, "Choose an issue-linked design from the issue comparison.");
     const chosenAt = decision === "chosen" || decision === "approved" ? new Date() : null;
@@ -75,7 +88,12 @@ export async function decideRedesign(userId: string, tenantId: string, proposalI
 }
 
 /** Claim callers may pass their transaction to keep this check with assignment. */
+export async function hasBlockingRedesign(bugId: string, db: PrismaClient | Prisma.TransactionClient = prisma): Promise<boolean> {
+  const blocked = await db.redesignProposal.count({ where: { bugId, status: "proposed" } });
+  return blocked > 0;
+}
+
 export async function assertRedesignOpen(bugId: string, db: PrismaClient | Prisma.TransactionClient = prisma): Promise<void> {
-  const blocked = await db.redesignProposal.count({ where: { bugId, status: { in: ["proposed", "rejected"] } } });
-  if (blocked) throw new IssueApiError(409, "This redesign is waiting for a person or was rejected.");
+  const blocked = await hasBlockingRedesign(bugId, db);
+  if (blocked) throw new IssueApiError(409, "This redesign is waiting for a person.");
 }

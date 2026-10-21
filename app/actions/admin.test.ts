@@ -1,100 +1,56 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("next/cache", () => ({
-  revalidatePath: vi.fn(),
-}));
-
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/auth-helpers", () => ({
-  requireSuperAdmin: vi.fn().mockResolvedValue({ id: "super-1", role: "super_admin" }),
+  requireUser: vi.fn().mockResolvedValue({ id: "owner-1", role: "user" }),
 }));
-
+vi.mock("@/lib/membership-admin", () => ({
+  changeMembershipRole: vi.fn(),
+  removeMembership: vi.fn(),
+  leaveMembership: vi.fn(),
+}));
 vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    user: {
-      findUnique: vi.fn(),
-      update: vi.fn(),
-    },
-  },
+  prisma: { tenant: { findUnique: vi.fn().mockResolvedValue({ slug: "ziki" }) } },
 }));
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
-import { ROLE_CHANGE_ERRORS } from "@/lib/role-changes";
-import { promoteUserToAdminAction, demoteUserToUserAction } from "./admin";
+import { changeMembershipRole } from "@/lib/membership-admin";
+import { setMemberRoleAction } from "./membership";
 
-const findUniqueMock = vi.mocked(prisma.user.findUnique) as unknown as ReturnType<typeof vi.fn>;
-const updateMock = vi.mocked(prisma.user.update) as unknown as ReturnType<typeof vi.fn>;
-const revalidatePathMock = vi.mocked(revalidatePath) as unknown as ReturnType<typeof vi.fn>;
+const change = vi.mocked(changeMembershipRole);
 
-describe("admin role change actions (#347)", () => {
+describe("setMemberRoleAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    change.mockResolvedValue({ ok: true });
   });
 
-  describe("promoteUserToAdminAction", () => {
-    it("updates role to admin and increments sessionVersion to invalidate existing JWTs", async () => {
-      findUniqueMock.mockResolvedValue({ id: "target-user", role: "user" });
-      updateMock.mockResolvedValue({ id: "target-user", role: "admin" });
+  it("changes the role inside the organization and does not take a site-wide role", async () => {
+    const result = await setMemberRoleAction("tenant-ziki", "ada", "admin");
 
-      const result = await promoteUserToAdminAction("target-user");
-
-      expect(result).toEqual({ ok: true });
-      expect(updateMock).toHaveBeenCalledWith({
-        where: { id: "target-user" },
-        data: {
-          role: "admin",
-          sessionVersion: { increment: 1 },
-        },
-      });
-      expect(revalidatePathMock).toHaveBeenCalledWith("/admin/users");
-      expect(revalidatePathMock).toHaveBeenCalledWith("/admin");
-    });
-
-    it("refuses promotion if target is already admin", async () => {
-      findUniqueMock.mockResolvedValue({ id: "target-admin", role: "admin" });
-
-      const result = await promoteUserToAdminAction("target-admin");
-
-      expect(result.error).toBe(ROLE_CHANGE_ERRORS["already-admin"]);
-      expect(updateMock).not.toHaveBeenCalled();
-    });
+    expect(result).toEqual({ ok: true });
+    expect(change).toHaveBeenCalledWith(
+      expect.anything(),
+      { id: "owner-1", role: "user" },
+      { tenantId: "tenant-ziki", targetUserId: "ada", nextRole: "admin" },
+    );
+    expect(vi.mocked(revalidatePath)).toHaveBeenCalledWith("/admin/users");
+    expect(vi.mocked(revalidatePath)).toHaveBeenCalledWith("/tenants/ziki");
   });
 
-  describe("demoteUserToUserAction", () => {
-    it("updates role to user and increments sessionVersion to invalidate existing JWTs", async () => {
-      findUniqueMock.mockResolvedValue({ id: "target-admin", role: "admin" });
-      updateMock.mockResolvedValue({ id: "target-admin", role: "user" });
+  it("refuses to grant the owner role from this action", async () => {
+    const result = await setMemberRoleAction("tenant-ziki", "ada", "owner");
 
-      const result = await demoteUserToUserAction("target-admin");
+    expect(result.error).toMatch(/owner/i);
+    expect(change).not.toHaveBeenCalled();
+  });
 
-      expect(result).toEqual({ ok: true });
-      expect(updateMock).toHaveBeenCalledWith({
-        where: { id: "target-admin" },
-        data: {
-          role: "user",
-          sessionVersion: { increment: 1 },
-        },
-      });
-      expect(revalidatePathMock).toHaveBeenCalledWith("/admin/users");
-      expect(revalidatePathMock).toHaveBeenCalledWith("/admin");
-    });
+  it("returns the refusal when the person is not in this organization", async () => {
+    change.mockResolvedValue({ ok: false, error: "That person isn't in this organization." });
 
-    it("refuses demoting another super admin", async () => {
-      findUniqueMock.mockResolvedValue({ id: "other-super", role: "super_admin" });
+    const result = await setMemberRoleAction("tenant-ziki", "zedu-user", "admin");
 
-      const result = await demoteUserToUserAction("other-super");
-
-      expect(result.error).toBe(ROLE_CHANGE_ERRORS["super-admin"]);
-      expect(updateMock).not.toHaveBeenCalled();
-    });
-
-    it("refuses demoting self", async () => {
-      findUniqueMock.mockResolvedValue({ id: "super-1", role: "super_admin" });
-
-      const result = await demoteUserToUserAction("super-1");
-
-      expect(result.error).toBe(ROLE_CHANGE_ERRORS["self"]);
-      expect(updateMock).not.toHaveBeenCalled();
-    });
+    expect(result).toEqual({ error: "That person isn't in this organization." });
   });
 });

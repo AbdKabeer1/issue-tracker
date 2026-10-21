@@ -1,8 +1,9 @@
 import { createHash, randomBytes, randomInt } from "node:crypto";
 
 /**
- * Agent API keys and pairing codes (#427). Only a SHA-256 hash of each secret
- * is stored; the raw value is shown once and never written anywhere.
+ * Agent API keys and pairing codes (#427). A SHA-256 hash is always stored.
+ * The raw key is also sealed, so the owner can copy each agent's key again
+ * from Settings. It is never stored in the clear.
  */
 
 /** Every key starts with this, so a leaked one is easy to recognise. */

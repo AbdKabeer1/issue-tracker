@@ -13,7 +13,13 @@ import { AGENT_MODEL_MAX, AGENT_NAME_MAX } from "@/lib/agents/registry-limits";
 export type AgentProjectChoice = { id: string; name: string };
 
 /** Register an agent; its key is shown here once and never again (#427). */
-export function CreateAgentForm({ projects }: { projects: AgentProjectChoice[] }) {
+export function CreateAgentForm({
+  projects,
+  activeProjectId = null,
+}: {
+  projects: AgentProjectChoice[];
+  activeProjectId?: string | null;
+}) {
   const toast = useToast();
   const [name, setName] = useState("");
   const [model, setModel] = useState("");
@@ -46,7 +52,7 @@ export function CreateAgentForm({ projects }: { projects: AgentProjectChoice[] }
     return (
       <div className="mt-4 space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4" role="status">
         <p className="text-sm font-medium text-slate-900">
-          {issued.name} is registered. Copy its key now: it won&apos;t be shown again.
+          {issued.name} is registered. Copy its key now. It stays on this page with the agent.
         </p>
         <label htmlFor="new-agent-key" className="sr-only">
           Agent key
@@ -124,7 +130,11 @@ export function CreateAgentForm({ projects }: { projects: AgentProjectChoice[] }
           <Select
             id="agent-project"
             name="projectId"
-            defaultValue={projects[0]?.id}
+            defaultValue={
+              activeProjectId && projects.some((project) => project.id === activeProjectId)
+                ? activeProjectId
+                : projects[0]?.id
+            }
             required
             aria-invalid={error?.field === "projectId" || undefined}
           >

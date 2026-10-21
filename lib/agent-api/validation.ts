@@ -2,12 +2,37 @@ import { Prisma, type PrismaClient, type Severity, type ValidationKind } from "@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
-import { reviewerConflict, type ReviewedBug } from "@/lib/agents/independence";
+import { reviewerConflict, reviewerCreditConflict, type ReviewedBug } from "@/lib/agents/independence";
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { award } from "@/lib/points/award";
-import { pointSourceKey, REPORTER_POINTS } from "@/lib/points/rules";
+import { confirmationReviewerSourceKey, CONFIRMATION_REVIEWER_POINTS, pointSourceKey } from "@/lib/points/rules";
+import {
+  calculateReporterPoints,
+  getProjectRewardConfig,
+} from "@/lib/points/project-rewards";
 import { severities } from "@/lib/validations/issue";
+import { publish } from "@/lib/agent-api/events";
+import { promoteEarnedReviewer } from "@/lib/agents/promotion";
+import { offerNext, scheduleOfferExpiry } from "@/lib/agent-api/offer";
+import { notifyClaimOffered } from "@/lib/agent-notifications";
+import { WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
+import { hasBlockingRedesign } from "@/lib/redesigns";
+import { workflowFor } from "@/lib/workflow";
+
+/** Severity order for the reviewer agreement rule (#528). */
+const SEVERITY_RANK: Record<(typeof severities)[number], number> = {
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4,
+};
+
+function severityRank(severity: string | null): number {
+  return severity && severity in SEVERITY_RANK
+    ? SEVERITY_RANK[severity as keyof typeof SEVERITY_RANK]
+    : 0;
+}
 
 /**
  * Reviewer agents validating issues (#433). A validation says whether an
@@ -21,15 +46,15 @@ import { severities } from "@/lib/validations/issue";
  * - One validation per agent, issue and kind.
  * - Accepting kind `real` sets the issue's severity. It is the only agent
  *   path that does, so it is required there.
- * - An issue is confirmed once two independent reviewers, with different
- *   owners, have accepted it as real. When that first happens the reporter
- *   earns their points through `award()` (#428), once.
+ * - An issue is confirmed once the project's required number of independent
+ *   reviewers, with different owners, have accepted it as real. When that
+ *   first happens the reporter earns their points through `award()` (#428),
+ *   once, and each of those reviewers earns confirmation points on a
+ *   separate key.
  */
 
 export const VALIDATION_KINDS = ["real", "format", "duplicate", "fix"] as const satisfies readonly ValidationKind[];
 export const VALIDATION_VERDICTS = ["accept", "reject"] as const;
-/** How many independent accepts of `real` confirm an issue. */
-export const CONFIRMATIONS_NEEDED = 2;
 export const VALIDATION_NOTES_MAX = 2000;
 
 export const validationBodySchema = z
@@ -71,27 +96,60 @@ export type ValidationBody = z.infer<typeof validationBodySchema>;
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
+type OptionalDbDelegates = {
+  bugRevision?: { findFirst?: (args: unknown) => Promise<{ editedAt: Date } | null> };
+  issueValidation?: {
+    findMany?: (args: unknown) => Promise<unknown[]>;
+    count?: (args: unknown) => Promise<number>;
+  };
+  bug?: { findUnique?: (args: unknown) => Promise<unknown> };
+};
+
 /** What the independence rule and the confirmation count need about an issue. */
 const reviewedBugSelect = {
   id: true,
   tenantId: true,
+  projectId: true,
+  title: true,
+  status: true,
+  assigneeId: true,
+  voteCount: true,
   severity: true,
   reporterId: true,
   beneficiaryUserId: true,
   duplicateOfId: true,
   createdByAgentId: true,
   createdByAgent: { select: { ownerUserId: true } },
-  claims: { select: { status: true, releasedAt: true, agent: { select: { ownerUserId: true } } } },
+  claims: { select: { status: true, releasedAt: true, beneficiaryUserId: true, agent: { select: { ownerUserId: true } } } },
 } satisfies Prisma.BugSelect;
 
 type LoadedBug = Prisma.BugGetPayload<{ select: typeof reviewedBugSelect }>;
 
-/** Accepts of kind `real` that count toward confirming `bug`. */
-async function countedConfirmations(db: Db, bug: LoadedBug): Promise<number> {
+/**
+ * People credited for accepts of kind `real` that still count, oldest first.
+ * One per owner: a second agent of the same person does not add a credit.
+ */
+async function countedConfirmationReviewers(db: Db, bug: LoadedBug): Promise<string[]> {
+  const dbDelegates = db as unknown as OptionalDbDelegates;
+  const latestRevision = await dbDelegates.bugRevision?.findFirst?.({
+    where: { bugId: bug.id },
+    orderBy: { editedAt: "desc" },
+    select: { editedAt: true },
+  });
+
+  if (!dbDelegates.issueValidation?.findMany) return [];
+
   const accepts = await db.issueValidation.findMany({
-    where: { bugId: bug.id, kind: "real", verdict: "accept" },
+    where: {
+      bugId: bug.id,
+      kind: "real",
+      verdict: "accept",
+      ...(latestRevision?.editedAt ? { createdAt: { gt: latestRevision.editedAt } } : {}),
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: {
       id: true,
+      onBehalfOfUserId: true,
       agentId: true,
       agent: { select: { id: true, ownerUserId: true } },
     },
@@ -113,30 +171,53 @@ async function countedConfirmations(db: Db, bug: LoadedBug): Promise<number> {
   );
   const reviewed: ReviewedBug = bug;
   const owners = new Set<string>();
-  for (const { id, agent } of accepts) {
+  const credited: string[] = [];
+  for (const { id, onBehalfOfUserId, agent } of accepts) {
     // Checked again now, not only when submitted: a claim taken since can
     // make an earlier reviewer no longer independent.
     if (agent.id === bug.createdByAgentId) continue;
     if (reviewerConflict({ id: agent.id, ownerUserId: agent.ownerUserId }, reviewed)) continue;
     // An undone validation no longer counts toward confirming the issue.
     if (undoneValidationIds.has(id)) continue;
+    if (owners.has(agent.ownerUserId)) continue;
     owners.add(agent.ownerUserId);
+    credited.push(onBehalfOfUserId);
   }
-  return owners.size;
+  return credited;
 }
 
-/** True once two independent reviewers have accepted the issue as real (#434 uses this). */
+/** Accepts of kind `real` that count toward confirming `bug`. */
+async function countedConfirmations(db: Db, bug: LoadedBug): Promise<number> {
+  return (await countedConfirmationReviewers(db, bug)).length;
+}
+
+/** True once the project's required independent reviewers accepted the issue as real (#434 uses this). */
 export async function isConfirmed(bugId: string, db: Db = prisma): Promise<boolean> {
+  const dbDelegates = db as unknown as OptionalDbDelegates;
+  if (!dbDelegates.bug?.findUnique) return false;
   const bug = await db.bug.findUnique({ where: { id: bugId }, select: reviewedBugSelect });
   if (!bug) return false;
-  return (await countedConfirmations(db, bug)) >= CONFIRMATIONS_NEEDED;
+  const { confirmationsNeeded } = await workflowFor(bug.projectId, db);
+  return (await countedConfirmations(db, bug)) >= confirmationsNeeded;
 }
 
 /** Duplicates earn the reporter nothing (#422). */
 async function isDuplicate(db: Db, bug: LoadedBug): Promise<boolean> {
   if (bug.duplicateOfId) return true;
+  const dbDelegates = db as unknown as OptionalDbDelegates;
+  const latestRevision = await dbDelegates.bugRevision?.findFirst?.({
+    where: { bugId: bug.id },
+    orderBy: { editedAt: "desc" },
+    select: { editedAt: true },
+  });
+  if (!dbDelegates.issueValidation?.count) return false;
   const accepted = await db.issueValidation.count({
-    where: { bugId: bug.id, kind: "duplicate", verdict: "accept" },
+    where: {
+      bugId: bug.id,
+      kind: "duplicate",
+      verdict: "accept",
+      ...(latestRevision?.editedAt ? { createdAt: { gt: latestRevision.editedAt } } : {}),
+    },
   });
   return accepted > 0;
 }
@@ -232,6 +313,13 @@ export async function submitValidation(
       };
     }
   }
+  if (reviewerCreditConflict(onBehalfOfUserId, bug as ReviewedBug)) {
+    return {
+      status: 403,
+      error: "not_independent",
+      message: "onBehalfOfUserId must be independent of the issue's reporter, solver, and claim beneficiary.",
+    };
+  }
 
   if (body.duplicateOfId) {
     const canonical =
@@ -252,10 +340,20 @@ export async function submitValidation(
   }
 
   const setsSeverity = body.kind === "real" && body.verdict === "accept" ? body.severity! : null;
+  // Reviewers who disagree only ever raise severity: a second reviewer cannot
+  // quietly downgrade an issue someone else called critical (#528).
+  const escalatesSeverity =
+    setsSeverity !== null && severityRank(setsSeverity) > severityRank(bug.severity);
+  const severityDisagreement =
+    setsSeverity !== null && !escalatesSeverity && setsSeverity !== bug.severity;
 
   try {
-    return await prisma.$transaction(async (tx) => {
-      const wasConfirmed = (await countedConfirmations(tx, bug)) >= CONFIRMATIONS_NEEDED;
+    const outcome = await prisma.$transaction(async (tx) => {
+      // Two reviewers can confirm at the same moment. Lock the issue so the
+      // second transaction sees the first accept and still pays the reporter.
+      await tx.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${bug.id} FOR UPDATE`;
+      const { confirmationsNeeded } = await workflowFor(bug.projectId, tx);
+      const wasConfirmed = (await countedConfirmations(tx, bug)) >= confirmationsNeeded;
 
       const validation = await tx.issueValidation.create({
         data: {
@@ -271,24 +369,37 @@ export async function submitValidation(
         },
         select: { id: true, kind: true, verdict: true, severity: true, duplicateOfId: true, onBehalfOfUserId: true },
       });
-      if (setsSeverity && setsSeverity !== bug.severity) {
-        await tx.bug.update({ where: { id: bug.id }, data: { severity: setsSeverity } });
+      if (escalatesSeverity) {
+        await tx.bug.update({ where: { id: bug.id }, data: { severity: setsSeverity! } });
       }
 
-      const confirmed = (await countedConfirmations(tx, bug)) >= CONFIRMATIONS_NEEDED;
+      const confirmed = (await countedConfirmations(tx, bug)) >= confirmationsNeeded;
       const newlyConfirmed = confirmed && !wasConfirmed;
       if (newlyConfirmed && !(await isDuplicate(tx, bug))) {
         // The person the issue is for earns the reporter points (#422), once:
         // the sourceKey makes a second award, or the backfill (#435), a no-op.
         const userId = bug.beneficiaryUserId ?? bug.reporterId;
+        const rewardConfig = await getProjectRewardConfig(tx, bug.projectId);
+        const points = calculateReporterPoints(rewardConfig);
         await award(tx, {
           tenantId: bug.tenantId,
           userId,
           bugId: bug.id,
           role: "reporter",
-          points: REPORTER_POINTS,
+          points,
           sourceKey: pointSourceKey("reporter", bug.id, userId),
         });
+        const reviewers = (await countedConfirmationReviewers(tx, bug)).slice(0, confirmationsNeeded);
+        for (const reviewerUserId of reviewers) {
+          await award(tx, {
+            tenantId: bug.tenantId,
+            userId: reviewerUserId,
+            bugId: bug.id,
+            role: "reviewer",
+            points: CONFIRMATION_REVIEWER_POINTS,
+            sourceKey: confirmationReviewerSourceKey(bug.id, reviewerUserId),
+          });
+        }
       }
 
       await audit(
@@ -300,17 +411,86 @@ export async function submitValidation(
           kind: body.kind,
           verdict: body.verdict,
           onBehalfOfUserId,
-          ...(setsSeverity ? { severity: setsSeverity, previousSeverity: bug.severity } : {}),
+          ...(setsSeverity ? { severity: setsSeverity, previousSeverity: bug.severity, effectiveSeverity: escalatesSeverity ? setsSeverity : bug.severity } : {}),
+          ...(severityDisagreement ? { severityDisagreement: true } : {}),
           ...(body.duplicateOfId ? { duplicateOfId: body.duplicateOfId } : {}),
           ...(newlyConfirmed ? { confirmed: true } : {}),
         },
         { bugId: bug.id, db: tx },
       );
-      // TODO(#445): publish an "issue.validated" event here once
-      // lib/agent-api/events.ts exists.
 
-      return { status: 201 as const, validation, confirmed, newlyConfirmed };
+      // Re-evaluate the earned level after this validation is stored, inside
+      // the same transaction so the validation and promotion audit commit together.
+      await promoteEarnedReviewer(agent.agentId, tx);
+
+      // Publish "issue.validated" event to the agent event feed (#445)
+      await publish(tx, {
+        tenantId: bug.tenantId,
+        type: "issue.validated",
+        actorAgentId: agent.agentId,
+        bugId: bug.id,
+        payload: {
+          validationId: validation.id,
+          kind: body.kind,
+          verdict: body.verdict,
+          onBehalfOfUserId,
+          ...(setsSeverity ? { severity: setsSeverity, previousSeverity: bug.severity, effectiveSeverity: escalatesSeverity ? setsSeverity : bug.severity } : {}),
+          ...(severityDisagreement ? { severityDisagreement: true } : {}),
+          ...(body.duplicateOfId ? { duplicateOfId: body.duplicateOfId } : {}),
+          ...(newlyConfirmed ? { confirmed: true } : {}),
+        },
+      });
+
+      // Confirmation is its own feed/webhook event, so polling agents that
+      // only watch for confirmations do not have to parse every validation (#534).
+      if (newlyConfirmed) {
+        await publish(tx, {
+          tenantId: bug.tenantId,
+          type: "issue.confirmed",
+          actorAgentId: agent.agentId,
+          bugId: bug.id,
+          payload: {
+            issueId: bug.id,
+            validationId: validation.id,
+          },
+        });
+      }
+
+      let automaticOffer: Awaited<ReturnType<typeof offerNext>> = null;
+      if (newlyConfirmed) {
+        const issue = await tx.bug.findUnique({
+          where: { id: bug.id },
+          select: { id: true, projectId: true, title: true, status: true, assigneeId: true, areaId: true, voteCount: true },
+        });
+        const currentClaim = await tx.issueClaim.findFirst({
+          where: { bugId: bug.id, releasedAt: null, status: { in: ["offered", "active"] } },
+          select: { id: true },
+        });
+        if (
+          issue?.status === "open" &&
+          issue.voteCount >= WORK_READINESS_VOTE_THRESHOLD &&
+          !currentClaim &&
+          !(await hasBlockingRedesign(bug.id, tx))
+        ) {
+          automaticOffer = await offerNext(tx, { tenantId: bug.tenantId }, issue);
+        }
+      }
+
+      return {
+        submission: { status: 201 as const, validation, confirmed, newlyConfirmed },
+        automaticOffer,
+      };
     });
+    if (outcome.automaticOffer) {
+      notifyClaimOffered({
+        id: outcome.automaticOffer.claim.id,
+        bugId: bug.id,
+        bugTitle: outcome.automaticOffer.bugTitle,
+        beneficiaryUserId: outcome.automaticOffer.beneficiaryUserId,
+      });
+      scheduleOfferExpiry(outcome.automaticOffer.claim.id);
+    }
+    return outcome.submission;
   } catch (error) {
     if (!isUniqueViolation(error)) throw error;
     return {

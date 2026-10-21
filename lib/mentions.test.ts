@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentMentionId,
+  extractMentionedAgentIds,
   extractMentionedUserIds,
   filterUsersForMention,
   formatMention,
   getMentionQuery,
   insertMention,
+  newlyMentionedAgentIds,
   newlyMentionedUserIds,
   normalizeMentions,
+  parseAgentMentionId,
   tokenizeMentions,
 } from "./mentions";
 
@@ -184,5 +188,84 @@ describe("newlyMentionedUserIds (#228)", () => {
     const before = `cc @[Alice](${aliceId}) and @[Bob](${bobId})`;
     expect(newlyMentionedUserIds(before, `cc @[Alice](${aliceId})`)).toEqual([]);
     expect(newlyMentionedUserIds(before, before)).toEqual([]);
+  });
+});
+
+describe("code-aware mention processing (#731)", () => {
+  const nameMap = new Map([
+    [aliceId, "Alice Smith"],
+    [bobId, "Bob Jones"],
+  ]);
+
+  it("does not extract or rewrite mention tags inside fenced code", () => {
+    const body = `before @[Alice](${aliceId})\n\`\`\`\nliteral @[Example](${bobId}) stays\n\`\`\`\nafter`;
+    expect(extractMentionedUserIds(body)).toEqual([aliceId]);
+    expect(normalizeMentions(body, nameMap)).toBe(body.replace(`@[Alice](${aliceId})`, `@[Alice Smith](${aliceId})`));
+  });
+
+  it("does not extract or rewrite mention tags inside inline code", () => {
+    const body = `see \`@[Example](${bobId})\` and @[Alice](${aliceId})`;
+    expect(extractMentionedUserIds(body)).toEqual([aliceId]);
+    expect(normalizeMentions(body, nameMap)).toBe(
+      `see \`@[Example](${bobId})\` and @[Alice Smith](${aliceId})`,
+    );
+  });
+
+  it("treats an unterminated fence as code to the end", () => {
+    const body = "```js\n" + "tag @[Example](" + bobId + ")";
+    expect(extractMentionedUserIds(body)).toEqual([]);
+    expect(normalizeMentions(body, nameMap)).toBe(body);
+  });
+
+  it("keeps code samples byte-identical when they contain tag-like text", () => {
+    const body = `\`\`\`text\n@[Example](${bobId})\n\`\`\``;
+    expect(normalizeMentions(body, nameMap)).toBe(body);
+  });
+
+  it("still processes prose mentions with no code present", () => {
+    const body = `@[Imposter](${aliceId}) met @Unknown`;
+    expect(extractMentionedUserIds(body)).toEqual([aliceId]);
+    expect(normalizeMentions(body, nameMap)).toBe(
+      `@[Alice Smith](${aliceId}) met @Unknown`,
+    );
+  });
+});
+
+describe("agent mentions (#603)", () => {
+  const agentId = "clxxxxxxxxxxxxxxxxxxxxxxxa1";
+  const tag = `@[Mark's Claude](agent:${agentId})`;
+
+  it("formats and parses the agent: id prefix", () => {
+    expect(agentMentionId(agentId)).toBe(`agent:${agentId}`);
+    expect(formatMention("Mark's Claude", agentMentionId(agentId))).toBe(tag);
+    expect(parseAgentMentionId(`agent:${agentId}`)).toBe(agentId);
+    expect(parseAgentMentionId(aliceId)).toBeNull();
+    expect(parseAgentMentionId("agent:")).toBeNull();
+  });
+
+  it("keeps agent ids out of user ids and extracts them separately", () => {
+    const body = `@[Alice](${aliceId}) and ${tag}, again ${tag}`;
+    expect(extractMentionedUserIds(body)).toEqual([aliceId]);
+    expect(extractMentionedAgentIds(body)).toEqual([agentId]);
+  });
+
+  it("ignores agent tags inside code", () => {
+    expect(extractMentionedAgentIds(`\`${tag}\``)).toEqual([]);
+  });
+
+  it("finds only newly mentioned agents on edit", () => {
+    expect(newlyMentionedAgentIds("hi", `hi ${tag}`)).toEqual([agentId]);
+    expect(newlyMentionedAgentIds(`hi ${tag}`, `hello ${tag}`)).toEqual([]);
+  });
+
+  it("keeps a known agent tag with its real name and degrades unknown ones", () => {
+    const known = new Map([[agentMentionId(agentId), "Mark's Claude"]]);
+    expect(normalizeMentions(`@[Old name](agent:${agentId}) hi`, known)).toBe(`${tag} hi`);
+    expect(normalizeMentions(`@[Stranger](agent:other) hi`, known)).toBe("@Stranger hi");
+  });
+
+  it("inserts an agent option as an agent tag", () => {
+    const mention = getMentionQuery("ping @Ma", 8)!;
+    expect(insertMention("ping @Ma", mention, 8, "Mark's Claude", agentMentionId(agentId)).value).toBe(`ping ${tag} `);
   });
 });

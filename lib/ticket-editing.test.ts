@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   canEditTicket,
   formatEditSummary,
+  formatProofLinkSummary,
   getChangedEditFields,
+  getProofLinkChanges,
   TICKET_EDIT_ERRORS,
 } from "./ticket-editing";
 
@@ -17,14 +19,26 @@ describe("canEditTicket", () => {
     ).toBe(true);
   });
 
-  it("allows admins to edit any issue, even if they are not the reporter", () => {
+  it("allows an owner or admin of the organization to edit any issue", () => {
+    expect(
+      canEditTicket({
+        actorId: "admin_456",
+        actorRole: "user",
+        membershipRole: "owner",
+        reporterId: "user_123",
+      }),
+    ).toBe(true);
+  });
+
+  it("denies a site-wide admin who is only a member and not the reporter", () => {
     expect(
       canEditTicket({
         actorId: "admin_456",
         actorRole: "admin",
+        membershipRole: "member",
         reporterId: "user_123",
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("allows super admins to edit any issue", () => {
@@ -118,7 +132,24 @@ describe("formatEditSummary", () => {
 describe("TICKET_EDIT_ERRORS", () => {
   it("contains clear error messages", () => {
     expect(TICKET_EDIT_ERRORS.unauthorized).toBe(
-      "Only the reporter or an admin can edit this issue",
+      "Only the reporter, or an owner or admin of this organization, can edit this issue",
+    );
+  });
+});
+
+describe("getProofLinkChanges (#737)", () => {
+  it("lists links added and removed, ignoring order", () => {
+    expect(getProofLinkChanges(["a", "b"], ["b", "c"])).toEqual({ added: ["c"], removed: ["a"] });
+    expect(getProofLinkChanges(["a", "b"], ["b", "a"])).toEqual({ added: [], removed: [] });
+  });
+});
+
+describe("formatProofLinkSummary (#737)", () => {
+  it("describes what changed", () => {
+    expect(formatProofLinkSummary({ added: ["a"], removed: [] })).toBe("added a proof link");
+    expect(formatProofLinkSummary({ added: [], removed: ["a", "b"] })).toBe("removed 2 proof links");
+    expect(formatProofLinkSummary({ added: ["a"], removed: ["b"] })).toBe(
+      "added a proof link and removed a proof link",
     );
   });
 });

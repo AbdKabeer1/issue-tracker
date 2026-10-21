@@ -2,17 +2,75 @@ import { describe, expect, it } from "vitest";
 import {
   canDeleteTicket,
   canRestoreTicket,
+  deletedSummary,
+  deleteSummary,
+  restoreSummary,
+  retainedSummary,
   TICKET_DELETION_ERRORS,
 } from "./ticket-deletion";
 
+describe("delete and restore copy (#692)", () => {
+  const counts = { comments: 3, votes: 5 };
+
+  it("says what is kept, with counts when known", () => {
+    expect(retainedSummary(counts)).toBe(
+      "Its 3 comments, 5 votes and history are kept.",
+    );
+    expect(retainedSummary()).toBe("Its comments, votes and history are kept.");
+  });
+
+  it("uses singular nouns for a count of one", () => {
+    expect(retainedSummary({ comments: 1, votes: 1 })).toContain(
+      "1 comment, 1 vote and",
+    );
+    expect(retainedSummary({ comments: 0, votes: 0 })).toContain(
+      "0 comments, 0 votes",
+    );
+  });
+
+  it("repeats the same retained sentence in every message", () => {
+    const kept = retainedSummary(counts);
+    expect(deleteSummary(counts)).toContain(kept);
+    expect(deletedSummary(counts)).toContain(kept);
+  });
+
+  it("says the issue is hidden, not erased, and how to get it back", () => {
+    expect(deleteSummary(counts)).toContain("hidden from regular users");
+    expect(deleteSummary(counts)).toContain("View deleted issues");
+    expect(deletedSummary(counts)).toContain("can restore it");
+  });
+
+  it("mirrors the delete message when restoring", () => {
+    expect(restoreSummary(counts)).toContain("3 comments, 5 votes and history");
+    expect(restoreSummary()).toContain("comments, votes and history");
+  });
+
+  it("never claims a permanent delete", () => {
+    for (const text of [
+      deleteSummary(counts),
+      deletedSummary(counts),
+      restoreSummary(counts),
+    ]) {
+      expect(text.toLowerCase()).not.toContain("permanent");
+    }
+  });
+});
+
 describe("canDeleteTicket", () => {
-  it("allows super admins and admins to delete tickets", () => {
+  it("allows the site super admin and an owner or admin of the organization", () => {
     expect(canDeleteTicket("super_admin")).toBe(true);
-    expect(canDeleteTicket("admin")).toBe(true);
+    expect(canDeleteTicket("user", "owner")).toBe(true);
+    expect(canDeleteTicket("user", "admin")).toBe(true);
+  });
+
+  it("denies a site-wide admin who is only a member", () => {
+    expect(canDeleteTicket("admin")).toBe(false);
+    expect(canDeleteTicket("admin", "member")).toBe(false);
   });
 
   it("denies regular users from deleting tickets", () => {
     expect(canDeleteTicket("user")).toBe(false);
+    expect(canDeleteTicket("user", "member")).toBe(false);
   });
 
   it("denies unauthenticated or invalid roles", () => {
@@ -22,9 +80,13 @@ describe("canDeleteTicket", () => {
 });
 
 describe("canRestoreTicket", () => {
-  it("allows super admins and admins to restore deleted tickets", () => {
+  it("allows the site super admin and an owner or admin of the organization", () => {
     expect(canRestoreTicket("super_admin")).toBe(true);
-    expect(canRestoreTicket("admin")).toBe(true);
+    expect(canRestoreTicket("user", "admin")).toBe(true);
+  });
+
+  it("denies a site-wide admin who is only a member", () => {
+    expect(canRestoreTicket("admin", "member")).toBe(false);
   });
 
   it("denies regular users from restoring deleted tickets", () => {
@@ -40,14 +102,16 @@ describe("canRestoreTicket", () => {
 describe("TICKET_DELETION_ERRORS", () => {
   it("has clear and descriptive messages for all failure states", () => {
     expect(TICKET_DELETION_ERRORS.unauthorized).toBe(
-      "Only admins and super admins can delete issues",
+      "Only an owner or admin of this organization can delete issues",
     );
     expect(TICKET_DELETION_ERRORS.unauthorizedRestore).toBe(
-      "Only admins and super admins can restore issues",
+      "Only an owner or admin of this organization can restore issues",
     );
     expect(TICKET_DELETION_ERRORS.invalidId).toBe("Invalid issue ID");
     expect(TICKET_DELETION_ERRORS.notFound).toBe("Issue not found");
-    expect(TICKET_DELETION_ERRORS.alreadyDeleted).toBe("Issue is already deleted");
+    expect(TICKET_DELETION_ERRORS.alreadyDeleted).toBe(
+      "Issue is already deleted",
+    );
     expect(TICKET_DELETION_ERRORS.notDeleted).toBe("Issue is not deleted");
     expect(TICKET_DELETION_ERRORS.failed).toBe(
       "Could not delete issue. Please try again.",

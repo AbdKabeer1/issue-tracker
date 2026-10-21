@@ -21,6 +21,7 @@ describe("agent and platform notifications (#443)", () => {
       agentQuestionEvent({
         id: "q1",
         body: "Should I  fix\nthe header too?",
+        tenantId: "workspace-1",
         ownerUserId: "owner",
         agent: { name: "Claude" },
         bugId: "b1",
@@ -37,6 +38,38 @@ describe("agent and platform notifications (#443)", () => {
     });
     expect(planned[0]?.text).toContain("> Should I fix the header too?");
     expect(planned[0]?.text).toContain("Answer the question: https://ziki.dev/questions/q1");
+    expect(
+      agentQuestionEvent({
+        id: "q1",
+        body: "Hi",
+        ownerUserId: "owner",
+        tenantId: "workspace-1",
+        agent: { name: "Claude" },
+      }),
+    ).toMatchObject({ tenantId: "workspace-1" });
+  });
+
+  it("reminds the owner of a question their agent's claim is paused on (#606)", () => {
+    const [planned] = planNotifications(
+      agentQuestionEvent({
+        id: "q1",
+        body: "Which API?",
+        tenantId: "workspace-1",
+        ownerUserId: "owner",
+        agent: { name: "Claude" },
+        bugId: "b1",
+        bugTitle: "Header overlaps",
+        reminder: true,
+      }),
+      SITE,
+    );
+    expect(planned).toMatchObject({
+      userId: "owner",
+      kind: "agent_question",
+      url: "/questions/q1",
+      title: "Reminder: Claude is still waiting for your answer about “Header overlaps”",
+    });
+    expect(planned?.text).toContain("paused until you answer");
   });
 
   it("asks the person a redesign was proposed for to approve it", () => {
@@ -45,6 +78,7 @@ describe("agent and platform notifications (#443)", () => {
         id: "r1",
         title: "New issue page",
         onBehalfOfUserId: "bob",
+        tenantId: "workspace-1",
         agent: { name: "GPT" },
       }),
       SITE,
@@ -56,7 +90,12 @@ describe("agent and platform notifications (#443)", () => {
   });
 
   it("tells an invitee about the invite, but never the inviter", () => {
-    const invite = { id: "inv 1", tenantName: "Acme", invitedBy: { id: "alice", name: "Alice" } };
+    const invite = {
+      id: "inv 1",
+      tenantId: "workspace-1",
+      tenantName: "Acme",
+      invitedBy: { id: "alice", name: "Alice" },
+    };
     const planned = planNotifications(tenantInviteEvent({ ...invite, inviteeUserId: "cara" }), SITE);
     expect(planned.map((p) => [p.userId, p.url])).toEqual([["cara", "/tenants?invite=inv%201"]]);
     expect(planned[0]?.title).toBe("Alice invited you to Acme");

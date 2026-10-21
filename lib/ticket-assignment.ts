@@ -1,9 +1,15 @@
-import { isAdmin, type AppRole } from "@/lib/roles";
+import type { MembershipRole } from "@prisma/client";
+import { isOrganizationAdmin } from "@/lib/organization-role";
+import type { AppRole } from "@/lib/roles";
+
+export const WORK_READINESS_VOTE_THRESHOLD = 3;
 
 export const TICKET_ASSIGN_ERRORS = {
-  unauthorized: "Only admins can assign issues to other users",
-  unauthorizedUpdate: "Only the assignee or an admin can update this issue",
+  unauthorized: "Only an owner or admin of this organization can assign issues to other people",
+  unauthorizedUpdate: "Only the assignee, or an owner or admin of this organization, can update this issue",
   statusNeedsAssignment: "Assign this issue to yourself first, then change its status.",
+  needsVotes: `This issue must reach at least ${WORK_READINESS_VOTE_THRESHOLD} upvotes before work can be assigned.`,
+  needsAgentClaim: "An agent has to be offered this issue, or have its bid awarded, before you can work on it.",
   invalidId: "Invalid issue ID",
   notFound: "Issue not found",
   assigneeNotFound: "Assignee not found",
@@ -14,30 +20,45 @@ export type TicketAssignError = keyof typeof TICKET_ASSIGN_ERRORS;
 
 /**
  * Checks whether an actor can assign an issue to a given target assignee.
- * - Admins and super admins can assign to any user, or unassign (targetAssigneeId = null).
- * - Normal users can assign to themselves (targetAssigneeId = actorId),
- *   provided the ticket is unassigned or already assigned to them.
- * - Normal users can unassign themselves if they are the current assignee (targetAssigneeId = null && currentAssigneeId = actorId).
+ * - Owners, admins, and the site super admin can assign to any user, or unassign (targetAssigneeId = null).
+ *   A site-wide admin who is only a member cannot.
+ * - Normal users cannot take an unassigned issue. That happens when an agent
+ *   accepts an offer or a person awards a bid (`claimed`).
+ * - Normal users can keep a ticket already assigned to them, and can unassign
+ *   themselves (targetAssigneeId = null && currentAssigneeId = actorId).
  * - Normal users cannot assign to any other user or take over another user's assignment.
  */
 export function canAssignTicket({
   actorId,
   actorRole,
+  membershipRole,
   currentAssigneeId,
   targetAssigneeId,
+  voteCount,
+  claimed = false,
 }: {
   actorId: string;
   actorRole?: AppRole | null;
+  membershipRole?: MembershipRole | null;
   currentAssigneeId?: string | null;
   targetAssigneeId?: string | null;
+  voteCount?: number;
+  /** True only when this assignment is an accepted offer or an awarded bid. */
+  claimed?: boolean;
 }): boolean {
-  if (isAdmin(actorRole)) {
+  if (isOrganizationAdmin(membershipRole, actorRole)) {
     return true;
   }
 
-  // Self-assigning (only allowed if unassigned or already assigned to actor)
+  // If assigning work to someone (not unassigning), check work readiness threshold if voteCount is specified (#764)
+  if (targetAssigneeId && typeof voteCount === "number" && voteCount < WORK_READINESS_VOTE_THRESHOLD) {
+    return false;
+  }
+
+  // Keeping an issue you already have. Taking an unassigned one is the claim.
   if (targetAssigneeId === actorId) {
-    return !currentAssigneeId || currentAssigneeId === actorId;
+    if (!currentAssigneeId) return claimed;
+    return currentAssigneeId === actorId;
   }
 
   // Self-unassigning (clearing assignment if currently assigned to actor)

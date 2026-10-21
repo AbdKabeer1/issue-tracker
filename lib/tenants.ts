@@ -5,6 +5,7 @@ import type { MembershipRole, Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { isSuperAdmin, type AppRole } from "@/lib/roles";
 import { ZEDU_SLUG } from "@/lib/tenant";
+import { appCookieOptions } from "@/lib/cookie-options";
 
 /**
  * Picking, creating and owning tenants (#444).
@@ -37,24 +38,87 @@ export const MEMBERSHIP_ROLE_LABELS: Record<MembershipRole, string> = {
   member: "Member",
 };
 
+const MEMBERSHIP_ROLE_ORDER: Record<MembershipRole, number> = {
+  owner: 0,
+  admin: 1,
+  member: 2,
+};
+
+/**
+ * Pair memberships with the people they point at. A membership whose user
+ * row is gone is skipped: joining it in one query makes Prisma throw
+ * "Field user is required" and the whole tenant page fails.
+ */
+export function tenantMembersFrom<TUser extends { id: string; name: string | null }>(
+  memberships: { role: MembershipRole; createdAt: Date; userId: string }[],
+  users: TUser[],
+): { role: MembershipRole; createdAt: Date; user: TUser }[] {
+  const byId = new Map(users.map((user) => [user.id, user]));
+  return memberships
+    .flatMap((membership) => {
+      const user = byId.get(membership.userId);
+      if (!user) return [];
+      return [{ role: membership.role, createdAt: membership.createdAt, user }];
+    })
+    .sort((a, b) => {
+      const byRole = MEMBERSHIP_ROLE_ORDER[a.role] - MEMBERSHIP_ROLE_ORDER[b.role];
+      if (byRole !== 0) return byRole;
+      return (a.user.name ?? "").localeCompare(b.user.name ?? "");
+    });
+}
+
 export type TenantChoice = {
   id: string;
   slug: string;
   name: string;
+  /** Set when the tenant is archived and can't be opened (#573). */
+  archivedAt: Date | null;
   /** The person's role in this tenant. */
   role: MembershipRole;
 };
 
 const tenantChoiceSelect = {
   role: true,
+  tenant: { select: { id: true, slug: true, name: true, archivedAt: true } },
+} as const;
+
+/** Same row, for a database that has not added Tenant.archivedAt yet (#573). */
+const tenantIdentitySelect = {
+  role: true,
   tenant: { select: { id: true, slug: true, name: true } },
 } as const;
 
 function toChoice(membership: {
   role: MembershipRole;
-  tenant: { id: string; slug: string; name: string };
+  tenant: { id: string; slug: string; name: string; archivedAt: Date | null };
 }): TenantChoice {
   return { ...membership.tenant, role: membership.role };
+}
+
+function choiceWithoutArchive(membership: {
+  role: MembershipRole;
+  tenant: { id: string; slug: string; name: string };
+}): TenantChoice {
+  return { ...membership.tenant, archivedAt: null, role: membership.role };
+}
+
+/**
+ * True when Postgres is behind the migration that added Tenant.archivedAt.
+ * A printed query that merely mentions the name does not count.
+ */
+function archivedAtMissing(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : "";
+  const metaColumn =
+    error !== null &&
+    typeof error === "object" &&
+    "meta" in error &&
+    typeof (error as { meta?: { column?: unknown } }).meta?.column === "string"
+      ? (error as { meta: { column: string } }).meta.column
+      : "";
+  if (/(?:^|[\w."]*\.)?archivedAt$/i.test(metaColumn)) return true;
+  return /column [`'"]?(?:[\w."]+\.)*archivedAt[`'"]?(?: of relation [`'"]?[\w.]+[`'"]?)? does not exist/i.test(
+    message,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -74,12 +138,7 @@ export async function readActiveTenantCookie(): Promise<string | null> {
 
 /** Remember the tenant on this device. Callers check the membership first. */
 export async function setActiveTenantCookie(tenantId: string): Promise<void> {
-  (await cookies()).set(ACTIVE_TENANT_COOKIE, tenantId, {
-    path: "/",
-    maxAge: ACTIVE_TENANT_COOKIE_MAX_AGE,
-    sameSite: "lax",
-    httpOnly: true,
-  });
+  (await cookies()).set(ACTIVE_TENANT_COOKIE, tenantId, appCookieOptions(ACTIVE_TENANT_COOKIE_MAX_AGE));
 }
 
 // ---------------------------------------------------------------------------
@@ -96,8 +155,22 @@ export async function tenantsForUser(db: Db, userId: string): Promise<TenantChoi
     });
     return memberships.map(toChoice);
   } catch (error) {
-    console.error("[tenants] tenantsForUser failed", error);
-    return [];
+    if (!archivedAtMissing(error)) {
+      console.error("[tenants] tenantsForUser failed", error);
+      return [];
+    }
+    console.error("[tenants] archivedAt is missing; listing tenants without it", error);
+    try {
+      const memberships = await db.membership.findMany({
+        where: { userId },
+        select: tenantIdentitySelect,
+        orderBy: { tenant: { name: "asc" } },
+      });
+      return memberships.map(choiceWithoutArchive);
+    } catch (retryError) {
+      console.error("[tenants] tenantsForUser failed", retryError);
+      return [];
+    }
   }
 }
 
@@ -122,10 +195,10 @@ export async function homePathFor(db: Db, userId: string): Promise<"/issues" | "
   try {
     const memberships = await db.membership.findMany({
       where: { userId },
-      select: { tenantId: true },
+      select: { tenantId: true, tenant: { select: { archivedAt: true } } },
     });
     return landingPath(
-      memberships.map((m) => m.tenantId),
+      memberships.filter((m) => !m.tenant.archivedAt).map((m) => m.tenantId),
       await readActiveTenantCookie(),
     );
   } catch (error) {
@@ -148,8 +221,21 @@ export async function memberTenantById(
     });
     return membership ? toChoice(membership) : null;
   } catch (error) {
-    console.error("[tenants] memberTenantById failed", error);
-    return null;
+    if (!archivedAtMissing(error)) {
+      console.error("[tenants] memberTenantById failed", error);
+      return null;
+    }
+    console.error("[tenants] archivedAt is missing; loading the tenant without it", error);
+    try {
+      const membership = await db.membership.findUnique({
+        where: { tenantId_userId: { tenantId, userId } },
+        select: tenantIdentitySelect,
+      });
+      return membership ? choiceWithoutArchive(membership) : null;
+    } catch (retryError) {
+      console.error("[tenants] memberTenantById failed", retryError);
+      return null;
+    }
   }
 }
 
@@ -164,11 +250,24 @@ export async function memberTenantBySlug(
   slug: string,
 ): Promise<TenantChoice | null> {
   if (!isTenantSlug(slug)) return null;
-  const membership = await db.membership.findFirst({
-    where: { userId, tenant: { slug } },
-    select: tenantChoiceSelect,
-  });
-  return membership ? toChoice(membership) : null;
+  try {
+    const membership = await db.membership.findFirst({
+      where: { userId, tenant: { slug } },
+      select: tenantChoiceSelect,
+    });
+    return membership ? toChoice(membership) : null;
+  } catch (error) {
+    // This is the lookup the tenant page does not catch. A missing
+    // archivedAt column used to 500 /tenants/[slug] while the picker
+    // degraded. Treat the tenant as not archived and keep the page up.
+    if (!archivedAtMissing(error)) throw error;
+    console.error("[tenants] archivedAt is missing; loading the tenant without it", error);
+    const membership = await db.membership.findFirst({
+      where: { userId, tenant: { slug } },
+      select: tenantIdentitySelect,
+    });
+    return membership ? choiceWithoutArchive(membership) : null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -190,11 +289,18 @@ function nameRules(label: string, { optional = false } = {}) {
       (value) => value.length <= TENANT_NAME_MAX,
       `${label} must be ${TENANT_NAME_MAX} characters or fewer.`,
     )
-    .refine((value) => !hasControlChars(value), `${label} can't contain control characters.`);
+    .refine((value) => !hasControlChars(value), `${label} can't contain control characters.`)
+    // #537: a name is plain text. Angle brackets only ever mean markup here.
+    .refine((value) => !/[<>]/.test(value), `${label} can't contain < or >.`);
 }
 
+export const tenantNameSchema = z
+  .string()
+  .transform(collapse)
+  .pipe(nameRules("Tenant name"));
+
 export const createTenantSchema = z.object({
-  name: z.string().transform(collapse).pipe(nameRules("Tenant name")),
+  name: tenantNameSchema,
   /** Optional: when left blank the first project is named after the tenant. */
   projectName: z
     .string()
@@ -266,7 +372,13 @@ export type CreateTenantResult =
       tenant: { id: string; slug: string; name: string };
       projectId: string;
     }
-  | { ok: false; error: string; field?: "name" | "projectName" };
+  | {
+      ok: false;
+      error: string;
+      field?: "name" | "projectName";
+      /** #537: set when the creator already belongs to a tenant with this name. */
+      duplicateName?: string;
+    };
 
 /**
  * Creates a tenant with the creator as its owner, and its first project.
@@ -278,7 +390,7 @@ export type CreateTenantResult =
 export async function createTenant(
   db: Db,
   creator: { id: string },
-  input: { name?: unknown; projectName?: unknown },
+  input: { name?: unknown; projectName?: unknown; confirmDuplicate?: unknown },
   suffix: () => string = randomSuffix,
 ): Promise<CreateTenantResult> {
   const parsed = createTenantSchema.safeParse({
@@ -298,6 +410,24 @@ export async function createTenant(
   const projectName = parsed.data.projectName || name;
   const base = slugFromName(name, "tenant");
 
+  // #537: two tenants you're in with the same name look identical. Ask first;
+  // sending the same name back as `confirmDuplicate` creates it anyway.
+  const confirmed = typeof input.confirmDuplicate === "string" && collapse(input.confirmDuplicate) === name;
+  if (!confirmed) {
+    const same = await db.membership.findFirst({
+      where: { userId: creator.id, tenant: { name: { equals: name, mode: "insensitive" } } },
+      select: { tenant: { select: { name: true, slug: true } } },
+    });
+    if (same) {
+      return {
+        ok: false,
+        field: "name",
+        duplicateName: name,
+        error: `You're already in a tenant called "${same.tenant.name}" (${same.tenant.slug}). Choose another name, or select Create anyway to have both.`,
+      };
+    }
+  }
+
   for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt++) {
     const slug = tenantSlugCandidate(base, attempt, suffix);
     try {
@@ -307,6 +437,11 @@ export async function createTenant(
           name,
           memberships: { create: { userId: creator.id, role: "owner" } },
           projects: { create: { slug: slugFromName(projectName, "project"), name: projectName } },
+          // Same three names as DEFAULT_PLATFORMS. Inlined so this file does not
+          // import lib/categories, which reads the active tenant from here.
+          categories: {
+            create: (["Desktop", "Web", "Mobile"] as const).map((name) => ({ name, isActive: true })),
+          },
         },
         select: { id: true, slug: true, name: true, projects: { select: { id: true } } },
       });
@@ -320,6 +455,119 @@ export async function createTenant(
     }
   }
   return { ok: false, error: "Couldn't create that tenant. Try a different name.", field: "name" };
+}
+
+// ---------------------------------------------------------------------------
+// Renaming, archiving and deleting a tenant (#573)
+// ---------------------------------------------------------------------------
+
+export type TenantLifecycleResult =
+  | { ok: true; tenant: TenantChoice }
+  | { ok: false; error: string };
+
+/** The tenant, only when this person owns it. */
+async function ownerTenant(
+  db: Db,
+  userId: string,
+  tenantId: string,
+): Promise<TenantChoice | null> {
+  if (!tenantId) return null;
+  const membership = await db.membership.findUnique({
+    where: { tenantId_userId: { tenantId, userId } },
+    select: tenantChoiceSelect,
+  });
+  if (!membership || membership.role !== "owner") return null;
+  return toChoice(membership);
+}
+
+/**
+ * Rename a tenant without changing its slug: links and project URLs keep
+ * working. Only an owner can rename, and archived tenants are read-only.
+ */
+export async function renameTenant(
+  db: Db,
+  userId: string,
+  tenantId: string,
+  name: unknown,
+): Promise<TenantLifecycleResult> {
+  const parsed = tenantNameSchema.safeParse(typeof name === "string" ? name : "");
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the tenant's name." };
+  }
+
+  const tenant = await ownerTenant(db, userId, tenantId);
+  if (!tenant) return { ok: false, error: "Only the tenant's owner can rename it." };
+  if (tenant.archivedAt) return { ok: false, error: "Restore this tenant before renaming it." };
+
+  await db.tenant.update({ where: { id: tenant.id }, data: { name: parsed.data } });
+  return { ok: true, tenant: { ...tenant, name: parsed.data } };
+}
+
+/**
+ * Archive or restore a tenant. Archiving hides it from the switcher, stops it
+ * being auto-selected, and makes its settings read-only. Zedu is the default
+ * workspace and is never archived.
+ */
+export async function setTenantArchived(
+  db: Db,
+  userId: string,
+  tenantId: string,
+  archived: boolean,
+): Promise<TenantLifecycleResult> {
+  const tenant = await ownerTenant(db, userId, tenantId);
+  if (!tenant) return { ok: false, error: "Only the tenant's owner can archive it." };
+  if (archived && tenant.slug === ZEDU_SLUG) {
+    return { ok: false, error: "Zedu is the default workspace and can't be archived." };
+  }
+  if (Boolean(tenant.archivedAt) === archived) return { ok: true, tenant };
+
+  const archivedAt = archived ? new Date() : null;
+  await db.tenant.update({ where: { id: tenant.id }, data: { archivedAt } });
+  return { ok: true, tenant: { ...tenant, archivedAt } };
+}
+
+/**
+ * Permanently delete an empty tenant. "Empty" means no issues, no agents and
+ * no members besides the owner. Anything else must be archived instead.
+ */
+export async function deleteTenant(
+  db: Db,
+  userId: string,
+  tenantId: string,
+  confirmName: unknown,
+): Promise<TenantLifecycleResult> {
+  const tenant = await ownerTenant(db, userId, tenantId);
+  if (!tenant) return { ok: false, error: "Only the tenant's owner can delete it." };
+  if (tenant.slug === ZEDU_SLUG) {
+    return { ok: false, error: "Zedu is the default workspace and can't be deleted." };
+  }
+
+  const counts = await db.tenant.findUnique({
+    where: { id: tenant.id },
+    select: { _count: { select: { bugs: true, agents: true, memberships: true } } },
+  });
+  if (!counts) return { ok: false, error: "That tenant no longer exists." };
+
+  const { bugs, agents, memberships } = counts._count;
+  if (bugs > 0 || agents > 0 || memberships > 1) {
+    return {
+      ok: false,
+      error: "This tenant still has issues, agents or other members. Archive it instead.",
+    };
+  }
+
+  const typed = typeof confirmName === "string" ? confirmName.trim() : "";
+  if (typed !== tenant.name) {
+    return { ok: false, error: "Type the tenant's name exactly to confirm." };
+  }
+
+  try {
+    await db.tenant.delete({ where: { id: tenant.id } });
+  } catch (error) {
+    console.error("[tenants] deleteTenant failed", error);
+    return { ok: false, error: "Couldn't delete this tenant. Archive it instead." };
+  }
+  return { ok: true, tenant };
 }
 
 // ---------------------------------------------------------------------------

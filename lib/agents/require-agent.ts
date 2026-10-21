@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { bearerToken, hashSecret } from "@/lib/agents/keys";
 import { AgentLevelError } from "@/lib/agents/levels";
+import { AgentPlatformDisabledError, agentPlatformDisabledResponse } from "@/lib/agents/platform-gate";
+import { isAgentPlatformEnabled } from "@/lib/feature-flags";
+import { logger } from "@/lib/logger";
+
+export { AgentPlatformDisabledError, agentPlatformDisabledResponse };
 
 /**
  * Who is calling (#427). Every agent route starts with `requireAgent()`.
@@ -20,6 +25,8 @@ export type AgentContext = {
   level: AgentLevel;
   /** For the rate budget (#440). */
   burst: boolean;
+  /** When the higher budget lapses; null means no expiry (#596). */
+  burstUntil?: Date | null;
   /** The key used for this call, so rotation can revoke exactly it. */
   keyId: string;
   /**
@@ -78,6 +85,7 @@ type HeaderSource = { headers: { get(name: string): string | null } };
 const LAST_USED_THROTTLE_MS = 60 * 1000;
 
 export async function requireAgent(request: HeaderSource): Promise<AgentContext> {
+  if (!isAgentPlatformEnabled()) throw new AgentPlatformDisabledError();
   const raw = bearerToken(request.headers.get("authorization"));
   if (!raw) throw new AgentAuthError("missing_key");
 
@@ -97,6 +105,7 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
           tenantId: true,
           level: true,
           burst: true,
+          burstUntil: true,
           revokedAt: true,
           owner: { select: { memberships: { select: { tenantId: true } } } },
         },
@@ -124,7 +133,7 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
         data: { lastUsedAt: now },
       }),
     ).catch((error) => {
-      console.error("[requireAgent] failed to update lastUsedAt", error);
+      logger.error("[requireAgent] failed to update lastUsedAt", error);
     });
   }
 
@@ -135,6 +144,7 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
     tenantId: agent.tenantId,
     level: agent.level,
     burst: agent.burst,
+    burstUntil: agent.burstUntil ?? null,
     keyId: key.id,
     projectId: key.projectId,
     projectSlug: key.project?.slug ?? null,
@@ -146,6 +156,7 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
  * missing or bad key, 403 for too low a level. Anything else is rethrown.
  */
 export function agentErrorResponse(error: unknown): NextResponse {
+  if (error instanceof AgentPlatformDisabledError) return agentPlatformDisabledResponse();
   if (error instanceof AgentAuthError) {
     return NextResponse.json(
       { error: error.code, message: error.message },

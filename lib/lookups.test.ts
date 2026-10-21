@@ -64,21 +64,36 @@ describe("platformsNeedRepair", () => {
 describe("getPlatforms", () => {
   it("doesn't write when nothing needs repairing", async () => {
     findPlatforms.mockResolvedValue(healthy);
-    expect(await getPlatforms()).toEqual(healthy);
+    expect(await getPlatforms("tenant-ziki")).toEqual(healthy);
     expect(upsert).not.toHaveBeenCalled();
-    expect(findPlatforms).toHaveBeenCalledTimes(1);
+    expect(findPlatforms).toHaveBeenCalledWith({
+      where: { tenantId: "tenant-ziki" },
+      select: { id: true, name: true, isActive: true },
+      orderBy: { name: "asc" },
+    });
+  });
+
+  it("returns nothing when no organization is open", async () => {
+    expect(await getPlatforms(null)).toEqual([]);
+    expect(findPlatforms).not.toHaveBeenCalled();
   });
 
   it("seeds and then reads fresh rows when defaults are missing", async () => {
     findPlatforms.mockResolvedValueOnce([]).mockResolvedValueOnce(healthy);
-    expect(await getPlatforms()).toEqual(healthy);
+    expect(await getPlatforms("tenant-ziki")).toEqual(healthy);
     expect(upsert).toHaveBeenCalledTimes(3);
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { tenantId_name: { tenantId: "tenant-ziki", name: "Desktop" } },
+        create: { tenantId: "tenant-ziki", name: "Desktop", isActive: true },
+      }),
+    );
     expect(findPlatforms).toHaveBeenCalledTimes(2);
   });
 
   it("getActivePlatforms returns only active ones, as {id, name}", async () => {
     findPlatforms.mockResolvedValue(healthy);
-    expect(await getActivePlatforms()).toEqual([
+    expect(await getActivePlatforms("tenant-ziki")).toEqual([
       { id: "1", name: "Desktop" },
       { id: "2", name: "Mobile" },
       { id: "3", name: "Web" },
@@ -91,7 +106,10 @@ describe("getIssueTypes", () => {
 
   it("reads templates with the types", async () => {
     findIssueTypes.mockResolvedValue(rows.map((row) => ({ ...row, template: "steps" })));
-    await expect(getIssueTypes()).resolves.toEqual(rows.map((row) => ({ ...row, template: "steps" })));
+    await expect(getIssueTypes("tenant-ziki")).resolves.toEqual(rows.map((row) => ({ ...row, template: "steps" })));
+    expect(findIssueTypes).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: "tenant-ziki" } }),
+    );
     expect(findIssueTypes).toHaveBeenCalledTimes(1);
   });
 
@@ -99,7 +117,7 @@ describe("getIssueTypes", () => {
     findIssueTypes
       .mockRejectedValueOnce(new Error("The column `IssueType.template` does not exist in the current database."))
       .mockResolvedValueOnce(rows);
-    await expect(getIssueTypes()).resolves.toEqual(rows.map((row) => ({ ...row, template: null })));
+    await expect(getIssueTypes("tenant-ziki")).resolves.toEqual(rows.map((row) => ({ ...row, template: null })));
     expect(findIssueTypes).toHaveBeenLastCalledWith(
       expect.objectContaining({
         select: { id: true, name: true, description: true, isActive: true },
@@ -109,7 +127,7 @@ describe("getIssueTypes", () => {
 
   it("does not hide an unrelated read failure", async () => {
     findIssueTypes.mockRejectedValue(new Error('column "voteCount" does not exist'));
-    await expect(getIssueTypes()).rejects.toThrow(/voteCount/);
+    await expect(getIssueTypes("tenant-ziki")).rejects.toThrow(/voteCount/);
     expect(findIssueTypes).toHaveBeenCalledTimes(1);
   });
 
@@ -117,7 +135,12 @@ describe("getIssueTypes", () => {
     findIssueTypes
       .mockRejectedValueOnce({ code: "P2022", meta: { column: "IssueType.template" } })
       .mockResolvedValueOnce(rows);
-    await expect(getIssueTypes()).resolves.toEqual(rows.map((row) => ({ ...row, template: null })));
+    await expect(getIssueTypes("tenant-ziki")).resolves.toEqual(rows.map((row) => ({ ...row, template: null })));
+  });
+
+  it("returns nothing when no organization is open", async () => {
+    expect(await getIssueTypes(null)).toEqual([]);
+    expect(findIssueTypes).not.toHaveBeenCalled();
   });
 });
 
@@ -144,9 +167,10 @@ describe("every write path expires what it changes", () => {
   it("each platform and issue-type action expires its tag", () => {
     const categories = src("app/actions/categories.ts");
     const types = src("app/actions/issue-types.ts");
-    expect(count(categories, /export async function/g)).toBe(
-      count(categories, /expireTag\(TAGS\.platforms\)/g),
+    expect(count(categories, /export async function \w+Action/g)).toBe(
+      count(categories, /revalidatePlatforms\(\);/g),
     );
+    expect(categories).toMatch(/function revalidatePlatforms\(\)[\s\S]*expireTag\(TAGS\.platforms\)/);
     expect(count(types, /export async function/g)).toBe(
       count(types, /expireTag\(TAGS\.issueTypes\)/g),
     );

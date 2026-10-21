@@ -5,6 +5,7 @@ import { toggleVoteAction } from "@/app/actions/issues";
 import { calculateVoteChange } from "@/lib/voting";
 import { updateVoteCounts, type VoterInfo } from "@/lib/voters";
 import { VoterAvatars } from "@/components/voter-avatars";
+import { WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
 
 type VoteButtonProps = {
   bugId: string;
@@ -17,6 +18,7 @@ type VoteButtonProps = {
   dislikeVoters?: VoterInfo[];
   size?: "sm" | "md";
   showAvatars?: boolean;
+  showReadinessGate?: boolean;
   /** Deleted issues: show counts, but likes and dislikes can't be changed. */
   readOnly?: boolean;
 };
@@ -79,6 +81,24 @@ function FacebookThumbsDown({
   );
 }
 
+function AlertIcon({ className = "h-3.5 w-3.5 shrink-0" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        fillRule="evenodd"
+        d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5Zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
+
 export function VoteButton({
   bugId,
   voteCount: initialCount,
@@ -90,6 +110,7 @@ export function VoteButton({
   dislikeVoters = [],
   size = "sm",
   showAvatars = false,
+  showReadinessGate = true,
   readOnly = false,
 }: VoteButtonProps) {
   const initialVote =
@@ -111,6 +132,7 @@ export function VoteButton({
   );
   const [voteCount, setVoteCount] = useState(initialCount);
   const [error, setError] = useState<string | null>(null);
+  const errorId = `vote-error-${bugId}`;
   const [pending, startTransition] = useTransition();
 
   const isLiked = currentVote === 1;
@@ -182,6 +204,7 @@ export function VoteButton({
                   : `Like, ${likeCount} likes, click to like`
               }
               title={isLiked ? "Unlike" : "Like"}
+              aria-describedby={error ? errorId : undefined}
               onClick={(e) => handleVote(1, e)}
               className={`group inline-flex items-center justify-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50 ${
                 isLiked
@@ -229,6 +252,7 @@ export function VoteButton({
                   : `Dislike, ${dislikeCount} dislikes, click to dislike`
               }
               title={isDisliked ? "Remove dislike" : "Dislike"}
+              aria-describedby={error ? errorId : undefined}
               onClick={(e) => handleVote(-1, e)}
               className={`group inline-flex items-center justify-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50 ${
                 isDisliked
@@ -260,11 +284,40 @@ export function VoteButton({
               />
             )}
           </div>
+
+          {/* Work Readiness Gate Progress Indicator (#764) */}
+          {showReadinessGate ? (
+            <div
+              data-testid="readiness-gate-indicator"
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold shadow-xs transition-colors ${
+                voteCount >= WORK_READINESS_VOTE_THRESHOLD
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-amber-200 bg-amber-50 text-amber-800"
+              }`}
+              aria-label={
+                voteCount >= WORK_READINESS_VOTE_THRESHOLD
+                  ? `Work unlocked, ${voteCount} of ${WORK_READINESS_VOTE_THRESHOLD} votes reached`
+                  : `Upvote, ${Math.max(0, voteCount)} of ${WORK_READINESS_VOTE_THRESHOLD} votes to unlock work`
+              }
+            >
+              <span aria-hidden="true" className="text-[11px]">▲</span>
+              <span>
+                {voteCount >= WORK_READINESS_VOTE_THRESHOLD
+                  ? `Work unlocked (${voteCount}/${WORK_READINESS_VOTE_THRESHOLD} votes)`
+                  : `Upvote (${Math.max(0, voteCount)}/${WORK_READINESS_VOTE_THRESHOLD} votes to unlock work)`}
+              </span>
+            </div>
+          ) : null}
         </div>
 
         {error ? (
-          <p className="text-xs text-red-600" role="alert">
-            {error}
+          <p
+            id={errorId}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-red-700"
+            role="alert"
+          >
+            <AlertIcon className="h-3.5 w-3.5 shrink-0 text-red-600" />
+            <span>{error}</span>
           </p>
         ) : null}
       </div>
@@ -285,6 +338,7 @@ export function VoteButton({
               : `Like this issue, ${likeCount} likes`
           }
           title={isLiked ? "Unlike" : "Like"}
+          aria-describedby={error ? errorId : undefined}
           onClick={(e) => handleVote(1, e)}
           className={`group inline-flex min-w-[2.75rem] flex-col items-center justify-center rounded-lg border px-2 py-1 text-xs font-semibold shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50 ${
             isLiked
@@ -309,6 +363,7 @@ export function VoteButton({
               : `Dislike this issue, ${dislikeCount} dislikes`
           }
           title={isDisliked ? "Remove dislike" : "Dislike"}
+          aria-describedby={error ? errorId : undefined}
           onClick={(e) => handleVote(-1, e)}
           className={`group inline-flex min-w-[2.75rem] flex-col items-center justify-center rounded-lg border px-2 py-1 text-xs font-semibold shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50 ${
             isDisliked
@@ -328,10 +383,12 @@ export function VoteButton({
 
       {error ? (
         <p
-          className="max-w-[5.5rem] text-center text-[10px] text-red-600"
+          id={errorId}
+          className="inline-flex max-w-[9rem] items-center justify-center gap-1 text-center text-xs font-medium text-red-700"
           role="alert"
         >
-          {error}
+          <AlertIcon className="h-3.5 w-3.5 shrink-0 text-red-600" />
+          <span>{error}</span>
         </p>
       ) : null}
     </div>

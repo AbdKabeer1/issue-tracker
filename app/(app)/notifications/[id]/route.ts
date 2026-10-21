@@ -4,6 +4,8 @@ import { resolveSessionUserId } from "@/lib/session-user";
 import { BASE_PATH } from "@/lib/base-path";
 import { safeNotificationPath } from "@/lib/notification-links";
 import { expireTag, TAGS } from "@/lib/lookups";
+import { memberTenantById, readActiveTenantCookie, setActiveTenantCookie } from "@/lib/tenants";
+import { setActiveProjectCookie } from "@/lib/project-context";
 
 /**
  * Opening a notification marks it read and goes to what it's about (#216).
@@ -23,11 +25,20 @@ export async function GET(
 
   const notification = await prisma.notification.findUnique({
     where: { id },
-    select: { userId: true, url: true, readAt: true },
+    select: { userId: true, tenantId: true, url: true, readAt: true },
   });
   // Someone else's notification (or none): don't reveal or touch it.
   if (!notification || notification.userId !== resolved.userId) {
     return NextResponse.redirect(toApp("/notifications"));
+  }
+
+  if (notification.tenantId) {
+    const tenant = await memberTenantById(prisma, resolved.userId, notification.tenantId);
+    if (!tenant) return NextResponse.redirect(toApp("/notifications"));
+    if ((await readActiveTenantCookie()) !== tenant.id) {
+      await setActiveTenantCookie(tenant.id);
+      await setActiveProjectCookie("");
+    }
   }
 
   if (!notification.readAt) {

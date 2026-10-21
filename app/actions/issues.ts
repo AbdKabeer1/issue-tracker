@@ -5,6 +5,7 @@ import { fieldError, fromZodError } from "@/lib/form-errors";
 import { redirect } from "next/navigation";
 import {
   activityCreateData,
+  areaChangedSummary,
   assigneeChangedSummary,
   boostedSummary,
   categoryChangedSummary,
@@ -20,7 +21,6 @@ import {
   type ActivityMetadata,
 } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
-import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import {
   resolveSessionUserId,
@@ -32,10 +32,12 @@ import {
   newlyMentionedUserIds,
   normalizeMentions,
 } from "@/lib/mentions";
+import { resolveTenantMentions, tenantMemberWhere } from "@/lib/tenant-mentions";
 import {
   commentSchema,
   createBugSchema,
   editBugContentSchema,
+  editProofLinksSchema,
   updateBugSchema,
 } from "@/lib/validations/issue";
 import {
@@ -55,13 +57,17 @@ import {
 } from "@/lib/ticket-boosting";
 import { canAssignTicket, TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
 import { canChangeTicketStatus, TICKET_TRIAGE_ERRORS } from "@/lib/ticket-triage";
+import { publish } from "@/lib/agent-api/events";
 import {
   canEditTicket,
   formatEditSummary,
+  formatProofLinkSummary,
   getChangedEditFields,
+  getProofLinkChanges,
   TICKET_EDIT_ERRORS,
 } from "@/lib/ticket-editing";
 import { Prisma, type ActivityType } from "@prisma/client";
+import { isBugNumberConflict, repairBugNumberSequence } from "@/lib/bug-number";
 import { notifyLater } from "@/lib/notify";
 import { ensureWatching } from "@/lib/watch";
 import { parseResolutionNote } from "@/lib/resolution-note";
@@ -76,13 +82,24 @@ import {
   defaultProjectIdFor,
   NO_TENANT_MESSAGE,
 } from "@/lib/tenant-context";
+import { currentTenantAccess } from "@/lib/tenant-access";
 import { awardSolver } from "@/lib/points/award";
+import { isConfirmed } from "@/lib/agent-api/validation";
+import { correct } from "@/lib/points/correct";
+import { pointSourceKey } from "@/lib/points/rules";
 import {
   checkRateLimit,
   consumeRateLimit,
   ACTION_RATE_LIMITS,
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
+import { issueChangePayload, publishWebEvent } from "@/lib/agent-api/web-events";
+import {
+  agentMentionNames,
+  agentOwnerIds,
+  mentionedAgents,
+  type MentionedAgent,
+} from "@/lib/agent-mentions";
 
 export type ActionResult = {
   error?: string;
@@ -90,22 +107,66 @@ export type ActionResult = {
   /** Which field failed, when there is one (#309). */
   field?: string;
   fieldErrors?: Record<string, string>;
+  commentId?: string;
 };
 
 /**
- * Resolves `@[Name](userId)` tags against real accounts: known ids are
- * rewritten to the current name, unknown ids degrade to plain `@Name`.
+ * Resolves `@[Name](userId)` tags against this tenant's members: known ids are
+ * rewritten to the current name, anyone else degrades to plain `@Name` (#502).
+ * `agents` are the issue tenant's agents the text may keep tags for (#603).
  */
-async function normalizeMentionTags(text: string): Promise<string> {
+async function normalizeMentionTags(
+  text: string,
+  tenantId: string,
+  agents: MentionedAgent[] = [],
+): Promise<string> {
   const mentionedIds = extractMentionedUserIds(text);
-  if (mentionedIds.length === 0) return text;
+  if (mentionedIds.length === 0 && agents.length === 0) return text;
 
-  const validUsers = await prisma.user.findMany({
-    where: { id: { in: mentionedIds } },
-    select: { id: true, name: true },
-  });
-  const userMap = new Map(validUsers.map((user) => [user.id, user.name]));
+  const validUsers = mentionedIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: mentionedIds }, ...tenantMemberWhere(tenantId) },
+        select: { id: true, name: true },
+      })
+    : [];
+  const userMap = new Map([
+    ...validUsers.map((user) => [user.id, user.name] as [string, string]),
+    ...agentMentionNames(agents),
+  ]);
   return normalizeMentions(text, userMap);
+}
+
+function foreignKeyError(error: unknown): string | null {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+    return getForeignKeyErrorMessage(error.meta as Record<string, unknown> | undefined);
+  }
+  return null;
+}
+
+/** Reads the type, including when the template column has not been migrated yet. */
+async function issueTypeForCreate(typeId: string, tenantId: string) {
+  try {
+    return await prisma.issueType.findUnique({
+      where: { id_tenantId: { id: typeId, tenantId } },
+      select: { id: true, isActive: true, template: true },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const missingTemplate =
+      (typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        (error as { code?: unknown }).code === "P2022" &&
+        "meta" in error &&
+        String((error as { meta?: { column?: unknown } }).meta?.column ?? "").includes("template")) ||
+      /column [`'"]?(?:[\w."]+\.)*template[`'"]?/i.test(message);
+    if (!missingTemplate) throw error;
+    const row = await prisma.issueType.findUnique({
+      where: { id_tenantId: { id: typeId, tenantId } },
+      select: { id: true, isActive: true },
+    });
+    return row ? { ...row, template: null } : null;
+  }
 }
 
 /** Redirects to login when the JWT is missing or no longer maps to a User row. */
@@ -123,7 +184,8 @@ export async function createBugAction(
 ): Promise<ActionResult> {
   const user = await requireUser();
   const userId = user.id;
-  const admin = isAdmin(user.role);
+  const access = await currentTenantAccess(userId, user.role);
+  const admin = access.admin;
 
   const limit = await consumeRateLimit(
     `create-bug:${userId}`,
@@ -146,6 +208,7 @@ export async function createBugAction(
       !canAssignTicket({
         actorId: userId,
         actorRole: user.role,
+        membershipRole: access.membershipRole,
         currentAssigneeId: null,
         targetAssigneeId,
       })
@@ -154,14 +217,29 @@ export async function createBugAction(
     }
   }
 
+  // Auto-generate title from description if omitted or blank (for simplified report intake)
+  const rawTitle = formData.get("title");
+  const rawDesc = formData.get("description");
+  let titleStr = typeof rawTitle === "string" ? rawTitle.trim() : "";
+  const isReport = formData.get("isReport") === "true";
+
+  if (!titleStr && typeof rawDesc === "string" && rawDesc.trim().length >= 3) {
+    const firstLine = rawDesc.trim().split(/\r?\n/)[0]?.trim() || "";
+    titleStr = firstLine.slice(0, 80);
+    if (titleStr.length < 3) {
+      titleStr = rawDesc.trim().slice(0, 80);
+    }
+  }
+
   // Non-admins cannot set severity at creation; assignee validated above.
   const parsed = createBugSchema.safeParse({
-    title: formData.get("title"),
+    title: titleStr,
     description: formData.get("description"),
     severity: admin ? formData.get("severity") || "medium" : "medium",
     typeId: formData.get("typeId") || "",
     assigneeId: targetAssigneeId || "",
     categoryId: formData.get("categoryId") || "",
+    areaId: formData.get("areaId") || "",
     proofLinks: formData.get("proofLinks") || "",
   });
 
@@ -179,21 +257,25 @@ export async function createBugAction(
       ? parsed.data.typeId
       : null;
 
+  // #425: the issue goes into the reporter's tenant. No membership, no issue.
+  const tenantId = await currentTenantIdFor(userId);
+  const projectId = tenantId ? await defaultProjectIdFor(prisma, tenantId) : null;
+  if (!tenantId || !projectId) {
+    return { error: NO_TENANT_MESSAGE };
+  }
+
   if (assigneeId) {
-    const assignee = await prisma.user.findUnique({
-      where: { id: assigneeId },
+    const assignee = await prisma.user.findFirst({
+      where: { id: assigneeId, memberships: { some: { tenantId } } },
       select: { id: true },
     });
     if (!assignee) {
-      return fieldError("assigneeId", "Assignee not found");
+      return fieldError("assigneeId", "Assignee not found in this workspace");
     }
   }
 
   if (typeId) {
-    const issueType = await prisma.issueType.findUnique({
-      where: { id: typeId },
-      select: { id: true, isActive: true, template: true },
-    });
+    const issueType = await issueTypeForCreate(typeId, tenantId);
     if (!issueType || !issueType.isActive) {
       return fieldError("typeId", "That type no longer exists. Please pick another.");
     }
@@ -203,78 +285,95 @@ export async function createBugAction(
     }
   }
 
-  const description = await normalizeMentionTags(parsed.data.description);
-
   const categoryId =
     parsed.data.categoryId && parsed.data.categoryId.length > 0
       ? parsed.data.categoryId
       : null;
+  const areaId = parsed.data.areaId && parsed.data.areaId.length > 0
+    ? parsed.data.areaId
+    : null;
+  // #502: mentions resolve only to members of the issue's tenant.
+  const description = await resolveTenantMentions(prisma, tenantId, parsed.data.description);
 
   if (categoryId) {
-    const category = await prisma.category.findUnique({
-      where: { id: categoryId },
-      select: { id: true, isActive: true },
+    const category = await prisma.category.findFirst({
+      where: { id: categoryId, tenantId, isActive: true },
+      select: { id: true },
     });
-    if (!category || !category.isActive) {
+    if (!category) {
       return fieldError("categoryId", "Platform not found or inactive");
     }
   }
 
-  // #425: the issue goes into the reporter's tenant. No membership, no issue.
-  const tenantId = await currentTenantIdFor(userId);
-  const projectId = tenantId ? await defaultProjectIdFor(prisma, tenantId) : null;
-  if (!tenantId || !projectId) {
-    return { error: NO_TENANT_MESSAGE };
+  if (areaId) {
+    const area = await prisma.projectArea.findFirst({
+      where: { id: areaId, projectId },
+      select: { id: true },
+    });
+    if (!area) return fieldError("areaId", "Area not found in this project.");
   }
 
   // Always open at creation — createBugSchema rejects client status.
+  const issueData = {
+    tenantId,
+    projectId,
+    beneficiaryUserId: userId,
+    title: parsed.data.title,
+    description,
+    severity: admin ? parsed.data.severity : "medium",
+    status: "open" as const,
+    voteCount: 0,
+    typeId,
+    proofLinks: parsed.data.proofLinks,
+    reporterId: userId,
+    assigneeId,
+    categoryId,
+    areaId,
+    // Reporter and assignee watch the issue from the start (#216).
+    watches: {
+      create: [...new Set([userId, assigneeId].filter((id): id is string => Boolean(id)))].map(
+        (watcherId) => ({ userId: watcherId }),
+      ),
+    },
+    activities: {
+      create: {
+        actorId: userId,
+        type: "created" as const,
+        summary: createdSummary(parsed.data.title),
+        metadata: {
+          field: "title",
+          to: parsed.data.title,
+        } as Prisma.InputJsonValue,
+      },
+    },
+  };
+
   let bug;
   try {
-    bug = await prisma.bug.create({
-      data: {
-        tenantId,
-        projectId,
-        beneficiaryUserId: userId,
-        title: parsed.data.title,
-        description,
-        severity: admin ? parsed.data.severity : "medium",
-        status: "open",
-        typeId,
-        proofLinks: parsed.data.proofLinks,
-        reporterId: userId,
-        assigneeId,
-        categoryId,
-        // Reporter and assignee watch the issue from the start (#216).
-        watches: {
-          create: [...new Set([userId, assigneeId].filter((id): id is string => Boolean(id)))].map(
-            (watcherId) => ({ userId: watcherId }),
-          ),
-        },
-        activities: {
-          create: {
-            actorId: userId,
-            type: "created",
-            summary: createdSummary(parsed.data.title),
-            metadata: {
-              field: "title",
-              to: parsed.data.title,
-            } as Prisma.InputJsonValue,
-          },
-        },
-      },
-    });
+    bug = await prisma.bug.create({ data: issueData });
   } catch (error) {
-    if (
+    const foreignKey = foreignKeyError(error);
+    if (foreignKey) return { error: foreignKey };
+    // The issue-number sequence can sit behind MAX(number) and then every
+    // create hits a unique violation, which the form shows as a 500.
+    if (isBugNumberConflict(error)) {
+      try {
+        await repairBugNumberSequence(prisma);
+        bug = await prisma.bug.create({ data: issueData });
+      } catch (retryError) {
+        const retryForeignKey = foreignKeyError(retryError);
+        if (retryForeignKey) return { error: retryForeignKey };
+        console.error("[issues] create failed after repairing the issue number", retryError);
+        return { error: "Could not save the issue. Try again." };
+      }
+    } else if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2003"
+      error.code === "P2002"
     ) {
-      return {
-        error: getForeignKeyErrorMessage(
-          error.meta as Record<string, unknown> | undefined,
-        ),
-      };
+      return { error: "That issue could not be saved because it conflicts with an existing one. Try again." };
+    } else {
+      throw error;
     }
-    throw error;
   }
 
   // Files uploaded while writing the report (#215).
@@ -290,6 +389,19 @@ export async function createBugAction(
     bugId: bug.id,
   });
 
+  // #600: agents hear about issues people file, not only ones agents file.
+  // The issue already exists, so a failed event mustn't fail the report.
+  try {
+    await publishWebEvent(prisma, {
+      bugId: bug.id,
+      type: "issue.created",
+      actorUserId: userId,
+      payload: { reporterId: userId },
+    });
+  } catch (error) {
+    console.error("[issues] issue.created event failed", error);
+  }
+
   const events: NotificationEvent[] = [];
   const actor = { actorId: userId, actorName: user.name ?? "Someone", bugId: bug.id, bugTitle: bug.title };
   const mentioned = extractMentionedUserIds(description);
@@ -300,6 +412,26 @@ export async function createBugAction(
     events.push({ ...actor, kind: "assignee_changed", fromUserId: null, toUserId: assigneeId });
   }
   if (events.length > 0) notifyLater(...events);
+
+  // Notify agent platform on feed (#764)
+  try {
+    if (prisma.agentEvent) {
+      await publish(prisma, {
+        tenantId,
+        type: isReport ? "report.created" : "issue.created",
+        payload: {
+          issueId: bug.id,
+          projectId,
+          beneficiaryUserId: userId,
+          isReport,
+        },
+        bugId: bug.id,
+      });
+    }
+  } catch (err) {
+    // Non-fatal if agent events / webhooks are not configured in test environment
+    console.warn("[createBugAction] could not publish agent event", err);
+  }
 
   revalidatePath("/issues");
   revalidatePath("/bugs");
@@ -313,13 +445,16 @@ export async function updateBugAction(
 ): Promise<ActionResult> {
   const user = await requireUser();
   const userId = user.id;
-  const admin = isAdmin(user.role);
+  const access = await currentTenantAccess(userId, user.role);
+  const admin = access.admin;
 
+  const tenantId = await currentTenantIdFor(userId);
   const existing = await prisma.bug.findUnique({
-    where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
+    where: { id: bugId, ...bugInTenant(tenantId) },
     include: {
       assignee: { select: { id: true, name: true } },
       category: { select: { id: true, name: true } },
+      area: { select: { id: true, name: true } },
       type: { select: { id: true, name: true } },
       milestone: { select: { id: true, title: true } },
     },
@@ -353,6 +488,7 @@ export async function updateBugAction(
     !canChangeTicketStatus({
       actorId: userId,
       actorRole: user.role,
+      membershipRole: access.membershipRole,
       currentAssigneeId: existing.assigneeId,
     })
   ) {
@@ -361,8 +497,12 @@ export async function updateBugAction(
 
   if (!admin && !isAssignee && !isSelfAssigning) {
     return {
-      error: "Only the assignee or an admin can update this issue",
+      error: "Only the assignee, or an owner or admin of this organization, can update this issue",
     };
+  }
+
+  if (!admin && isSelfAssigning && targetAssigneeId !== existing.assigneeId) {
+    return { error: TICKET_ASSIGN_ERRORS.needsAgentClaim };
   }
 
   if (targetAssigneeId !== undefined && targetAssigneeId !== existing.assigneeId) {
@@ -370,15 +510,21 @@ export async function updateBugAction(
       !canAssignTicket({
         actorId: userId,
         actorRole: user.role,
+        membershipRole: access.membershipRole,
         currentAssigneeId: existing.assigneeId,
         targetAssigneeId,
+        voteCount: existing.voteCount,
       })
     ) {
+      if (targetAssigneeId && typeof existing.voteCount === "number" && existing.voteCount < 3) {
+        return { error: TICKET_ASSIGN_ERRORS.needsVotes };
+      }
       return { error: TICKET_ASSIGN_ERRORS.unauthorized };
     }
   }
 
   const categoryRaw = formData.get("categoryId");
+  const areaRaw = formData.get("areaId");
   const typeRaw = formData.get("typeId");
   const parsed = updateBugSchema.safeParse({
     status: requestedStatus,
@@ -393,6 +539,11 @@ export async function updateBugAction(
       ? categoryRaw === "" || categoryRaw === "none"
         ? null
         : categoryRaw || undefined
+      : undefined,
+    areaId: admin
+      ? areaRaw === "" || areaRaw === "none"
+        ? null
+        : areaRaw || undefined
       : undefined,
   });
 
@@ -412,6 +563,14 @@ export async function updateBugAction(
     return { error: TICKET_ASSIGN_ERRORS.statusNeedsAssignment };
   }
 
+  if (!admin && parsed.data.status && parsed.data.status !== existing.status) {
+    const claim = await prisma.issueClaim.findFirst({
+      where: { bugId: existing.id, beneficiaryUserId: userId, status: "active", releasedAt: null },
+      select: { id: true },
+    });
+    if (!claim) return { error: TICKET_ASSIGN_ERRORS.needsAgentClaim };
+  }
+
   // #316: an optional note, only for a change into resolved or closed.
   const parsedNote = parseResolutionNote(formData.get("resolutionNote"), {
     from: existing.status,
@@ -426,6 +585,7 @@ export async function updateBugAction(
     typeId?: string | null;
     assigneeId?: string | null;
     categoryId?: string | null;
+    areaId?: string | null;
     milestoneId?: string | null;
     isBoosted?: boolean;
     boostedAt?: Date | null;
@@ -440,6 +600,9 @@ export async function updateBugAction(
     if (parsed.data.categoryId !== undefined) {
       data.categoryId =
         parsed.data.categoryId === "" ? null : parsed.data.categoryId;
+    }
+    if (parsed.data.areaId !== undefined) {
+      data.areaId = parsed.data.areaId === "" ? null : parsed.data.areaId;
     }
   }
   if (parsed.data.assigneeId !== undefined) {
@@ -502,12 +665,12 @@ export async function updateBugAction(
   ) {
     let toName: string | null = null;
     if (data.assigneeId) {
-      const nextAssignee = await prisma.user.findUnique({
-        where: { id: data.assigneeId },
+      const nextAssignee = await prisma.user.findFirst({
+        where: { id: data.assigneeId, memberships: { some: { tenantId: existing.tenantId } } },
         select: { name: true },
       });
       if (!nextAssignee) {
-        return { error: "Assignee not found" };
+        return { error: "Assignee not found in this workspace" };
       }
       toName = nextAssignee.name ?? null;
     }
@@ -526,7 +689,7 @@ export async function updateBugAction(
     let toName: string | null = null;
     if (data.typeId) {
       const nextType = await prisma.issueType.findUnique({
-        where: { id: data.typeId },
+        where: { id_tenantId: { id: data.typeId, tenantId: existing.tenantId } },
         select: { id: true, name: true, isActive: true },
       });
       if (!nextType || !nextType.isActive) {
@@ -551,8 +714,8 @@ export async function updateBugAction(
   ) {
     let toName: string | null = null;
     if (data.categoryId) {
-      const cat = await prisma.category.findUnique({
-        where: { id: data.categoryId },
+      const cat = await prisma.category.findFirst({
+        where: { id: data.categoryId, tenantId: existing.tenantId },
         select: { id: true, name: true },
       });
       if (!cat) {
@@ -570,12 +733,31 @@ export async function updateBugAction(
       },
     });
   } else if (data.categoryId) {
-    const cat = await prisma.category.findUnique({
-      where: { id: data.categoryId },
+    const cat = await prisma.category.findFirst({
+      where: { id: data.categoryId, tenantId: existing.tenantId },
       select: { id: true },
     });
     if (!cat) {
       return { error: "Platform not found" };
+    }
+  }
+
+  if (data.areaId !== undefined) {
+    let toName: string | null = null;
+    if (data.areaId) {
+      const area = await prisma.projectArea.findFirst({
+        where: { id: data.areaId, projectId: existing.projectId },
+        select: { id: true, name: true },
+      });
+      if (!area) return { error: "Area not found in this project." };
+      toName = area.name;
+    }
+    if (data.areaId !== existing.areaId) {
+      pending.push({
+        type: "area_changed",
+        summary: areaChangedSummary(existing.area?.name ?? null, toName),
+        metadata: { field: "area", from: existing.area?.name ?? null, to: toName },
+      });
     }
   }
 
@@ -588,7 +770,7 @@ export async function updateBugAction(
       let toTitle: string | null = null;
       if (nextMilestoneId) {
         const milestone = await prisma.milestone.findUnique({
-          where: { id: nextMilestoneId },
+          where: { id_tenantId: { id: nextMilestoneId, tenantId: existing.tenantId } },
           select: { title: true, isClosed: true },
         });
         if (!milestone) return fieldError("milestoneId", "That milestone no longer exists.");
@@ -617,11 +799,37 @@ export async function updateBugAction(
 
   try {
     await prisma.$transaction(async (tx) => {
+      // #676: Row lock the Bug to serialize concurrent updates and prevent voteCount races.
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw`SELECT id FROM "Bug" WHERE id = ${bugId} FOR UPDATE`;
+      }
+
       if (Object.keys(data).length > 0) {
         await tx.bug.update({
           where: { id: bugId },
           data,
         });
+      }
+      if (data.status === "resolved" || data.status === "closed") {
+        const activeClaims = typeof tx.issueClaim?.findMany === "function"
+          ? await tx.issueClaim.findMany({
+              where: { bugId, status: "active", releasedAt: null },
+              select: { id: true, agentId: true, beneficiaryUserId: true },
+            })
+          : [];
+        await tx.issueClaim.updateMany({
+          where: { bugId, status: "active", releasedAt: null },
+          data: { status: "released", releasedAt: new Date(), releaseReason: data.status },
+        });
+        for (const claim of activeClaims) {
+          await publish(tx, {
+            tenantId: existing.tenantId,
+            type: "claim.released",
+            actorAgentId: claim.agentId,
+            bugId,
+            payload: { claimId: claim.id, issueId: bugId, beneficiaryUserId: claim.beneficiaryUserId, reason: data.status },
+          });
+        }
       }
       if (data.assigneeId) {
         // The new assignee starts watching (#216).
@@ -645,6 +853,15 @@ export async function updateBugAction(
               ...entry,
             })),
           ),
+        });
+      }
+      // #600: triage from the web app reaches agents too.
+      if (Object.keys(data).length > 0) {
+        await publishWebEvent(tx, {
+          bugId,
+          type: "issue.updated",
+          actorUserId: userId,
+          payload: issueChangePayload(data as Record<string, unknown>),
         });
       }
     });
@@ -679,6 +896,44 @@ export async function updateBugAction(
   return { ok: true };
 }
 
+/**
+ * Closes an issue with an optional resolution note.
+ */
+export async function closeBugAction(
+  bugId: string,
+  note?: string,
+): Promise<ActionResult> {
+  const formData = new FormData();
+  formData.append("status", "closed");
+  if (note) {
+    formData.append("resolutionNote", note);
+  }
+  return updateBugAction(bugId, formData);
+}
+
+/**
+ * Reopens an issue by setting its status back to open.
+ */
+export async function reopenBugAction(
+  bugId: string,
+): Promise<ActionResult> {
+  const formData = new FormData();
+  formData.append("status", "open");
+  return updateBugAction(bugId, formData);
+}
+
+/**
+ * Assigns an issue to a user or clears the assignee if null or empty.
+ */
+export async function assignBugAction(
+  bugId: string,
+  assigneeId: string | null,
+): Promise<ActionResult> {
+  const formData = new FormData();
+  formData.append("assigneeId", assigneeId ?? "");
+  return updateBugAction(bugId, formData);
+}
+
 /** Allows the reporter or an admin to edit an issue's title and description. */
 export async function editBugContentAction(
   bugId: string,
@@ -702,6 +957,8 @@ export async function editBugContentAction(
       title: true,
       description: true,
       reporterId: true,
+      beneficiaryUserId: true,
+      tenantId: true,
       isDeleted: true,
     },
   });
@@ -714,6 +971,7 @@ export async function editBugContentAction(
     !canEditTicket({
       actorId: userId,
       actorRole: user.role,
+      membershipRole: (await currentTenantAccess(userId, user.role)).membershipRole,
       reporterId: existing.reporterId,
     })
   ) {
@@ -729,7 +987,7 @@ export async function editBugContentAction(
     return fromZodError(parsed.error);
   }
 
-  const normalizedDescription = await normalizeMentionTags(parsed.data.description);
+  const normalizedDescription = await resolveTenantMentions(prisma, existing.tenantId, parsed.data.description);
   const changedFields = getChangedEditFields(existing, {
     title: parsed.data.title,
     description: normalizedDescription,
@@ -756,6 +1014,51 @@ export async function editBugContentAction(
       },
     });
 
+    // #713: Editing an issue invalidates confirmations and previous validations,
+    // and reverses any reporter points awarded for the replaced report.
+    type OptionalTxExtensions = {
+      pointEntry?: {
+        findFirst?: (args: unknown) => Promise<{ id: string; tenantId: string; userId: string; bugId: string | null; role: "solver" | "reporter" | "reviewer"; points: number } | null>;
+        update?: (args: unknown) => Promise<unknown>;
+      };
+      issueValidation?: {
+        deleteMany?: (args: unknown) => Promise<unknown>;
+      };
+    };
+    const txExtensions = tx as unknown as OptionalTxExtensions;
+
+    const wasConfirmed = await isConfirmed(bugId, tx);
+    if (wasConfirmed) {
+      const recipientId = existing.beneficiaryUserId ?? existing.reporterId;
+      const tenantId = existing.tenantId ?? (await currentTenantIdFor(userId));
+      if (recipientId && typeof txExtensions.pointEntry?.findFirst === "function") {
+        const entry = await txExtensions.pointEntry.findFirst({
+          where: {
+            tenantId,
+            sourceKey: pointSourceKey("reporter", bugId, recipientId),
+          },
+          select: { id: true, tenantId: true, userId: true, bugId: true, role: true, points: true },
+        });
+        if (entry) {
+          await correct(tx, { entry });
+          if (typeof txExtensions.pointEntry?.update === "function") {
+            await txExtensions.pointEntry.update({
+              where: { id: entry.id },
+              data: {
+                sourceKey: `${pointSourceKey("reporter", bugId, recipientId)}:invalidated:${entry.id}`,
+              },
+            });
+          }
+        }
+      }
+    }
+
+    if (typeof txExtensions.issueValidation?.deleteMany === "function") {
+      await txExtensions.issueValidation.deleteMany({
+        where: { bugId },
+      });
+    }
+
     await tx.bug.update({
       where: { id: bugId },
       data: {
@@ -771,6 +1074,16 @@ export async function editBugContentAction(
       ids: attachmentIdsInMarkdown(normalizedDescription),
       uploaderId: userId,
       bugId,
+    });
+    await publishWebEvent(tx, {
+      bugId,
+      type: "issue.updated",
+      actorUserId: userId,
+      payload: issueChangePayload(
+        Object.fromEntries(
+          changedFields.map((field) => [field, field === "title" ? parsed.data.title : normalizedDescription]),
+        ),
+      ),
     });
 
     await tx.bugActivity.create({
@@ -809,6 +1122,99 @@ export async function editBugContentAction(
   return { ok: true };
 }
 
+/**
+ * Lets the reporter or an admin add, correct, or remove an issue's proof
+ * links after filing (#737). Same rules as create: GitHub URLs, at most 20.
+ */
+export async function editProofLinksAction(
+  bugId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await requireUser();
+  const userId = user.id;
+
+  const limit = checkRateLimit(
+    `edit-bug:${userId}`,
+    ACTION_RATE_LIMITS.editBug,
+  );
+  if (!limit.allowed) {
+    return { error: RATE_LIMIT_MESSAGE };
+  }
+
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
+    select: {
+      id: true,
+      proofLinks: true,
+      reporterId: true,
+      isDeleted: true,
+    },
+  });
+
+  if (!existing || existing.isDeleted) {
+    return { error: TICKET_EDIT_ERRORS.notFound };
+  }
+
+  if (
+    !canEditTicket({
+      actorId: userId,
+      actorRole: user.role,
+      membershipRole: (await currentTenantAccess(userId, user.role)).membershipRole,
+      reporterId: existing.reporterId,
+    })
+  ) {
+    return { error: TICKET_EDIT_ERRORS.unauthorized };
+  }
+
+  const parsed = editProofLinksSchema.safeParse({
+    proofLinks: formData.get("proofLinks") || "",
+  });
+
+  if (!parsed.success) {
+    return fromZodError(parsed.error);
+  }
+
+  const proofLinks = parsed.data.proofLinks;
+  const changes = getProofLinkChanges(existing.proofLinks ?? [], proofLinks);
+  if (changes.added.length === 0 && changes.removed.length === 0) {
+    return { ok: true };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.bug.update({
+      where: { id: bugId },
+      data: { proofLinks, updatedAt: new Date() },
+    });
+
+    await publishWebEvent(tx, {
+      bugId,
+      type: "issue.updated",
+      actorUserId: userId,
+      payload: issueChangePayload({ proofLinks }),
+    });
+
+    await tx.bugActivity.create({
+      data: {
+        bugId,
+        actorId: userId,
+        type: "edited",
+        summary: formatProofLinkSummary(changes),
+        metadata: {
+          fields: ["proofLinks"],
+          added: changes.added,
+          removed: changes.removed,
+        },
+      },
+    });
+  });
+
+  revalidatePath("/issues");
+  revalidatePath(`/issues/${bugId}`);
+  revalidatePath("/bugs");
+  revalidatePath(`/bugs/${bugId}`);
+  return { ok: true };
+}
+
 /** Adds a (possibly threaded) comment to a bug and records the activity. */
 export async function addCommentAction(
   bugId: string,
@@ -824,9 +1230,21 @@ export async function addCommentAction(
     return { error: RATE_LIMIT_MESSAGE };
   }
 
+  let metadata: Record<string, unknown> | undefined;
+  const metadataRaw = formData.get("metadata");
+  if (typeof metadataRaw === "string" && metadataRaw.trim()) {
+    try {
+      metadata = JSON.parse(metadataRaw);
+    } catch {
+      // ignore invalid json metadata
+    }
+  }
+
   const parsed = commentSchema.safeParse({
     body: formData.get("body"),
     parentId: formData.get("parentId") || undefined,
+    type: formData.get("type") || undefined,
+    metadata,
   });
 
   if (!parsed.success) {
@@ -835,7 +1253,7 @@ export async function addCommentAction(
 
   const bug = await prisma.bug.findUnique({
     where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
-    select: { id: true, isDeleted: true, title: true, reporterId: true, assigneeId: true },
+    select: { id: true, isDeleted: true, title: true, reporterId: true, assigneeId: true, tenantId: true },
   });
   if (!bug || bug.isDeleted) {
     return { error: "Issue not found" };
@@ -874,7 +1292,9 @@ export async function addCommentAction(
     }
   }
 
-  const normalizedBody = await normalizeMentionTags(parsed.data.body);
+  // #603: only agents in this issue's organization can be mentioned.
+  const agents = await mentionedAgents(prisma, bug.tenantId, parsed.data.body);
+  const normalizedBody = await normalizeMentionTags(parsed.data.body, bug.tenantId, agents);
 
   const commentId = await prisma.$transaction(async (tx) => {
     const created = await tx.comment.create({
@@ -883,6 +1303,8 @@ export async function addCommentAction(
         authorId: userId,
         body: normalizedBody,
         parentId: parentId ?? null,
+        type: parsed.data.type ?? "comment",
+        metadata: parsed.data.metadata ? (parsed.data.metadata as Prisma.InputJsonValue) : undefined,
       },
       select: { id: true },
     });
@@ -917,10 +1339,18 @@ export async function addCommentAction(
     });
     // Commenting on an issue means you want to hear about replies (#216).
     await ensureWatching(tx, bugId, [userId]);
+    // #600: a person's reply reaches the agents polling /api/v1/events.
+    await publishWebEvent(tx, {
+      bugId,
+      type: "comment.created",
+      actorUserId: userId,
+      payload: { commentId: created.id, parentId: parentId ?? null, authorId: userId },
+    });
     return created.id;
   });
 
-  const mentioned = extractMentionedUserIds(normalizedBody);
+  // A mentioned agent's owner hears about it like a mention of them (#603).
+  const mentioned = [...new Set([...extractMentionedUserIds(normalizedBody), ...agentOwnerIds(agents)])];
   const author = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
   const actor = {
     actorId: userId,
@@ -950,7 +1380,7 @@ export async function addCommentAction(
   revalidatePath(`/issues/${bugId}`);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
-  return { ok: true };
+  return { ok: true, commentId };
 }
 
 export type ToggleVoteResult = ActionResult & {
@@ -1061,7 +1491,8 @@ export async function toggleVoteAction(
  */
 export async function deleteBugAction(bugId: string): Promise<ActionResult> {
   const user = await requireUser();
-  if (!canDeleteTicket(user.role)) {
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!canDeleteTicket(user.role, access.membershipRole)) {
     return { error: TICKET_DELETION_ERRORS.unauthorized };
   }
 
@@ -1084,6 +1515,11 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
 
   try {
     await prisma.$transaction(async (tx) => {
+      // #676: Row lock the Bug to serialize with concurrent vote / update actions.
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw`SELECT id FROM "Bug" WHERE id = ${bugId} FOR UPDATE`;
+      }
+
       await tx.bug.update({
         where: { id: bugId },
         data: {
@@ -1091,6 +1527,10 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
           deletedAt: new Date(),
         },
       });
+      // Delete attachments associated with the issue to prevent storage bloat (#658)
+      await tx.attachment.deleteMany({ where: { bugId } });
+
+      await publishWebEvent(tx, { bugId, type: "issue.deleted", actorUserId: user.id });
 
       await tx.bugActivity.create({
         data: {
@@ -1119,7 +1559,8 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
  */
 export async function restoreBugAction(bugId: string): Promise<ActionResult> {
   const user = await requireUser();
-  if (!canRestoreTicket(user.role)) {
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!canRestoreTicket(user.role, access.membershipRole)) {
     return { error: TICKET_DELETION_ERRORS.unauthorizedRestore };
   }
 
@@ -1142,13 +1583,39 @@ export async function restoreBugAction(bugId: string): Promise<ActionResult> {
 
   try {
     await prisma.$transaction(async (tx) => {
+      // #676: Row lock the Bug to serialize with concurrent vote / update actions.
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw`SELECT id FROM "Bug" WHERE id = ${bugId} FOR UPDATE`;
+      }
+
+      // Reconcile voteCount from existing votes upon restoration (#676)
+      let voteCount: number | undefined;
+      if (tx.vote && typeof tx.vote.groupBy === "function") {
+        const voteCounts = await tx.vote.groupBy({
+          by: ["value"],
+          where: { bugId },
+          _count: { _all: true },
+        });
+
+        let likeCount = 0;
+        let dislikeCount = 0;
+        for (const c of voteCounts) {
+          if (c.value === 1) likeCount = c._count._all;
+          if (c.value === -1) dislikeCount = c._count._all;
+        }
+
+        voteCount = reconcileVoteCount(likeCount, dislikeCount);
+      }
+
       await tx.bug.update({
         where: { id: bugId },
         data: {
           isDeleted: false,
           deletedAt: null,
+          ...(voteCount !== undefined ? { voteCount } : {}),
         },
       });
+      await publishWebEvent(tx, { bugId, type: "issue.restored", actorUserId: user.id });
 
       await tx.bugActivity.create({
         data: {
@@ -1179,7 +1646,8 @@ export async function toggleBoostBugAction(
   bugId: string,
 ): Promise<ActionResult & { isBoosted?: boolean }> {
   const user = await requireUser();
-  if (!canBoostTicket(user.role)) {
+  const access = await currentTenantAccess(user.id, user.role);
+  if (!canBoostTicket(user.role, access.membershipRole)) {
     return { error: TICKET_BOOST_ERRORS.unauthorized };
   }
 
@@ -1220,6 +1688,13 @@ export async function toggleBoostBugAction(
             to: String(nextBoosted),
           } as Prisma.InputJsonValue,
         },
+      });
+
+      await publishWebEvent(tx, {
+        bugId,
+        type: "issue.updated",
+        actorUserId: user.id,
+        payload: issueChangePayload({ isBoosted: nextBoosted }),
       });
     });
   } catch (error) {
@@ -1264,6 +1739,7 @@ export async function selfAssignBugAction(
       title: true,
       assigneeId: true,
       isDeleted: true,
+      voteCount: true,
       assignee: { select: { name: true } },
     },
   });
@@ -1274,14 +1750,23 @@ export async function selfAssignBugAction(
 
   const targetAssigneeId = assign ? userId : null;
 
+  if (assign && existing.assigneeId !== userId) {
+    return { error: TICKET_ASSIGN_ERRORS.needsAgentClaim };
+  }
+
   if (
     !canAssignTicket({
       actorId: userId,
       actorRole: user.role,
+      membershipRole: (await currentTenantAccess(userId, user.role)).membershipRole,
       currentAssigneeId: existing.assigneeId,
       targetAssigneeId,
+      voteCount: existing.voteCount,
     })
   ) {
+    if (assign && typeof existing.voteCount === "number" && existing.voteCount < 3) {
+      return { error: TICKET_ASSIGN_ERRORS.needsVotes };
+    }
     return { error: TICKET_ASSIGN_ERRORS.unauthorized };
   }
 
@@ -1293,6 +1778,11 @@ export async function selfAssignBugAction(
 
   try {
     await prisma.$transaction(async (tx) => {
+      // #676: Row lock the Bug to serialize concurrent assignment and vote checks.
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw`SELECT id FROM "Bug" WHERE id = ${bugId} FOR UPDATE`;
+      }
+
       await tx.bug.update({
         where: { id: bugId },
         data: { assigneeId: targetAssigneeId },
@@ -1315,6 +1805,12 @@ export async function selfAssignBugAction(
             to: targetAssigneeId,
           },
         },
+      });
+      await publishWebEvent(tx, {
+        bugId,
+        type: "issue.updated",
+        actorUserId: userId,
+        payload: issueChangePayload({ assigneeId: targetAssigneeId }),
       });
     });
   } catch (error) {

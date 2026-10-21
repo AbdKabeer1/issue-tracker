@@ -1,19 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Severity } from "@prisma/client";
 import {
+  ALREADY_CORRECTED,
   ALREADY_RESOLVED,
+  DISPUTE_ALREADY_OPEN,
   NO_ENTRY_ON_THIS_DISPUTE,
   NOBODY_TO_AWARD,
   NOT_IN_WORKSPACE,
   NOT_YOUR_ENTRY,
   correctionSourceKey,
   correctEntry,
+  creditMissingAwards,
   disputeInputSchema,
   disputesForMember,
   grantMissingAward,
   missingAwardEntry,
   openDispute,
   openDisputes,
+  parseIssueNumbers,
   rejectDispute,
   type DisputeInput,
   type DisputeRow,
@@ -34,7 +38,15 @@ function fakeLedger() {
         return { count };
       }),
       update: vi.fn(async (): Promise<Record<string, unknown>> => ({})),
-      findFirst: vi.fn(async (): Promise<{ id: string } | null> => null),
+      findFirst: vi.fn(
+        async (
+          args: { where: Record<string, unknown> },
+        ): Promise<{ id: string; correctedAt?: Date | null } | null> => {
+          void args;
+          return null;
+        },
+      ),
+      findUnique: vi.fn(async (): Promise<{ id: string; correctedAt?: Date | null } | null> => null),
       findMany: vi.fn(async (): Promise<unknown[]> => []),
     },
     pointDispute: {
@@ -43,10 +55,12 @@ function fakeLedger() {
         ...data,
       })),
       update: vi.fn(async (): Promise<Record<string, unknown>> => ({})),
+      findFirst: vi.fn(async (): Promise<{ id: string } | null> => null),
       findMany: vi.fn(async (): Promise<unknown[]> => []),
     },
     bug: {
       findFirst: vi.fn(async (): Promise<{ id: string } | null> => null),
+      findMany: vi.fn(async (): Promise<unknown[]> => []),
     },
   };
   return { rows, db: db as never, raw: db };
@@ -157,6 +171,7 @@ describe("openDispute", () => {
           userId: ME,
           bugId: "bug-1",
           pointEntryId: null,
+          requestedRole: "solver",
         }),
       }),
     );
@@ -172,6 +187,59 @@ describe("openDispute", () => {
       input: { bugNumber: 42, kind: "wrong", pointEntryId: "entry-x", reason: "Wrong severity." },
     });
     expect(result).toEqual({ ok: false, error: NOT_YOUR_ENTRY });
+  });
+
+  it("rejects disputing an already corrected points entry (#622)", async () => {
+    const { db, raw } = fakeLedger();
+    raw.bug.findFirst.mockResolvedValue({ id: "bug-1" });
+    raw.pointEntry.findFirst.mockResolvedValue({ id: "entry-1", correctedAt: new Date() });
+    const result = await openDispute(db, {
+      tenantId: TENANT,
+      userId: ME,
+      input: { bugNumber: 42, kind: "wrong", pointEntryId: "entry-1", reason: "Wrong severity." },
+    });
+    expect(result).toEqual({ ok: false, error: ALREADY_CORRECTED });
+  });
+
+  it("rejects disputing an entry when an open dispute is already pending (#622)", async () => {
+    const { db, raw } = fakeLedger();
+    raw.bug.findFirst.mockResolvedValue({ id: "bug-1" });
+    raw.pointEntry.findFirst.mockResolvedValue({ id: "entry-1", correctedAt: null });
+    raw.pointDispute.findFirst.mockResolvedValue({ id: "dispute-existing" });
+    const result = await openDispute(db, {
+      tenantId: TENANT,
+      userId: ME,
+      input: { bugNumber: 42, kind: "wrong", pointEntryId: "entry-1", reason: "Wrong severity." },
+    });
+    expect(result).toEqual({ ok: false, error: DISPUTE_ALREADY_OPEN });
+  });
+
+  it("rejects disputing an entry from a different issue", async () => {
+    const { db, raw } = fakeLedger();
+    raw.bug.findFirst.mockResolvedValue({ id: "bug-1" });
+    const otherIssueEntry = {
+      id: "entry-x",
+      userId: ME,
+      tenantId: TENANT,
+      bugId: "bug-2",
+    };
+    raw.pointEntry.findFirst.mockImplementation(async ({ where }) => {
+      const matchesEntry =
+        where.id === otherIssueEntry.id &&
+        where.userId === otherIssueEntry.userId &&
+        where.tenantId === otherIssueEntry.tenantId &&
+        (where.bugId === undefined || where.bugId === otherIssueEntry.bugId);
+      return matchesEntry ? { id: otherIssueEntry.id, correctedAt: null } : null;
+    });
+
+    const result = await openDispute(db, {
+      tenantId: TENANT,
+      userId: ME,
+      input: { bugNumber: 42, kind: "wrong", pointEntryId: "entry-x", reason: "Wrong issue." },
+    });
+
+    expect(result).toEqual({ ok: false, error: NOT_YOUR_ENTRY });
+    expect(raw.pointDispute.create).not.toHaveBeenCalled();
   });
 });
 
@@ -283,7 +351,7 @@ describe("correctEntry", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       points: -25,
-      sourceKey: correctionSourceKey("dispute-1"),
+      sourceKey: correctionSourceKey("entry-1"),
     });
     expect(raw.pointEntry.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -320,6 +388,49 @@ describe("correctEntry", () => {
       resolvedById: ADMIN,
     });
     expect(result).toEqual({ ok: false, error: ALREADY_RESOLVED });
+  });
+
+  it("refuses to correct an entry that is already marked corrected (#622)", async () => {
+    const { db, rows } = fakeLedger();
+    const result = await correctEntry(db, {
+      dispute: openDisputeRow({ pointEntryId: "entry-1" }),
+      entry: { ...entry, correctedAt: new Date() },
+      resolvedById: ADMIN,
+    });
+    expect(result).toEqual({ ok: false, error: ALREADY_CORRECTED });
+    expect(rows).toHaveLength(0);
+  });
+
+  it("refuses to correct an entry when db record is already corrected (#622)", async () => {
+    const { db, raw, rows } = fakeLedger();
+    raw.pointEntry.findUnique.mockResolvedValue({ id: "entry-1", correctedAt: new Date() });
+    const result = await correctEntry(db, {
+      dispute: openDisputeRow({ pointEntryId: "entry-1" }),
+      entry,
+      resolvedById: ADMIN,
+    });
+    expect(result).toEqual({ ok: false, error: ALREADY_CORRECTED });
+    expect(rows).toHaveLength(0);
+  });
+
+  it("multiple calls to correct the same entry are idempotent and never double-deduct (#622)", async () => {
+    const { db, rows } = fakeLedger();
+    const first = await correctEntry(db, {
+      dispute: openDisputeRow({ id: "dispute-1", pointEntryId: "entry-1" }),
+      entry,
+      resolvedById: ADMIN,
+    });
+    expect(first).toEqual({ ok: true, awarded: true });
+
+    // A concurrent second dispute resolution on the same entry:
+    const second = await correctEntry(db, {
+      dispute: openDisputeRow({ id: "dispute-2", pointEntryId: "entry-1" }),
+      entry,
+      resolvedById: ADMIN,
+    });
+    expect(second).toEqual({ ok: true, awarded: false });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ points: -25, sourceKey: "undo:entry-1" });
   });
 });
 
@@ -362,6 +473,7 @@ describe("dispute list queries", () => {
         resolvedAt: null,
         createdAt: new Date("2026-10-19"),
         pointEntryId: null,
+        requestedRole: "solver",
         bug: { id: "bug-1", number: 42, title: "Login is broken" },
         user: { id: ME, name: "Ada" },
         pointEntry: null,
@@ -372,6 +484,7 @@ describe("dispute list queries", () => {
       expect.objectContaining({
         id: "dispute-1",
         kind: "missing",
+        requestedRole: "solver",
         bugNumber: 42,
         openerName: "Ada",
         entry: null,
@@ -385,5 +498,76 @@ describe("dispute list queries", () => {
     expect(raw.pointDispute.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId: TENANT, userId: ME } }),
     );
+  });
+});
+
+describe("creditMissingAwards", () => {
+  const solved = {
+    id: "bug-269",
+    number: 269,
+    tenantId: TENANT,
+    reporterId: ME,
+    assigneeId: "user-solver",
+    severity: "high" as Severity,
+    status: "resolved",
+    isDeleted: false,
+    duplicateOfId: null,
+  };
+
+  it("parses a loose list of issue numbers", () => {
+    expect(parseIssueNumbers("#269, #270 #10 and 271")).toEqual([269, 270, 10, 271]);
+  });
+
+  it("credits a resolved assigned issue once, and skips the rest", async () => {
+    const { db, raw } = fakeLedger();
+    raw.bug.findMany.mockResolvedValue([
+      solved,
+      { ...solved, id: "bug-10", number: 10, assigneeId: null },
+      { ...solved, id: "bug-11", number: 11, status: "open", assigneeId: "user-solver" },
+      { ...solved, id: "bug-12", number: 12, duplicateOfId: "bug-1" },
+    ]);
+
+    const first = await creditMissingAwards(db, {
+      tenantId: TENANT,
+      numbers: [269, 10, 11, 999],
+      role: "solver",
+    });
+    expect(first).toEqual({
+      credited: [269],
+      already: [],
+      skipped: [
+        { number: 10, reason: "no assignee" },
+        { number: 11, reason: "not resolved" },
+        { number: 999, reason: "not in this workspace" },
+      ],
+    });
+
+    const again = await creditMissingAwards(db, {
+      tenantId: TENANT,
+      numbers: [269],
+      role: "solver",
+    });
+    expect(again.credited).toEqual([]);
+    expect(again.already).toEqual([269]);
+  });
+
+  it("withholds the reporter award on a duplicate and pays it otherwise", async () => {
+    const { db, raw } = fakeLedger();
+    raw.bug.findMany.mockResolvedValue([
+      { ...solved, status: "open" },
+      { ...solved, id: "bug-12", number: 12, duplicateOfId: "bug-1" },
+    ]);
+    const result = await creditMissingAwards(db, {
+      tenantId: TENANT,
+      numbers: [269, 12],
+      role: "reporter",
+    });
+    expect(result.credited).toEqual([269]);
+    expect(result.skipped).toEqual([{ number: 12, reason: "duplicate" }]);
+    expect(raw.pointEntry.createMany.mock.calls[0][0].data[0]).toMatchObject({
+      role: "reporter",
+      points: 5,
+      sourceKey: "reporter:bug-269:user-me",
+    });
   });
 });

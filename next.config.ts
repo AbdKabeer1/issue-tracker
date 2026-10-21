@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 import { BASE_PATH } from "./lib/base-path";
 
 const nextConfig: NextConfig = {
+  // #585: the production image ships only the traced standalone server.
+  output: "standalone",
   ...(BASE_PATH ? { basePath: BASE_PATH } : {}),
   images: {
     remotePatterns: [
@@ -76,6 +78,16 @@ const nextConfig: NextConfig = {
       {
         source: "/bugs/:path*",
         destination: "/issues/:path*",
+        permanent: true,
+      },
+      {
+        source: "/questions",
+        destination: "/escalations",
+        permanent: true,
+      },
+      {
+        source: "/questions/:path*",
+        destination: "/escalations/:path*",
         permanent: true,
       },
       {

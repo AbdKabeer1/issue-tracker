@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Row = {
   id: string;
@@ -10,30 +10,53 @@ type Row = {
   severity: string | null;
   duplicateOfId: string | null;
   onBehalfOfUserId: string;
+  createdAt?: Date;
 };
 
 const state = vi.hoisted(() => ({
   validations: [] as Row[],
   agents: {} as Record<string, { id: string; ownerUserId: string }>,
 }));
+const promotion = vi.hoisted(() => ({ promoteEarnedReviewer: vi.fn() }));
+const notifications = vi.hoisted(() => ({ notifyClaimOffered: vi.fn() }));
 
 const db = vi.hoisted(() => ({
   bug: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
-  membership: { findUnique: vi.fn() },
+  bugRevision: { findFirst: vi.fn() },
+  membership: { findMany: vi.fn(), findUnique: vi.fn() },
   issueValidation: { findMany: vi.fn(), create: vi.fn(), count: vi.fn() },
+  issueClaim: { findFirst: vi.fn(), groupBy: vi.fn(), findMany: vi.fn(), create: vi.fn() },
+  redesignProposal: { count: vi.fn() },
   pointEntry: { createMany: vi.fn() },
   agentAuditEvent: { create: vi.fn(), findMany: vi.fn() },
+  agentEvent: { create: vi.fn() },
+  webhookSubscription: { findMany: vi.fn() },
+  webhookDelivery: { createMany: vi.fn() },
+  projectWorkflow: { findUnique: vi.fn() },
+  $queryRaw: vi.fn(),
   $transaction: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
+vi.mock("@/lib/agents/promotion", () => promotion);
+vi.mock("@/lib/agent-notifications", () => notifications);
+vi.mock("@/lib/redesigns", () => ({
+  assertRedesignOpen: vi.fn(),
+  hasBlockingRedesign: vi.fn(async () => false),
+}));
 
 import { isConfirmed, submitValidation } from "./validation";
+import { resetWorkflowCache } from "@/lib/workflow";
 
 /** An issue Ada filed herself, with no agent and no claim. */
 function bugRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "bug1",
     tenantId: "tenant_zedu",
+    projectId: "project_web",
+    title: "Example issue",
+    status: "open",
+    assigneeId: null,
+    voteCount: 3,
     severity: "medium",
     reporterId: "ada",
     beneficiaryUserId: "ada",
@@ -54,18 +77,44 @@ const acceptReal = { kind: "real", verdict: "accept", severity: "high" };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetWorkflowCache();
   state.validations = [];
   state.agents = {};
   db.$transaction.mockImplementation((fn: (tx: unknown) => unknown) => fn(db));
+  db.$queryRaw.mockResolvedValue([]);
   db.bug.findFirst.mockResolvedValue(bugRow());
   db.bug.findUnique.mockResolvedValue(bugRow());
   db.membership.findUnique.mockResolvedValue({ id: "m1" });
+  db.membership.findMany.mockResolvedValue([]);
+  db.issueClaim.findFirst.mockResolvedValue(null);
+  db.issueClaim.groupBy.mockResolvedValue([]);
+  db.issueClaim.findMany.mockResolvedValue([]);
+  db.issueClaim.create.mockResolvedValue({ id: "claim1", offeredAt: new Date() });
+  db.redesignProposal.count.mockResolvedValue(0);
   db.pointEntry.createMany.mockResolvedValue({ count: 1 });
   db.agentAuditEvent.findMany.mockResolvedValue([]);
-  db.issueValidation.findMany.mockImplementation(async ({ where }: { where: Record<string, string> }) =>
+  db.agentEvent.create.mockResolvedValue({ id: "evt1" });
+  db.webhookSubscription.findMany.mockResolvedValue([]);
+  db.webhookDelivery.createMany.mockResolvedValue({ count: 0 });
+  db.projectWorkflow.findUnique.mockResolvedValue(null);
+  promotion.promoteEarnedReviewer.mockResolvedValue({ ok: true, changed: false, standing: 1 });
+  db.bugRevision.findFirst.mockResolvedValue(null);
+  db.issueValidation.findMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
     state.validations
-      .filter((v) => v.bugId === where.bugId && v.kind === where.kind && v.verdict === where.verdict)
-      .map((v) => ({ id: v.id, agentId: v.agentId, agent: state.agents[v.agentId] })),
+      .filter((v) => {
+        if (v.bugId !== where.bugId || v.kind !== where.kind || v.verdict !== where.verdict) return false;
+        if (where.createdAt && typeof where.createdAt === "object" && "gt" in (where.createdAt as Record<string, unknown>)) {
+          const gt = (where.createdAt as { gt: Date }).gt;
+          if (v.createdAt && v.createdAt <= gt) return false;
+        }
+        return true;
+      })
+      .map((v) => ({
+        id: v.id,
+        agentId: v.agentId,
+        onBehalfOfUserId: v.onBehalfOfUserId,
+        agent: state.agents[v.agentId],
+      })),
   );
   db.issueValidation.count.mockImplementation(async ({ where }: { where: Record<string, string> }) =>
     state.validations.filter((v) => v.bugId === where.bugId && v.kind === where.kind && v.verdict === where.verdict).length,
@@ -80,6 +129,30 @@ beforeEach(() => {
     const row = { id: `v${state.validations.length + 1}`, ...data };
     state.validations.push(row);
     return row;
+  });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("submitValidation: project confirmation count (#595)", () => {
+  it("requires three independent accepts when the project asks for three", async () => {
+    db.projectWorkflow.findUnique.mockResolvedValue({ confirmationsNeeded: 3 });
+
+    expect(await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal)).toMatchObject({
+      status: 201,
+      confirmed: false,
+    });
+    expect(await submitValidation(reviewer("r2", "sam"), "bug1", acceptReal)).toMatchObject({
+      status: 201,
+      confirmed: false,
+    });
+    expect(await submitValidation(reviewer("r3", "kim"), "bug1", acceptReal)).toMatchObject({
+      status: 201,
+      confirmed: true,
+      newlyConfirmed: true,
+    });
   });
 });
 
@@ -109,6 +182,35 @@ describe("submitValidation: who may validate (#433)", () => {
       status: 403,
       error: "not_independent",
     });
+    expect(state.validations).toHaveLength(0);
+  });
+
+  it("rejects the human reporter's own agent when the beneficiary is unset (#620)", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ beneficiaryUserId: null }));
+    expect(await submitValidation(reviewer("r4", "ada"), "bug1", acceptReal)).toMatchObject({
+      status: 403,
+      error: "not_independent",
+    });
+    expect(db.bug.findFirst.mock.calls[0][0].select.reporterId).toBe(true);
+  });
+
+  it("rejects validations credited to the reporter, assigned solver, or claim beneficiary (#495)", async () => {
+    const reviewerAgent = reviewer("r1", "rob");
+    for (const bug of [
+      bugRow({ reporterId: "reporter", beneficiaryUserId: "beneficiary" }),
+      bugRow({ reporterId: "reporter", beneficiaryUserId: "beneficiary", assigneeId: "solver" }),
+      bugRow({ reporterId: "reporter", beneficiaryUserId: "beneficiary", claims: [
+        { status: "active", releasedAt: null, beneficiaryUserId: "claimant", agent: { ownerUserId: "worker" } },
+      ] }),
+    ]) {
+      db.bug.findFirst.mockResolvedValueOnce(bug);
+    }
+    for (const creditedUser of ["reporter", "solver", "claimant"]) {
+      expect(await submitValidation(reviewerAgent, "bug1", { ...acceptReal, onBehalfOfUserId: creditedUser })).toMatchObject({
+        status: 403,
+        error: "not_independent",
+      });
+    }
     expect(state.validations).toHaveLength(0);
   });
 
@@ -146,6 +248,41 @@ describe("submitValidation: the body (#433)", () => {
     expect(state.validations[0]).toMatchObject({ severity: "high", previousSeverity: "medium" });
   });
 
+  it("keeps the higher severity and records the disagreement (#528)", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ severity: "critical" }));
+    const result = await submitValidation(reviewer("r2", "sam"), "bug1", {
+      ...acceptReal,
+      severity: "low",
+    });
+    expect(result).toMatchObject({ status: 201 });
+    // The proposal is recorded on the validation, but the issue is not downgraded.
+    expect(state.validations[0]).toMatchObject({ severity: "low", previousSeverity: "critical" });
+    expect(db.bug.update).not.toHaveBeenCalled();
+    // The disagreement is visible in the audit trail.
+    const auditCalls = db.agentAuditEvent.create.mock.calls as Array<
+      [{ data: { action: string; payload?: Record<string, unknown> } }]
+    >;
+    const auditCall = auditCalls.find((call) => call[0].data.action === "issue.validated");
+    expect(auditCall?.[0].data.payload).toMatchObject({
+      severityDisagreement: true,
+      severity: "low",
+      previousSeverity: "critical",
+      effectiveSeverity: "critical",
+    });
+  });
+
+  it("escalates the severity when the reviewer picks a higher one (#528)", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ severity: "low" }));
+    await submitValidation(reviewer("r2", "sam"), "bug1", {
+      ...acceptReal,
+      severity: "critical",
+    });
+    expect(db.bug.update).toHaveBeenCalledWith({
+      where: { id: "bug1" },
+      data: { severity: "critical" },
+    });
+  });
+
   it("lets a duplicate verdict point at the canonical issue in the same tenant", async () => {
     db.bug.findFirst.mockResolvedValueOnce(bugRow()).mockResolvedValueOnce({ id: "bug0" });
     const result = await submitValidation(reviewer("r1", "rob"), "bug1", {
@@ -179,10 +316,60 @@ describe("submitValidation: the body (#433)", () => {
       target: "bug:bug1",
       bugId: "bug1",
     });
+    expect(promotion.promoteEarnedReviewer).toHaveBeenCalledWith("r1", db);
   });
 });
 
 describe("confirmation: the two-reviewer rule (#433)", () => {
+  it("publishes issue.confirmed when the second accept confirms the issue (#534)", async () => {
+    await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal);
+    await submitValidation(reviewer("r2", "sam"), "bug1", acceptReal);
+    const types = (db.agentEvent.create.mock.calls as Array<[{ data: { type: string } }]>).map(
+      (call) => call[0].data.type,
+    );
+    expect(types.filter((type) => type === "issue.confirmed")).toHaveLength(1);
+  });
+
+  it("automatically offers a ready issue when the second independent reviewer confirms it (#590)", async () => {
+    vi.useFakeTimers();
+    db.membership.findMany.mockResolvedValue([
+      { userId: "bob", user: { agents: [{ id: "agent-bob" }] } },
+    ]);
+    const reviewerOne = reviewer("r1", "rob");
+    const reviewerTwo = reviewer("r2", "sam");
+
+    await submitValidation(reviewerOne, "bug1", acceptReal);
+    const result = await submitValidation(reviewerTwo, "bug1", acceptReal);
+
+    expect(result).toMatchObject({ status: 201, confirmed: true, newlyConfirmed: true });
+    expect(db.issueClaim.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        bugId: "bug1",
+        beneficiaryUserId: "bob",
+        agentId: "agent-bob",
+        status: "offered",
+      }),
+    });
+    expect(db.agentEvent.create.mock.calls.map(([call]) => call.data.type)).toContain("claim.offered");
+    expect(notifications.notifyClaimOffered).toHaveBeenCalledWith(expect.objectContaining({
+      bugId: "bug1",
+      beneficiaryUserId: "bob",
+    }));
+  });
+
+  it("does not automatically offer a confirmed issue before work-readiness votes are met", async () => {
+    vi.useFakeTimers();
+    db.bug.findUnique.mockResolvedValue(bugRow({ voteCount: 2 }));
+    db.membership.findMany.mockResolvedValue([
+      { userId: "bob", user: { agents: [{ id: "agent-bob" }] } },
+    ]);
+
+    await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal);
+    await submitValidation(reviewer("r2", "sam"), "bug1", acceptReal);
+
+    expect(db.issueClaim.create).not.toHaveBeenCalled();
+  });
+
   it("one accepting reviewer does not confirm; two do, and the reporter is paid once", async () => {
     const first = await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal);
     expect(first).toMatchObject({ status: 201, confirmed: false, newlyConfirmed: false });
@@ -192,20 +379,39 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
     const second = await submitValidation(reviewer("r2", "sam"), "bug1", { ...acceptReal, severity: "low" });
     expect(second).toMatchObject({ status: 201, confirmed: true, newlyConfirmed: true });
     expect(await isConfirmed("bug1")).toBe(true);
-    expect(db.pointEntry.createMany).toHaveBeenCalledTimes(1);
-    expect(db.pointEntry.createMany.mock.calls[0][0].data[0]).toEqual({
-      tenantId: "tenant_zedu",
-      userId: "ada",
-      bugId: "bug1",
-      role: "reporter",
-      points: 5,
-      sourceKey: "reporter:bug1:ada",
-    });
+    expect(db.$queryRaw).toHaveBeenCalled();
+    const awards = db.pointEntry.createMany.mock.calls.map((call) => call[0].data[0]);
+    expect(awards).toEqual([
+      {
+        tenantId: "tenant_zedu",
+        userId: "ada",
+        bugId: "bug1",
+        role: "reporter",
+        points: 5,
+        sourceKey: "reporter:bug1:ada",
+      },
+      {
+        tenantId: "tenant_zedu",
+        userId: "rob",
+        bugId: "bug1",
+        role: "reviewer",
+        points: 5,
+        sourceKey: "reviewer-confirm:bug1:rob",
+      },
+      {
+        tenantId: "tenant_zedu",
+        userId: "sam",
+        bugId: "bug1",
+        role: "reviewer",
+        points: 5,
+        sourceKey: "reviewer-confirm:bug1:sam",
+      },
+    ]);
 
     // A third accept keeps it confirmed and pays nobody again.
     const third = await submitValidation(reviewer("r3", "tia"), "bug1", acceptReal);
     expect(third).toMatchObject({ confirmed: true, newlyConfirmed: false });
-    expect(db.pointEntry.createMany).toHaveBeenCalledTimes(1);
+    expect(db.pointEntry.createMany).toHaveBeenCalledTimes(3);
   });
 
   it("two agents of the same owner count once", async () => {
@@ -253,5 +459,37 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
   it("isConfirmed is false for an unknown issue", async () => {
     db.bug.findUnique.mockResolvedValue(null);
     expect(await isConfirmed("nope")).toBe(false);
+  });
+
+  it("drops confirmation when an issue was edited and validations are from the previous revision (#713)", async () => {
+    const t0 = new Date("2026-10-20T10:00:00Z");
+    const tEdit = new Date("2026-10-20T11:00:00Z");
+    const tAfter = new Date("2026-10-20T12:00:00Z");
+
+    // Two validations confirm the issue initially
+    state.validations = [
+      { id: "v1", bugId: "bug1", agentId: "r1", kind: "real", verdict: "accept", severity: "high", duplicateOfId: null, onBehalfOfUserId: "rob", createdAt: t0 },
+      { id: "v2", bugId: "bug1", agentId: "r2", kind: "real", verdict: "accept", severity: "high", duplicateOfId: null, onBehalfOfUserId: "sam", createdAt: t0 },
+    ];
+    state.agents = { r1: { id: "r1", ownerUserId: "rob" }, r2: { id: "r2", ownerUserId: "sam" } };
+
+    // Initially confirmed
+    expect(await isConfirmed("bug1")).toBe(true);
+
+    // Issue was edited at tEdit (after t0)
+    db.bugRevision.findFirst.mockResolvedValue({ editedAt: tEdit });
+
+    // The replacement report is NOT confirmed because validations are for previous content
+    expect(await isConfirmed("bug1")).toBe(false);
+
+    // When reviewers validate the new report after the edit, it confirms again
+    state.validations.push(
+      { id: "v3", bugId: "bug1", agentId: "r1_new", kind: "real", verdict: "accept", severity: "high", duplicateOfId: null, onBehalfOfUserId: "rob", createdAt: tAfter },
+      { id: "v4", bugId: "bug1", agentId: "r2_new", kind: "real", verdict: "accept", severity: "high", duplicateOfId: null, onBehalfOfUserId: "sam", createdAt: tAfter },
+    );
+    state.agents.r1_new = { id: "r1_new", ownerUserId: "rob" };
+    state.agents.r2_new = { id: "r2_new", ownerUserId: "sam" };
+
+    expect(await isConfirmed("bug1")).toBe(true);
   });
 });

@@ -7,6 +7,11 @@ import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { addCommentAction } from "@/app/actions/issues";
 import { CommentForm } from "./comment-form";
 
+const mockToast = vi.fn();
+vi.mock("@/components/ui/toast", () => ({
+  useToast: () => mockToast,
+}));
+
 vi.mock("@/app/actions/issues", () => ({
   addCommentAction: vi.fn(),
 }));
@@ -33,12 +38,12 @@ function renderForm(props: Parameters<typeof CommentForm>[0] = defaultProps) {
 }
 
 function bodyTextarea() {
-  return screen.getByLabelText("Add a comment") as HTMLTextAreaElement;
+  return screen.getByLabelText("Add to conversation") as HTMLTextAreaElement;
 }
 
 function submitButton() {
   return screen.getByRole("button", {
-    name: /^(Post comment|Posting…|Uploading…)$/,
+    name: /^(Post to conversation|Posting…|Uploading…)$/,
   }) as HTMLButtonElement;
 }
 
@@ -46,6 +51,7 @@ describe("CommentForm optimistic update and rollback", () => {
   let user: ReturnType<typeof userEvent.setup>;
 
   beforeEach(() => {
+    mockToast.mockReset();
     mockedAddComment.mockReset();
     mockedAddComment.mockResolvedValue({ ok: true });
     user = userEvent.setup();
@@ -83,8 +89,10 @@ describe("CommentForm optimistic update and rollback", () => {
     await waitFor(() => {
       expect(onSuccess).toHaveBeenCalled();
       expect(textarea.value).toBe("");
-      expect(submitButton().textContent).toBe("Post comment");
+      expect(submitButton().textContent).toBe("Post to conversation");
       expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.getByRole("status").textContent).toBe("Comment posted.");
+      expect(mockToast).toHaveBeenCalledWith("Comment posted.");
       // Body was cleared, so the button stays disabled for the empty form.
       expect(submitButton().disabled).toBe(true);
     });
@@ -112,13 +120,44 @@ describe("CommentForm optimistic update and rollback", () => {
       );
       expect(textarea.value).toBe("Hey");
       expect(submitButton().disabled).toBe(false);
-      expect(submitButton().textContent).toBe("Post comment");
+      expect(submitButton().textContent).toBe("Post to conversation");
     });
   });
 
   it("disables the submit button when the body is empty", () => {
     renderForm();
     expect(submitButton().disabled).toBe(true);
+  });
+
+  it("freezes the comment editor while posting and clears only the submitted snapshot (#733)", async () => {
+    mockedAddComment.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releasePendingAction = () => resolve({ ok: true });
+        }),
+    );
+    renderForm(defaultProps);
+
+    const textarea = bodyTextarea();
+    await user.type(textarea, "first comment");
+    await user.click(submitButton());
+
+    await waitFor(() => {
+      expect(submitButton().textContent).toBe("Posting…");
+    });
+    // The editor is frozen for the duration of the submission (#733).
+    expect(textarea.disabled).toBe(true);
+
+    releasePendingAction?.();
+    releasePendingAction = null;
+
+    // Only the submitted snapshot is cleared; the editor is usable again.
+    await waitFor(() => {
+      expect(textarea.value).toBe("");
+      expect(textarea.disabled).toBe(false);
+      expect(submitButton().textContent).toBe("Post to conversation");
+    });
+    expect(mockedAddComment).toHaveBeenCalledTimes(1);
   });
 
   it("renders the reply variant and supports cancelling", async () => {
@@ -135,6 +174,35 @@ describe("CommentForm optimistic update and rollback", () => {
 
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("promises a notification in the placeholder, matching the delivery (#691)", () => {
+    renderForm();
+    expect(bodyTextarea().placeholder).toBe(
+      "Add to the conversation… Type @ to mention someone (they get notified)",
+    );
+  });
+
+  it("shows the notification note on the top-level form (#691)", () => {
+    renderForm();
+    expect(
+      screen.getByText(
+        /People you @mention get an email and an in-app notification/,
+      ),
+    ).toBeTruthy();
+  });
+
+  it("shows the same notification note on reply forms (#691)", () => {
+    renderForm({
+      ...defaultProps,
+      parentId: "c1",
+      parentAuthorName: "Alice",
+    });
+    expect(
+      screen.getByText(
+        /People you @mention get an email and an in-app notification/,
+      ),
+    ).toBeTruthy();
   });
 
   it("disables submit button and prevents submission while an attachment is uploading (#734)", async () => {
@@ -180,7 +248,7 @@ describe("CommentForm optimistic update and rollback", () => {
 
       await waitFor(() => {
         expect(submitButton().disabled).toBe(false);
-        expect(submitButton().textContent).toBe("Post comment");
+        expect(submitButton().textContent).toBe("Post to conversation");
       });
 
       // Submit once uploads have settled
@@ -195,5 +263,40 @@ describe("CommentForm optimistic update and rollback", () => {
       global.fetch = originalFetch;
     }
   });
-});
 
+  it("provides settlement feedback: announces status, scrolls to comment, highlights, and focuses it (#703)", async () => {
+    mockedAddComment.mockResolvedValueOnce({ ok: true, commentId: "comm-456" });
+
+    const commentLi = document.createElement("li");
+    commentLi.id = "comment-comm-456";
+    const commentArticle = document.createElement("article");
+    const commentLink = document.createElement("a");
+    commentLink.href = "#comment-comm-456";
+    commentArticle.appendChild(commentLink);
+    commentLi.appendChild(commentArticle);
+    document.body.appendChild(commentLi);
+
+    const scrollIntoViewMock = vi.fn();
+    commentLi.scrollIntoView = scrollIntoViewMock;
+
+    try {
+      renderForm();
+      const textarea = bodyTextarea();
+      await user.type(textarea, "New comment content");
+      await user.click(submitButton());
+
+      await waitFor(() => {
+        expect(screen.getByRole("status").textContent).toBe("Comment posted.");
+        expect(mockToast).toHaveBeenCalledWith("Comment posted.");
+        expect(window.location.hash).toBe("#comment-comm-456");
+      });
+
+      await waitFor(() => {
+        expect(scrollIntoViewMock).toHaveBeenCalled();
+        expect(commentArticle.classList.contains("ring-2")).toBe(true);
+      });
+    } finally {
+      document.body.removeChild(commentLi);
+    }
+  });
+});

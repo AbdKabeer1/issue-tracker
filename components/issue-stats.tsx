@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { FINISHED_STATUS_FILTER } from "@/lib/issue-state";
 
 interface IssueStatsProps {
   total: number;
@@ -38,7 +39,6 @@ export function IssueStats({
       count: total,
       statusKey: "",
       iconBg: "bg-blue-50 text-blue-600 border border-blue-100",
-      accentBar: "bg-blue-500",
       icon: (
         <svg
           className="h-5 w-5"
@@ -62,7 +62,6 @@ export function IssueStats({
       count: open,
       statusKey: "open",
       iconBg: "bg-emerald-50 text-emerald-600 border border-emerald-100",
-      accentBar: "bg-emerald-500",
       icon: (
         <svg
           className="h-5 w-5"
@@ -86,7 +85,6 @@ export function IssueStats({
       count: inProgress,
       statusKey: "in_progress",
       iconBg: "bg-purple-50 text-purple-600 border border-purple-100",
-      accentBar: "bg-purple-500",
       icon: (
         <svg
           className="h-5 w-5"
@@ -108,9 +106,11 @@ export function IssueStats({
       id: "closed",
       label: "Closed",
       count: closed,
-      statusKey: "closed",
+      // Resolved and closed issues are one "finished" bucket, so the tile links
+      // to that same filter — the count and the list it opens agree (#685).
+      statusKey: FINISHED_STATUS_FILTER,
+      hint: "Resolved and closed issues",
       iconBg: "bg-slate-100 text-slate-600 border border-slate-200",
-      accentBar: "bg-slate-400",
       icon: (
         <svg
           className="h-5 w-5"
@@ -132,7 +132,7 @@ export function IssueStats({
 
   return (
     <section aria-label="Issue statistics" className="w-full">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-xs">
+      <div className="flex gap-2 overflow-x-auto pb-1 rounded-xl border border-slate-200 bg-white p-2.5 sm:gap-4 sm:p-4 shadow-xs lg:grid lg:grid-cols-4">
         {stats.map((item) => {
           const isActive =
             item.statusKey === ""
@@ -143,35 +143,26 @@ export function IssueStats({
             <Link
               key={item.id}
               href={getStatusHref(item.statusKey)}
+              title={"hint" in item ? item.hint : undefined}
               aria-current={isActive ? "page" : undefined}
-              className={`group flex items-center gap-3.5 rounded-lg p-2.5 sm:p-3 transition-all ${
+              className={`group flex min-w-[8.5rem] shrink-0 items-center gap-2 rounded-lg p-2 transition-all sm:gap-3.5 sm:p-3 lg:min-w-0 ${
                 isActive
                   ? "bg-slate-50 ring-1 ring-slate-200/80"
                   : "hover:bg-slate-50/70"
               }`}
             >
               <div
-                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-xs transition-transform group-hover:scale-105 ${item.iconBg}`}
+                className={`hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-xs transition-transform group-hover:scale-105 sm:flex ${item.iconBg}`}
               >
                 {item.icon}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 tabular-nums">
-                    {item.count}
-                  </span>
-                </div>
+                <p className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 tabular-nums">
+                  {item.count}
+                </p>
                 <p className="text-xs font-medium text-slate-500 truncate">
                   {item.label}
                 </p>
-                <div className="mt-1.5 h-1 w-full max-w-[80px] rounded-full bg-slate-100 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-300 ${item.accentBar}`}
-                    style={{
-                      width: total > 0 ? `${Math.min(100, Math.max(15, (item.count / total) * 100))}%` : "0%",
-                    }}
-                  />
-                </div>
               </div>
             </Link>
           );

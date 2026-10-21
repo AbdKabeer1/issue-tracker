@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 enum Severity {
@@ -23,8 +24,8 @@ enum Status {
 
 /// Application roles for RBAC.
 /// - user: default; report bugs, comment, vote
-/// - admin: triage bugs (status / severity / assignee)
-/// - super_admin: all admin powers + manage user roles
+/// - admin: site catalog access. Does not grant power inside an organization.
+/// - super_admin: site-wide access, including every organization's admin powers
 enum Role {
   user
   admin
@@ -46,6 +47,7 @@ enum ActivityType {
   comment_deleted
   type_changed
   category_changed
+  area_changed
   duplicate_changed
 }
 
@@ -63,6 +65,17 @@ enum AgentLevel {
   contributor
   reviewer
   merger
+}
+
+enum MissionRole {
+  admin
+  member
+  signed_out
+}
+
+enum MissionViewport {
+  desktop
+  mobile_375
 }
 
 /// An offered claim becomes active when accepted (#449); either may be
@@ -92,10 +105,20 @@ enum RedesignStatus {
   superseded
 }
 
+/// A submission row is pending until enough independent reviewers accept it;
+/// any reject vetoes it (#617).
+enum JobSubmissionStatus {
+  pending
+  accepted
+  rejected
+}
+
 enum PointRole {
   solver
   reporter
   reviewer
+  /// Paid to the submitter's owner when a research job row is accepted (#617).
+  submission
 }
 
 enum DisputeStatus {
@@ -119,6 +142,47 @@ enum ThemePreference {
   dark
 }
 
+enum TenantJoinRequestStatus {
+  pending
+  approved
+  rejected
+}
+
+enum CommentType {
+  comment
+  bid
+  review
+  delivery
+  request_to_merge
+}
+
+/// A goal's lifecycle (#616). Only `active` goals accept new splits.
+enum GoalStatus {
+  active
+  completed
+  cancelled
+}
+
+/// How a split computed each slice of a goal's budget pool (#616).
+enum GoalSplitMethod {
+  /// Every target named its own amount.
+  manual
+  /// Amounts follow the targets' weights, largest-remainder rounding.
+  proportional
+  /// Targets carry percentage shares that must total exactly 100.
+  milestone
+  /// Every target gets an equal slice; the remainder spreads from the front.
+  even
+}
+
+/// What one allocation points at (#616): an issue, a nested goal, or an
+/// agent deliverable.
+enum GoalAllocationTarget {
+  issue
+  goal
+  agent
+}
+
 model User {
   id                    String               @id @default(cuid())
   name                  String
@@ -138,6 +202,9 @@ model User {
   notifyStatusChanges   Boolean              @default(true)
   /// #287: site-wide keyboard shortcuts; per user so it follows them.
   keyboardShortcuts     Boolean              @default(true)
+  /// #618: optional EVM address (0x + 40 hex) points could later be sent to.
+  /// Set only by the person themselves; read only by them and tenant admins.
+  walletAddress         String?
   /// Bumped on password reset; JWTs carrying an older value are rejected (#208).
   sessionVersion        Int                  @default(0)
   createdAt             DateTime             @default(now())
@@ -149,6 +216,9 @@ model User {
   activities            BugActivity[]
   bugRevisions          BugRevision[]
   passwordResetTokens   PasswordResetToken[]
+  totpCredential        TotpCredential?
+  totpBackupCodes       TotpBackupCode[]
+  securityEvents        SecurityAuditEvent[]
   watches               IssueWatch[]
   notifications         Notification[]
   // Agent platform (#423).
@@ -157,8 +227,11 @@ model User {
   agentPairingsApproved AgentPairing[]
   beneficiaryBugs       Bug[]                @relation("BugBeneficiary")
   claims                IssueClaim[]
+  issueBids             IssueBid[]           @relation("IssueBidBeneficiary")
+  interests             IssueInterest[]      @relation("IssueInterestBeneficiary")
   validations           IssueValidation[]
   testVerdicts          TestVerdict[]
+  reviewOffers          ReviewOffer[]
   redesignsOnBehalf     RedesignProposal[]   @relation("RedesignOnBehalfOf")
   redesignsApproved     RedesignProposal[]   @relation("RedesignApprover")
   pointEntries          PointEntry[]
@@ -166,9 +239,21 @@ model User {
   pointDisputesResolved PointDispute[]       @relation("DisputeResolver")
   auditActions          AgentAuditEvent[]    @relation("AuditActorUser")
   agentQuestions        AgentQuestion[]
+  agentMessagesSent     AgentMessage[]
   tenantInvitesSent     TenantInvite[]
+  membershipChangesMade MembershipChange[] @relation("MembershipChangeActor")
+  membershipChangesReceived MembershipChange[] @relation("MembershipChangeTarget")
   shareLinksSent        TenantShareLink[]
   shareRedemptions      TenantShareRedemption[]
+  tenantJoinRequests    TenantJoinRequest[] @relation("TenantJoinRequester")
+  joinRequestsReviewed  TenantJoinRequest[] @relation("TenantJoinReviewer")
+  projectAuditEvents    ProjectAuditEvent[]
+  jobsCreated           Job[]                 @relation("JobCreator")
+  goalsCreated          Goal[]                @relation("GoalCreator")
+  jobSubmissions        JobSubmission[]       @relation("JobSubmissionBeneficiary")
+  jobReviews            JobReview[]           @relation("JobReviewBeneficiary")
+  jobReviewOffers       JobReviewOffer[]      @relation("JobReviewOfferBeneficiary")
+  approvalsDecided      IssueApproval[]      @relation("ApprovalDecider")
 }
 
 /// Single-use password reset tokens (~30 min TTL). Store only the SHA-256 hash.
@@ -185,21 +270,30 @@ model PasswordResetToken {
 }
 
 model IssueType {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  description String?
+  id            String         @id @default(cuid())
+  tenantId      String
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
   /// Markdown that pre-fills the report form's description (#307). Null: none.
-  template    String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  bugs        Bug[]
+  template      String?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  bugs          Bug[]
+  approvalRules ApprovalRule[]
+
+  @@unique([tenantId, name])
+  @@unique([id, tenantId])
+  @@index([tenantId])
 }
 
 model Bug {
   id                String             @id @default(cuid())
-  /// Human-readable reference (#1, #2, ...), assigned by a Postgres sequence.
-  number            Int                @unique @default(autoincrement())
+  /// Human-readable reference (#1, #2, ...), counted per tenant (#517). The
+  /// database trigger `Bug_assign_tenant_number` replaces the sequence value
+  /// with `Tenant.nextIssueNumber`, so each organisation starts at #1.
+  number            Int                @default(autoincrement())
   title             String
   description       String
   severity          Severity           @default(medium)
@@ -228,6 +322,8 @@ model Bug {
   tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   projectId         String
   project           Project            @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  areaId            String?
+  area              ProjectArea?       @relation(fields: [areaId], references: [id], onDelete: SetNull)
   /// #423: the person the work is for. The reporter unless an agent filed it
   /// for someone else; points go to this person, never to the agent.
   beneficiaryUserId String
@@ -237,6 +333,9 @@ model Bug {
   createdByAgent    Agent?             @relation("AgentCreatedBugs", fields: [createdByAgentId], references: [id], onDelete: SetNull)
   /// #452: the pull request that fixes this issue, if one is linked.
   pullRequestUrl    String?
+  /// Head commit of that pull request when it was linked (#489). Acceptance
+  /// and the merge gate bind to this exact commit, not just the PR number.
+  pullRequestHeadSha String?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   reporter          User               @relation("BugReporter", fields: [reporterId], references: [id])
@@ -250,8 +349,12 @@ model Bug {
   activities        BugActivity[]
   revisions         BugRevision[]
   claims            IssueClaim[]
+  approvals         IssueApproval[]
+  bids              IssueBid[]
+  interests         IssueInterest[]
   validations       IssueValidation[]
   testVerdicts      TestVerdict[]
+  reviewOffers      ReviewOffer[]
   redesigns         RedesignProposal[]
   pointEntries      PointEntry[]
   pointDisputes     PointDispute[]
@@ -259,8 +362,12 @@ model Bug {
   idempotencyKeys   IdempotencyKey[]
   agentEvents       AgentEvent[]
   auditEvents       AgentAuditEvent[]
+  goalAllocations   GoalAllocation[]
 
+  /// #517: issue numbers are per tenant, so two tenants can both have a #1.
+  @@unique([tenantId, number])
   @@index([tenantId, projectId])
+  @@index([projectId, areaId])
   @@index([beneficiaryUserId])
   @@index([createdByAgentId])
   @@index([categoryId])
@@ -278,19 +385,28 @@ model Bug {
   @@index([isDeleted, isBoosted(sort: Desc), boostedAt(sort: Desc), createdAt(sort: Desc), id(sort: Desc)], map: "Bug_list_newest_idx")
 }
 
+/// A platform (Desktop, Web, Mobile) inside one organization.
+/// The same name can exist in another organization; it is a different platform.
 model Category {
   id        String   @id @default(cuid())
-  name      String   @unique
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   bugs      Bug[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
 }
 
 /// A release or sprint grouping issues (#289).
 model Milestone {
   id          String    @id @default(cuid())
-  title       String    @unique
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title       String
   description String?
   /// A calendar day; no time of day.
   dueDate     DateTime? @db.Date
@@ -301,6 +417,9 @@ model Milestone {
   updatedAt   DateTime  @updatedAt
   bugs        Bug[]
 
+  @@unique([tenantId, title])
+  @@unique([id, tenantId])
+  @@index([tenantId])
   @@index([isClosed, dueDate])
 }
 
@@ -340,6 +459,8 @@ model Comment {
   authorId    String
   parentId    String?
   body        String
+  type        CommentType  @default(comment)
+  metadata    Json?
   createdAt   DateTime     @default(now())
   /// Set when the author edits the comment; shown as "edited".
   editedAt    DateTime?
@@ -355,6 +476,7 @@ model Comment {
   attachments Attachment[]
 
   @@index([bugId])
+  @@index([bugId, type])
   @@index([bugId, createdAt])
   @@index([parentId])
 }
@@ -419,6 +541,7 @@ model IssueWatch {
 model Notification {
   id        String    @id @default(cuid())
   userId    String
+  tenantId  String?
   bugId     String?
   /// Event kind, e.g. "comment_added", "mentioned", "status_changed".
   kind      String
@@ -428,10 +551,12 @@ model Notification {
   readAt    DateTime?
   createdAt DateTime  @default(now())
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant    Tenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   bug       Bug?      @relation(fields: [bugId], references: [id], onDelete: SetNull)
 
   @@index([userId, readAt])
   @@index([userId, createdAt])
+  @@index([userId, tenantId, readAt])
 }
 
 /// Sliding-window rate-limit attempts, shared by every app instance (#296).
@@ -456,9 +581,20 @@ model Tenant {
   id            String             @id @default(cuid())
   slug          String             @unique
   name          String
+  description   String?            @db.VarChar(500)
+  discoverable  Boolean            @default(false)
+  /// Set when an owner archives the tenant (#573). Archived tenants are
+  /// hidden from the switcher and cannot be selected.
+  archivedAt    DateTime?
+  /// #517: the next issue number this tenant hands out. The insert trigger
+  /// increments it under a row lock, so concurrent creates stay unique.
+  nextIssueNumber Int             @default(1)
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   projects      Project[]
+  categories    Category[]
+  issueTypes    IssueType[]
+  milestones    Milestone[]
   memberships   Membership[]
   agents        Agent[]
   bugs          Bug[]
@@ -469,10 +605,16 @@ model Tenant {
   invites       TenantInvite[]
   shareLinks    TenantShareLink[]
   events        AgentEvent[]
+  membershipChanges MembershipChange[]
+  joinRequests  TenantJoinRequest[]
+  notifications Notification[]
+  projectAuditEvents ProjectAuditEvent[]
+  jobs          Job[]
+  goals         Goal[]
 }
 
 /// A product inside a tenant, e.g. Zedu Web or Zedu Desktop. Not the same as
-/// Category, which stays the "platform" filter.
+/// Category, the per-organization platform filter.
 model Project {
   id                   String             @id @default(cuid())
   tenantId             String
@@ -484,15 +626,161 @@ model Project {
   stagingUrl           String?
   /// GitHub App installation used to merge accepted fixes (#452). Never a token.
   githubInstallationId String?
+  /// Set when a tenant owner archives the project (#573). Archived projects
+  /// are hidden from the switcher and cannot be selected.
+  archivedAt           DateTime?
+  /// Deprecated (#595): the delivery window now lives on ProjectWorkflow.
+  /// Kept for rollback safety; application code no longer reads or writes it.
+  deliveryWindowMinutes Int              @default(15)
+  /// How long a claim may wait on its agent's owner before it is released (#606).
+  ownerWaitCapMinutes  Int                @default(240)
+  /// Custom points and rewards configuration for this project (#741).
+  rewardConfig         Json?
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   tenant               Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   bugs                 Bug[]
+  areas                ProjectArea[]
   redesigns            RedesignProposal[]
   apiKeys              AgentApiKey[]
   pairings             AgentPairing[]
+  defaultAgents        Agent[]            @relation("DefaultProjectAgent")
+  testMissions         TestMission[]
+  auditEvents          ProjectAuditEvent[]
+  jobs                 Job[]
+  agentEvents          AgentEvent[]
+  approvalRules        ApprovalRule[]
+  goals                Goal[]
+  workflow             ProjectWorkflow?
 
   @@unique([tenantId, slug])
+}
+
+/// The per-project workflow dials (#595). One row per project; a missing row
+/// falls back to the defaults in lib/workflow-config.ts.
+model ProjectWorkflow {
+  projectId              String   @id
+  confirmationsNeeded    Int      @default(2)
+  verdictsNeeded         Int      @default(2)
+  offerWindowSeconds     Int      @default(60)
+  heartbeatMinutes       Int      @default(15)
+  deliveryMinutes        Int      @default(15)
+  maxActiveClaims        Int      @default(2)
+  volunteerWindowSeconds Int      @default(120)
+  autoMerge              Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  project                Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+/// A project-owned work area, such as frontend or backend (#609).
+model ProjectArea {
+  id               String                 @id @default(cuid())
+  projectId        String
+  name             String
+  slug             String
+  description      String?
+  paths            String[]               @default([])
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  project          Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  bugs             Bug[]
+  agentPreferences AgentAreaPreference[]
+
+  @@unique([projectId, slug])
+  @@index([projectId])
+}
+
+/// An agent's preferred areas for a project. Preference never restricts access.
+model AgentAreaPreference {
+  agentId       String
+  projectAreaId String
+  createdAt     DateTime    @default(now())
+  agent         Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  projectArea   ProjectArea @relation(fields: [projectAreaId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, projectAreaId])
+  @@index([projectAreaId])
+}
+
+/// A route, role, and viewport slice for exploratory testing (#619).
+model TestMission {
+  id                  String          @id @default(cuid())
+  projectId           String
+  routePattern        String
+  brief               String
+  role                MissionRole
+  viewport            MissionViewport
+  lastCoveredAt       DateTime?
+  issuesFiled         Int             @default(0)
+  lastAssignedAt      DateTime?
+  lastAssignedOwnerId String?
+  leaseAgentId        String?
+  leaseOwnerId        String?
+  leaseExpiresAt      DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  project             Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, routePattern, role, viewport])
+  @@index([projectId, lastCoveredAt, lastAssignedAt])
+  @@index([leaseAgentId, leaseExpiresAt])
+}
+
+/// A password account's TOTP second factor (#648). The secret is sealed
+/// (AES-256-GCM, lib/secret-box.ts). Until `enabledAt` is set the secret is
+/// only a pending enrolment and sign-in does not ask for a code.
+model TotpCredential {
+  userId       String    @id
+  secret       String
+  enabledAt    DateTime?
+  /// The 30-second step of the last code accepted, so a code works once.
+  lastUsedStep Int?
+  createdAt    DateTime  @default(now())
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Single-use recovery codes. Only a keyed hash is stored; the codes are
+/// shown once, when they are made.
+model TotpBackupCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, codeHash])
+  @@index([userId, usedAt])
+}
+
+/// Changes to how a person signs in: second factor on or off, codes made or used.
+model SecurityAuditEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+/// Human changes to project configuration, including GitHub App linking.
+model ProjectAuditEvent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  projectId   String
+  actorUserId String
+  action      String
+  changes     Json
+  createdAt   DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actor       User     @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 model Membership {
@@ -508,6 +796,44 @@ model Membership {
   @@index([userId])
 }
 
+/// A change to who is in a tenant and what they can do there.
+/// Site-wide User.role is not this: an admin of one organization is a member of another.
+model MembershipChange {
+  id           String          @id @default(cuid())
+  tenantId     String
+  actorUserId  String?
+  targetUserId String?
+  /// "role_changed", "removed", or "left".
+  action       String
+  fromRole     MembershipRole?
+  toRole       MembershipRole?
+  createdAt    DateTime        @default(now())
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor        User?           @relation("MembershipChangeActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  target       User?           @relation("MembershipChangeTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+}
+
+/// A request to join a workspace listed in discovery. Approval is the only
+/// path from this record to membership; the unique pair prevents duplicates.
+model TenantJoinRequest {
+  id           String                   @id @default(cuid())
+  tenantId     String
+  userId       String
+  status       TenantJoinRequestStatus  @default(pending)
+  requestedAt  DateTime                 @default(now())
+  reviewedAt   DateTime?
+  reviewedById String?
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User                     @relation("TenantJoinRequester", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy   User?                    @relation("TenantJoinReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, userId])
+  @@index([tenantId, status, requestedAt])
+  @@index([userId, requestedAt])
+}
+
 /// A named agent working for its owner inside a tenant (#427). It always acts
 /// as itself and for a named person.
 model Agent {
@@ -521,29 +847,51 @@ model Agent {
   level                AgentLevel            @default(observer)
   /// Higher rate budget, set only by a tenant admin (#440).
   burst                Boolean               @default(false)
+  /// When the higher budget stops (#596). Null on an enabled grant means it
+  /// has no expiry. An expired time falls back to the standard budget on the
+  /// next request; no cleanup job flips `burst` off.
+  burstUntil           DateTime?
   revokedAt            DateTime?
+  /// Set when this is the person's personal agent for that project.
+  /// Created automatically so they can copy a key without registering one.
+  defaultProjectId     String?
+  /// The owner's standing brief (#605), returned by `GET /api/v1/agents/me`.
+  instructions         String?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   owner                User                  @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  defaultProject       Project?              @relation("DefaultProjectAgent", fields: [defaultProjectId], references: [id], onDelete: Cascade)
+  areaPreferences      AgentAreaPreference[]
   apiKeys              AgentApiKey[]
   auditEvents          AgentAuditEvent[]
   createdBugs          Bug[]                 @relation("AgentCreatedBugs")
   comments             Comment[]
   claims               IssueClaim[]
+  bids                 IssueBid[]
+  interests            IssueInterest[]
   validations          IssueValidation[]
   testVerdicts         TestVerdict[]
+  reviewOffers         ReviewOffer[]
   redesigns            RedesignProposal[]
   questions            AgentQuestion[]
+  messages             AgentMessage[]
   idempotencyKeys      IdempotencyKey[]
   events               AgentEvent[]
   webhookSubscriptions WebhookSubscription[]
+  jobSubmissions       JobSubmission[]
+  jobReviews           JobReview[]
+  jobReviewOffers      JobReviewOffer[]
+  inboxItems           AgentInboxItem[]
+  goalAllocations      GoalAllocation[]
 
+  @@unique([ownerUserId, defaultProjectId])
   @@index([tenantId])
   @@index([ownerUserId])
 }
 
-/// Only a one-way hash of the key is stored; the raw key is shown once.
+/// A one-way hash of the key is always stored. The raw key is shown once,
+/// except a person's personal project key, which is also sealed so they can copy it.
 model AgentApiKey {
   id         String    @id @default(cuid())
   agentId    String
@@ -552,6 +900,9 @@ model AgentApiKey {
   projectId  String?
   /// SHA-256 of the raw key.
   keyHash    String    @unique
+  /// AES-256-GCM of the raw key, so the owner can copy it again from Settings.
+  /// Null on keys issued before every agent key was sealed.
+  sealedKey  String?
   /// The first characters of the key, so the owner can tell keys apart.
   prefix     String
   lastUsedAt DateTime?
@@ -588,6 +939,8 @@ model AgentPairing {
   createdAt      DateTime  @default(now())
   owner          User?     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
   project        Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([expiresAt])
 }
 
 /// Every agent action, so any call can be traced and undone (#427, #450).
@@ -615,6 +968,7 @@ model AgentAuditEvent {
   @@index([tenantId, createdAt])
   @@index([agentId, createdAt])
   @@index([bugId, createdAt])
+  @@index([createdAt])
 }
 
 /// An agent working an issue for a person (#432, #438, #449).
@@ -627,23 +981,77 @@ model IssueClaim {
   offeredAt         DateTime?
   claimedAt         DateTime?
   lastHeartbeatAt   DateTime?
+  /// When the fix is due (#593). Set when an offer or bid becomes active.
+  deliverBy         DateTime?
+  /// Set when the agent spends its one extension; a second request is refused.
+  extendedAt        DateTime?
+  /// Why the agent asked for more time, shown in the audit log.
+  extensionReason   String?
+  /// Set while the agent waits for its owner to answer a question about this
+  /// issue (#606). The silence and deadline clocks pause until it clears.
+  waitingOnOwnerSince DateTime?
   releasedAt        DateTime?
-  /// Why it was released: "silence" (#438), "expired" (#449), "undo" (#450)
-  /// or "agent". #451 counts silence releases.
+  /// Why it was released: "silence" (#438), "deadline" (#593), "expired"
+  /// (#449), "undo" (#450), "agent", "resolved", "closed", or
+  /// "owner_unresponsive" (#606). #451 counts silence and deadline releases.
   releaseReason     String?
   createdAt         DateTime    @default(now())
   bug               Bug         @relation(fields: [bugId], references: [id], onDelete: Cascade)
   beneficiary       User        @relation(fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
   agent             Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
+  awardedBid        IssueBid?
   @@index([bugId, releasedAt])
   @@index([beneficiaryUserId, releasedAt])
   @@index([agentId])
+  @@index([deliverBy])
   // Enforced by a partial unique index in the migration: one pending offer per issue.
+  // Enforced by a partial unique index in the migration: one active claim per issue (#662).
+}
+
+/// An agent asking for an open task. A bid does not assign the issue.
+/// A person awards one bid, and that award becomes the active claim.
+model IssueBid {
+  id                String      @id @default(cuid())
+  bugId             String
+  agentId           String
+  beneficiaryUserId String
+  /// Why this agent wants the task. Optional, and short.
+  note              String?
+  createdAt         DateTime    @default(now())
+  withdrawnAt       DateTime?
+  awardedAt         DateTime?
+  claimId           String?     @unique
+  bug               Bug         @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  agent             Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  beneficiary       User        @relation("IssueBidBeneficiary", fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+  claim             IssueClaim? @relation(fields: [claimId], references: [id], onDelete: SetNull)
+
+  @@unique([bugId, agentId])
+  @@index([bugId, createdAt])
 }
 
 /// A reviewer agent's verdict on an issue or its fix (#433). One per agent
 /// per issue per kind.
+/// An agent volunteering to work on a confirmed issue (#589).
+model IssueInterest {
+  id                String    @id @default(cuid())
+  bugId             String
+  agentId           String
+  beneficiaryUserId String
+  /// Optional note explaining interest (up to 500 chars).
+  note              String?
+  createdAt         DateTime  @default(now())
+  withdrawnAt       DateTime?
+  bug               Bug       @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  agent             Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  beneficiary       User      @relation("IssueInterestBeneficiary", fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+
+  @@unique([bugId, agentId])
+  @@index([bugId, withdrawnAt])
+  @@index([beneficiaryUserId])
+}
+
 model IssueValidation {
   id               String            @id @default(cuid())
   bugId            String
@@ -675,16 +1083,217 @@ model TestVerdict {
   onBehalfOfUserId String
   goodToMerge      Boolean
   notes            String?
+  /// The pull request this verdict tested (#526). Only verdicts on the
+  /// issue's current pull request count towards the merge gate.
+  pullRequestUrl   String?
+  /// The head commit of that pull request this verdict tested (#489). Only
+  /// the commit the acceptance pinned may merge.
+  headSha          String?
   createdAt        DateTime @default(now())
+  /// Set when the reviewer changed their verdict (#529).
+  changedAt        DateTime?
   bug              Bug      @relation(fields: [bugId], references: [id], onDelete: Cascade)
   agent            Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
   onBehalfOf       User     @relation(fields: [onBehalfOfUserId], references: [id], onDelete: Cascade)
 
+  @@unique([bugId, agentId])
   @@index([bugId])
   @@index([agentId])
 }
 
 /// A redesign an agent proposes; blocked until a person approves it (#431).
+/// An offer to an independent reviewer agent to test and validate a fix (#597).
+model ReviewOffer {
+  id                String    @id @default(cuid())
+  bugId             String
+  agentId           String
+  beneficiaryUserId String
+  status            String    @default("offered")
+  offeredAt         DateTime  @default(now())
+  acceptedAt        DateTime?
+  completedAt       DateTime?
+  expiredAt         DateTime?
+  deadlineAt        DateTime?
+  pullRequestUrl    String
+  headSha           String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @default(now()) @updatedAt
+
+  bug               Bug       @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  agent             Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  beneficiary       User      @relation(fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+
+  @@index([bugId, status])
+  @@index([agentId, status])
+  @@index([beneficiaryUserId, status])
+}
+
+/// Non-code work, e.g. research, where many agents submit rows and N
+/// independent reviewers accept them (#617). The bug flow is untouched.
+model Job {
+  id               String    @id @default(cuid())
+  tenantId         String
+  projectId        String
+  /// The person who posted the job.
+  createdById      String
+  brief            String
+  /// JSON-Schema-like description of each submission row, or null for free-form.
+  submissionSchema Json?
+  /// The submission-row field dedupe is keyed on, e.g. "url".
+  dedupeKey        String
+  maxSubmissions   Int
+  pointsPerAccepted Int
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now()) @updatedAt
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy        User      @relation("JobCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  submissions      JobSubmission[]
+
+  @@index([tenantId, createdAt])
+  @@index([projectId])
+}
+
+/// One row an agent posted for a job. Dedupe is per job on the resolved
+/// `dedupeKey` value (#617).
+model JobSubmission {
+  id                String             @id @default(cuid())
+  jobId             String
+  agentId           String
+  /// The person the points go to — the submitting agent's owner.
+  beneficiaryUserId String
+  data              Json
+  /// The resolved value of `job.dedupeKey` in `data`.
+  dedupeKey         String
+  status            JobSubmissionStatus @default(pending)
+  /// Independent accepts needed before the row is accepted (default 2, capped
+  /// by how many distinct reviewers actually exist).
+  reviewsNeeded     Int                @default(2)
+  reviewedAt        DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @default(now()) @updatedAt
+  job               Job                @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  agent             Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  beneficiary       User               @relation("JobSubmissionBeneficiary", fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+  reviews           JobReview[]
+  offers            JobReviewOffer[]
+
+  @@unique([jobId, dedupeKey])
+  @@index([jobId, status])
+  @@index([agentId])
+  @@index([status])
+}
+
+/// One reviewer's verdict on a submission. Any reject vetoes; accepts from
+/// `reviewsNeeded` distinct owners pay the submitter once (#617).
+model JobReview {
+  id                String           @id @default(cuid())
+  submissionId      String
+  agentId           String
+  beneficiaryUserId String
+  verdict           ValidationVerdict
+  notes             String?
+  createdAt         DateTime         @default(now())
+  submission        JobSubmission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  agent             Agent            @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  beneficiary       User             @relation("JobReviewBeneficiary", fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, agentId])
+  @@index([agentId])
+}
+
+/// Mirrors ReviewOffer for job submissions: accept an offer first, then leave
+/// a verdict, with the same TTL and deadline semantics (#597, #617).
+model JobReviewOffer {
+  id                String         @id @default(cuid())
+  submissionId      String
+  agentId           String
+  beneficiaryUserId String
+  /// "offered", "accepted", "completed", or "expired".
+  status            String         @default("offered")
+  offeredAt         DateTime       @default(now())
+  acceptedAt        DateTime?
+  completedAt       DateTime?
+  expiredAt         DateTime?
+  deadlineAt        DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @default(now()) @updatedAt
+  submission        JobSubmission  @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  agent             Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  beneficiary       User           @relation("JobReviewOfferBeneficiary", fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId, status])
+  @@index([agentId, status])
+  @@index([beneficiaryUserId, status])
+}
+
+/// A funded objective inside a project (#616). `budgetPool` is the total the
+/// goal may split across issues, nested goals, and agent deliverables;
+/// `allocated` is the slice already carved out and never exceeds the pool.
+model Goal {
+  id          String     @id @default(cuid())
+  tenantId    String
+  projectId   String
+  /// The person who created the goal.
+  createdById String
+  title       String
+  description String?
+  /// Total credits this goal may split (#616). Never negative.
+  budgetPool  Int
+  /// Sum of the live allocations, maintained inside the split transaction.
+  allocated   Int        @default(0)
+  status      GoalStatus @default(active)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @default(now()) @updatedAt
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User       @relation("GoalCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  /// Slices carved out of this goal's own budget pool.
+  allocations GoalAllocation[]
+  /// Slices of this goal's pool that were given to it from a parent goal.
+  nestedAllocations GoalAllocation[] @relation("GoalAllocationNested")
+
+  @@index([tenantId, createdAt])
+  @@index([projectId])
+  @@index([tenantId, projectId])
+}
+
+/// One slice carved out of a goal's budget pool (#616). Append-only: rows are
+/// never edited or deleted; releasing one sets `releasedAt`. `sourceKey` makes
+/// a split idempotent, the way `PointEntry.sourceKey` does for points.
+model GoalAllocation {
+  id       String               @id @default(cuid())
+  /// The goal whose pool this slice came from.
+  goalId   String
+  /// How the amount was computed (lib/goals/pool-split.ts).
+  method   GoalSplitMethod
+  targetType GoalAllocationTarget
+  /// Set when `targetType = issue`.
+  targetBugId String?
+  /// Set when `targetType = goal` — a nested goal's budget slice.
+  targetGoalId String?
+  /// Set when `targetType = agent`; null when the deliverable names no agent.
+  targetAgentId String?
+  /// Human name for an agent deliverable, e.g. "Audit report".
+  label    String?
+  /// Credits carved out of the pool. Always positive; release unallocates.
+  amount   Int
+  /// Idempotency key: a retried split creates each row at most once.
+  sourceKey String              @unique
+  /// Set when the slice is returned to the pool; the row itself stays.
+  releasedAt DateTime?
+  createdAt DateTime            @default(now())
+  goal     Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  bug      Bug?      @relation(fields: [targetBugId], references: [id], onDelete: SetNull)
+  targetGoal Goal?   @relation("GoalAllocationNested", fields: [targetGoalId], references: [id], onDelete: SetNull)
+  agent    Agent?    @relation(fields: [targetAgentId], references: [id], onDelete: SetNull)
+
+  @@index([goalId, createdAt])
+  @@index([targetBugId])
+  @@index([targetGoalId])
+  @@index([targetAgentId])
+}
+
 model RedesignProposal {
   id               String         @id @default(cuid())
   tenantId         String
@@ -733,6 +1342,7 @@ model PointEntry {
 
   @@index([tenantId, userId])
   @@index([bugId])
+  @@index([tenantId, role, correctedAt])
 }
 
 /// A member saying an award is missing or wrong (#436).
@@ -742,6 +1352,8 @@ model PointDispute {
   userId       String
   pointEntryId String?
   bugId        String
+  /// The award a "missing" dispute asked for. Empty when the dispute is about an existing entry.
+  requestedRole PointRole?
   reason       String
   status       DisputeStatus @default(open)
   resolvedById String?
@@ -768,6 +1380,8 @@ model AgentQuestion {
   body        String
   answer      String?
   answeredAt  DateTime?
+  /// When the owner was reminded of the unanswered question (#606).
+  remindedAt  DateTime?
   createdAt   DateTime  @default(now())
   agent       Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
   owner       User      @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
@@ -775,6 +1389,22 @@ model AgentQuestion {
 
   @@index([ownerUserId, answeredAt])
   @@index([agentId])
+}
+
+/// A person writing to an agent (#605): its owner, or an admin of its tenant.
+/// The agent reads it as an inbox item of kind `message`.
+model AgentMessage {
+  id         String    @id @default(cuid())
+  agentId    String
+  fromUserId String
+  body       String
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+  agent      Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  fromUser   User      @relation(fields: [fromUserId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, createdAt])
+  @@index([fromUserId])
 }
 
 /// A single-use invite to a tenant (#444). Only the token's hash is stored.
@@ -834,20 +1464,21 @@ model TenantShareRedemption {
 
 /// One create per agent per Idempotency-Key (#441).
 model IdempotencyKey {
-  id        String   @id @default(cuid())
-  agentId   String
-  key       String
-  bugId     String?
-  createdAt DateTime @default(now())
-  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  bug       Bug?     @relation(fields: [bugId], references: [id], onDelete: SetNull)
+  id          String   @id @default(cuid())
+  agentId     String
+  key         String
+  bugId       String?
+  requestHash String?
+  createdAt   DateTime @default(now())
+  agent       Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  bug         Bug?     @relation(fields: [bugId], references: [id], onDelete: SetNull)
 
   @@unique([agentId, key])
   @@index([createdAt])
 }
 
 /// The event log agents poll and webhooks deliver (#445). Cursor is
-/// (createdAt, id).
+/// (txid, id): see lib/agent-api/events.ts (#739).
 model AgentEvent {
   id           String            @id @default(cuid())
   tenantId     String
@@ -855,13 +1486,50 @@ model AgentEvent {
   payload      Json
   actorAgentId String?
   bugId        String?
+  /// The issue's project, filled from `bugId` by a trigger so `?projectId=` can filter (#602).
+  projectId    String?
   createdAt    DateTime          @default(now())
+  /// The writing transaction's id (#739). Polls only return rows whose
+  /// transaction finished, so an event that commits late is never skipped.
+  txid         BigInt            @default(dbgenerated("((pg_current_xact_id())::text)::bigint"))
   tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   actorAgent   Agent?            @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
   bug          Bug?              @relation(fields: [bugId], references: [id], onDelete: SetNull)
+  project      Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
   deliveries   WebhookDelivery[]
+  inboxItems   AgentInboxItem[]
 
   @@index([tenantId, createdAt, id])
+  @@index([tenantId, txid, id])
+  @@index([tenantId, projectId, txid, id])
+  @@index([tenantId, bugId, txid, id])
+  @@index([createdAt])
+}
+
+/// What is addressed to one agent (#601): an offer to it, a reply to its
+/// comment, a mention of its owner, an answer, a decision, a claim release.
+/// Written next to `publish()`, so polling is one indexed query per agent
+/// instead of a scan of the tenant's event feed. The payload is copied from
+/// the event so an item outlives event retention.
+model AgentInboxItem {
+  id        String      @id @default(cuid())
+  agentId   String
+  /// offer | reply | mention | answer | message | approval | claim
+  kind      String
+  eventId   String?
+  /// The event that put it here, e.g. `claim.offered`.
+  eventType String
+  bugId     String?
+  commentId String?
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime    @default(now())
+  agent     Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  event     AgentEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@unique([agentId, eventId])
+  @@index([agentId, createdAt, id])
+  @@index([agentId, readAt, createdAt, id])
 }
 
 /// An agent with a public HTTPS endpoint opting in to webhooks (#445). The
@@ -871,6 +1539,8 @@ model WebhookSubscription {
   agentId                String
   url                    String
   signingSecretEncrypted String
+  /// Event types to deliver; empty means every event (#512).
+  events                 String[]          @default([])
   enabled                Boolean           @default(true)
   /// Consecutive failed deliveries; reset on success (#445).
   failureCount           Int               @default(0)
@@ -900,4 +1570,40 @@ model WebhookDelivery {
 
   @@unique([subscriptionId, eventId])
   @@index([status, nextAttemptAt])
+  @@index([status, createdAt])
+}
+
+/// A rule requiring human approval before an issue is offered or merged (#598).
+model ApprovalRule {
+  id          String         @id @default(cuid())
+  projectId   String
+  stage       String
+  issueTypeId String?
+  severity    String?
+  fileGlob    String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issueType   IssueType?     @relation(fields: [issueTypeId], references: [id], onDelete: SetNull)
+  approvals   IssueApproval[]
+
+  @@index([projectId, stage])
+}
+
+/// A human approval required by an ApprovalRule (#598).
+model IssueApproval {
+  id              String        @id @default(cuid())
+  bugId           String
+  ruleId          String?
+  stage           String
+  status          String        @default("pending")
+  decidedByUserId String?
+  decidedAt       DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  bug             Bug           @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  rule            ApprovalRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  decidedBy       User?         @relation("ApprovalDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([bugId, stage, status])
 }

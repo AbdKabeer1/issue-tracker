@@ -39,14 +39,14 @@ async function main() {
   // The wipe above also removes the Zedu tenant the migration creates (#423).
   // Put it back with the migration's ids; issues are created inside it.
   const tenant = await prisma.tenant.create({
-    data: { id: "tenant_zedu", slug: "zedu", name: "Zedu" },
+    data: { id: "tenant_zedu", slug: "zedu", name: "Ziki" },
   });
   await prisma.project.create({
-    data: { id: "project_zedu", tenantId: tenant.id, slug: "zedu", name: "Zedu" },
+    data: { id: "project_zedu", tenantId: tenant.id, slug: "zedu", name: "Ziki", workflow: { create: {} } },
   });
 
   for (const name of ["Desktop", "Web", "Mobile"]) {
-    await prisma.category.create({ data: { name, isActive: true } });
+    await prisma.category.create({ data: { tenantId: tenant.id, name, isActive: true } });
   }
   for (const [name, description] of [
     ["Fix", "Issue fixes and defect resolutions"],
@@ -54,7 +54,7 @@ async function main() {
     ["Design", "UI/UX and visual design tasks"],
     ["Marketing", "Marketing and promotion related tasks"],
   ]) {
-    await prisma.issueType.create({ data: { name, description, isActive: true } });
+    await prisma.issueType.create({ data: { tenantId: tenant.id, name, description, isActive: true } });
   }
 
   // Cost 4: these are throwaway test accounts and the suite signs in often.
@@ -84,11 +84,15 @@ async function main() {
       },
     });
   }
-  // Every test account is a Zedu member, as every existing user is after the
-  // migration.
-  const users = await prisma.user.findMany({ select: { id: true } });
+  // Every test account is a Zedu member. Site admins are organization admins
+  // too: delete and triage follow the membership role, not the site-wide one.
+  const users = await prisma.user.findMany({ select: { id: true, role: true } });
   await prisma.membership.createMany({
-    data: users.map((user) => ({ tenantId: tenant.id, userId: user.id })),
+    data: users.map((user) => ({
+      tenantId: tenant.id,
+      userId: user.id,
+      role: user.role === "super_admin" ? "owner" : user.role === "admin" ? "admin" : "member",
+    })),
   });
   console.log("e2e seed: database reset and seeded");
 }

@@ -45,6 +45,16 @@ describe("parseBugListFilters", () => {
     expect(parse({ severity: "spicy" }).where.severity).toBeUndefined();
   });
 
+  it("understands the finished aggregate the stat grid links to (#685)", () => {
+    // The Closed tile counts resolved + closed and links to ?status=finished;
+    // the export has to return that same set, not every status.
+    expect(parse({ status: "finished" }).where.status).toEqual({
+      in: ["resolved", "closed"],
+    });
+    // Same parsing as the list, so an unknown token still means no filter.
+    expect(parse({ status: "done" }).where.status).toBeUndefined();
+  });
+
   it("scopes to the signed-in user for the mine filter", () => {
     expect(parse({ mine: "assigned" }).where.assigneeId).toBe("u1");
     expect(parse({ mine: "reported" }).where.reporterId).toBe("u1");
@@ -67,8 +77,27 @@ describe("parseBugListFilters", () => {
     const where = parse({ q: "100% sure" }).where;
     expect(where.OR).toHaveLength(2);
     // escapeSearchQuery neutralises LIKE wildcards so "%" is not a match-all.
-    const serialized = JSON.stringify(where.OR);
-    expect(serialized).not.toContain('"100% sure"');
+    expect(where.OR).toEqual([
+      { title: { contains: "100\\% sure", mode: "insensitive" } },
+      { description: { contains: "100\\% sure", mode: "insensitive" } },
+    ]);
+  });
+
+  it("escapes the LIKE wildcards so they match literally", () => {
+    // Prisma binds `contains` as ILIKE '%' || $1 || '%' without escaping it,
+    // so an unescaped "%" would match every issue and "_" would match any
+    // single character. The search has to reach the database escaped.
+    const where = parse({ q: "test_case" }).where;
+    expect(where.OR).toEqual([
+      { title: { contains: "test\\_case", mode: "insensitive" } },
+      { description: { contains: "test\\_case", mode: "insensitive" } },
+    ]);
+
+    const percent = parse({ q: "%" }).where;
+    expect(percent.OR).toEqual([
+      { title: { contains: "\\%", mode: "insensitive" } },
+      { description: { contains: "\\%", mode: "insensitive" } },
+    ]);
   });
 
   it("adds no search condition for whitespace", () => {
@@ -117,5 +146,20 @@ describe("platform filter", () => {
 
   it("adds nothing when no platform is asked for", () => {
     expect(withPlatforms({}).where.categoryId).toBeUndefined();
+  });
+});
+
+describe("project area filter (#609)", () => {
+  const areas = [{ id: "area-web", name: "Frontend" }];
+  const withAreas = (params: Record<string, string>) =>
+    parseBugListFilters({ params, userId: "u1", canSeeDeleted: false, areas });
+
+  it("filters an area belonging to the active project", () => {
+    expect(withAreas({ area: "area-web" }).where.areaId).toBe("area-web");
+  });
+
+  it("supports no area and ignores a stale area id", () => {
+    expect(withAreas({ area: "none" }).where.areaId).toBeNull();
+    expect(withAreas({ area: "area-deleted" }).where.areaId).toBeUndefined();
   });
 });
