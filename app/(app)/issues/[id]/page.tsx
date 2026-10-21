@@ -63,6 +63,8 @@ import {
 } from "@/lib/ticket-deletion";
 import { currentTenantAccess } from "@/lib/tenant-access";
 import { MilestoneDue } from "@/components/milestone-due";
+import { LoadError } from "@/components/load-error";
+import { logLoadFailure } from "@/lib/load-error";
 import { dueDateValue, milestoneIssuesHref } from "@/lib/milestones";
 import { canEditTicket } from "@/lib/ticket-editing";
 import { DeleteIssueButton } from "@/components/delete-issue-button";
@@ -101,18 +103,9 @@ async function loadOptional<T>(label: string, fallback: T, load: () => Promise<T
   }
 }
 
-function issueLoadError(detail: string) {
-  return (
-    <div className="rounded-xl border border-red-200 bg-white px-6 py-10">
-      <h1 className="text-xl font-semibold text-slate-900">This issue could not be loaded</h1>
-      <p className="mt-2 text-sm text-slate-600">
-        The issue query failed. The message below is the database error.
-      </p>
-      <pre className="mt-4 overflow-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-800">
-        {detail}
-      </pre>
-    </div>
-  );
+/** The database error stays in the server log under `reference`. */
+function issueLoadError(reference: string) {
+  return <LoadError title="This issue could not be loaded" reference={reference} />;
 }
 
 export async function generateMetadata({
@@ -268,11 +261,11 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       },
     })
     .then((bug) => ({ bug }))
-    .catch((error: unknown) => {
-      console.error("[issue] detail query failed", error);
-      const detail = error instanceof Error ? error.message : "Could not load issue";
-      return { detail };
-    });
+    .catch((error: unknown) => ({
+      // `detail` only decides the milestone retry below; it is never shown.
+      detail: error instanceof Error ? error.message : "",
+      reference: logLoadFailure("[issue] detail query failed", error),
+    }));
 
   // If the query failed because Bug.milestoneId or Milestone does not exist in
   // the current database, retry without the milestone relation so the page
@@ -308,15 +301,14 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             }
           : null,
       }))
-      .catch((error: unknown) => {
-        console.error("[issue] fallback detail query without milestone failed", error);
-        const detail = error instanceof Error ? error.message : "Could not load issue";
-        return { detail };
-      });
+      .catch((error: unknown) => ({
+        detail: error instanceof Error ? error.message : "",
+        reference: logLoadFailure("[issue] fallback detail query without milestone failed", error),
+      }));
   }
 
-  if ("detail" in loadedBug) {
-    return issueLoadError(loadedBug.detail);
+  if ("reference" in loadedBug) {
+    return issueLoadError(loadedBug.reference);
   }
   const bug = loadedBug.bug;
 
