@@ -190,6 +190,31 @@ export async function revokeAgent(actor: Actor, agentId: string, now = new Date(
   return { ok: true };
 }
 
+/**
+ * Removes the agent. Open offers, claims, and bids are handed back first,
+ * then the row and its keys are deleted. Issues it filed stay.
+ */
+export async function deleteAgent(actor: Actor, agentId: string, now = new Date()): Promise<ManageResult> {
+  const managed = await managedAgent(actor, agentId);
+  if (!managed) return { ok: false, error: NOT_FOUND };
+  let offers: Awaited<ReturnType<typeof releaseWorkOfRevokedAgent>>["offers"] = [];
+  await prisma.$transaction(async (tx) => {
+    const released = await releaseWorkOfRevokedAgent(tx, {
+      agentId,
+      tenantId: managed.agent.tenantId,
+      actorUserId: actor.id,
+      now,
+    });
+    offers = released.offers;
+    await tx.agent.delete({ where: { id: agentId } });
+  });
+  for (const offer of offers) {
+    notifyClaimOffered(offer);
+    scheduleOfferExpiry(offer.id);
+  }
+  return { ok: true };
+}
+
 /** The owner, or a tenant admin, moves an agent to another level. */
 export async function setAgentLevel(actor: Actor, agentId: string, level: AgentLevel): Promise<ManageResult> {
   const managed = await managedAgent(actor, agentId);

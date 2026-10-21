@@ -14,6 +14,7 @@ import { ClearDuplicateButton, MarkDuplicateButton } from "@/components/duplicat
 import { currentResolution, isFinishedStatus, type StatusChangeActivity } from "@/lib/resolution-note";
 import { statusLabel as resolutionStatusLabel } from "@/lib/labels";
 import { formatIssueNumber } from "@/lib/issue-number";
+import { intakeDetail, openIssueStages, type IssueStage } from "@/lib/issue-stage";
 import { buildCommentTree } from "@/lib/comments";
 import {
   COMMENT_THREADS_PER_PAGE,
@@ -582,6 +583,14 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   }
 
   const milestoneOptions = await milestoneOptionsPromise;
+  let intakeStage: IssueStage | null = null;
+  if (!bug.isDeleted && bug.status === "open") {
+    try {
+      intakeStage = (await openIssueStages(prisma, { id: bug.id })).get(bug.id) ?? null;
+    } catch (error) {
+      console.error("[bugs] issue stage lookup failed", error);
+    }
+  }
   const isAssignee = !!userId && bug.assigneeId === userId;
   const canUpdateStatus = canTriage || isAssignee;
   const canEdit =
@@ -794,6 +803,17 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 </span>{" "}
                 {bug.title}
               </h1>
+              {intakeStage ? (
+                <p
+                  className={`rounded-lg border px-3 py-2 text-sm ${
+                    intakeStage === "ready"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                      : "border-amber-200 bg-amber-50 text-amber-950"
+                  }`}
+                >
+                  {intakeDetail(intakeStage, bug.voteCount)}
+                </p>
+              ) : null}
 
               {/* On mobile (<sm): compact horizontal scroll action row pinned directly under title (#698) */}
               <div
@@ -1027,7 +1047,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             note: bid.note,
             areaMatch: hasAreaMatch(bid),
           }))}
-        canAward={canAwardBid}
+        canAward={canAwardBid && intakeStage === "ready"}
       />
 
       <IssueEscalations escalations={escalations} />

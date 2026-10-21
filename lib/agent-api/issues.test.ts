@@ -661,7 +661,7 @@ describe("issue read confirmation", () => {
   async function readIssue() {
     const response = await read(request(), context);
     expect(response.status).toBe(200);
-    return (await response.json()).issue as { confirmed: boolean; validations: Array<{ id: string; createdAt: string }> };
+    return (await response.json()).issue as { confirmed: boolean; intake: "idea" | "issue"; validations: Array<{ id: string; createdAt: string }> };
   }
 
   it("returns validations newest-first and confirmed false with no accepts", async () => {
@@ -672,6 +672,7 @@ describe("issue read confirmation", () => {
 
     const body = await readIssue();
     expect(body.confirmed).toBe(false);
+    expect(body.intake).toBe("idea");
     expect(body.validations.map((row) => row.id)).toEqual(["v-new", "v-old"]);
     expect(body.validations[0]?.createdAt).toBe(newer.createdAt.toISOString());
 
@@ -697,11 +698,26 @@ describe("issue read confirmation", () => {
   });
 
   it("is confirmed once two distinct owners have accepted", async () => {
+    db.bug.findFirst.mockResolvedValue({ ...issue, status: "open", voteCount: 1 });
     db.issueValidation.findMany.mockResolvedValue([
       accept("v1", "r1", "rob"),
       accept("v2", "r2", "sam"),
     ]);
-    expect((await readIssue()).confirmed).toBe(true);
+    const body = await readIssue();
+    expect(body.confirmed).toBe(true);
+    expect(body.intake).toBe("idea");
+  });
+
+  it("passes a confirmed report on as an issue once it has three upvotes", async () => {
+    db.bug.findFirst.mockResolvedValue({ ...issue, status: "open", voteCount: 3 });
+    db.issueValidation.findMany.mockResolvedValue([
+      accept("v1", "r1", "rob"),
+      accept("v2", "r2", "sam"),
+    ]);
+    const body = await readIssue();
+    expect(body.confirmed).toBe(true);
+    expect(body.intake).toBe("issue");
+    expect(body).not.toHaveProperty("voteCount");
   });
 
   it("does not confirm when both accepts belong to the same owner", async () => {
