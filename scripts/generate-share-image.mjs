@@ -8,7 +8,7 @@
  *
  *   node scripts/generate-share-image.mjs   (after changing the brand mark)
  */
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -19,26 +19,17 @@ const WIDTH = 1200;
 const HEIGHT = 630;
 const FONT = "Segoe UI, Helvetica Neue, Helvetica, Arial, sans-serif";
 
-// public/ziki-mark.svg, drawn at 32x32 and scaled up by MARK_SCALE.
-const MARK_SCALE = 6;
-const mark = `
-  <g transform="translate(120 159) scale(${MARK_SCALE})">
-    <rect width="32" height="32" rx="7.5" fill="url(#ziki-bg)"/>
-    <rect x="0.5" y="0.5" width="31" height="31" rx="7" stroke="#2DD4BF" stroke-opacity="0.3"/>
-    <path d="M8.5 11C8.5 10.17 9.17 9.5 10 9.5H22C22.83 9.5 23.5 10.17 23.5 11C23.5 11.45 23.3 11.87 22.95 12.15L13.8 19.5H22C22.83 19.5 23.5 20.17 23.5 21C23.5 21.83 22.83 22.5 22 22.5H10C9.17 22.5 8.5 21.83 8.5 21C8.5 20.55 8.7 20.13 9.05 19.85L18.2 12.5H10C9.17 12.5 8.5 11.83 8.5 11Z" fill="url(#ziki-z)"/>
-  </g>`;
+// The mark itself, read from public/ so the card follows any change to it.
+// Nested as its own <svg> so its viewBox and gradient ids work unchanged.
+const MARK_SIZE = 192;
+const markSource = readFileSync(new URL("../public/ziki-mark.svg", import.meta.url), "utf8");
+const markBody = markSource.match(/<svg[^>]*>([\s\S]*)<\/svg>/)?.[1];
+const markViewBox = markSource.match(/viewBox="([^"]+)"/)?.[1];
+if (!markBody || !markViewBox) throw new Error("public/ziki-mark.svg has no <svg viewBox> to embed");
+const mark = `<svg x="120" y="159" width="${MARK_SIZE}" height="${MARK_SIZE}" viewBox="${markViewBox}" fill="none">${markBody}</svg>`;
 
 const svg = `<svg width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="ziki-bg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#14B8A6"/>
-      <stop offset="45%" stop-color="#0D9488"/>
-      <stop offset="100%" stop-color="#0F766E"/>
-    </linearGradient>
-    <linearGradient id="ziki-z" x1="8" y1="9" x2="24" y2="23" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFFFFF"/>
-      <stop offset="100%" stop-color="#E0F2FE"/>
-    </linearGradient>
     <linearGradient id="page" x1="0" y1="0" x2="${WIDTH}" y2="${HEIGHT}" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#FFFFFF"/>
       <stop offset="100%" stop-color="#F0FDFA"/>
