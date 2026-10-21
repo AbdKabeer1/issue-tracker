@@ -39,7 +39,7 @@ function run(prismaExitCode: number, env: Record<string, string | undefined>) {
   return { status: result.status, output: `${result.stdout}${result.stderr}`, calls };
 }
 
-function runStub(script, env) {
+function runStub(script: string, env: Record<string, string | undefined>) {
   const dir = mkdtempSync(join(tmpdir(), "migrate-exit-"));
   dirs.push(dir);
   mkdirSync(join(dir, "scripts"));
@@ -52,7 +52,7 @@ function runStub(script, env) {
   chmodSync(prisma, 0o755);
   const result = spawnSync(process.execPath, ["scripts/migrate.mjs"], {
     cwd: dir,
-    env: { PATH: process.env.PATH, ...env },
+    env: { PATH: process.env.PATH, ...env } as unknown as NodeJS.ProcessEnv,
     encoding: "utf8",
   });
   const log = (() => {
