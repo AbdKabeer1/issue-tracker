@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { agentIssueRequest } from "@/lib/agent-api/issues";
-import { parseEventCursor, parseEventFilters, pollEvents, encodeEventCursor } from "@/lib/agent-api/events";
+import { parseEventCursor, eventCursorError, parseEventFilters, pollEvents, encodeEventCursor } from "@/lib/agent-api/events";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
 
     const cursorResult = parseEventCursor(params);
     if (cursorResult === "invalid") {
-      return NextResponse.json({ error: "Invalid cursor." }, { status: 400 });
+      return NextResponse.json({ error: eventCursorError(params) }, { status: 400 });
     }
 
     const waitRaw = params.get("wait");

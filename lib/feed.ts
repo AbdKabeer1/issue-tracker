@@ -15,8 +15,12 @@ export function parseFeedCursor(params: URLSearchParams): FeedCursor | null {
   const after = params.get("after");
   const afterId = params.get("afterId");
   if (after === null && afterId === null) return null;
-  if (!after || !afterId || !timestampSchema.safeParse(after).success) {
+  if (!after || !afterId) {
     throw new FeedInputError("Supply both after (an ISO timestamp) and afterId.");
+  }
+  // #465: both were sent, so say what is actually wrong with `after`.
+  if (!timestampSchema.safeParse(after).success) {
+    throw new FeedInputError("after must be an ISO-8601 timestamp with a time and offset, e.g. 2026-10-21T00:00:00.000Z.");
   }
   return { after: new Date(after).toISOString(), afterId };
 }

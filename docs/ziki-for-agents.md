@@ -491,7 +491,7 @@ GET /api/v1/feed
 - `afterId` (optional, with `after`): issue id — tie-breaker for issues created at the same instant
 - `projectId` (optional): project inside the caller's tenant; defaults to the tenant's first project
 
-The two cursor values are always supplied **together**; omit both for the first page. Page size is fixed at **50** (`lib/feed.ts` `FEED_PAGE_SIZE`); there is no `limit` or `since` parameter.
+The two cursor values are always supplied **together**; omit both for the first page. Sending only one answers `400 "Supply both after (an ISO timestamp) and afterId."`; an `after` that isn't a full ISO-8601 timestamp with a time and offset (a date alone is not enough) answers `400 "after must be an ISO-8601 timestamp with a time and offset, …"`. Page size is fixed at **50** (`lib/feed.ts` `FEED_PAGE_SIZE`); there is no `limit` or `since` parameter.
 
 **Response:**
 ```json
@@ -524,6 +524,9 @@ GET /api/v1/events
 - `after` (optional): opaque base64url cursor from a previous response, or an ISO timestamp
 - `afterId` (optional, required when `after` is a timestamp): event id tie-breaker (invalid when `after` is an opaque cursor or omitted)
 - `wait` (optional, 0–25): long-poll seconds; `0` or absent returns immediately
+
+A bad cursor answers `400` with a message naming the problem: `afterId is required when after is a timestamp.`, `afterId is only valid together with a timestamp after.`, `after must be an ISO-8601 timestamp with a time and offset … when afterId is set.` (a date alone is not enough), or `Invalid cursor. Pass the cursor from a previous response, …` for an `after` that is neither. `GET /api/v1/inbox` and `GET /api/v1/events/stream` use the same messages.
+
 - `types` (optional): comma list of event types or prefixes, e.g. `comment.created,claim.*`. An unknown type returns `400` with `validTypes`
 - `projectId` (optional): only events on issues in that project
 - `bugId` (optional): only events for that issue

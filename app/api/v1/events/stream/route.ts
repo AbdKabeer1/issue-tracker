@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { parseEventFilters, parseEventCursor } from "@/lib/agent-api/events";
+import { parseEventFilters, parseEventCursor, eventCursorError } from "@/lib/agent-api/events";
 import { eventStreamBus, type StreamEvent } from "@/lib/events/stream-bus";
 import { agentErrorResponse, requireAgent, type AgentContext } from "@/lib/agents/require-agent";
 import { requireLevel } from "@/lib/agents/levels";
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
 
   const cursorResult = parseEventCursor(params);
   if (cursorResult === "invalid") {
-    return NextResponse.json({ error: "Invalid cursor." }, { status: 400 });
+    return NextResponse.json({ error: eventCursorError(params) }, { status: 400 });
   }
 
   const encoder = new TextEncoder();

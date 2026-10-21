@@ -223,6 +223,26 @@ export function parseEventCursor(
   return cursor ?? "invalid";
 }
 
+/**
+ * The 400 message for a cursor `parseEventCursor` called "invalid" (#465):
+ * names the parameter and the rule instead of a bare "Invalid cursor.".
+ */
+export function eventCursorError(params: URLSearchParams): string {
+  const after = params.get("after");
+  const afterId = params.get("afterId");
+  const isTimestamp = after !== null && z.iso.datetime({ offset: true }).safeParse(after).success;
+
+  if (!after) return "afterId is only valid together with a timestamp after.";
+  if (afterId !== null) {
+    if (!isTimestamp) {
+      return "after must be an ISO-8601 timestamp with a time and offset (e.g. 2026-10-21T00:00:00.000Z) when afterId is set.";
+    }
+    return "afterId must be a non-empty event id of at most 191 characters.";
+  }
+  if (isTimestamp) return "afterId is required when after is a timestamp.";
+  return "Invalid cursor. Pass the cursor from a previous response, or an ISO timestamp in after together with afterId.";
+}
+
 // ---------------------------------------------------------------------------
 // Filters
 // ---------------------------------------------------------------------------
