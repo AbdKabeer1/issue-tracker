@@ -95,6 +95,8 @@ export function AgentKeyCopyButton({
     const ok = await copyText(endpoint);
     if (ok) {
       toast("Agent API endpoint URL copied.");
+    } else {
+      toast("Couldn't copy the API endpoint URL.", "error");
     }
   }
 
