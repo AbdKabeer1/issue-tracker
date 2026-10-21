@@ -102,9 +102,17 @@ export function VoteButton({
     });
   };
 
-  const label = upvoted
-    ? `Upvoted, ${count} ${count === 1 ? "vote" : "votes"}, click to remove your vote`
-    : `Upvote this issue, ${count} ${count === 1 ? "vote" : "votes"}`;
+  // WCAG 2.5.3: the accessible name has to contain the visible text in
+  // order. The large control shows "Upvote 2"; "Upvote this issue, 2 votes"
+  // does not contain that phrase, which is the issue-page axe failure.
+  const voteWord = count === 1 ? "vote" : "votes";
+  const label = isMd
+    ? upvoted
+      ? `Upvoted ${count} ${voteWord}, click to remove your vote`
+      : `Upvote ${count} ${voteWord}`
+    : upvoted
+      ? `Upvoted, ${count} ${voteWord}, click to remove your vote`
+      : `Upvote this issue, ${count} ${voteWord}`;
   const tone = upvoted
     ? "border-blue-200 bg-blue-50 text-blue-600 hover:border-blue-300 hover:bg-blue-100"
     : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-blue-600";
