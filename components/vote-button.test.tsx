@@ -151,3 +151,14 @@ describe("VoteButton optimistic update and rollback", () => {
     expect(screen.queryByRole("button", { name: /dislike|downvote/i })).toBeNull();
   });
 });
+
+describe("VoteButton large size accessible name", () => {
+  it("starts with the text it shows, so speech users can say what they see", () => {
+    const { unmount } = render(<VoteButton bugId="b1" voteCount={2} size="md" />);
+    const button = screen.getByRole("button", { name: /^Upvote 2 votes$/ });
+    expect(button.textContent?.replace(/\s+/g, " ").trim()).toBe("Upvote 2");
+    unmount();
+    render(<VoteButton bugId="b1" voteCount={3} userVote={1} size="md" />);
+    expect(screen.getByRole("button", { name: /^Upvoted 3 votes, click to remove your vote$/ })).toBeTruthy();
+  });
+});
