@@ -42,9 +42,9 @@ EXPOSE 3000
 
 # Traefik routing labels for Coolify
 LABEL "traefik.enable"="true"
-LABEL "traefik.http.routers.bug-tracker-staging.rule"="Host(`staging.ziki.dev`)"
-LABEL "traefik.http.routers.bug-tracker-staging.priority"="1000"
-LABEL "traefik.http.services.bug-tracker-staging.loadbalancer.server.port"="3000"
+LABEL "traefik.http.routers.ziki.rule"="Host(`ziki.dev`) || Host(`www.ziki.dev`) || Host(`issues.zedu.chat`) || (Host(`contributors.zedu.chat`) && PathPrefix(`/bug-tracker`))"
+LABEL "traefik.http.routers.ziki.priority"="1000"
+LABEL "traefik.http.services.ziki.loadbalancer.server.port"="3000"
 
 # Verify database is reachable and server responds with HTTP 200 before container is declared healthy.
 # Coolify rolling deployments will wait for this check and keep the existing container running if it fails.
