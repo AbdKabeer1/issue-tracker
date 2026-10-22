@@ -22,6 +22,9 @@ import { FOCUSABLE, wrapFocusIndex } from "@/lib/focus-trap";
 import { Avatar } from "@/components/avatar";
 import { ThemeToggle, AccountThemeSelector } from "@/components/theme-toggle";
 import { pointsProgress, TARGET_POINTS } from "@/lib/points/rules";
+import { recentNotificationsAction } from "@/app/actions/notifications";
+import { LocalTime } from "@/components/local-time";
+import { BASE_PATH } from "@/lib/base-path";
 
 const linkFocus =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2";
@@ -121,34 +124,108 @@ function PlusIcon({ className = "h-4 w-4" }: { className?: string }) {
   );
 }
 
-/** Bell linking to the notification feed, with the unread count (#216). */
+/** In-place notification preview; opening the bell never marks alerts read (#615). */
 function NotificationsBell({ unreadCount, active }: { unreadCount: number; active: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [notifications, setNotifications] = useState<Awaited<ReturnType<typeof recentNotificationsAction>> | null>(null);
+  const [failed, setFailed] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useDismiss(open, () => setOpen(false), containerRef, triggerRef);
+
+  useEffect(() => {
+    if (!open) return;
+    panelRef.current?.focus({ preventScroll: true });
+    let cancelled = false;
+    recentNotificationsAction().then(
+      (items) => { if (!cancelled) setNotifications(items); },
+      () => { if (!cancelled) setFailed(true); },
+    );
+    return () => { cancelled = true; };
+  }, [open, attempt]);
+
+  function loadPreview() {
+    setNotifications(null);
+    setFailed(false);
+  }
   const label =
     unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications";
   return (
-    <Link
-      href="/notifications"
-      aria-label={label}
-      aria-current={active ? "page" : undefined}
-      title={label}
-      className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-white/5 hover:text-porcelain ${chromeLinkFocus} ${
-        active ? "bg-white/10 text-porcelain" : "text-slate-300"
-      }`}
-    >
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"
-        />
-      </svg>
-      {unreadCount > 0 ? (
-        <span
-          aria-hidden="true"
-          className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-electric-blue ring-2 ring-deep-ocean"
-        />
+    <div ref={containerRef} className="flex items-center sm:relative" onBlur={(event) => {
+      if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) setOpen(false);
+    }}>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-expanded={open}
+        aria-controls="notification-preview"
+        onClick={() => { loadPreview(); setOpen((value) => !value); }}
+        aria-label={label}
+        title={label}
+        className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-white/5 hover:text-porcelain ${chromeLinkFocus} ${
+          active ? "bg-white/10 text-porcelain" : "text-slate-300"
+        }`}
+      >
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"
+          />
+        </svg>
+        {unreadCount > 0 ? (
+          <span
+            aria-hidden="true"
+            className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-electric-blue ring-2 ring-deep-ocean"
+          />
+        ) : null}
+      </button>
+      {open ? (
+        <div
+          ref={panelRef}
+          id="notification-preview"
+          role="region"
+          aria-label="Recent notifications"
+          tabIndex={-1}
+          className="absolute right-4 top-full z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200 bg-card text-slate-900 shadow-xl focus:outline-none sm:right-0"
+        >
+          <h2 className="border-b border-slate-200 px-4 py-3 text-sm font-semibold">Notifications</h2>
+          <div className="max-h-[min(26rem,calc(100dvh-11rem))] overflow-y-auto overscroll-contain">
+            {failed ? (
+              <div className="p-4 text-sm">
+                <p role="alert">Could not load notifications.</p>
+                <button type="button" className={`mt-2 text-teal-700 hover:underline ${linkFocus}`} onClick={() => { loadPreview(); setAttempt((value) => value + 1); }}>Try again</button>
+              </div>
+            ) : notifications === null ? (
+              <p role="status" className="p-4 text-sm text-slate-600">Loading notifications...</p>
+            ) : notifications.length === 0 ? (
+              <p role="status" className="p-4 text-sm text-slate-600">No notifications yet.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {notifications.map((notification) => (
+                  <li key={notification.id}>
+                    {/* Plain links avoid prefetching the route that marks an alert read. */}
+                    <a href={`${BASE_PATH}/notifications/${notification.id}`} className={`flex items-start gap-3 px-4 py-3 text-sm hover:bg-slate-50 ${linkFocus} ${!notification.readAt ? "bg-teal-50/40" : ""}`}>
+                      <span aria-hidden="true" className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${!notification.readAt ? "bg-teal-600" : "bg-transparent"}`} />
+                      <span className="min-w-0 flex-1">
+                        <span className={`block break-words ${!notification.readAt ? "font-medium text-slate-900" : "text-slate-700"}`}>
+                          {!notification.readAt ? <span className="sr-only">Unread: </span> : null}
+                          {notification.title}
+                        </span>
+                        <LocalTime date={notification.createdAt} className="mt-1 block text-xs text-slate-500" />
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <Link href="/notifications" onClick={() => setOpen(false)} className={`block border-t border-slate-200 px-4 py-3 text-sm font-medium text-teal-700 hover:bg-slate-50 ${linkFocus}`}>View all notifications</Link>
+        </div>
       ) : null}
-    </Link>
+    </div>
   );
 }
 
@@ -459,6 +536,7 @@ export function AppHeader({
           <PointsChip points={points} solvedTasks={solvedTasks} userId={userId} />
 
           <NotificationsBell
+            key={`${userId}:${activeTenantId}:${pathname}`}
             unreadCount={unreadCount}
             active={isNavItemActive(pathname, "/notifications")}
           />

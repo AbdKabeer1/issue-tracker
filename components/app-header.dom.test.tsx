@@ -1,11 +1,15 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { switchActiveRoleAction } from "@/app/actions/auth";
 import { selectTenantAction } from "@/app/(app)/tenants/actions";
 import { labelInNameMismatches } from "@/lib/a11y/label-in-name";
 import { AppHeader } from "./app-header";
+import { recentNotificationsAction } from "@/app/actions/notifications";
+import { BASE_PATH } from "@/lib/base-path";
+
+vi.mock("@/app/actions/notifications", () => ({ recentNotificationsAction: vi.fn() }));
 
 vi.mock("next/image", () => ({
   default: (props: { alt?: string }) => <span data-testid="img" aria-hidden={props.alt === ""} />,
@@ -35,9 +39,99 @@ const selectTenant = vi.mocked(selectTenantAction);
 afterEach(() => cleanup());
 
 beforeEach(() => {
+  vi.mocked(recentNotificationsAction).mockReset().mockResolvedValue([]);
   navigation.pathname = "/issues";
   switchRole.mockReset();
   switchRole.mockResolvedValue({ error: "refused" });
+});
+
+describe("notification preview (#615)", () => {
+  it("toggles without navigation and preserves the tooltip and unread label", async () => {
+    const user = userEvent.setup();
+    renderHeader({ unreadCount: 3 });
+    const bell = screen.getByRole("button", { name: "Notifications, 3 unread" });
+    const location = window.location.href;
+    expect(bell.title).toBe("Notifications, 3 unread");
+    expect(recentNotificationsAction).not.toHaveBeenCalled();
+    await user.click(bell);
+    expect(bell.getAttribute("aria-expanded")).toBe("true");
+    expect(await screen.findByText("No notifications yet.")).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("region", { name: "Recent notifications" }));
+    expect(window.location.href).toBe(location);
+    expect(screen.getByRole("link", { name: "View all notifications" }).getAttribute("href")).toBe("/notifications");
+    await user.click(bell);
+    expect(bell.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("renders summaries, timestamps, unread state and the existing read-on-open links", async () => {
+    vi.mocked(recentNotificationsAction).mockResolvedValue([
+      { id: "n1", title: "Issue assigned to you", createdAt: new Date("2026-10-22T12:00:00Z"), readAt: null },
+      { id: "n2", title: "New comment", createdAt: new Date("2026-10-21T12:00:00Z"), readAt: new Date() },
+    ]);
+    renderHeader();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Notifications" }));
+    const link = await screen.findByRole("link", { name: /Unread: Issue assigned to you/ });
+    expect(link.getAttribute("href")).toBe(`${BASE_PATH}/notifications/n1`);
+    expect(link.querySelector("time")?.dateTime).toBe("2026-10-22T12:00:00.000Z");
+    expect(screen.getByRole("link", { name: /New comment/ }).textContent).not.toContain("Unread:");
+    expect(recentNotificationsAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("supports keyboard opening, Escape focus restoration and outside dismissal", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+    const bell = screen.getByRole("button", { name: "Notifications" });
+    bell.focus();
+    await user.keyboard("{Enter}");
+    await screen.findByText("No notifications yet.");
+    await user.keyboard("{Escape}");
+    expect(document.activeElement).toBe(bell);
+    expect(screen.queryByRole("region", { name: "Recent notifications" })).toBeNull();
+    await user.click(bell);
+    fireEvent.pointerDown(document.body);
+    expect(bell.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("shows loading and allows retry after failure", async () => {
+    let reject!: (error: Error) => void;
+    vi.mocked(recentNotificationsAction).mockReturnValueOnce(new Promise((_, fail) => { reject = fail; }));
+    const user = userEvent.setup();
+    renderHeader();
+    await user.click(screen.getByRole("button", { name: "Notifications" }));
+    expect(screen.getByRole("status").textContent).toBe("Loading notifications...");
+    reject(new Error("offline"));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("No notifications yet.")).toBeTruthy();
+  });
+
+  it("lets Tab leave the preview and clears it when the workspace changes", async () => {
+    const user = userEvent.setup();
+    const view = renderHeader();
+    await user.click(screen.getByRole("button", { name: "Notifications" }));
+    await screen.findByText("No notifications yet.");
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole("link", { name: "View all notifications" }));
+    await user.tab();
+    expect(screen.queryByRole("region", { name: "Recent notifications" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Notifications" }));
+    view.rerender(<AppHeader activeTenantId="t2" />);
+    expect(screen.queryByRole("region", { name: "Recent notifications" })).toBeNull();
+  });
+
+  it("ignores an obsolete request after closing and reopening", async () => {
+    let resolve!: (items: Awaited<ReturnType<typeof recentNotificationsAction>>) => void;
+    vi.mocked(recentNotificationsAction).mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    const user = userEvent.setup();
+    renderHeader();
+    const bell = screen.getByRole("button", { name: "Notifications" });
+    await user.click(bell);
+    await user.click(bell);
+    await user.click(bell);
+    await screen.findByText("No notifications yet.");
+    resolve([{ id: "old", title: "Stale alert", createdAt: new Date(), readAt: null }]);
+    await waitFor(() => expect(screen.queryByText("Stale alert")).toBeNull());
+  });
 });
 
 function renderHeader(props?: Partial<Parameters<typeof AppHeader>[0]>) {
