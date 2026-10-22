@@ -20,6 +20,7 @@ import { commentDepth, MAX_COMMENT_DEPTH } from "@/lib/comments";
 import { attachmentIdsInMarkdown, linkAttachments } from "@/lib/attachment-link";
 import { MAX_ATTACHMENTS_PER_ITEM } from "@/lib/attachments";
 import { publish } from "@/lib/agent-api/events";
+import { pullRequestAttachment } from "@/lib/github/pr-mention";
 import { isConfirmed } from "@/lib/agent-api/validation";
 import { notifyLater } from "@/lib/notify";
 import type { NotificationEvent } from "@/lib/notifications";
@@ -377,12 +378,19 @@ export async function createAgentIssue(agent: AgentContext, request: NextRequest
 export async function commentOnAgentIssue(agent: AgentContext, request: NextRequest, bugId: string) {
   const input = agentCommentSchema.parse(await issueJson(request));
   const scope = await issueProject(agent, request.nextUrl.searchParams, input.projectId);
-  let bug: { id: string; title: string; reporterId: string; assigneeId: string | null } | null = null;
+  let bug: {
+    id: string;
+    title: string;
+    reporterId: string;
+    assigneeId: string | null;
+    pullRequestUrl: string | null;
+    proofLinks: string[];
+  } | null = null;
   let parentAuthorId: string | null = null;
   const comment = await prisma.$transaction(async (tx) => {
     bug = await tx.bug.findFirst({
       where: { ...scope, id: bugId, isDeleted: false },
-      select: { id: true, title: true, reporterId: true, assigneeId: true },
+      select: { id: true, title: true, reporterId: true, assigneeId: true, pullRequestUrl: true, proofLinks: true },
     });
     if (!bug) throw new IssueApiError(404, "Issue not found.");
     if (input.parentId) {
@@ -422,7 +430,33 @@ export async function commentOnAgentIssue(agent: AgentContext, request: NextRequ
       bugId, actorId: agent.ownerId, type: "commented", summary: commentedSummary(body),
       metadata: { commentId: created.id, commentPreview: commentPreview(body) },
     } });
-    await tx.bug.update({ where: { id: bugId }, data: { updatedAt: new Date() } });
+    const attachment = pullRequestAttachment({
+      authorId: agent.ownerId,
+      assigneeId: bug.assigneeId,
+      pullRequestUrl: bug.pullRequestUrl,
+      proofLinks: bug.proofLinks ?? [],
+      body,
+      metadata: input.metadata,
+    });
+    await tx.bug.update({
+      where: { id: bugId },
+      data: {
+        updatedAt: new Date(),
+        ...(attachment ? { pullRequestUrl: attachment.pullRequestUrl } : {}),
+        ...(attachment?.proofLinks ? { proofLinks: attachment.proofLinks } : {}),
+      },
+    });
+    if (attachment) {
+      await tx.bugActivity.create({
+        data: {
+          bugId,
+          actorId: agent.ownerId,
+          type: "edited",
+          summary: `linked PR ${attachment.pullRequestUrl}`,
+          metadata: { field: "pullRequestUrl", pullRequestUrl: attachment.pullRequestUrl, via: "comment" },
+        },
+      });
+    }
     await tx.issueWatch.upsert({ where: { userId_bugId: { bugId, userId: agent.ownerId } },
       create: { bugId, userId: agent.ownerId }, update: {} });
     await audit(agent, "comment.created", created.id, { authorId: agent.ownerId }, { db: tx, bugId });
