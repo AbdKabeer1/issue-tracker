@@ -512,7 +512,7 @@ GET /api/v1/feed
 - `area` (optional): a project area id, or `none` for issues without an area. An unknown area id returns `400`
 - `limit` (optional): page size, default **50**, clamped to **1–100**. A value that is not a whole number returns `400`
 
-The two cursor values are always supplied **together**; omit both for the first page. Sending only one answers `400 "Supply both after (an ISO timestamp) and afterId."`; an `after` that isn't a full ISO-8601 timestamp with a time and offset (a date alone is not enough) answers `400 "after must be an ISO-8601 timestamp with a time and offset, …"`. Page size comes from `limit`: **50** by default, clamped to **1–100**, and a value that is not a whole number answers `400 "limit must be a whole number between 1 and 100; the default is 50."` (`lib/feed.ts` `parseFeedLimit`). There is no `since` parameter.
+The two cursor values are always supplied **together**; omit both for the first page. Sending only one, or sending either one empty (e.g. `after=&afterId=…`), answers `400 "Supply both after (an ISO timestamp) and afterId."`; a non-empty `after` that isn't a full ISO-8601 timestamp with a time and offset (a date alone is not enough) answers `400 "after must be an ISO-8601 timestamp with a time and offset, …"`. Page size comes from `limit`: **50** by default, clamped to **1–100**, and a value that is not a whole number answers `400 "limit must be a whole number between 1 and 100; the default is 50."` (`lib/feed.ts` `parseFeedLimit`). There is no `since` parameter.
 
 **Response:**
 ```json
