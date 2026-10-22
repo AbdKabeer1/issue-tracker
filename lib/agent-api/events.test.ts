@@ -163,6 +163,10 @@ describe("eventCursorError (#465)", () => {
   it("explains both accepted forms for an undecodable cursor", () => {
     expect(message("after=bad!!")).toMatch(/^Invalid cursor\. Pass the cursor from a previous response/);
   });
+
+  it("explains the cursor forms for an empty after without afterId", () => {
+    expect(message("after=")).toMatch(/^Invalid cursor\. Pass the cursor from a previous response/);
+  });
 });
 
 // ---------------------------------------------------------------------------

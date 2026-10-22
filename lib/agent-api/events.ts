@@ -232,7 +232,7 @@ export function eventCursorError(params: URLSearchParams): string {
   const afterId = params.get("afterId");
   const isTimestamp = after !== null && z.iso.datetime({ offset: true }).safeParse(after).success;
 
-  if (!after) return "afterId is only valid together with a timestamp after.";
+  if (!after && afterId !== null) return "afterId is only valid together with a timestamp after.";
   if (afterId !== null) {
     if (!isTimestamp) {
       return "after must be an ISO-8601 timestamp with a time and offset (e.g. 2026-10-21T00:00:00.000Z) when afterId is set.";
