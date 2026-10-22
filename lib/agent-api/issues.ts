@@ -12,6 +12,7 @@ import { parsePlatformFilter, platformFilterWhere } from "@/lib/platform-filter"
 import { boundSearchTerm, escapeSearchQuery } from "@/lib/search";
 import { parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
 import { intakeKind, openIssueStages, type IssueStage } from "@/lib/issue-stage";
+import { parseIssueRef } from "@/lib/issue-ref";
 import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, hashCreateRequest, pageSize, toPage, type IssueCursor } from "@/lib/agent-api/create-policy";
 import { createdSummary, commentedSummary, commentPreview } from "@/lib/activity-log";
 import { extractMentionedUserIds, normalizeMentions } from "@/lib/mentions";
@@ -196,8 +197,10 @@ const validationSelect = {
 } satisfies Prisma.IssueValidationSelect;
 
 export async function readAgentIssue(scope: Scope, id: string) {
+  // #457: the path may be the readable number (`123`, `ZE-123`) or the id.
+  const ref = parseIssueRef(id);
   const issue = await prisma.bug.findFirst({
-    where: { ...scope, id, isDeleted: false },
+    where: { ...scope, ...(ref.kind === "number" ? { number: ref.number } : { id: ref.id }), isDeleted: false },
     select: { ...issueSelect, voteCount: true, comments: {
       where: { deletedAt: null }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 100,
       select: { id: true, body: true, authorId: true, agentId: true, parentId: true, type: true, metadata: true, createdAt: true, editedAt: true },

@@ -941,6 +941,8 @@ Ordering is `(createdAt desc, id desc)`. Paging is by cursor, not offset: pass `
 
 **Level:** `observer`+
 
+`{id}` may be the issue's internal id or its readable number in your organisation — `123`, or a prefixed form such as `ZE-123` (the prefix is ignored). The response's `id` is the internal id the other issue routes take. In the web app, issues live at `/issues/123`; old `/issues/<id>` links redirect there (#457).
+
 Read a single issue by ID.
 
 **Response:** the issue is wrapped in an `issue` object.

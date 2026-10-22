@@ -92,7 +92,7 @@ vi.mock("@/lib/platforms", () => ({
 }));
 
 const mockDb = vi.hoisted(() => ({
-  bug: { findUnique: vi.fn() },
+  bug: { findUnique: vi.fn(), findFirst: vi.fn(async () => ({ id: "bug-1", number: 1 })) },
   membership: { findUnique: vi.fn().mockResolvedValue({ role: "member", userId: "user-123" }) },
   redesignProposal: { findMany: vi.fn().mockResolvedValue([]) },
   issueBid: { findMany: vi.fn().mockResolvedValue([]) },
@@ -159,7 +159,7 @@ describe("Issue page volunteer count display (#589)", () => {
     mockDb.issueInterest.count.mockResolvedValue(3);
 
     const page = await BugDetailPage({
-      params: Promise.resolve({ id: "bug-1" }),
+      params: Promise.resolve({ id: "1" }),
     });
 
     render(page);
@@ -170,7 +170,7 @@ describe("Issue page volunteer count display (#589)", () => {
     mockDb.issueInterest.count.mockResolvedValue(1);
 
     const page = await BugDetailPage({
-      params: Promise.resolve({ id: "bug-1" }),
+      params: Promise.resolve({ id: "1" }),
     });
 
     render(page);
@@ -181,7 +181,7 @@ describe("Issue page volunteer count display (#589)", () => {
     mockDb.issueInterest.count.mockResolvedValue(0);
 
     const page = await BugDetailPage({
-      params: Promise.resolve({ id: "bug-1" }),
+      params: Promise.resolve({ id: "1" }),
     });
 
     render(page);
