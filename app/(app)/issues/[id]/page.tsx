@@ -789,17 +789,24 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
-          <Link href="/issues" className="text-sm text-teal-700 hover:underline print:hidden">
-            ← Back to issues
-          </Link>
-          <div className="mt-3 space-y-3">
+          <div className="space-y-3">
             <div className="space-y-2">
-              <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 break-words">
-                <span className="font-normal text-slate-500 tabular-nums">
-                  {formatIssueNumber(bug.number)}
-                </span>{" "}
-                {bug.title}
-              </h1>
+              <div className="flex items-start gap-2">
+                <Link
+                  href="/issues"
+                  aria-label="Back to issues"
+                  title="Back to issues"
+                  className="-mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 print:hidden"
+                >
+                  <span aria-hidden="true" className="text-lg leading-none">←</span>
+                </Link>
+                <h1 className="min-w-0 text-xl sm:text-2xl font-semibold text-slate-900 break-words">
+                  <span className="font-normal text-slate-500 tabular-nums">
+                    {formatIssueNumber(bug.number)}
+                  </span>{" "}
+                  {bug.title}
+                </h1>
+              </div>
               {intakeStage ? (
                 <p
                   className={`rounded-lg border px-3 py-2 text-sm ${
@@ -893,9 +900,9 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         </div>
 
         <div className="hidden sm:block">
-          {/* #687: the back-link sits above the title, so actions must offset
-              past it to share the title's top edge (36px ≈ sm:pt-9). */}
-          <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-9 print:hidden">
+          {/* #451: the back arrow now sits inline with the title, so the
+              action row no longer offsets past a separate back-link row. */}
+          <div className="flex shrink-0 flex-wrap items-center gap-2 self-start print:hidden">
             {headerActions}
           </div>
         </div>
