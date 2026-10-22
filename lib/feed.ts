@@ -32,9 +32,15 @@ export function feedWhere(tenantId: string, projectId: string, cursor: FeedCurso
   };
 }
 
-/** Resolve only projects inside the caller's tenant; never trust a supplied id. */
+/**
+ * Resolve only projects inside the caller's tenant; never trust a supplied id.
+ * An empty or whitespace-only `projectId` (e.g. `?projectId=` built from an
+ * unset variable) means "not given", so it falls back to the default project
+ * as documented instead of looking up a project with id "" (#470).
+ */
 export async function feedProject(tenantId: string, requested?: string | null) {
-  const id = requested ?? await defaultProjectIdFor(prisma, tenantId);
+  const given = requested?.trim() || null;
+  const id = given ?? await defaultProjectIdFor(prisma, tenantId);
   if (!id) return null;
   return prisma.project.findFirst({ where: { id, tenantId }, select: { id: true, name: true } });
 }

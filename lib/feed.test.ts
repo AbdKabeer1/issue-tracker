@@ -48,6 +48,16 @@ describe("new-ticket feed", () => {
     await feedProject("t");
     expect(db.project.findFirst).toHaveBeenLastCalledWith(expect.objectContaining({ where: { id: "default-project", tenantId: "t" } }));
   });
+
+  it("treats an empty or whitespace-only projectId as not given (#470)", async () => {
+    db.project.findFirst.mockResolvedValue(null);
+    for (const empty of ["", "   "]) {
+      await feedProject("t", empty);
+      expect(db.project.findFirst).toHaveBeenLastCalledWith(expect.objectContaining({ where: { id: "default-project", tenantId: "t" } }));
+    }
+    await feedProject("t", "  real-project  ");
+    expect(db.project.findFirst).toHaveBeenLastCalledWith(expect.objectContaining({ where: { id: "real-project", tenantId: "t" } }));
+  });
 });
 
   it("filters a project feed by area, including issues with no area", () => {
