@@ -31,6 +31,11 @@ export function PairForm({
   instructionsMaxLength: number;
 }) {
   const [code, setCode] = useState(initialCode);
+  // The owner's edits to the instructions, tied to the code they were made for.
+  // Kept in state because a form action resets uncontrolled fields when it
+  // returns, even with an error; a retry must send the owner's text, not the
+  // agent's proposal again (#431).
+  const [instructionsDraft, setInstructionsDraft] = useState<{ code: string; value: string } | null>(null);
   const [result, action, pendingAction] = useActionState<PairingActionResult | undefined, FormData>(
     pairAgentAction,
     undefined,
@@ -69,6 +74,8 @@ export function PairForm({
     : null;
 
   if (confirm) {
+    const instructionsValue =
+      instructionsDraft?.code === confirm.code ? instructionsDraft.value : (confirm.instructions ?? "");
     const projectDefault =
       activeProjectId && projects.some((project) => project.id === activeProjectId)
         ? activeProjectId
@@ -95,7 +102,8 @@ export function PairForm({
             name="instructions"
             rows={4}
             maxLength={instructionsMaxLength}
-            defaultValue={confirm.instructions ?? ""}
+            value={instructionsValue}
+            onChange={(event) => setInstructionsDraft({ code: confirm.code, value: event.target.value })}
             aria-describedby="pair-instructions-help"
           />
           <p id="pair-instructions-help" className="text-xs text-slate-500">
