@@ -77,28 +77,18 @@ describe("account menu role switch", () => {
     expect(switchRole).toHaveBeenCalledWith("user", `${window.location.pathname}${window.location.search}`);
   });
 
-  it("renders Escalations inside Agents, with the pending count on the menu (#763)", async () => {
-    const user = userEvent.setup();
+  it("renders Escalations as a link, with the pending count (#763)", () => {
     renderHeader({ pendingEscalationsCount: 5 });
+    const link = screen.getByRole("link", { name: /escalations/i });
+    expect(link.getAttribute("href")).toBe("/escalations");
     expect(screen.getAllByLabelText("5 pending").length).toBeGreaterThan(0);
-    await user.click(screen.getByRole("button", { name: /agents/i }));
-    const escalationsLink = screen.getByRole("menuitem", { name: /escalations/i });
-    expect(escalationsLink.getAttribute("href")).toBe("/escalations");
+    expect(screen.queryByRole("button", { name: /agents/i })).toBeNull();
   });
 
-  it("renders the Workspace menu and its grouped links (#761)", async () => {
-    const user = userEvent.setup();
+  it("does not put a Workspace menu in the bar", () => {
     renderHeader();
-
-    const manageBtn = screen.getByRole("button", { name: "Workspace" });
-    expect(manageBtn).toBeTruthy();
-
-    await user.click(manageBtn);
-
-    expect(screen.getByRole("menuitem", { name: /projects/i })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: /milestones/i })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: /platforms/i })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: /types/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Workspace" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Workspace" })).toBeNull();
   });
 
   it("shows this person's points in the bar", () => {
@@ -117,9 +107,9 @@ describe("account menu role switch", () => {
       pendingEscalationsCount: 5,
     });
     expect(labelInNameMismatches(container)).toEqual([]);
-    const workspace = screen.getByRole("combobox", { name: /active workspace, ziki/i });
+    const workspace = screen.getByRole("button", { name: /active workspace, ziki/i });
     expect(workspace.getAttribute("aria-label")).toBeNull();
-    expect(workspace.querySelector("option[selected], option")?.textContent).toBe("Ziki");
+    expect(workspace.textContent).toContain("Ziki");
   });
 
   it("switches the active workspace as soon as one is chosen", async () => {
@@ -132,9 +122,8 @@ describe("account menu role switch", () => {
       activeTenantId: "t1",
     });
 
-    const workspace = screen.getByRole("combobox", { name: /active workspace, ziki/i });
-    expect((workspace as HTMLSelectElement).value).toBe("t1");
-    await user.selectOptions(workspace, "t2");
+    await user.click(screen.getByRole("button", { name: /active workspace, ziki/i }));
+    await user.click(screen.getByRole("option", { name: "Acme" }));
 
     expect(selectTenant).toHaveBeenCalledTimes(1);
     const data = selectTenant.mock.calls[0][0] as FormData;
@@ -143,11 +132,12 @@ describe("account menu role switch", () => {
 
   it("links to workspaces when the person has none", () => {
     renderHeader({ workspaces: [], activeTenantId: null });
-    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.queryByRole("button", { name: /active workspace/i })).toBeNull();
     expect(screen.getByRole("link", { name: "Workspaces" }).getAttribute("href")).toBe("/tenants");
   });
 
-  it("shows the slug when two workspaces share a name", () => {
+  it("shows the slug when two workspaces share a name", async () => {
+    const user = userEvent.setup();
     renderHeader({
       workspaces: [
         { id: "t1", name: "Acme", slug: "acme" },
@@ -155,9 +145,11 @@ describe("account menu role switch", () => {
       ],
       activeTenantId: "t1",
     });
+    const trigger = screen.getByRole("button", { name: /active workspace, acme \(acme\)/i });
+    expect(trigger.getAttribute("aria-label")).toBeNull();
+    await user.click(trigger);
     expect(screen.getByRole("option", { name: "Acme (acme)" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "Acme (acme-eu)" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: /active workspace, acme \(acme\)/i })).toBeTruthy();
   });
 
   it("renders Docs & /llms.txt link in the account menu (#625)", async () => {

@@ -1,4 +1,4 @@
-import { isAdmin, isSuperAdmin, type AppRole } from "@/lib/roles";
+import { isSuperAdmin, type AppRole } from "@/lib/roles";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 
 export type HeaderNavSubItem = {
@@ -21,37 +21,8 @@ export const SWITCH_TENANT_LINK: HeaderNavItem = { href: "/tenants", label: "Swi
 /** Links shown in the header for the role the user is currently viewing as (#761). */
 export function headerNavItems(
   role?: AppRole | null,
-  options?: { agentPlatform?: boolean; managePlatforms?: boolean; pendingEscalations?: number },
+  options?: { agentPlatform?: boolean; pendingEscalations?: number },
 ): HeaderNavItem[] {
-  const manageProjectChildren: HeaderNavSubItem[] = [
-    {
-      href: "/projects",
-      label: "Projects",
-      description: "A product in this workspace, such as a web app. The switcher picks the active one.",
-    },
-    {
-      href: "/milestones",
-      label: "Milestones",
-      description: "A release for this workspace. It can include issues from more than one project.",
-    },
-  ];
-
-  if (options?.managePlatforms || isAdmin(role)) {
-    manageProjectChildren.push({
-      href: "/admin/categories",
-      label: "Platforms",
-      description: "A label on an issue, such as Web or Mobile. Not a product, and shared by every project here.",
-    });
-  }
-
-  if (isAdmin(role)) {
-    manageProjectChildren.push({
-      href: "/admin/types",
-      label: "Types",
-      description: "How an issue is classified, such as bug or task.",
-    });
-  }
-
   const pending =
     typeof options?.pendingEscalations === "number" && options.pendingEscalations > 0
       ? options.pendingEscalations
@@ -60,28 +31,13 @@ export function headerNavItems(
   const items: HeaderNavItem[] = [
     { href: "/issues", label: "Issues" },
     { href: "/team", label: "Team" },
-    {
-      href: "/projects",
-      label: "Workspace",
-      children: manageProjectChildren,
-    },
   ];
 
   if (options?.agentPlatform ?? isAgentPlatformEnabled()) {
     items.push({
       href: "/escalations",
-      label: "Agents",
+      label: "Escalations",
       ...(pending ? { badge: pending } : {}),
-      children: [
-        {
-          href: "/escalations",
-          label: "Escalations",
-          description: "Questions an agent is waiting on",
-          ...(pending ? { badge: pending } : {}),
-        },
-        { href: "/redesigns", label: "Redesigns", description: "Proposed changes to review" },
-        { href: "/docs", label: "API Docs", description: "Agent API and /llms.txt" },
-      ],
     });
   } else {
     items.push({ href: "/docs", label: "API Docs" });
@@ -115,7 +71,9 @@ export function isNavItemActive(pathname: string | null, href: string): boolean 
       path === "/escalations" ||
       path.startsWith("/escalations/") ||
       path === "/questions" ||
-      path.startsWith("/questions/")
+      path.startsWith("/questions/") ||
+      path === "/redesigns" ||
+      path.startsWith("/redesigns/")
     );
   }
   if (href === "/manage-project") {
