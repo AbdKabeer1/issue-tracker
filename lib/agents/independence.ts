@@ -82,17 +82,15 @@ export function reviewerConflict(actor: ReviewingAgent, bug: ReviewedBug): Revie
   // though a web-filed bug has no beneficiary set (#620).
   if (bug.beneficiaryUserId === owner || bug.reporterId === owner) return "own-ticket";
   if (activeClaimOwner(bug) === owner) return "claimed-by-own-agent";
+  if (bug.assigneeId === owner) return "assigned-solver";
+  if (activeClaim(bug)?.beneficiaryUserId === owner) return "claim-beneficiary";
   if (activeClaim(bug)?.dispatcherUserId === owner) return "claim-dispatcher";
   return null;
 }
 
 /** Independence checks for the person credited on a review, in addition to the reviewing agent's owner. */
 export function reviewerCreditConflict(userId: string, bug: ReviewedBug): ReviewerConflict | null {
-  const conflict = reviewerConflict({ id: "credited-user", ownerUserId: userId }, bug);
-  if (conflict) return conflict;
-  if (bug.assigneeId === userId) return "assigned-solver";
-  if (activeClaim(bug)?.beneficiaryUserId === userId) return "claim-beneficiary";
-  return null;
+  return reviewerConflict({ id: "credited-user", ownerUserId: userId }, bug);
 }
 
 /** Throws `ReviewerNotIndependentError` unless `actor` is independent of `bug`. */

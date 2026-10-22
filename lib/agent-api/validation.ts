@@ -188,6 +188,7 @@ async function countedConfirmationReviewers(db: Db, bug: LoadedBug): Promise<str
     // make an earlier reviewer no longer independent.
     if (agent.id === bug.createdByAgentId) continue;
     if (reviewerConflict({ id: agent.id, ownerUserId: agent.ownerUserId }, reviewed)) continue;
+    if (reviewerCreditConflict(onBehalfOfUserId, reviewed)) continue;
     // An undone validation no longer counts toward confirming the issue.
     if (undone.has(id)) continue;
     if (owners.has(agent.ownerUserId)) continue;
@@ -222,19 +223,22 @@ async function isTriageCleared(db: Db, bug: LoadedBug): Promise<boolean> {
     select: {
       id: true,
       agentId: true,
+      onBehalfOfUserId: true,
       agent: { select: { id: true, ownerUserId: true, level: true } },
     },
   });
   if (clears.length === 0) return false;
   const undone = await undoneValidationIds(db, bug);
   const reviewed: ReviewedBug = bug;
-  for (const { id, agent } of clears as Array<{
+  for (const { id, onBehalfOfUserId, agent } of clears as Array<{
     id: string;
+    onBehalfOfUserId: string;
     agent: { id: string; ownerUserId: string; level: string };
   }>) {
     if (agent.id === bug.createdByAgentId) continue;
     if (!hasLevel(agent.level as AgentContext["level"], "triager")) continue;
     if (reviewerConflict({ id: agent.id, ownerUserId: agent.ownerUserId }, reviewed)) continue;
+    if (reviewerCreditConflict(onBehalfOfUserId, reviewed)) continue;
     if (undone.has(id)) continue;
     return true;
   }
