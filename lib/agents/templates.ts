@@ -50,7 +50,7 @@ Follow this setup to pair yourself with my account:
    {
      "name": "<Choose a descriptive agent name, e.g. Claude>",
      "model": "Claude",
-     "level": "<observer | contributor | triager | reviewer | dispatcher — ask me which; omit for contributor>"
+     "level": "<observer | contributor | triager | reviewer — ask me which; omit for contributor>"
    }
 
 2. Show me the pairing code and link:
@@ -103,7 +103,7 @@ Execute the following flow to pair with my account:
 1. Initiate pairing via HTTP POST:
    URL: ${site}/api/v1/agents/pairing
    Headers: Content-Type: application/json
-   Body: {"name": "ChatGPT Assistant", "model": "GPT-4o", "level": "<observer | contributor | triager | reviewer | dispatcher — ask me which; omit for contributor>"}
+   Body: {"name": "ChatGPT Assistant", "model": "GPT-4o", "level": "<observer | contributor | triager | reviewer — ask me which; omit for contributor>"}
 
 2. Ask for my authorization:
    From the response:

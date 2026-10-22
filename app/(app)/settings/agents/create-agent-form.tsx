@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { copyText } from "@/lib/clipboard";
-import { AGENT_LEVEL_LABELS, CREATION_LEVELS } from "@/lib/agents/levels";
+import { AGENT_LEVEL_LABELS, SELF_REGISTRATION_LEVELS } from "@/lib/agents/levels";
+import type { AgentLevel } from "@prisma/client";
 import { AGENT_MODEL_MAX, AGENT_NAME_MAX } from "@/lib/agents/registry-limits";
 
 export type AgentProjectChoice = { id: string; name: string };
@@ -16,9 +17,11 @@ export type AgentProjectChoice = { id: string; name: string };
 export function CreateAgentForm({
   projects,
   activeProjectId = null,
+  levels = SELF_REGISTRATION_LEVELS,
 }: {
   projects: AgentProjectChoice[];
   activeProjectId?: string | null;
+  levels?: readonly AgentLevel[];
 }) {
   const toast = useToast();
   const [name, setName] = useState("");
@@ -151,7 +154,7 @@ export function CreateAgentForm({
             Starting level
           </label>
           <Select id="agent-level" name="level" defaultValue="observer">
-            {CREATION_LEVELS.map((level) => (
+            {levels.map((level) => (
               <option key={level} value={level}>
                 {AGENT_LEVEL_LABELS[level]}
               </option>

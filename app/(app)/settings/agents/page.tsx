@@ -240,7 +240,7 @@ export default async function AgentsSettingsPage() {
               </Link>
               .
             </p>
-            <CreateAgentForm projects={projects} activeProjectId={context.activeProjectId} />
+            <CreateAgentForm projects={projects} activeProjectId={context.activeProjectId} levels={ownLevels} />
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="mine-heading">

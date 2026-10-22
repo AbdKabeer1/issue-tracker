@@ -25,15 +25,15 @@ export const PAIRING_TTL_MS = 15 * 60 * 1000;
 export const PAIRING_POLL_INTERVAL = 5;
 /**
  * The level a pairing gets when the agent asks for none. The owner can lower
- * this later; asking for `merger` is refused outright (#425, #451).
+ * this later; asking for dispatcher or merger is refused (#425, #451).
  */
 const PAIRED_AGENT_LEVEL = "contributor" satisfies AgentLevel;
 
-/** An agent may name any level but merger at registration (#425). */
+/** An agent may request specialist roles, not admin-only roles (#425). */
 function parseRequestedLevel(level: unknown): { ok: true; level: AgentLevel } | { ok: false; error: string } {
   if (level == null || level === "") return { ok: true, level: PAIRED_AGENT_LEVEL };
-  if (level === "merger") {
-    return { ok: false, error: "Agents cannot register as merger. A tenant admin grants that level later." };
+  if (level === "dispatcher" || level === "merger") {
+    return { ok: false, error: "Agents cannot register as dispatcher or merger. A tenant admin grants these roles later." };
   }
   if (typeof level === "string" && (SELF_REGISTRATION_LEVELS as readonly string[]).includes(level)) {
     return { ok: true, level: level as AgentLevel };
@@ -143,7 +143,7 @@ export async function approvePairing(
     });
     if (active >= MAX_ACTIVE_AGENTS_PER_OWNER) return { ok: false, error: AGENT_LIMIT_MESSAGE } as const;
     const approved = await tx.agentPairing.updateMany({
-      where: { codeHash, approvedAt: null, ownerUserId: null, expiresAt: { gt: now } },
+      where: { codeHash, approvedAt: null, ownerUserId: null, expiresAt: { gt: now }, OR: [{ proposedLevel: null }, { proposedLevel: { in: [...SELF_REGISTRATION_LEVELS] } }] },
       data: { ownerUserId: owner.id, tenantId: tenant, projectId: project.id, approvedAt: now },
     });
     if (approved.count !== 1) return { ok: false, error: CODE_NOT_FOUND } as const;
@@ -202,6 +202,8 @@ async function attachApprovedAgent(
   tx: PairingTx,
   pairing: { id: string; proposedName: string; proposedModel: string | null; proposedLevel: AgentLevel | null; ownerUserId: string; tenantId: string },
 ): Promise<string> {
+  const requested = parseRequestedLevel(pairing.proposedLevel);
+  if (!requested.ok) throw new Error(requested.error);
   const created = await tx.agent.create({
     data: {
       tenantId: pairing.tenantId,
@@ -263,6 +265,7 @@ export async function collectPairing(deviceCode: unknown, now = new Date()): Pro
   });
   if (!pairing) return { status: "invalid" };
   if (pairing.consumedAt) return { status: "used" };
+  if (!pairing.agentId && !parseRequestedLevel(pairing.proposedLevel).ok) return { status: "invalid" };
   if (!pairing.approvedAt || !pairing.ownerUserId || !pairing.tenantId) {
     return pairing.expiresAt <= now ? { status: "expired" } : { status: "pending" };
   }

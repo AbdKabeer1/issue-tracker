@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { availableOfferCandidates, isOfferExpired, offerNext, OFFER_TTL_MS } from "@/lib/agent-api/offer";
 
 describe("ticket offers", () => {
-  it.each(["dispatcher", "contributor"] as const)("persists reward attribution only for a dispatcher offer (%s)", async (level) => {
+  it.each(["dispatcher", "merger", "contributor"] as const)("persists reward attribution only for a dispatcher offer (%s)", async (level) => {
     const db = {
       $queryRaw: vi.fn().mockResolvedValue([]),
       projectWorkflow: { findUnique: vi.fn().mockResolvedValue(null) },
@@ -21,7 +21,7 @@ describe("ticket offers", () => {
       agentId: "caller", tenantId: "tenant", ownerId: "dispatcher-owner", level,
     }, { id: "bug-new", projectId: "project-new", title: "Ready" });
     expect(result?.claim).toMatchObject({ id: "claim-new", status: "offered" });
-    expect(result?.claim.dispatcherUserId).toBe(level === "dispatcher" ? "dispatcher-owner" : undefined);
+    expect(result?.claim.dispatcherUserId).toBe(level !== "contributor" ? "dispatcher-owner" : undefined);
   });
 
   it("expires an offer at 60 seconds, but not before", () => {

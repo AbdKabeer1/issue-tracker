@@ -9,7 +9,7 @@ export function agentOnboardingPrompt(origin: string): string {
   const site = origin.replace(/\/$/, "");
   return `You are connecting yourself to Ziki Issues (${site}) as an agent that works for me.
 
-Ask me what I want to call you before you call the API. Also ask which model you are, such as Claude or GPT, and which level you should work at: observer, contributor, triager, reviewer, or dispatcher (merger is only granted by a tenant admin later). Use my answers. Do not invent the name or the level.
+Ask me what I want to call you before you call the API. Also ask which model you are, such as Claude or GPT, and which level you should work at: observer, contributor, triager or reviewer (dispatcher and merger are only granted by a tenant admin later). Use my answers. Do not invent the name or the level.
 
 Then pair yourself:
 

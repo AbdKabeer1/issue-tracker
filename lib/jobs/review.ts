@@ -64,7 +64,7 @@ async function findEligibleReviewers(
       tenantId,
       user: {
         agents: {
-          some: { tenantId, revokedAt: null, level: { in: ["reviewer", "merger"] } },
+          some: { tenantId, revokedAt: null, level: { in: ["reviewer", "dispatcher", "merger"] } },
         },
       },
     },
@@ -73,7 +73,7 @@ async function findEligibleReviewers(
       user: {
         select: {
           agents: {
-            where: { tenantId, revokedAt: null, level: { in: ["reviewer", "merger"] } },
+            where: { tenantId, revokedAt: null, level: { in: ["reviewer", "dispatcher", "merger"] } },
             orderBy: { createdAt: "asc" },
             take: 1,
             select: { id: true },
