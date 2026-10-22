@@ -7,7 +7,7 @@ import type { AgentContext } from "@/lib/agents/require-agent";
 import { IssueApiError } from "@/lib/agent-api/issues";
 import { publish } from "@/lib/agent-api/events";
 import { isConfirmed } from "@/lib/agent-api/validation";
-import { award } from "@/lib/points/award";
+import { award, awardDispatcher } from "@/lib/points/award";
 import { pointSourceKey, reviewerPointsAt } from "@/lib/points/rules";
 import {
   calculateReviewerPoints,
@@ -51,6 +51,7 @@ const mergeBugSelect = {
       releasedAt: true,
       agentId: true,
       beneficiaryUserId: true,
+      dispatcherUserId: true,
       agent: { select: { ownerUserId: true } },
     },
   },
@@ -223,6 +224,7 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
         sourceKey: pointSourceKey("solver", bug.id, solverUserId),
       });
     }
+    await awardDispatcher(tx, bug, claim.dispatcherUserId);
     const reviewerPoints = calculateReviewerPoints(rewardConfig);
     for (const [index, userId] of rewardedReviewerUserIds.entries()) {
       await award(tx, {

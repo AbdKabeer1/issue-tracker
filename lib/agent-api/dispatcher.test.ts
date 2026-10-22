@@ -171,7 +171,7 @@ describe("dispatchReadyIssues", () => {
     const result = await dispatchReadyIssues(dispatcher, "project-1", { policy: "auto_award" });
 
     expect(result.awarded).toBe(1);
-    expect(awardBid).toHaveBeenCalledWith({ id: "reporter" }, "bid-1");
+    expect(awardBid).toHaveBeenCalledWith({ id: "reporter" }, "bid-1", dispatcher);
     expect(offerNext).not.toHaveBeenCalled();
   });
 
