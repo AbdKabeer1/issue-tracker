@@ -1,4 +1,5 @@
 .ziki-homepage {
+  --button-radius: 999px;
   --ink: #0b1733;
   --muted: #62708d;
   --line: #e0e6f1;
@@ -112,7 +113,7 @@
   align-items: center;
   background: var(--green);
   border: 1px solid var(--green);
-  border-radius: 10px;
+  border-radius: var(--button-radius);
   box-shadow: 0 8px 22px rgba(57, 120, 246, .22);
   color: white;
   display: inline-flex;
@@ -125,7 +126,7 @@
 .ziki-homepage .button:hover { background: #2867e5; box-shadow: 0 11px 30px rgba(57, 120, 246, .3); transform: translateY(-2px); }
 .ziki-homepage .button:focus-visible, .ziki-homepage a:focus-visible, .ziki-homepage button:focus-visible { outline: 3px solid rgba(57,120,246,.28); outline-offset: 3px; }
 .ziki-homepage .button-small { padding: 11px 17px; }
-.ziki-homepage .button-large { border-radius: 12px; font-size: 15px; padding: 15px 21px; }
+.ziki-homepage .button-large { border-radius: var(--button-radius); font-size: 15px; padding: 15px 21px; }
 .ziki-homepage .button-secondary { background: white; border-color: var(--line); box-shadow: 0 5px 16px rgba(20, 40, 30, .05); color: var(--ink); }
 .ziki-homepage .button-secondary:hover { background: var(--surface); }
 .ziki-homepage .menu-button { background: none; border: 0; color: var(--ink); display: none; padding: 8px; }
@@ -167,7 +168,7 @@
   align-items: center;
   display: grid;
   font-size: 10px;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr 1fr;
   left: 8.4%;
   position: absolute;
   right: 8.4%;
@@ -176,8 +177,6 @@
 .ziki-homepage .hero-frame-top > span { color: #63718d; font-size: 9px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
 .ziki-homepage .hero-frame-top > a:last-child { font-size: 10px; font-weight: 700; justify-self: end; text-decoration: underline; text-underline-offset: 4px; }
 .ziki-homepage .hero-frame-top > a:last-child span { color: var(--green); margin-left: 3px; }
-.ziki-homepage .hero-live { align-items: center; background: var(--green-soft); border: 1px solid #d8e6ff; border-radius: 999px; color: #315da9 !important; display: inline-flex; font-size: 9px !important; gap: 7px; justify-self: center; letter-spacing: .04em !important; padding: 7px 11px; }
-.ziki-homepage .hero-live i { animation: live-pulse 2s ease-in-out infinite; background: var(--green); border: 3px solid #bfd5ff; border-radius: 50%; height: 9px; width: 9px; }
 @keyframes live-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(57,120,246,.25); }
   50% { box-shadow: 0 0 0 5px rgba(57,120,246,0); }
@@ -249,7 +248,7 @@
 }
 .ziki-homepage .hero-copy { color: var(--muted); font-size: 13px; line-height: 1.55; margin-top: 19px; max-width: 560px; }
 .ziki-homepage .hero-actions { align-items: center; display: flex; flex-direction: column; gap: 12px; margin-top: 22px; }
-.ziki-homepage .hero-actions .button { border-radius: 999px; padding-left: 23px; padding-right: 23px; }
+.ziki-homepage .hero-actions .button { border-radius: var(--button-radius); padding-left: 23px; padding-right: 23px; }
 .ziki-homepage .hero-text-link { font-size: 11px; font-weight: 700; text-decoration: underline; text-underline-offset: 4px; }
 .ziki-homepage .hero-frame-bottom {
   align-items: center;
@@ -439,7 +438,6 @@
 :root[data-theme='dark'] .ziki-homepage .switch-track { background: linear-gradient(145deg, #172f5e, #111f3d); border-color: #3978f6; box-shadow: inset 0 6px 15px rgba(0,0,0,.3), 0 0 0 8px rgba(57,120,246,.09); }
 :root[data-theme='dark'] .ziki-homepage .switch-pulse { border-color: #f5f7fc; }
 :root[data-theme='dark'] .ziki-homepage .hero-integrations b { color: #b1bdd3; }
-:root[data-theme='dark'] .ziki-homepage .hero-live { background: #172f5e; border-color: #2d4f88; color: #b8d2ff !important; }
 :root[data-theme='dark'] .ziki-homepage .control-section { background: linear-gradient(145deg, #0f1d39, #102345); border-color: #263b63; }
 :root[data-theme='dark'] .ziki-homepage .workflow-card:hover { border-color: #3d5c91; box-shadow: 0 22px 55px rgba(0,0,0,.2); }
 :root[data-theme='dark'] .ziki-homepage .route-chip,
@@ -487,7 +485,6 @@
   .ziki-homepage .hero-frame { border-radius: 15px; height: 610px; }
   .ziki-homepage .hero-frame-top { grid-template-columns: 1fr; left: 20px; right: 20px; top: 28px; }
   .ziki-homepage .hero-frame-top > span:first-child, .ziki-homepage .hero-frame-top > a:last-child { display: none; }
-  .ziki-homepage .hero-live { justify-self: center; }
   .ziki-homepage .hero-content { top: 46%; width: 90%; }
   .ziki-homepage .hero-title { letter-spacing: -2px; }
   .ziki-homepage .hero-title-small { font-size: clamp(27px, 8vw, 38px); }
@@ -529,7 +526,7 @@
 @media (prefers-reduced-motion: reduce) {
   .ziki-homepage { scroll-behavior: auto; }
   .ziki-homepage *, .ziki-homepage *::before, .ziki-homepage *::after { transition-duration: .01ms !important; }
-  .ziki-homepage .switch-pulse, .ziki-homepage .hero-live i, .ziki-homepage .console-footer .stream-dot { animation: none; }
+  .ziki-homepage .switch-pulse, .ziki-homepage .console-footer .stream-dot { animation: none; }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -581,7 +578,6 @@
 :root:not([data-theme='light']) .ziki-homepage .switch-track { background: linear-gradient(145deg, #172f5e, #111f3d); border-color: #3978f6; box-shadow: inset 0 6px 15px rgba(0,0,0,.3), 0 0 0 8px rgba(57,120,246,.09); }
 :root:not([data-theme='light']) .ziki-homepage .switch-pulse { border-color: #f5f7fc; }
 :root:not([data-theme='light']) .ziki-homepage .hero-integrations b { color: #b1bdd3; }
-:root:not([data-theme='light']) .ziki-homepage .hero-live { background: #172f5e; border-color: #2d4f88; color: #b8d2ff !important; }
 :root:not([data-theme='light']) .ziki-homepage .control-section { background: linear-gradient(145deg, #0f1d39, #102345); border-color: #263b63; }
 :root:not([data-theme='light']) .ziki-homepage .workflow-card:hover { border-color: #3d5c91; box-shadow: 0 22px 55px rgba(0,0,0,.2); }
 :root:not([data-theme='light']) .ziki-homepage .route-chip,
@@ -618,3 +614,14 @@
 .ziki-homepage .hero-integrations b { color: var(--muted); }
 .ziki-homepage .button:not(.button-light):not(.button-secondary) { background: #2864d7; border-color: #2864d7; color: #fff; }
 .ziki-homepage a:focus-visible, .ziki-homepage button:focus-visible { outline: 3px solid #3978f6; outline-offset: 3px; }
+
+/* All landing-page button variants and controls share the pill treatment. */
+.ziki-homepage .button, .ziki-homepage button, .ziki-homepage .main-nav .button { border-radius: var(--button-radius); }
+.ziki-homepage .main-nav a.button.mobile-only { color: #fff; text-align: center; }
+@media (max-width: 720px) {
+  .ziki-homepage .hero-frame-top { display: none; }
+  .ziki-homepage .main-nav .button.mobile-only { display: flex; justify-content: center; }
+}
+
+
+

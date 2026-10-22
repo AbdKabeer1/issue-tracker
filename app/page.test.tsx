@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import Homepage from "@/components/homepage/homepage";
 
 const applyTheme = vi.hoisted(() => vi.fn());
@@ -51,6 +51,23 @@ describe("Public homepage", () => {
     render(<Homepage />);
     fireEvent.click(screen.getByRole("button", { name: "Switch to dark mode" }));
     expect(applyTheme).toHaveBeenCalledWith("dark");
+  });
+  it("uses Get started as the single authentication entry point in each header layout", () => {
+    render(<Homepage />);
+    const navigation = screen.getByRole("navigation", { name: "Main navigation" });
+    expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+    expect(within(navigation).getByRole("link", { name: "Get started" }).getAttribute("href")).toBe("/login");
+    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+    fireEvent.click(within(navigation).getByRole("link", { name: "Get started" }));
+    expect(screen.getByRole("button", { name: "Open menu" }).getAttribute("aria-expanded")).toBe("false");
+  });
+  it("simplifies the hero without removing its accessible headline or animated circle", () => {
+    const { container } = render(<Homepage />);
+    expect(screen.queryByText(/Agent activity preview/i)).toBeNull();
+    const circle = container.querySelector(".switch-pulse");
+    expect(circle).not.toBeNull();
+    expect(circle?.querySelector("svg")).toBeNull();
+    expect(screen.getByRole("heading", { level: 1 }).getAttribute("aria-label")).toContain("forward");
   });
   it("saves a signed-in theme through the account preference", () => {
     const setTheme = vi.fn();

@@ -99,10 +99,9 @@ function Homepage({ signedIn = false }: { signedIn?: boolean }) {
         <nav id="homepage-navigation" className={menuOpen ? 'main-nav open' : 'main-nav'} aria-label="Main navigation">
           {navItems.map(([label, id]) => <a href={`#${id}`} key={id} onClick={() => setMenuOpen(false)}>{label}</a>)}
           <a href="/docs" target="_blank" rel="noreferrer">API Docs</a>
-          <Link className="mobile-only" href="/login">Sign in</Link>
+          <Link className="button button-small mobile-only" href="/login" onClick={() => setMenuOpen(false)}>Get started <Icon name="arrow" size={15} /></Link>
         </nav>
         <div className="header-actions">
-          <Link className="text-link" href="/login">Sign in</Link>
           <Link className="button button-small" href="/login">Get started <Icon name="arrow" size={15} /></Link>
         </div>
         <button
@@ -133,7 +132,6 @@ function Homepage({ signedIn = false }: { signedIn?: boolean }) {
           <div className="hero-grid" />
           <div className="hero-frame-top">
             <span>Human + AI workflows</span>
-            <span className="hero-live"><i /> Agent activity preview</span>
             <a href="#how-it-works">Explore the product <span>↗</span></a>
           </div>
 
@@ -145,7 +143,7 @@ function Homepage({ signedIn = false }: { signedIn?: boolean }) {
                 f
                 <span className="progress-switch" aria-hidden="true">
                   <span className="switch-track">
-                    <span className="switch-pulse"><Icon name="spark" size={18} /></span>
+                    <span className="switch-pulse" />
                   </span>
                 </span>
                 rward
