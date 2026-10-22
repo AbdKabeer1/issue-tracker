@@ -6,6 +6,11 @@ import { cleanup, render, screen } from "@testing-library/react";
 
 const authMock = vi.hoisted(() => vi.fn());
 vi.mock("@/auth", () => ({ auth: authMock }));
+const pathnameMock = vi.hoisted(() => vi.fn(() => "/issues/ZE-12"));
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  usePathname: pathnameMock,
+}));
 
 import AppNotFound from "./not-found";
 import IssueNotFound from "./issues/not-found";
@@ -48,10 +53,17 @@ describe("in-app 404 pages", () => {
     expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument();
   });
 
-  it("offers a signed-out visitor a sign-in link for an issue", async () => {
+  it("offers a signed-out visitor a sign-in link back to the issue (#457)", async () => {
     authMock.mockResolvedValue(null);
     render(await IssueNotFound());
-    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login?callbackUrl=%2Fissues%2FZE-12");
     expect(screen.getByText(/only visible after you sign in/)).toBeInTheDocument();
+  });
+
+  it("falls back to a plain sign-in link off an issue path", async () => {
+    authMock.mockResolvedValue(null);
+    pathnameMock.mockReturnValueOnce("/elsewhere");
+    render(await IssueNotFound());
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
   });
 });
