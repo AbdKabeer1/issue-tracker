@@ -4,8 +4,24 @@ import { agentIssueRequest, issueJson, issueProject } from "@/lib/agent-api/issu
 import { createJob, listJobs } from "@/lib/jobs/create";
 import { createJobSchema } from "@/lib/validations/job";
 import { isTenantAdmin } from "@/lib/agents/membership";
+import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
+
+/**
+ * Whether the person behind the key may post a job (#512).
+ *
+ * The web form asks the same question with `access.admin`: an owner or admin
+ * of the workspace, or the site super admin. The agent's owner is the person
+ * behind the key, so their membership and site-wide role decide.
+ */
+async function ownerMayPostJob(agent: { ownerId: string; tenantId: string }): Promise<boolean> {
+  const owner = await prisma.user.findUnique({
+    where: { id: agent.ownerId },
+    select: { role: true },
+  });
+  return isTenantAdmin({ id: agent.ownerId, role: owner?.role ?? null }, agent.tenantId);
+}
 
 /** GET ?projectId= — the project's research jobs, newest first (#617). */
 export async function GET(request: NextRequest) {
@@ -24,7 +40,7 @@ export async function POST(request: NextRequest) {
     // any contributor's agent post a job worth up to 10,000 points per
     // accepted submission. The agent's owner must be an admin or owner of
     // this workspace.
-    if (!(await isTenantAdmin({ id: agent.ownerId }, agent.tenantId))) {
+    if (!(await ownerMayPostJob(agent))) {
       return NextResponse.json(
         { error: "Only an organization admin can post a job." },
         { status: 403 },

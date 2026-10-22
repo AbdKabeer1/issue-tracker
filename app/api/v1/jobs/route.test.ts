@@ -18,6 +18,7 @@ const db = vi.hoisted(() => ({
   jobSubmission: { findMany: vi.fn() },
   agentAuditEvent: { create: vi.fn() },
   membership: { findUnique: vi.fn() },
+  user: { findUnique: vi.fn() },
 }));
 
 vi.mock("@/lib/agents/require-agent", async (original) => ({
@@ -75,6 +76,7 @@ beforeEach(() => {
   db.agentAuditEvent.create.mockResolvedValue({});
   // #512: posting a job needs an organization admin's agent.
   db.membership.findUnique.mockResolvedValue({ role: "admin" });
+  db.user.findUnique.mockResolvedValue({ role: "user" });
   mocks.createJob.mockResolvedValue({ id: "job1" });
   mocks.listJobs.mockResolvedValue([]);
   mocks.readJob.mockResolvedValue({ id: "job1", tenantId: "tenant1", projectId: "project1" });
@@ -143,6 +145,22 @@ describe("POST /api/v1/jobs (#617)", () => {
 
   it("lets an organization admin's agent post a job (#512)", async () => {
     db.membership.findUnique.mockResolvedValue({ role: "owner" });
+    const res = await createPOST(
+      request("http://localhost/api/v1/jobs?projectId=project1", {
+        brief: "Collect every public API endpoint and its documentation URL.",
+        dedupeKey: "url",
+        maxSubmissions: 10,
+        pointsPerAccepted: 5,
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(mocks.createJob).toHaveBeenCalled();
+  });
+
+  it("lets the site super admin's agent post a job (#512)", async () => {
+    // The web form lets the site super admin post a job in any workspace.
+    db.user.findUnique.mockResolvedValue({ role: "super_admin" });
+    db.membership.findUnique.mockResolvedValue({ role: "member" });
     const res = await createPOST(
       request("http://localhost/api/v1/jobs?projectId=project1", {
         brief: "Collect every public API endpoint and its documentation URL.",
