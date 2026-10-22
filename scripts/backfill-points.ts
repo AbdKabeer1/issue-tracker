@@ -4,8 +4,9 @@
  *   pnpm tsx scripts/backfill-points.ts --dry-run   # print what it would award
  *   pnpm tsx scripts/backfill-points.ts             # award it
  *
- * Operator-run against the database in DATABASE_URL. Safe to run again:
- * entries already in the ledger are skipped. It never seeds or resets.
+ * Operator-run against the database in DATABASE_URL. A production container
+ * runs the same award on server start. Safe to run again: entries already in
+ * the ledger are skipped. It never seeds or resets.
  */
 import { PrismaClient } from "@prisma/client";
 import { cleanEnv } from "../lib/env-clean";
