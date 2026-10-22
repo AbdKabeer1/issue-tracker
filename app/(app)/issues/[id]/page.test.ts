@@ -144,7 +144,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
     );
     // Find the header action bar container
     const headerActionBlockMatch = pageSourceFresh.match(
-      /<div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-9 print:hidden">([\s\S]*?)<\/div>/,
+      /<div className="flex shrink-0 flex-wrap items-center gap-2 self-start print:hidden">([\s\S]*?)<\/div>/,
     );
     expect(headerActionBlockMatch).toBeTruthy();
     const headerActionBlock = headerActionBlockMatch![1];
