@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useTransition } from "react";
+import { useActionState, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -52,36 +52,49 @@ export function QuickResolveButtons({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
   const handleResolve = (actionType: "approve" | "authorize") => {
+    setError(null);
     startTransition(async () => {
       const res = await quickResolveEscalationAction(escalationId, actionType);
       if (res.ok) {
         onResolved?.();
         router.refresh();
+      } else {
+        // A refused action (no permission, gone, already answered) must say
+        // so — otherwise the button just returns to idle as if it worked.
+        setError(res.error);
       }
     });
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Button
-        type="button"
-        disabled={isPending}
-        onClick={() => handleResolve("approve")}
-        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2.5 py-1.5"
-      >
-        {isPending ? "Unblocking…" : "✓ Approve & Unblock"}
-      </Button>
-      <Button
-        type="button"
-        variant="secondary"
-        disabled={isPending}
-        onClick={() => handleResolve("authorize")}
-        className="text-xs px-2.5 py-1.5"
-      >
-        Authorize Work
-      </Button>
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          disabled={isPending}
+          onClick={() => handleResolve("approve")}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2.5 py-1.5"
+        >
+          {isPending ? "Unblocking…" : "✓ Approve & Unblock"}
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={isPending}
+          onClick={() => handleResolve("authorize")}
+          className="text-xs px-2.5 py-1.5"
+        >
+          Authorize Work
+        </Button>
+      </div>
+      {error ? (
+        <p role="alert" className="text-sm text-red-700">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }
