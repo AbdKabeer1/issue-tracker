@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { switchActiveRoleAction } from "@/app/actions/auth";
@@ -129,8 +129,10 @@ describe("notification preview (#615)", () => {
     await user.click(bell);
     await user.click(bell);
     await screen.findByText("No notifications yet.");
-    resolve([{ id: "old", title: "Stale alert", createdAt: new Date(), readAt: null }]);
-    await waitFor(() => expect(screen.queryByText("Stale alert")).toBeNull());
+    await act(async () => {
+      resolve([{ id: "old", title: "Stale alert", createdAt: new Date(), readAt: null }]);
+    });
+    expect(screen.queryByText("Stale alert")).toBeNull();
   });
 });
 
