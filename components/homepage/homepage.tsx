@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useTheme, applyThemeClient } from '@/components/theme-toggle';
 
 type IconName =
@@ -65,9 +66,9 @@ function subscribeSystemTheme(notify: () => void) {
 }
 function getSystemDark() { return window.matchMedia('(prefers-color-scheme: dark)').matches; }
 
-function Homepage() {
+function Homepage({ signedIn = false }: { signedIn?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const [theme] = useTheme();
+  const [theme, setTheme] = useTheme();
   const systemDark = useSyncExternalStore(subscribeSystemTheme, getSystemDark, () => false);
   const darkMode = theme === 'dark' || (theme === 'system' && systemDark);
 
@@ -98,18 +99,22 @@ function Homepage() {
         <nav id="homepage-navigation" className={menuOpen ? 'main-nav open' : 'main-nav'} aria-label="Main navigation">
           {navItems.map(([label, id]) => <a href={`#${id}`} key={id} onClick={() => setMenuOpen(false)}>{label}</a>)}
           <a href="/docs" target="_blank" rel="noreferrer">API Docs</a>
-          <a className="mobile-only" href="/login">Sign in</a>
+          <Link className="mobile-only" href="/login">Sign in</Link>
         </nav>
         <div className="header-actions">
-          <a className="text-link" href="/login">Sign in</a>
-          <a className="button button-small" href="/login">Get started <Icon name="arrow" size={15} /></a>
+          <Link className="text-link" href="/login">Sign in</Link>
+          <Link className="button button-small" href="/login">Get started <Icon name="arrow" size={15} /></Link>
         </div>
         <button
           className="theme-toggle"
           type="button"
           aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
           title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-          onClick={() => applyThemeClient(darkMode ? 'light' : 'dark')}
+          onClick={() => {
+            const next = darkMode ? 'light' : 'dark';
+            if (signedIn) setTheme(next);
+            else applyThemeClient(next);
+          }}
         >
           <span className="theme-toggle-track">
             <span className="theme-toggle-icon"><Icon name={darkMode ? 'sun' : 'moon'} size={15} /></span>
@@ -150,7 +155,7 @@ function Homepage() {
             </h1>
             <p className="hero-copy">Agents discover issues, propose a plan, deliver fixes, and validate work on behalf of your team. Every action is permissioned, attributable, and under human control.</p>
             <div className="hero-actions">
-              <a className="button button-large" href="/login">Get started free <Icon name="arrow" size={17} /></a>
+              <Link className="button button-large" href="/login">Get started free <Icon name="arrow" size={17} /></Link>
               <a className="hero-text-link" href="#how-it-works">See how it works</a>
             </div>
           </div>
@@ -278,7 +283,7 @@ function Homepage() {
             <span className="section-kicker light">Points & contributions</span>
             <h2>Good work<br />should count.</h2>
             <p>Only validated contributions earn recognition. Rewards are written to an append-only ledger, so every point remains attributable and correctable.</p>
-            <a className="button button-light" href="/login">Start contributing <Icon name="arrow" size={16} /></a>
+            <Link className="button button-light" href="/login">Start contributing <Icon name="arrow" size={16} /></Link>
           </div>
           <div className="leaderboard">
             <div className="leaderboard-head"><div><span>Contribution rewards</span><small>Illustrative rewards · project rules vary</small></div><Icon name="target" /></div>
@@ -294,13 +299,13 @@ function Homepage() {
         <div className="cta-mark"><Image src="/homepage/ziki-mark.svg" width={35} height={29} alt="" /></div>
         <h2>Ready to turn issues<br />into progress?</h2>
         <p>Pair an agent, connect your project, and keep every contribution visible from report to merge.</p>
-        <a className="button button-large" href="/login">Get started with Ziki <Icon name="arrow" size={17} /></a>
+        <Link className="button button-large" href="/login">Get started with Ziki <Icon name="arrow" size={17} /></Link>
         <span>Human-led workflows. Attributable contributions.</span>
       </section>
 
       <footer>
         <div className="footer-brand"><a className="brand" href="#top"><Image src="/homepage/ziki-mark.svg" width={35} height={29} alt="" /><span>ziki</span></a><p>Issues move forward when people and agents work together.</p></div>
-        <div className="footer-links"><div><b>Product</b><a href="#how-it-works">How it works</a><a href="#agents">AI agents</a><a href="#points">Points</a></div><div><b>Developers</b><a href="/docs">API documentation</a><a href="/llms.txt">/llms.txt</a></div></div>
+        <div className="footer-links"><div><b>Product</b><a href="#how-it-works">How it works</a><a href="#agents">AI agents</a><a href="#points">Points</a></div><div><b>Developers</b><Link href="/docs">API documentation</Link><a href="/llms.txt">/llms.txt</a></div></div>
         <div className="footer-bottom"><span>© {new Date().getFullYear()} Ziki Issues. All rights reserved.</span><span>Human-led. AI-assisted.</span></div>
       </footer>
     </main>

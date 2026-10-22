@@ -5,10 +5,16 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import Homepage from "@/components/homepage/homepage";
 
 const applyTheme = vi.hoisted(() => vi.fn());
-vi.mock("@/components/theme-toggle", () => ({ useTheme: () => ["light"], applyThemeClient: applyTheme }));
+const useTheme = vi.hoisted(() => vi.fn(() => ["light", vi.fn(), false] as const));
+vi.mock("@/components/theme-toggle", () => ({ useTheme, applyThemeClient: applyTheme }));
 vi.mock("next/image", () => ({ default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => React.createElement("img", props) }));
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...props }: { href: string; children: React.ReactNode }) =>
+    React.createElement("a", { href, ...props }, children),
+}));
 
 beforeEach(() => {
+  useTheme.mockReturnValue(["light", vi.fn(), false]);
   vi.stubGlobal("React", React);
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
 });
@@ -45,5 +51,13 @@ describe("Public homepage", () => {
     render(<Homepage />);
     fireEvent.click(screen.getByRole("button", { name: "Switch to dark mode" }));
     expect(applyTheme).toHaveBeenCalledWith("dark");
+  });
+  it("saves a signed-in theme through the account preference", () => {
+    const setTheme = vi.fn();
+    useTheme.mockReturnValue(["light", setTheme, false]);
+    render(<Homepage signedIn />);
+    fireEvent.click(screen.getByRole("button", { name: "Switch to dark mode" }));
+    expect(setTheme).toHaveBeenCalledWith("dark");
+    expect(applyTheme).not.toHaveBeenCalled();
   });
 });

@@ -586,7 +586,9 @@
 :root:not([data-theme='light']) .ziki-homepage .workflow-card:hover { border-color: #3d5c91; box-shadow: 0 22px 55px rgba(0,0,0,.2); }
 :root:not([data-theme='light']) .ziki-homepage .route-chip,
 :root:not([data-theme='light']) .ziki-homepage .level-row span { background: #111f3d; border-color: #2b426e; color: #a9b8d3; }
-  :root:not([data-theme='light']) .ziki-homepage .main-nav { background: #0f1d39; border-color: #2b426e; }
+  @media (max-width: 720px) {
+    :root:not([data-theme='light']) .ziki-homepage .main-nav { background: #0f1d39; border-color: #2b426e; }
+  }
 }
 
 .ziki-homepage { min-height: 100vh; font-family: var(--font-dm-sans), sans-serif; }

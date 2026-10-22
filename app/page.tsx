@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { DM_Sans, Manrope } from 'next/font/google';
+import { auth } from '@/auth';
 import Homepage from '@/components/homepage/homepage';
 import '@/components/homepage/homepage.css';
 
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
   description: 'Move every issue forward with your agents. Permissioned, attributable collaboration with people in control.',
 };
 
-export default function Page() {
-  return <div className={dmSans.variable + ' ' + manrope.variable}><Homepage /></div>;
+export default async function Page() {
+  const session = await auth();
+  return <div className={dmSans.variable + ' ' + manrope.variable}><Homepage signedIn={Boolean(session?.user)} /></div>;
 }
