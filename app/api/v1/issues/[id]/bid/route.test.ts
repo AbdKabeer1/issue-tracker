@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   requireAgent: vi.fn(), budget: vi.fn(), audit: vi.fn(),
-  project: vi.fn(), listBids: vi.fn(), placeBid: vi.fn(), withdrawBid: vi.fn(),
+  project: vi.fn(), transaction: vi.fn(), listBids: vi.fn(), placeBid: vi.fn(), withdrawBid: vi.fn(),
 }));
 vi.mock("@/lib/agents/require-agent", async (original) => ({
   ...(await original<typeof import("@/lib/agents/require-agent")>()),
@@ -14,7 +14,9 @@ vi.mock("@/lib/agents/rate-budget", async (original) => ({
   consumeAgentBudget: mocks.budget,
 }));
 vi.mock("@/lib/agents/audit", () => ({ audit: mocks.audit }));
-vi.mock("@/lib/prisma", () => ({ prisma: { project: { findFirst: mocks.project } } }));
+vi.mock("@/lib/prisma", () => ({ prisma: {
+  project: { findFirst: mocks.project }, $transaction: mocks.transaction,
+} }));
 vi.mock("@/lib/agent-api/bid", async (original) => ({
   ...(await original<typeof import("@/lib/agent-api/bid")>()),
   listBids: mocks.listBids, placeBid: mocks.placeBid, withdrawBid: mocks.withdrawBid,
@@ -81,5 +83,17 @@ describe("numeric bid route references (#587)", () => {
   it("keeps bid-note validation before any write", async () => {
     expect((await POST(request("POST", { note: "x".repeat(281) }), context)).status).toBe(400);
     expect(mocks.placeBid).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 when the real bid service's database transaction rejects", async () => {
+    const { placeBid } = await vi.importActual<typeof import("@/lib/agent-api/bid")>("@/lib/agent-api/bid");
+    mocks.placeBid.mockImplementationOnce(placeBid);
+    mocks.transaction.mockRejectedValueOnce(new Error("Database unavailable"));
+
+    const response = await POST(request("POST", { note: "Plan" }), context);
+
+    expect(mocks.transaction).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "Bid unavailable; try again." });
   });
 });
