@@ -60,7 +60,6 @@ import {
 } from "@/lib/ticket-boosting";
 import { canAssignTicket, TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
 import { canChangeTicketStatus, TICKET_TRIAGE_ERRORS } from "@/lib/ticket-triage";
-import { publish } from "@/lib/agent-api/events";
 import {
   canEditTicket,
   formatEditSummary,
@@ -96,6 +95,7 @@ import {
   ACTION_RATE_LIMITS,
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
+import { publish } from "@/lib/agent-api/events";
 import { issueChangePayload, publishWebEvent } from "@/lib/agent-api/web-events";
 import { firstPullRequestLink, pullRequestAttachment } from "@/lib/github/pr-mention";
 import {
@@ -394,14 +394,19 @@ export async function createBugAction(
     bugId: bug.id,
   });
 
-  // #600: agents hear about issues people file, not only ones agents file.
+  // #600 / #534: agents hear about issues people file, published once with complete payload.
   // The issue already exists, so a failed event mustn't fail the report.
   try {
     await publishWebEvent(prisma, {
       bugId: bug.id,
       type: "issue.created",
       actorUserId: userId,
-      payload: { reporterId: userId },
+      payload: {
+        reporterId: userId,
+        projectId,
+        beneficiaryUserId: userId,
+        isReport,
+      },
     });
   } catch (error) {
     console.error("[issues] issue.created event failed", error);
@@ -417,26 +422,6 @@ export async function createBugAction(
     events.push({ ...actor, kind: "assignee_changed", fromUserId: null, toUserId: assigneeId });
   }
   if (events.length > 0) notifyLater(...events);
-
-  // Notify agent platform on feed (#764)
-  try {
-    if (prisma.agentEvent) {
-      await publish(prisma, {
-        tenantId,
-        type: isReport ? "report.created" : "issue.created",
-        payload: {
-          issueId: bug.id,
-          projectId,
-          beneficiaryUserId: userId,
-          isReport,
-        },
-        bugId: bug.id,
-      });
-    }
-  } catch (err) {
-    // Non-fatal if agent events / webhooks are not configured in test environment
-    console.warn("[createBugAction] could not publish agent event", err);
-  }
 
   revalidatePath("/issues");
   revalidatePath("/bugs");
