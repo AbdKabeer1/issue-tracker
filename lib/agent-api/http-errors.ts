@@ -8,6 +8,13 @@ const METHOD_NOT_ALLOWED = {
   message: "Method not allowed.",
 };
 
+/**
+ * Returns a standard JSON 404 response for unknown agent API routes.
+ * For HEAD requests, returns a bodyless 404 response with a JSON Content-Type header.
+ *
+ * @param request - Optional incoming HTTP request to inspect the HTTP method.
+ * @returns 404 HTTP Response with JSON error payload or null body for HEAD.
+ */
 export function apiNotFound(request?: Request): Response {
   if (request?.method === "HEAD") {
     return new Response(null, {
@@ -20,6 +27,12 @@ export function apiNotFound(request?: Request): Response {
   return Response.json(API_NOT_FOUND, { status: 404 });
 }
 
+/**
+ * Creates a route handler that returns a JSON 405 Method Not Allowed response.
+ *
+ * @param allowedMethods - The HTTP methods permitted for the route.
+ * @returns A route handler function returning a 405 HTTP Response.
+ */
 export function createMethodNotAllowed(allowedMethods: readonly string[]) {
   const allow = allowedMethods.join(", ");
 
@@ -36,6 +49,12 @@ export function createMethodNotAllowed(allowedMethods: readonly string[]) {
     );
 }
 
+/**
+ * Creates an OPTIONS route handler returning a 204 No Content response with Allow header.
+ *
+ * @param allowedMethods - The HTTP methods permitted for the route.
+ * @returns A route handler function returning a 204 HTTP Response.
+ */
 export function createOptions(allowedMethods: readonly string[]) {
   const allow = allowedMethods.join(", ");
 
