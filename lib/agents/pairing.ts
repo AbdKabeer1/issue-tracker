@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
 import { generateApiKey, generateDeviceCode, generateUserCode, hashSecret, normalizeUserCode } from "@/lib/agents/keys";
 import { tenantForOwner } from "@/lib/agents/membership";
-import { SELF_REGISTRATION_LEVELS } from "@/lib/agents/levels";
+import { DEFAULT_AGENT_LEVEL, SELF_REGISTRATION_LEVELS } from "@/lib/agents/levels";
 import { agentModelSchema, agentNameSchema, insertAgentWithKey, type Actor, type IssuedKey } from "@/lib/agents/registry";
 import { AGENT_LIMIT_MESSAGE, MAX_ACTIVE_AGENTS_PER_OWNER } from "@/lib/agents/registry-limits";
 import { logger } from "@/lib/logger";
@@ -24,15 +24,10 @@ import { AGENT_INSTRUCTIONS_MAX } from "@/lib/agent-messages";
 export const PAIRING_TTL_MS = 15 * 60 * 1000;
 /** How often the agent should poll, in seconds. */
 export const PAIRING_POLL_INTERVAL = 5;
-/**
- * The level a pairing gets when the agent asks for none. The owner can lower
- * this later; asking for dispatcher or merger is refused (#425, #451).
- */
-const PAIRED_AGENT_LEVEL = "contributor" satisfies AgentLevel;
-
 /** An agent may request specialist roles, not admin-only roles (#425). */
 function parseRequestedLevel(level: unknown): { ok: true; level: AgentLevel } | { ok: false; error: string } {
-  if (level == null || level === "") return { ok: true, level: PAIRED_AGENT_LEVEL };
+  // #426: pair with the same default the settings page uses when none is asked for.
+  if (level == null || level === "") return { ok: true, level: DEFAULT_AGENT_LEVEL };
   if (level === "dispatcher" || level === "merger") {
     return { ok: false, error: "Agents cannot register as dispatcher or merger. A tenant admin grants these roles later." };
   }
@@ -255,7 +250,7 @@ async function attachApprovedAgent(
       ownerUserId: pairing.ownerUserId,
       name: pairing.proposedName,
       model: pairing.proposedModel,
-      level: pairing.proposedLevel ?? PAIRED_AGENT_LEVEL,
+      level: pairing.proposedLevel ?? DEFAULT_AGENT_LEVEL,
       ...(pairing.instructions ? { instructions: pairing.instructions } : {}),
     },
     select: { id: true },
@@ -277,7 +272,7 @@ async function attachApprovedAgent(
     {
       name: pairing.proposedName,
       model: pairing.proposedModel,
-      level: pairing.proposedLevel ?? PAIRED_AGENT_LEVEL,
+      level: pairing.proposedLevel ?? DEFAULT_AGENT_LEVEL,
       via: "pairing",
       instructionsLength: pairing.instructions?.length ?? 0,
     },
@@ -348,7 +343,7 @@ export async function collectPairing(deviceCode: unknown, now = new Date()): Pro
       });
       return {
         status: "issued",
-        key: { agentId, name: pairing.proposedName, level: agent?.level ?? pairing.proposedLevel ?? PAIRED_AGENT_LEVEL, rawKey: key.raw, prefix: key.prefix },
+        key: { agentId, name: pairing.proposedName, level: agent?.level ?? pairing.proposedLevel ?? DEFAULT_AGENT_LEVEL, rawKey: key.raw, prefix: key.prefix },
         projectId,
       } as const;
     }
@@ -357,7 +352,7 @@ export async function collectPairing(deviceCode: unknown, now = new Date()): Pro
       ownerUserId,
       name: pairing.proposedName,
       model: pairing.proposedModel,
-      level: pairing.proposedLevel ?? PAIRED_AGENT_LEVEL,
+      level: pairing.proposedLevel ?? DEFAULT_AGENT_LEVEL,
       projectId,
     });
     await tx.agentPairing.update({ where: { id: pairing.id }, data: { agentId: key.agentId } });
@@ -365,7 +360,7 @@ export async function collectPairing(deviceCode: unknown, now = new Date()): Pro
       { agentId: key.agentId, tenantId },
       "agent.created",
       `agent:${key.agentId}`,
-      { name: key.name, model: pairing.proposedModel, level: pairing.proposedLevel ?? PAIRED_AGENT_LEVEL, projectId, via: "pairing" },
+      { name: key.name, model: pairing.proposedModel, level: pairing.proposedLevel ?? DEFAULT_AGENT_LEVEL, projectId, via: "pairing" },
       { actorUserId: ownerUserId, db: tx },
     );
     return { status: "issued", key, projectId } as const;

@@ -196,7 +196,7 @@ export default function DocsPage() {
   }'`}
             />
             <p className="text-xs text-slate-500 mt-1">
-              `level` is optional (default `contributor`): observer, contributor, triager, reviewer, or dispatcher. Merger is granted by a tenant admin.
+              `level` is optional (default `observer`): observer, contributor, triager, or reviewer. Dispatcher and merger are granted by a tenant admin.
             </p>
           </div>
 
