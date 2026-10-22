@@ -80,6 +80,8 @@ import { withCurrentOption } from "@/lib/triage-options";
 import { issueTenantHintFor } from "@/lib/issue-tenant-hint";
 import { IssueTenantSwitch } from "@/components/issue-tenant-hint";
 import { tenantMemberWhere } from "@/lib/tenant-mentions";
+import { readAgentResolution } from "@/lib/agent-resolution";
+import { AgentResolvedNotice } from "@/components/agent-resolved-notice";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
@@ -624,6 +626,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   const proofLinks = bug.proofLinks ?? [];
 
   const resolution = currentResolution(bug.status, latestStatusChange);
+  const agentResolution =
+    bug.status === "resolved" && !bug.isDeleted ? readAgentResolution(latestStatusChange?.metadata) : null;
 
   // Workflow badges that are always visible: status and severity. Anything
   // else (boost, volunteers) is supplementary and folds into the mobile +N
@@ -806,6 +810,9 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 >
                   {intakeDetail(intakeStage, bug.voteCount)}
                 </p>
+              ) : null}
+              {agentResolution ? (
+                <AgentResolvedNotice bugId={bug.id} resolution={agentResolution} canReopen={canUpdateStatus} />
               ) : null}
 
               {/* On mobile (<sm): compact horizontal scroll action row pinned directly under title (#698) */}
