@@ -36,7 +36,7 @@ describe("in-app 404 pages", () => {
   });
 
   it.each([
-    ["a person", PersonNotFound, "We couldn't find that person", "Go to team", "/team"],
+    ["a person", PersonNotFound, "We couldn't find that person", "Go to team", "/settings/team"],
     ["a project", ProjectNotFound, "We couldn't find that project", "Your projects", "/projects"],
     ["an agent", AgentNotFound, "We couldn't find that agent", "Your agents", "/settings/agents"],
     ["a redesign", RedesignNotFound, "We couldn't find that redesign proposal", "Escalations", "/escalations?type=Redesign"],
