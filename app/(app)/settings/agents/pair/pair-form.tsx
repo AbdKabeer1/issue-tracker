@@ -8,6 +8,7 @@ import type { AgentLevel } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import type { AgentProjectChoice } from "../create-agent-form";
 
 /**
@@ -20,12 +21,14 @@ export function PairForm({
   unknownCode,
   projects,
   activeProjectId,
+  instructionsMaxLength,
 }: {
   initialCode: string;
-  pending: { name: string; model: string | null; level: AgentLevel | null } | null;
+  pending: { name: string; model: string | null; level: AgentLevel | null; instructions: string | null } | null;
   unknownCode: boolean;
   projects: AgentProjectChoice[];
   activeProjectId: string | null;
+  instructionsMaxLength: number;
 }) {
   const [code, setCode] = useState(initialCode);
   const [result, action, pendingAction] = useActionState<PairingActionResult | undefined, FormData>(
@@ -53,7 +56,13 @@ export function PairForm({
     result?.ok && result.step === "confirm"
       ? result
       : pending && !result?.ok
-        ? { code: initialCode, name: pending.name, model: pending.model, level: pending.level ?? "contributor" }
+        ? {
+            code: initialCode,
+            name: pending.name,
+            model: pending.model,
+            level: pending.level ?? "contributor",
+            instructions: pending.instructions,
+          }
         : null;
   const error = result && !result.ok ? result.error : unknownCode && !result
     ? "That code doesn't match a waiting agent. It may have expired; ask the agent for a new one."
@@ -77,6 +86,24 @@ export function PairForm({
           Only approve an agent you asked to set itself up. It will act on Ziki in your name. Its key
           works only in the project you choose, and it is sent back to the agent.
         </p>
+        <div className="space-y-1">
+          <label htmlFor="pair-instructions" className="block text-sm font-medium text-slate-800">
+            Standing instructions <span className="font-normal text-slate-500">(optional)</span>
+          </label>
+          <Textarea
+            id="pair-instructions"
+            name="instructions"
+            rows={4}
+            maxLength={instructionsMaxLength}
+            defaultValue={confirm.instructions ?? ""}
+            aria-describedby="pair-instructions-help"
+          />
+          <p id="pair-instructions-help" className="text-xs text-slate-500">
+            {confirm.instructions
+              ? "Suggested by the agent. Edit or clear it. The agent gets only what you approve here."
+              : "A standing brief the agent reads from GET /api/v1/agents/me, such as focus areas. You can change it later in settings."}
+          </p>
+        </div>
         {projects.length === 0 ? (
           <p className="text-sm text-red-700" role="alert">
             This workspace has no projects yet, so the agent can&apos;t be given a key.

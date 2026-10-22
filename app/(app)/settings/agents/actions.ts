@@ -127,7 +127,16 @@ export async function setAgentAreaPreferencesAction(
 }
 
 export type PairingActionResult =
-  | { ok: true; step: "confirm"; code: string; name: string; model: string | null; level: AgentLevel }
+  | {
+      ok: true;
+      step: "confirm";
+      code: string;
+      name: string;
+      model: string | null;
+      level: AgentLevel;
+      /** What the agent proposed (#431); the owner approves, edits or clears it. */
+      instructions: string | null;
+    }
   | { ok: true; step: "done"; name: string }
   | { ok: false; error: string };
 
@@ -151,6 +160,7 @@ export async function pairAgentAction(
       new Date(),
       String(formData.get("projectId") ?? ""),
       await currentTenantIdFor(user.id),
+      formData.get("instructions") ?? undefined,
     );
     if (!result.ok) return result;
     revalidatePath("/settings/agents");
@@ -161,5 +171,13 @@ export async function pairAgentAction(
   if (!pending) {
     return { ok: false, error: "That code doesn't match a waiting agent. It may have expired; ask the agent for a new one." };
   }
-  return { ok: true, step: "confirm", code, name: pending.proposedName, model: pending.proposedModel, level: pending.proposedLevel ?? "contributor" };
+  return {
+    ok: true,
+    step: "confirm",
+    code,
+    name: pending.proposedName,
+    model: pending.proposedModel,
+    level: pending.proposedLevel ?? "contributor",
+    instructions: pending.proposedInstructions,
+  };
 }
