@@ -6,7 +6,7 @@ import { reviewerConflict, reviewerCreditConflict, type ReviewedBug } from "@/li
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { award } from "@/lib/points/award";
-import { confirmationReviewerSourceKey, CONFIRMATION_REVIEWER_POINTS, pointSourceKey, reviewerPointsAt } from "@/lib/points/rules";
+import { confirmationReviewerSourceKey, CONFIRMATION_REVIEWER_POINTS, DUPLICATE_MARKER_POINTS, duplicateMarkerSourceKey, pointSourceKey, reviewerPointsAt, TRIAGER_CLEAR_POINTS, triagerClearSourceKey } from "@/lib/points/rules";
 import {
   calculateReporterPoints,
   getProjectRewardConfig,
@@ -440,6 +440,26 @@ export async function submitValidation(
         (await isTriageCleared(tx, bug));
       const newlyConfirmed = confirmed && !wasConfirmed;
       const duplicate = await isDuplicate(tx, bug);
+      if (body.kind === "duplicate") {
+        // The duplicate pass pays its own role (#428): 1 for clearing a report
+        // as not a duplicate (triager level only), 5 for marking a real one.
+        const sourceKey =
+          body.verdict === "reject" && agent.level === "triager"
+            ? triagerClearSourceKey(bug.id, onBehalfOfUserId)
+            : body.verdict === "accept"
+              ? duplicateMarkerSourceKey(bug.id, onBehalfOfUserId)
+              : null;
+        if (sourceKey) {
+          await award(tx, {
+            tenantId: bug.tenantId,
+            userId: onBehalfOfUserId,
+            bugId: bug.id,
+            role: "triager",
+            points: body.verdict === "reject" ? TRIAGER_CLEAR_POINTS : DUPLICATE_MARKER_POINTS,
+            sourceKey,
+          });
+        }
+      }
       if (body.kind === "real" && body.verdict === "accept" && !duplicate) {
         const reviewers = await countedConfirmationReviewers(tx, bug);
         const index = reviewers.indexOf(onBehalfOfUserId);

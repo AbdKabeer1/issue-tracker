@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { revalidateIssue } from "@/lib/revalidate-issue";
 import { fieldError, fromZodError } from "@/lib/form-errors";
 import { redirect } from "next/navigation";
 import {
@@ -101,6 +102,7 @@ import {
   mentionedAgents,
   type MentionedAgent,
 } from "@/lib/agent-mentions";
+import { issuePath } from "@/lib/issue-ref";
 
 export type ActionResult = {
   error?: string;
@@ -436,7 +438,7 @@ export async function createBugAction(
 
   revalidatePath("/issues");
   revalidatePath("/bugs");
-  redirect(`/issues/${bug.id}`);
+  redirect(issuePath(bug.number));
 }
 
 /** Updates status (assignee/admin) and severity/assignee (admin) and logs activity. */
@@ -891,7 +893,7 @@ export async function updateBugAction(
   if (events.length > 0) notifyLater(...events);
 
   revalidatePath("/issues");
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
@@ -1117,7 +1119,7 @@ export async function editBugContentAction(
   }
 
   revalidatePath("/issues");
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
@@ -1210,7 +1212,7 @@ export async function editProofLinksAction(
   });
 
   revalidatePath("/issues");
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
@@ -1378,7 +1380,7 @@ export async function addCommentAction(
   notifyLater(...events);
 
   revalidatePath("/issues");
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true, commentId };
@@ -1484,7 +1486,7 @@ export async function toggleVoteAction(
   });
 
   revalidatePath("/issues");
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true, ...result };
@@ -1552,7 +1554,7 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
   }
 
   revalidatePath("/issues");
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   redirect("/issues");
@@ -1637,7 +1639,7 @@ export async function restoreBugAction(bugId: string): Promise<ActionResult> {
   }
 
   revalidatePath("/issues");
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
@@ -1708,7 +1710,7 @@ export async function toggleBoostBugAction(
   }
 
   revalidatePath("/issues");
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true, isBoosted: nextBoosted };
@@ -1833,7 +1835,7 @@ export async function selfAssignBugAction(
     toUserId: targetAssigneeId,
   });
 
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/issues");
   revalidatePath(`/bugs/${bugId}`);
   revalidatePath("/bugs");

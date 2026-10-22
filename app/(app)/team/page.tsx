@@ -53,11 +53,15 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
           user: { select: { id: true, name: true } },
         },
       }),
-      prisma.category.findMany({
-        where: { tenantId, isActive: true },
-        orderBy: { name: "asc" },
-        select: { id: true, name: true },
-      }),
+      // The active project's areas (#609), the ones issues are filed under,
+      // not its platforms.
+      context.activeProjectId
+        ? prisma.projectArea.findMany({
+            where: { projectId: context.activeProjectId },
+            orderBy: [{ name: "asc" }, { id: "asc" }],
+            select: { id: true, name: true },
+          })
+        : Promise.resolve([]),
     ]);
     const memberIds = members.map(({ user: member }) => member.id);
     const since = teamMetricSince();
@@ -116,7 +120,7 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
     const hasCapacity = (activeClaimMap.get(member.id) ?? 0) < maxActiveClaims;
     const matchingAgents = memberAgents.filter((agent) =>
       (!showOnlineOnly || agent.online) &&
-      (!selectedArea || agent.currentWork.some((issue) => issue.categoryId === selectedArea)),
+      (!selectedArea || agent.currentWork.some((issue) => issue.areaId === selectedArea)),
     );
     if (
       ((showOnlineOnly || selectedArea) && matchingAgents.length === 0) ||
@@ -147,13 +151,15 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
               <input type="checkbox" name="capacity" value="1" defaultChecked={showCapacityOnly} className="size-4 accent-teal-700" />
               Has capacity
             </label>
-            <label className="flex flex-col gap-1 text-sm text-slate-700">
-              Area
-              <select name="area" defaultValue={selectedArea} className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-900">
-                <option value="">All areas</option>
-                {areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
-              </select>
-            </label>
+            {areas.length > 0 ? (
+              <label className="flex flex-col gap-1 text-sm text-slate-700">
+                Area
+                <select name="area" defaultValue={selectedArea} className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-900">
+                  <option value="">All areas</option>
+                  {areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
+                </select>
+              </label>
+            ) : null}
             <button type="submit" className="min-h-10 rounded-md bg-teal-700 px-4 text-sm font-medium text-white hover:bg-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">
               Apply filters
             </button>

@@ -390,10 +390,18 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
     expect(awards).toEqual([
       {
         tenantId: "tenant_zedu",
+        userId: "tia",
+        bugId: "bug1",
+        role: "triager",
+        points: 1,
+        sourceKey: "triager-clear:bug1:tia",
+      },
+      {
+        tenantId: "tenant_zedu",
         userId: "rob",
         bugId: "bug1",
         role: "reviewer",
-        points: 5,
+        points: 3,
         sourceKey: "reviewer-confirm:bug1:rob",
       },
       {
@@ -401,7 +409,7 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
         userId: "sam",
         bugId: "bug1",
         role: "reviewer",
-        points: 3,
+        points: 1,
         sourceKey: "reviewer-confirm:bug1:sam",
       },
       {
@@ -417,8 +425,8 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
     // A third accept keeps it confirmed and pays that reviewer 1 point.
     const third = await submitValidation(reviewer("r3", "tia"), "bug1", acceptReal);
     expect(third).toMatchObject({ confirmed: true, newlyConfirmed: false });
-    expect(db.pointEntry.createMany).toHaveBeenCalledTimes(4);
-    expect(db.pointEntry.createMany.mock.calls[3][0].data[0]).toMatchObject({
+    expect(db.pointEntry.createMany).toHaveBeenCalledTimes(5);
+    expect(db.pointEntry.createMany.mock.calls[4][0].data[0]).toMatchObject({
       userId: "tia",
       role: "reviewer",
       points: 1,
@@ -454,7 +462,14 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
     await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal);
     const second = await submitValidation(reviewer("r2", "sam"), "bug1", acceptReal);
     expect(second).toMatchObject({ confirmed: true, newlyConfirmed: true });
-    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+    // No reporter award on a duplicate; the marker still earns the duplicate bounty.
+    const roles = db.pointEntry.createMany.mock.calls.map((call) => call[0].data[0].role);
+    expect(roles).not.toContain("reporter");
+    expect(db.pointEntry.createMany.mock.calls[0][0].data[0]).toMatchObject({
+      role: "triager",
+      points: 5,
+      sourceKey: "duplicate-marker:bug1:tia",
+    });
   });
 
   it("drops confirmation when an accepting validation is undone (#450)", async () => {
