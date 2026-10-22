@@ -1,9 +1,14 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import "@testing-library/jest-dom/vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { FirstAgentEmptyState } from "./first-agent-empty-state";
+
+afterEach(() => {
+  cleanup();
+});
 
 describe("FirstAgentEmptyState (#434)", () => {
   it("renders the prominent guided headline", () => {
