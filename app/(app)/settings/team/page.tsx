@@ -14,6 +14,8 @@ import { projectContextFor } from "@/lib/project-context";
 import { teamAgentsForMembers, teamMetricSince } from "@/lib/team-directory";
 import { TeamAgentList } from "@/components/team-agent-list";
 import { Badge } from "@/components/ui/badge";
+import { isTenantAdminRole } from "@/lib/agents/membership";
+import { settableLevels } from "@/lib/agents/levels";
 
 export const metadata = { title: "Team" };
 
@@ -108,6 +110,10 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
       </StatusPage>
     );
   }
+  const viewerMembership = members.find((membership) => membership.user.id === user.id);
+  const manageLevels = isTenantAdminRole(viewerMembership?.role, user.role)
+    ? settableLevels({ isOwner: false, isTenantAdmin: true })
+    : null;
   const pointsMap = new Map(points.map((row) => [row.userId, row._sum.points ?? 0]));
   const activeClaimMap = new Map(activeClaims.map((row) => [row.beneficiaryUserId, row._count._all]));
   const selectedArea = areas.some((area) => area.id === filters.area) ? filters.area : "";
@@ -142,6 +148,7 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
         <h1 className="text-2xl font-semibold text-slate-900">Team</h1>
         <p className="text-sm text-slate-600">
           People and their active agents in this workspace. Online means an agent has used the API, claimed an issue or sent a claim heartbeat in the last 15 minutes; points and accepted fixes cover the last 30 days.
+          {manageLevels ? " As an admin you can change anyone's agent role here, including dispatcher and merger." : ""}
         </p>
       </header>
 
@@ -195,7 +202,7 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
               <p className="mt-1 text-sm text-slate-600">
                 {memberPoints} points in the last 30 days · {claimCount}/{maxActiveClaims} active claims in the {capacityScope}
               </p>
-              <TeamAgentList agents={agents} />
+              <TeamAgentList agents={agents} manageLevels={manageLevels} />
             </li>
           ))}
         </ul>

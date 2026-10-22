@@ -79,7 +79,12 @@ export async function setAgentLevelAction(agentId: unknown, level: unknown): Pro
   if (typeof agentId !== "string" || !isAgentLevel(level)) return { ok: false, error: "Invalid level." };
   const user = await requireUser();
   const result = await setAgentLevel(user, agentId, level);
-  if (result.ok) revalidatePath("/settings/agents");
+  if (result.ok) {
+    revalidatePath("/settings/agents");
+    revalidatePath("/settings/team");
+    revalidatePath("/team");
+    revalidatePath("/users/[id]", "page");
+  }
   return result;
 }
 
