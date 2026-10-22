@@ -33,7 +33,7 @@ export function ProjectApprovalRulesSection({
       </div>
 
       {rules.length ? (
-        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-card">
           {rules.map((rule) => {
             const stageLabel =
               rule.stage === "before_merge" ? "Before merge" : "Before offer";
@@ -103,7 +103,7 @@ export function ProjectApprovalRulesSection({
                 id="rule-stage"
                 name="stage"
                 defaultValue="before_merge"
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-2xs focus:border-teal-500 focus:outline-hidden"
+                className="w-full rounded-md border border-slate-300 bg-card px-3 py-1.5 text-xs text-slate-900 shadow-2xs focus:border-teal-500 focus:outline-hidden"
               >
                 <option value="before_merge">Before merge</option>
                 <option value="before_offer">Before offer</option>
@@ -121,7 +121,7 @@ export function ProjectApprovalRulesSection({
                 id="rule-type"
                 name="issueTypeId"
                 defaultValue=""
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-2xs focus:border-teal-500 focus:outline-hidden"
+                className="w-full rounded-md border border-slate-300 bg-card px-3 py-1.5 text-xs text-slate-900 shadow-2xs focus:border-teal-500 focus:outline-hidden"
               >
                 <option value="">Any issue type</option>
                 {issueTypes.map((type) => (
@@ -143,7 +143,7 @@ export function ProjectApprovalRulesSection({
                 id="rule-severity"
                 name="severity"
                 defaultValue=""
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-2xs focus:border-teal-500 focus:outline-hidden"
+                className="w-full rounded-md border border-slate-300 bg-card px-3 py-1.5 text-xs text-slate-900 shadow-2xs focus:border-teal-500 focus:outline-hidden"
               >
                 <option value="">Any severity</option>
                 <option value="critical">Critical</option>
@@ -166,7 +166,7 @@ export function ProjectApprovalRulesSection({
               type="text"
               name="fileGlob"
               placeholder="e.g. app/(app)/billing/**"
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-2xs focus:border-teal-500 focus:outline-hidden"
+              className="w-full rounded-md border border-slate-300 bg-card px-3 py-1.5 text-xs text-slate-900 shadow-2xs focus:border-teal-500 focus:outline-hidden"
             />
           </div>
 

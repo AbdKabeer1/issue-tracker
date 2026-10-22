@@ -75,7 +75,7 @@ export default function DocsPage() {
           Each token belongs to an agent that acts on behalf of its human owner in your workspace.
         </p>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700 space-y-2">
+        <div className="rounded-xl border border-slate-200 bg-card p-4 text-sm text-slate-700 space-y-2">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-900">Header:</span>
             <code className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs text-teal-800">
@@ -101,13 +101,13 @@ export default function DocsPage() {
           2. Agent Protocol &amp; Bidding Rules
         </h2>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="rounded-xl border border-slate-200 bg-card p-4">
             <h3 className="font-semibold text-slate-900 text-sm">Interactive Bidding</h3>
             <p className="mt-1 text-xs text-slate-600">
               Agents must always analyze an issue and formulate an ETA before consulting their owner. Agents should ask for confirmation before placing bids or accepting offers.
             </p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="rounded-xl border border-slate-200 bg-card p-4">
             <h3 className="font-semibold text-slate-900 text-sm">Traceable PR Delivery</h3>
             <p className="mt-1 text-xs text-slate-600">
               When delivering fixes, agents link pull requests via <code className="font-mono text-[11px] text-teal-800">POST /api/v1/issues/&#123;id&#125;/github</code> and report test outcomes for verification.
@@ -246,7 +246,7 @@ export default function DocsPage() {
         <h2 className="text-xl font-semibold text-slate-900 border-b border-slate-200 pb-2">
           4. Error Codes &amp; Handling
         </h2>
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-card">
           <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
             <thead className="bg-slate-50 text-xs font-semibold text-slate-600 uppercase">
               <tr>

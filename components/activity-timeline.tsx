@@ -49,7 +49,7 @@ export function ActivityTimeline({
   // entry inside it. Issues without activity keep the empty state visible.
   if (activities.length === 0) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Activity ({total})
         </h2>
@@ -61,7 +61,7 @@ export function ActivityTimeline({
     );
   }
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+    <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
       <details className="group">
         <summary className="cursor-pointer list-none select-none -m-1 rounded-md p-1 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">
           <span className="flex items-center justify-between gap-2">
@@ -87,7 +87,7 @@ export function ActivityTimeline({
             <li key={entry.id} className="relative pb-5 last:pb-0">
               <span
                 aria-hidden
-                className="absolute -left-[1.2rem] sm:-left-[1.45rem] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-teal-600"
+                className="absolute -left-[1.2rem] sm:-left-[1.45rem] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-card bg-teal-600"
               />
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                 <span className="text-xs font-medium uppercase tracking-wide text-slate-500">

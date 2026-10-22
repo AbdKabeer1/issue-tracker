@@ -73,7 +73,7 @@ export default async function SettingsPage() {
         </Link>
         <h1 className="text-2xl font-semibold text-slate-900">Settings</h1>
       </div>
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Profile
         </h2>
@@ -85,19 +85,19 @@ export default async function SettingsPage() {
         </p>
       </section>
       {settings?.passwordHash ? (
-        <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Password</h2>
           <p className="mt-2 text-sm text-slate-600">Changing your password signs out all active sessions.</p>
           <ChangePasswordForm />
         </section>
       ) : null}
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Wallet
         </h2>
         <WalletAddressForm initialAddress={settings?.walletAddress ?? ""} />
       </section>
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Security
         </h2>
@@ -110,13 +110,13 @@ export default async function SettingsPage() {
           </Link>
         </p>
       </section>
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Appearance
         </h2>
         <ThemeSettings initialTheme={parseTheme(settings?.theme)} />
       </section>
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Email notifications
         </h2>
@@ -134,7 +134,7 @@ export default async function SettingsPage() {
         />
       </section>
       {isAgentPlatformEnabled() ? (
-        <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             Agents
           </h2>
@@ -163,7 +163,7 @@ export default async function SettingsPage() {
           </div>
         </section>
       ) : null}
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Team
         </h2>
@@ -176,7 +176,7 @@ export default async function SettingsPage() {
           </Link>
         </div>
       </section>
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           API &amp; Integrations
         </h2>
@@ -197,13 +197,13 @@ export default async function SettingsPage() {
           </a>
         </div>
       </section>
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Keyboard shortcuts
         </h2>
         <KeyboardShortcutSettings initialEnabled={settings?.keyboardShortcuts ?? true} />
       </section>
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Account data &amp; deletion
         </h2>

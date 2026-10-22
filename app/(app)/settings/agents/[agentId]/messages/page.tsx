@@ -35,7 +35,7 @@ export default async function AgentMessagesPage({ params }: { params: Promise<{ 
       </div>
 
       {thread.isOwner && !thread.agent.revoked ? (
-        <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="instructions-heading">
+        <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6" aria-labelledby="instructions-heading">
           <h2 id="instructions-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             Instructions
           </h2>
@@ -48,7 +48,7 @@ export default async function AgentMessagesPage({ params }: { params: Promise<{ 
         </section>
       ) : null}
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="thread-heading">
+      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6" aria-labelledby="thread-heading">
         <h2 id="thread-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Conversation
         </h2>

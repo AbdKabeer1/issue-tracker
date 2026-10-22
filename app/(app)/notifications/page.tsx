@@ -64,7 +64,7 @@ export default async function NotificationsPage({
       ) : null}
 
       {notifications.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
+        <div className="rounded-xl border border-dashed border-slate-300 bg-card p-6 text-sm text-slate-600">
           <p className="font-medium text-slate-900">No notifications yet</p>
           <p className="mt-1">
             New comments, mentions, assignments and status changes on issues
@@ -75,7 +75,7 @@ export default async function NotificationsPage({
           </Link>
         </div>
       ) : (
-        <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-card">
           {notifications.map((n) => {
             const unreadItem = !n.readAt;
             return (

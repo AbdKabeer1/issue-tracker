@@ -10,7 +10,7 @@ export function PointsLedger({ page, profileId, from, to, error }: {
   if (to) query.set("to", to);
   if (page?.nextCursor) query.set("cursor", page.nextCursor);
   return (
-    <section aria-labelledby="ledger-heading" className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+    <section aria-labelledby="ledger-heading" className="rounded-xl border border-slate-200 bg-card p-4 sm:p-5">
       <h2 id="ledger-heading" className="text-sm font-semibold text-slate-900">Points history</h2>
       <p className="mt-1 text-sm text-slate-600">Your workspace ledger, including corrections. Issue details appear only when available.</p>
       <form method="get" className="my-4 flex flex-wrap items-end gap-3">

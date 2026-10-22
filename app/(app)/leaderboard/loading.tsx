@@ -11,7 +11,7 @@ export default function LeaderboardLoading() {
           </div>
           <Bar className="h-5 w-16" />
         </div>
-        <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+        <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-card">
           {Array.from({ length: 10 }, (_, i) => (
             <div key={i} className="flex items-center gap-3 px-4 py-3">
               <Bar className="h-4 w-8" />

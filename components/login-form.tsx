@@ -150,7 +150,7 @@ export function LoginForm({
       {showGoogleButton ? (
         <>
           <div className="relative py-1 text-center text-xs text-slate-500">
-            <span className="bg-white px-2 relative z-10">or</span>
+            <span className="bg-card px-2 relative z-10">or</span>
             <span className="absolute inset-x-0 top-1/2 border-t border-slate-200" />
           </div>
           <Button

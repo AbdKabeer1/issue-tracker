@@ -8,14 +8,14 @@ export default function AdminCategoriesLoading() {
         <Bar className="h-7 w-56" />
         <Bar className="h-4 w-80 max-w-full" />
       </div>
-      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-6">
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-card p-6">
         <Bar className="h-4 w-32" />
         <div className="flex gap-3">
           <Bar className="h-9 w-64 max-w-full" />
           <Bar className="h-9 w-28 rounded-lg" />
         </div>
       </div>
-      <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+      <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-card">
         {Array.from({ length: 4 }, (_, i) => (
           <div key={i} className="flex items-center justify-between gap-4 px-6 py-4">
             <Bar className="h-4 w-40" />

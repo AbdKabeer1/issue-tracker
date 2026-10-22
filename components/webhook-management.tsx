@@ -149,7 +149,7 @@ export function WebhookManagement() {
     <div className="space-y-6">
       {subscriptions.length > 0 ? (
         <>
-          <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+          <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
               Subscriptions
             </h2>
@@ -236,7 +236,7 @@ export function WebhookManagement() {
         </div>
       )}
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Add webhook
         </h2>
@@ -337,7 +337,7 @@ export function WebhookManagement() {
               if (event.key === "Escape") setOpenSecretModal(false);
             }}
           />
-          <div className="relative bg-white rounded-2xl border border-slate-200 p-6 shadow-xl w-full max-w-md mx-4">
+          <div className="relative bg-card rounded-2xl border border-slate-200 p-6 shadow-xl w-full max-w-md mx-4">
             <h2 id="webhook-secret-title" className="text-lg font-semibold text-slate-900 mb-1">
               Signing secret
             </h2>

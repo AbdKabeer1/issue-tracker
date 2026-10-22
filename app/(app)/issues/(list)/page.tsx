@@ -566,13 +566,17 @@ export default async function BugsPage({
   // (#292): filter advice on an empty tracker sends people looking for a
   // filter that is not there. The extra count only runs when the page is
   // already empty, so a populated list pays nothing for it. It counts the
-  // project the list shows, so a new project in a busy workspace is "no
-  // issues yet" too, not "no issues match".
+  // same scope the list shows, including ?project=all, so an empty filter
+  // across a busy workspace is "no issues match", not "no issues yet".
   let isFirstRun = false;
   if (totalCount === 0 && !isDeletedView) {
     try {
       isFirstRun = (await prisma.bug.count({
-        where: { ...bugInTenant(tenantId), ...(projectId ? { projectId } : {}), isDeleted: false },
+        where: {
+          ...bugInTenant(tenantId),
+          ...(projectId && !allProjects ? { projectId } : {}),
+          isDeleted: false,
+        },
       })) === 0;
     } catch {
       isFirstRun = false;
@@ -647,7 +651,7 @@ export default async function BugsPage({
       <div className="min-w-0 flex-1 space-y-6">
       {gettingStarted ? <GettingStarted {...gettingStarted} /> : null}
       {activeProject?.goal ? (
-        <section aria-labelledby="project-goal-heading" className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+        <section aria-labelledby="project-goal-heading" className="rounded-xl border border-slate-200 bg-card px-4 py-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <h2 id="project-goal-heading" className="text-sm font-semibold text-slate-900">{activeProject.name} goal</h2>
             {membershipRole && isOrganizationAdmin(membershipRole, effectiveRole) ? (
@@ -695,7 +699,7 @@ export default async function BugsPage({
               href={isDeletedView ? "/issues" : "/issues?deleted=true"}
               className={`inline-flex h-9 items-center justify-center rounded-full px-3.5 text-sm font-medium border transition ${
                 isDeletedView
-                  ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                  ? "border-slate-300 bg-card text-slate-700 hover:bg-slate-50"
                   : "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
               }`}
             >
@@ -761,7 +765,7 @@ export default async function BugsPage({
           {milestoneSummary ? (
             <section
               aria-label={`Milestone ${milestoneSummary.title}`}
-              className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5"
+              className="rounded-xl border border-slate-200 bg-card p-4 sm:p-5"
             >
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-base font-semibold text-slate-900">{milestoneSummary.title}</h2>
@@ -782,7 +786,7 @@ export default async function BugsPage({
           {isFirstRun ? (
             <FirstRunWelcome isAdmin={canDelete} hasTenant={Boolean(tenantId)} />
           ) : bugs.length === 0 ? (
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-5">
+            <div className="rounded-xl border border-slate-200 bg-card px-4 py-5">
               <p className="text-sm font-medium text-slate-800">
                 {isWatchingView && !qParam && !statusParam && !severityParam && !tagsParam && !selectedPlatform && !selectedMilestone
                   ? "You're not watching any issues."
@@ -804,7 +808,7 @@ export default async function BugsPage({
             </div>
           ) : (
             <>
-              <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-card">
                 {bugs.map((bug) => {
                   const userVote =
                     Array.isArray(bug.votes) && bug.votes.length > 0
@@ -820,7 +824,7 @@ export default async function BugsPage({
                   const pills: RowPill[] = [
                     {
                       name: severityLabels[bug.severity],
-                      className: "border-slate-200 bg-white text-slate-700",
+                      className: "border-slate-200 bg-card text-slate-700",
                       content: (
                         <>
                           <span
@@ -1091,7 +1095,7 @@ function FirstRunWelcome({
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white px-4 py-5">
+    <section className="rounded-xl border border-slate-200 bg-card px-4 py-5">
       <h2 className="text-lg font-semibold text-slate-900">No issues yet</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-slate-600">
         This is where reported issues will appear. A good report says what you

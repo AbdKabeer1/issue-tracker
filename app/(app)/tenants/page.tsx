@@ -25,7 +25,7 @@ import { JoinWorkspaceForm } from "./join-workspace-form";
 /* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Workspaces" };
 
-const card = "rounded-xl border border-slate-200 bg-white p-4 sm:p-6";
+const card = "rounded-xl border border-slate-200 bg-card p-4 sm:p-6";
 
 /**
  * Where a person picks the tenant to work in, creates one, or accepts an
@@ -106,7 +106,7 @@ export default async function TenantsPage({
       ) : null}
 
       {listedInvites.length > 0 ? (
-        <section aria-labelledby="your-invites" className="overflow-hidden rounded-xl border border-teal-200 bg-white">
+        <section aria-labelledby="your-invites" className="overflow-hidden rounded-xl border border-teal-200 bg-card">
           <h2
             id="your-invites"
             className="border-b border-teal-200 bg-teal-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6"
@@ -130,7 +130,7 @@ export default async function TenantsPage({
       ) : null}
 
       {joinRequests.length > 0 ? (
-        <section aria-labelledby="your-join-requests" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <section aria-labelledby="your-join-requests" className="overflow-hidden rounded-xl border border-slate-200 bg-card">
           <h2 id="your-join-requests" className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6">
             Your workspace requests
           </h2>
@@ -181,7 +181,7 @@ export default async function TenantsPage({
             </p>
             <CreateTenantForm nameMax={TENANT_NAME_MAX} />
           </section>
-          <section aria-labelledby="discover-workspaces" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <section aria-labelledby="discover-workspaces" className="overflow-hidden rounded-xl border border-slate-200 bg-card">
             <h2 id="discover-workspaces" className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6">
               Discover workspaces
             </h2>
@@ -206,7 +206,7 @@ export default async function TenantsPage({
       ) : null}
 
       {hasTenants ? (
-        <section aria-labelledby="your-tenants" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <section aria-labelledby="your-tenants" className="overflow-hidden rounded-xl border border-slate-200 bg-card">
           <h2
             id="your-tenants"
             className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6"
@@ -250,7 +250,7 @@ export default async function TenantsPage({
       {archivedTenants.length > 0 ? (
         <section
           aria-labelledby="archived-tenants"
-          className="overflow-hidden rounded-xl border border-slate-200 bg-white"
+          className="overflow-hidden rounded-xl border border-slate-200 bg-card"
         >
           <h2
             id="archived-tenants"

@@ -96,7 +96,7 @@ export default async function NewBugPage() {
           can triage quickly.
         </p>
       </div>
-      <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <div className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <CreateIssueForm
           users={users}
           assigneeUsers={assigneeUsers}

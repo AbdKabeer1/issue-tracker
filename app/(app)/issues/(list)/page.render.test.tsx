@@ -134,6 +134,24 @@ describe("issue list layout", () => {
     expect(firstRunCount?.[0].where).toMatchObject({ tenantId: "tenant-acme", projectId: "project-acme" });
   });
 
+  it("does not call a workspace-wide empty filter a first run", async () => {
+    // The active project is empty, but other projects in the workspace are not.
+    // ?project=all must count those, or the page hides the filters.
+    count.mockImplementation(async (args: { where?: { projectId?: unknown; OR?: unknown } }) => {
+      if (args?.where?.OR) return 0;
+      if (args?.where?.projectId) return 0;
+      return 4;
+    });
+    findMany.mockResolvedValue([]);
+    const html = await renderList({ project: "all", q: "nothing" });
+    expect(html).toContain("No issues match these filters.");
+    expect(html).not.toContain("No issues yet");
+    const firstRunCount = count.mock.calls.find(
+      ([args]) => args?.where?.isDeleted === false && !args?.where?.OR && !args?.where?.status,
+    );
+    expect(firstRunCount?.[0].where.projectId).toBeUndefined();
+  });
+
   it("says no issues match when the project has issues but the filters hide them", async () => {
     count.mockImplementation(async (args: { where?: { severity?: unknown } }) => (args?.where?.severity ? 0 : 3));
     findMany.mockResolvedValue([]);

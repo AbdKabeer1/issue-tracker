@@ -89,7 +89,7 @@ export function BulkCheckbox({ id, title }: { id: string; title: string }) {
 }
 
 const selectClass =
-  "rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500";
+  "rounded-lg border border-slate-300 bg-card px-2.5 py-1.5 text-sm text-slate-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500";
 
 function BulkBar({
   selected,
@@ -148,7 +148,7 @@ function BulkBar({
       <div
         role="region"
         aria-label="Bulk actions result"
-        className="sticky bottom-3 z-30 mt-3 rounded-xl border border-slate-300 bg-white p-3 shadow-lg"
+        className="sticky bottom-3 z-30 mt-3 rounded-xl border border-slate-300 bg-card p-3 shadow-lg"
       >
         <p className="text-sm text-slate-700 empty:hidden" role="status" aria-live="polite">
           {message}
@@ -172,7 +172,7 @@ function BulkBar({
     <div
       role="region"
       aria-label="Bulk actions"
-      className="sticky bottom-3 z-30 mt-3 rounded-xl border border-slate-300 bg-white p-3 shadow-lg"
+      className="sticky bottom-3 z-30 mt-3 rounded-xl border border-slate-300 bg-card p-3 shadow-lg"
     >
       <div className="flex flex-wrap items-center gap-2">
         <strong className="text-sm font-semibold text-slate-900">

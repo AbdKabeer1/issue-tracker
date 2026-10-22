@@ -42,7 +42,7 @@ export default async function PairAgentPage({
         </Link>
         <h1 className="text-2xl font-semibold text-slate-900">Approve an agent</h1>
       </div>
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <p className="text-sm text-slate-600">
           Your agent asked to join this account. Check its name and approve it. You have to be signed
           in. The request lasts 15 minutes and works once. The key goes back to the agent, not to this page.

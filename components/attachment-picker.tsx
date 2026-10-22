@@ -121,7 +121,7 @@ export function AttachmentPicker({
       <div className="flex flex-wrap items-center gap-2">
         <label
           htmlFor={inputId}
-          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-teal-600 ${
+          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-card px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-teal-600 ${
             disabled || full ? "pointer-events-none opacity-50" : ""
           }`}
         >

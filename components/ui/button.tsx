@@ -6,12 +6,12 @@ const variants: Record<Variant, string> = {
   primary:
     "bg-teal-700 text-white hover:bg-teal-800 focus-visible:ring-teal-600",
   secondary:
-    "bg-white text-slate-800 border border-slate-300 hover:bg-slate-50 focus-visible:ring-slate-400",
+    "bg-card text-slate-800 border border-slate-300 hover:bg-slate-50 focus-visible:ring-slate-400",
   ghost: "bg-transparent text-slate-700 hover:bg-slate-100",
   danger:
     "bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600",
   "danger-secondary":
-    "bg-white text-red-600 border border-red-200 hover:bg-red-50 hover:border-red-300 focus-visible:ring-red-500",
+    "bg-card text-red-600 border border-red-200 hover:bg-red-50 hover:border-red-300 focus-visible:ring-red-500",
 };
 
 export function Button({

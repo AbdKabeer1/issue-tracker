@@ -239,16 +239,16 @@ export async function tenantRankFor(
       type RankRow = { rank: number | bigint; total: number | bigint };
       const rows = await (db as PrismaClient).$queryRaw<RankRow[]>`
         WITH totals AS (
-          SELECT u."id", u."name",
+          SELECT u."id",
                  COALESCE(SUM(pe."points"), 0)::int AS points,
                  COUNT(CASE WHEN pe."role" = 'solver' AND pe."points" > 0 AND pe."correctedAt" IS NULL THEN 1 END)::int AS solved
           FROM "User" u
           INNER JOIN "Membership" m ON m."userId" = u."id" AND m."tenantId" = ${tenantId}
           INNER JOIN "PointEntry" pe ON pe."userId" = u."id" AND pe."tenantId" = ${tenantId}
-          GROUP BY u."id", u."name"
+          GROUP BY u."id"
         ), numbered AS (
           SELECT "id",
-                 RANK() OVER (ORDER BY points DESC, solved DESC, "name" ASC) AS rank,
+                 RANK() OVER (ORDER BY points DESC, solved DESC) AS rank,
                  COUNT(*) OVER () AS total
           FROM totals
         )

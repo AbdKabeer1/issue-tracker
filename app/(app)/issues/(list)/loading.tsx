@@ -16,7 +16,7 @@ export default function AppLoading() {
         <div className="h-9 w-28 rounded-lg bg-slate-200 motion-safe:animate-pulse" />
       </div>
       <div className="h-12 rounded-lg bg-slate-100 motion-safe:animate-pulse" aria-hidden="true" />
-      <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white" aria-hidden="true">
+      <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-card" aria-hidden="true">
         {Array.from({ length: 5 }, (_, i) => (
           <li key={i} className="flex items-center gap-4 p-4">
             <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-100 motion-safe:animate-pulse" />

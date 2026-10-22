@@ -14,7 +14,7 @@ export function ProjectRewardRulesDisplay({
   const guidelines = rewardConfig?.guidelines;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+    <div className="rounded-xl border border-slate-200 bg-card p-4 sm:p-5">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">
           Reward & Points Rules

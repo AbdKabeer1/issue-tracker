@@ -737,7 +737,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       ) : null}
 
       {bug._count.duplicates > 0 ? (
-        <section aria-label="Duplicates of this issue" className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+        <section aria-label="Duplicates of this issue" className="rounded-xl border border-slate-200 bg-card p-4 sm:p-5">
           <h2 className="text-sm font-semibold text-slate-900">
             {bug._count.duplicates} duplicate{bug._count.duplicates === 1 ? "" : "s"} of this issue
           </h2>
@@ -771,7 +771,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           <h2 className="text-lg font-semibold text-slate-900">Compare redesign proposals</h2>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             {redesignProposals.map((proposal) => (
-              <article key={proposal.id} className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+              <article key={proposal.id} className="space-y-3 rounded-lg border border-slate-200 bg-card p-4">
                 <div className="flex items-start justify-between gap-3">
                   <h3 className="font-semibold">{proposal.title}</h3>
                   <span className="shrink-0 text-xs capitalize text-slate-600">{proposal.status}</span>
@@ -1022,7 +1022,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       </EditableIssueDescription>
 
       {issueAttachments.length > 0 ? (
-        <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             Attachments
           </h2>
@@ -1090,7 +1090,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
 
       <section
         id="conversation"
-        className="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-4 sm:p-6"
+        className="scroll-mt-24 rounded-xl border border-slate-200 bg-card p-4 sm:p-6"
       >
         <span id="comments" className="sr-only" aria-hidden="true" />
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">

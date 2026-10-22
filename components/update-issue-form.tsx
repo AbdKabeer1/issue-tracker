@@ -33,7 +33,7 @@ const sameDraft = (a: Draft, b: Draft) =>
   (Object.keys(a) as (keyof Draft)[]).every((k) => a[k] === b[k]);
 
 const selectClass =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500";
+  "w-full rounded-lg border border-slate-300 bg-card px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500";
 
 export function UpdateIssueForm({
   bugId,
@@ -124,7 +124,7 @@ export function UpdateIssueForm({
 
   return (
     <form
-      className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
+      className="space-y-3 rounded-xl border border-slate-200 bg-card p-4"
       /* Submitted by hand rather than through the `action` prop: React 19
          resets a form after an action runs, which wiped the selects back to
          their pre-save value even though state held the new one. The fields

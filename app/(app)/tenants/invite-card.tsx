@@ -51,7 +51,7 @@ export function InviteCard({
 
   if (alreadyMember) {
     return (
-      <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="space-y-3 rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <p className="text-sm text-slate-700">
           You&apos;re already a member of <strong className="text-slate-900">{tenant.name}</strong>.
         </p>

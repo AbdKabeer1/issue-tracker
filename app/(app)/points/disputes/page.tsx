@@ -85,7 +85,7 @@ export default async function PointsDisputesPage() {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-semibold text-slate-900">Points disputes</h1>
-        <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+        <p className="rounded-xl border border-slate-200 bg-card p-6 text-sm text-slate-600">
           You&apos;re not a member of a workspace yet, so there are no points to dispute.
         </p>
       </div>
@@ -117,7 +117,7 @@ export default async function PointsDisputesPage() {
       </div>
 
       {admin ? (
-        <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <section className="space-y-3 rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
           <h2 className="text-lg font-semibold text-slate-900">Credit missing awards</h2>
           <p className="text-sm text-slate-600">
             Solver points are written when an assigned issue is marked resolved. Reporter points
@@ -134,11 +134,11 @@ export default async function PointsDisputesPage() {
             Open queue <span className="text-sm font-normal text-slate-500">({queue.length})</span>
           </h2>
           {queue.length === 0 ? (
-            <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+            <p className="rounded-xl border border-slate-200 bg-card p-6 text-sm text-slate-600">
               No open disputes.
             </p>
           ) : (
-            <ol className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+            <ol className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-card">
               {queue.map((dispute) => (
                 <DisputeCard key={dispute.id} dispute={dispute}>
                   <DisputeControls dispute={dispute} />
@@ -152,11 +152,11 @@ export default async function PointsDisputesPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-slate-900">Your disputes</h2>
         {mine.length === 0 ? (
-          <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+          <p className="rounded-xl border border-slate-200 bg-card p-6 text-sm text-slate-600">
             You haven&apos;t disputed anything yet.
           </p>
         ) : (
-          <ol className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+          <ol className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-card">
             {mine.map((dispute) => (
               <DisputeCard key={dispute.id} dispute={dispute} />
             ))}
@@ -167,11 +167,11 @@ export default async function PointsDisputesPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-slate-900">Your points entries</h2>
         {entries.length === 0 ? (
-          <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+          <p className="rounded-xl border border-slate-200 bg-card p-6 text-sm text-slate-600">
             No points yet. Resolve an assigned issue to earn the first ones.
           </p>
         ) : (
-          <ol className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+          <ol className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-card">
             {entries.map((entry) => (
               <li key={entry.id} className="flex flex-wrap items-center gap-2 px-4 py-3">
                 <span className="w-16 text-right text-sm font-semibold tabular-nums text-slate-900">

@@ -52,12 +52,12 @@ export default async function LeaderboardPage({
       </div>
 
       {rows.length === 0 ? (
-        <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+        <p className="rounded-xl border border-slate-200 bg-card p-6 text-sm text-slate-600">
           No points yet. Resolve an assigned issue to earn the first ones.
         </p>
       ) : (
         <div className="space-y-4">
-          <ol className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+          <ol className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-card">
             {rows.map((row) => (
               <li
                 key={row.userId}
@@ -90,7 +90,7 @@ export default async function LeaderboardPage({
                 {page > 1 ? (
                   <Link
                     href={leaderboardHref(page - 1, limit)}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className="rounded-lg border border-slate-300 bg-card px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
                     Previous
                   </Link>
@@ -105,7 +105,7 @@ export default async function LeaderboardPage({
                 {page < totalPages ? (
                   <Link
                     href={leaderboardHref(page + 1, limit)}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className="rounded-lg border border-slate-300 bg-card px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
                     Next
                   </Link>

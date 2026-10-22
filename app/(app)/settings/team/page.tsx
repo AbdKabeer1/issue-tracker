@@ -152,7 +152,7 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
         </p>
       </header>
 
-      <form action="/settings/team" method="get" className="rounded-xl border border-slate-200 bg-white p-4">
+      <form action="/settings/team" method="get" className="rounded-xl border border-slate-200 bg-card p-4">
         <fieldset>
           <legend className="text-sm font-semibold text-slate-900">Filter team</legend>
           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
@@ -167,7 +167,7 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
             {areas.length > 0 ? (
               <label className="flex flex-col gap-1 text-sm text-slate-700">
                 Area
-                <select name="area" defaultValue={selectedArea} className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-900">
+                <select name="area" defaultValue={selectedArea} className="min-h-10 rounded-md border border-slate-300 bg-card px-3 text-slate-900">
                   <option value="">All areas</option>
                   {areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
                 </select>
@@ -184,7 +184,7 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
       </form>
 
       {visibleMembers.length === 0 ? (
-        <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+        <p className="rounded-xl border border-slate-200 bg-card p-6 text-sm text-slate-600">
           {members.length === 0
             ? "This workspace has no members yet."
             : "No team members match these filters."}
@@ -192,7 +192,7 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
       ) : (
         <ul aria-label="Workspace members" className="grid gap-4 md:grid-cols-2">
           {visibleMembers.map(({ user: member, role, agents, points: memberPoints, activeClaims: claimCount }) => (
-            <li key={member.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+            <li key={member.id} className="min-w-0 rounded-xl border border-slate-200 bg-card p-4 sm:p-5">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="min-w-0 break-words text-lg font-semibold text-slate-900">
                   <Link href={`/users/${member.id}`} className="hover:text-teal-800 hover:underline">{member.name}</Link>

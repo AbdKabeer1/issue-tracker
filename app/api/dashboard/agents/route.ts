@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { resolveSessionUserId } from "@/lib/session-user";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { loadOwnAgents } from "@/lib/dashboard-overview";
 
@@ -11,15 +11,15 @@ import { loadOwnAgents } from "@/lib/dashboard-overview";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const session = await resolveSessionUserId();
+  if ("error" in session) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
   try {
-    const tenantId = await currentTenantIdFor(session.user.id);
+    const tenantId = await currentTenantIdFor(session.userId);
     const agents = await loadOwnAgents({
-      userId: session.user.id,
+      userId: session.userId,
       tenantId,
     });
     return NextResponse.json(

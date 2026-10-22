@@ -544,7 +544,7 @@ export const MarkdownEditor = forwardRef<
           The shell must not clip. Rounded corners are preserved by clipping
           the toolbar row itself, which is the only child that needs it. */}
       <div
-        className={`rounded-lg border bg-white shadow-sm focus-within:border-teal-600 focus-within:ring-2 focus-within:ring-teal-600/20 ${
+        className={`rounded-lg border bg-card shadow-sm focus-within:border-teal-600 focus-within:ring-2 focus-within:ring-teal-600/20 ${
           dragging ? "border-teal-600 ring-2 ring-teal-600/30" : "border-slate-300"
         }`}
         onDragOver={handleDragOver}
@@ -787,7 +787,7 @@ function TabButton({
       onClick={onClick}
       className={`inline-flex shrink-0 items-center gap-1 rounded px-2.5 py-1.5 sm:px-2 sm:py-1 text-xs font-medium transition ${
         active
-          ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-300"
+          ? "bg-card text-slate-900 shadow-sm ring-1 ring-slate-300"
           : "text-slate-600 hover:text-slate-900"
       } disabled:cursor-not-allowed disabled:opacity-50`}
     >
@@ -814,7 +814,7 @@ function MentionList({
     <ul
       id={listboxId}
       role="listbox"
-      className="absolute left-0 top-full z-20 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+      className="absolute left-0 top-full z-20 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-card py-1 shadow-lg"
     >
       {suggestions.map((user, index) => {
         const active = index === activeIndex;

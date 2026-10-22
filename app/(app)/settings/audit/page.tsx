@@ -138,13 +138,13 @@ export default async function AuditLogPage({ searchParams }: Props) {
         </p>
       </div>
 
-      <form method="get" className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4">
+      <form method="get" className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-card p-4">
         <label className="text-sm">
           <span className="block font-medium text-slate-700">Agent</span>
           <select
             name="agent"
             defaultValue={agentId ?? ""}
-            className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            className="mt-1 rounded-lg border border-slate-300 bg-card px-3 py-2 text-sm"
           >
             <option value="">All agents</option>
             {agents.map((agent) => (
@@ -186,7 +186,7 @@ export default async function AuditLogPage({ searchParams }: Props) {
         ) : null}
       </form>
 
-      <section className="rounded-xl border border-slate-200 bg-white px-4">
+      <section className="rounded-xl border border-slate-200 bg-card px-4">
         <AuditLog
           rows={rows}
           isTenantAdmin={access.kind === "all"}

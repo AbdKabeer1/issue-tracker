@@ -111,7 +111,7 @@ function AreaRow({ area, projectSlug }: { area: ProjectArea; projectSlug: string
 
 export function ProjectAreasManager({ projectSlug, areas }: { projectSlug: string; areas: ProjectArea[] }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="project-areas-heading">
+    <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6" aria-labelledby="project-areas-heading">
       <div className="space-y-1">
         <h2 id="project-areas-heading" className="text-base font-semibold text-slate-900">Project areas</h2>
         <p className="text-sm text-slate-600">Group work inside this project, for example frontend or backend.</p>

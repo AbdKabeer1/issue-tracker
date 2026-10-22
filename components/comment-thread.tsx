@@ -284,7 +284,7 @@ function CommentItem({
             {comment.agentId || comment.agent ? <CommentConfidence metadata={comment.metadata} /> : null}
 
             {comment.parent ? (
-              <p className="mt-2 rounded-md bg-white/80 px-2.5 py-1.5 text-xs text-slate-500 break-words">
+              <p className="mt-2 rounded-md bg-card/80 px-2.5 py-1.5 text-xs text-slate-500 break-words">
                 Replying to{" "}
                 <span className="font-medium text-slate-700">
                   {comment.parent.author.name}

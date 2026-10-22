@@ -77,7 +77,7 @@ export function EditableProofLinks({ bugId, initialLinks, linkedPullRequestUrl, 
   };
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+    <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           GitHub PR

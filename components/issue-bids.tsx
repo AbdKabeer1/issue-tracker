@@ -18,7 +18,7 @@ export function IssueBids({ bids, canAward }: { bids: OpenBid[]; canAward: boole
   if (bids.length === 0) return null;
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="bids-heading">
+    <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6" aria-labelledby="bids-heading">
       <h2 id="bids-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
         Bids
       </h2>

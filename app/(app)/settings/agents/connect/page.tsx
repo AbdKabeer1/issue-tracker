@@ -80,7 +80,7 @@ export default async function ConnectAgentPage() {
       </div>
 
       {!tenantId ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
+        <div className="rounded-xl border border-dashed border-slate-300 bg-card p-6 text-sm text-slate-600">
           <p>
             You are not currently in a workspace. Join or create a workspace before you can connect an agent.
           </p>

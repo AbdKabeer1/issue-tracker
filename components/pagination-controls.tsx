@@ -34,7 +34,7 @@ export function PaginationControls({
   return (
     <nav
       aria-label="Pagination"
-      className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="text-xs text-slate-600">
         Showing <span className="font-medium text-slate-900">{from}</span>–
@@ -49,7 +49,7 @@ export function PaginationControls({
           {prevUrl ? (
             <Link
               href={prevUrl}
-              className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none"
+              className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-card px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none"
             >
               Previous
             </Link>
@@ -90,7 +90,7 @@ export function PaginationControls({
                 <Link
                   key={item}
                   href={url}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-card text-xs font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none"
                 >
                   {item}
                 </Link>
@@ -101,7 +101,7 @@ export function PaginationControls({
           {nextUrl ? (
             <Link
               href={nextUrl}
-              className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none"
+              className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-card px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none"
             >
               Next
             </Link>

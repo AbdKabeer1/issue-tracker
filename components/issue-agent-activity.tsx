@@ -118,7 +118,7 @@ export function IssueAgentActivity({ decisions }: { decisions: ReadonlyArray<Age
   return (
     <section
       aria-label="Agent decisions"
-      className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6"
+      className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6"
     >
       <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
         Agent decisions
@@ -128,7 +128,7 @@ export function IssueAgentActivity({ decisions }: { decisions: ReadonlyArray<Age
           <li key={decision.id} className="relative pb-5 last:pb-0">
             <span
               aria-hidden
-              className="absolute -left-[1.2rem] sm:-left-[1.45rem] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-teal-600"
+              className="absolute -left-[1.2rem] sm:-left-[1.45rem] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-card bg-teal-600"
             />
             <LocalTime className="text-xs text-slate-500" date={decision.at} />
             <p className="mt-1 text-sm text-slate-800">{sentence(decision)}</p>
