@@ -7,6 +7,8 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 vi.mock("@/lib/super-admin", () => ({ isSuperAdminEmail: () => false }));
+const twoFactor = vi.hoisted(() => ({ clearTwoFactorAfterPasswordRemoved: vi.fn(async () => true) }));
+vi.mock("@/lib/two-factor", () => twoFactor);
 
 import { prisma } from "@/lib/prisma";
 import { upsertGoogleUser } from "./google-user";
@@ -114,5 +116,39 @@ describe("upsertGoogleUser (#351)", () => {
     await upsertGoogleUser({ email: "g-only@x.dev", emailVerified: true });
 
     expect(upsert.mock.calls[0][0].update.passwordHash).toBeUndefined();
+  });
+});
+
+describe("two-factor left behind by a removed password (#388)", () => {
+  it("clears it when Google removes an unverified password", async () => {
+    findUnique.mockResolvedValueOnce({ passwordHash: "hash", emailVerified: null });
+    upsert.mockResolvedValueOnce({ id: "u9", name: "N", role: "user", sessionVersion: 2 });
+    await upsertGoogleUser({ email: "human@x.dev", name: "Human", emailVerified: true });
+    expect(twoFactor.clearTwoFactorAfterPasswordRemoved).toHaveBeenCalledWith("u9");
+  });
+
+  it("also clears it on the fallback upsert", async () => {
+    findUnique.mockResolvedValueOnce({ passwordHash: "hash", emailVerified: null });
+    upsert.mockRejectedValueOnce(new Error("column image does not exist"));
+    upsert.mockResolvedValueOnce({ id: "u9", name: "N", sessionVersion: 0 });
+    await upsertGoogleUser({ email: "human@x.dev", name: "Human", emailVerified: true });
+    expect(twoFactor.clearTwoFactorAfterPasswordRemoved).toHaveBeenCalledWith("u9");
+  });
+
+  it("leaves two-factor alone when the password is kept or there is none", async () => {
+    findUnique.mockResolvedValueOnce({ passwordHash: "hash", emailVerified: new Date() });
+    upsert.mockResolvedValueOnce({ id: "u9", name: "N", role: "user", sessionVersion: 0 });
+    await upsertGoogleUser({ email: "human@x.dev", name: "Human", emailVerified: true });
+    findUnique.mockResolvedValueOnce({ passwordHash: null, emailVerified: null });
+    upsert.mockResolvedValueOnce({ id: "u8", name: "N", role: "user", sessionVersion: 0 });
+    await upsertGoogleUser({ email: "g-only@x.dev", emailVerified: true });
+    expect(twoFactor.clearTwoFactorAfterPasswordRemoved).not.toHaveBeenCalled();
+  });
+
+  it("still signs the person in if the cleanup fails", async () => {
+    findUnique.mockResolvedValueOnce({ passwordHash: "hash", emailVerified: null });
+    upsert.mockResolvedValueOnce({ id: "u9", name: "N", role: "user", sessionVersion: 2 });
+    twoFactor.clearTwoFactorAfterPasswordRemoved.mockRejectedValueOnce(new Error("db down"));
+    await expect(upsertGoogleUser({ email: "human@x.dev", name: "Human", emailVerified: true })).resolves.toMatchObject({ id: "u9" });
   });
 });

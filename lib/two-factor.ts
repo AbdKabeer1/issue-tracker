@@ -215,6 +215,23 @@ export async function disableTwoFactor(userId: string): Promise<number> {
   });
 }
 
+/**
+ * When Google sign-in removes an unproven password (#736), any two-factor set
+ * up for that password goes with it (#388): a TOTP secret or backup codes left
+ * on a passwordless account can never be used, and an enrolled factor would
+ * make Google refuse the account from then on. Writes `totp.disabled` only
+ * when something was removed. Returns whether it did.
+ */
+export async function clearTwoFactorAfterPasswordRemoved(userId: string): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
+    const codes = await tx.totpBackupCode.deleteMany({ where: { userId } });
+    const credential = await tx.totpCredential.deleteMany({ where: { userId } });
+    if (codes.count === 0 && credential.count === 0) return false;
+    await record(userId, "totp.disabled", tx);
+    return true;
+  });
+}
+
 export async function regenerateBackupCodes(userId: string): Promise<BackupCodesResult> {
   if (!(await isTwoFactorEnabled(userId))) return { ok: false, error: "Two-factor sign-in is off." };
   return prisma.$transaction(async (tx) => {

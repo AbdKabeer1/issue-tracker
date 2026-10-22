@@ -3,6 +3,19 @@ import type { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdminEmail } from "@/lib/super-admin";
 import { logger } from "@/lib/logger";
+import { clearTwoFactorAfterPasswordRemoved } from "@/lib/two-factor";
+
+/**
+ * After Google removes an unproven password, drop any two-factor set up for
+ * it (#388). Best effort: a failure is logged, not a failed sign-in.
+ */
+async function clearOrphanedTwoFactor(userId: string): Promise<void> {
+  try {
+    await clearTwoFactorAfterPasswordRemoved(userId);
+  } catch (error) {
+    logger.error("[auth] Clearing two-factor after removing the password failed:", error);
+  }
+}
 
 export type GoogleAccount = {
   id: string;
@@ -74,6 +87,7 @@ export async function upsertGoogleUser(input: {
       },
       select: { id: true, name: true, role: true, sessionVersion: true },
     });
+    if (neutralizePassword) await clearOrphanedTwoFactor(user.id);
     return { id: user.id, name: user.name, role: user.role, sessionVersion: user.sessionVersion };
   } catch (error) {
     logger.error("[auth] Google user upsert failed:", error);
@@ -88,6 +102,7 @@ export async function upsertGoogleUser(input: {
       },
       select: { id: true, name: true, sessionVersion: true },
     });
+    if (neutralizePassword) await clearOrphanedTwoFactor(user.id);
     return { id: user.id, name: user.name, role, sessionVersion: user.sessionVersion ?? 0 };
   } catch (error) {
     logger.error("[auth] Minimal Google user upsert failed:", error);
