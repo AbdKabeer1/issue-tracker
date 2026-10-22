@@ -17,6 +17,7 @@ import {
   encodeEventCursor,
   decodeEventCursor,
   parseEventCursor,
+  eventCursorError,
   parseEventFilters,
   listEvents,
   publish,
@@ -132,6 +133,39 @@ describe("parseEventCursor", () => {
 
   it("returns invalid for a bad timestamp with afterId", () => {
     expect(parseEventCursor(new URLSearchParams({ after: "not-a-date", afterId: "evt-3" }))).toBe("invalid");
+  });
+});
+
+describe("eventCursorError (#465)", () => {
+  const message = (query: string) => {
+    const params = new URLSearchParams(query);
+    expect(parseEventCursor(params)).toBe("invalid");
+    return eventCursorError(params);
+  };
+
+  it("says afterId is required when after is a timestamp", () => {
+    expect(message("after=2026-10-21T00:00:00Z")).toBe("afterId is required when after is a timestamp.");
+  });
+
+  it("says afterId needs a timestamp after", () => {
+    expect(message("afterId=abc")).toBe("afterId is only valid together with a timestamp after.");
+  });
+
+  it("names the timestamp rule for a date-only or malformed after with afterId", () => {
+    expect(message("after=2026-10-21&afterId=evt-1")).toMatch(/^after must be an ISO-8601 timestamp/);
+    expect(message("after=not-a-date&afterId=evt-1")).toMatch(/^after must be an ISO-8601 timestamp/);
+  });
+
+  it("names afterId when it is blank", () => {
+    expect(message("after=2026-10-21T00:00:00Z&afterId=%20")).toMatch(/^afterId must be a non-empty event id/);
+  });
+
+  it("explains both accepted forms for an undecodable cursor", () => {
+    expect(message("after=bad!!")).toMatch(/^Invalid cursor\. Pass the cursor from a previous response/);
+  });
+
+  it("explains the cursor forms for an empty after without afterId", () => {
+    expect(message("after=")).toMatch(/^Invalid cursor\. Pass the cursor from a previous response/);
   });
 });
 

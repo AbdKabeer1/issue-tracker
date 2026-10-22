@@ -1,7 +1,7 @@
 import { createMethodNotAllowed, createOptions } from "@/lib/agent-api/http-errors";
 import { NextResponse, type NextRequest } from "next/server";
 import { agentIssueRequest } from "@/lib/agent-api/issues";
-import { parseEventCursor, parseEventFilters, pollEvents, encodeEventCursor, scopeEventFilters } from "@/lib/agent-api/events";
+import { parseEventCursor, eventCursorError, parseEventFilters, pollEvents, encodeEventCursor, scopeEventFilters } from "@/lib/agent-api/events";
 import { AgentProjectError } from "@/lib/agents/require-agent";
 
 export const runtime = "nodejs";
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
 
     const cursorResult = parseEventCursor(params);
     if (cursorResult === "invalid") {
-      return NextResponse.json({ error: "Invalid cursor." }, { status: 400 });
+      return NextResponse.json({ error: eventCursorError(params) }, { status: 400 });
     }
 
     const waitRaw = params.get("wait");

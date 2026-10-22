@@ -514,7 +514,7 @@ GET /api/v1/feed
 - `area` (optional): a project area id, or `none` for issues without an area. An unknown area id returns `400`
 - `limit` (optional): page size, default **50**, clamped to **1–100**. A value that is not a whole number returns `400`
 
-The two cursor values are always supplied **together**; omit both for the first page. `limit` changes only how many issues a page holds — it does not change the cursor, which still walks `(createdAt, id)`. `GET /api/v1/events` shares the `after`/`afterId` cursor shape but has its own default page size (25) and maximum (100); do not assume the two defaults match.
+The two cursor values are always supplied **together**; omit both for the first page. Sending only one, or sending either one empty (e.g. `after=&afterId=…`), answers `400 "Supply both after (an ISO timestamp) and afterId."`; a non-empty `after` that isn't a full ISO-8601 timestamp with a time and offset (a date alone is not enough) answers `400 "after must be an ISO-8601 timestamp with a time and offset, …"`. Page size comes from `limit`: **50** by default, clamped to **1–100**, and a value that is not a whole number answers `400 "limit must be a whole number between 1 and 100; the default is 50."` (`lib/feed.ts` `parseFeedLimit`). There is no `since` parameter.
 
 **Response:**
 ```json
@@ -548,6 +548,9 @@ GET /api/v1/events
 - `after` (optional): opaque base64url cursor from a previous response, or an ISO timestamp
 - `afterId` (optional, required when `after` is a timestamp): event id tie-breaker (invalid when `after` is an opaque cursor or omitted)
 - `wait` (optional, 0–25): long-poll seconds; `0` or absent returns immediately
+
+A bad cursor answers `400` with a message naming the problem: `afterId is required when after is a timestamp.`, `afterId is only valid together with a timestamp after.`, `after must be an ISO-8601 timestamp with a time and offset … when afterId is set.` (a date alone is not enough), `afterId must be a non-empty event id of at most 191 characters.` (a blank or over-long `afterId` with a valid timestamp), or `Invalid cursor. Pass the cursor from a previous response, …` for an `after` that is neither. `GET /api/v1/inbox` and `GET /api/v1/events/stream` use the same messages.
+
 - `types` (optional): comma list of event types or prefixes, e.g. `comment.created,claim.*`. An unknown type returns `400` with `validTypes`
 - `projectId` (optional): only events on issues in that project
 - `bugId` (optional): only events for that issue

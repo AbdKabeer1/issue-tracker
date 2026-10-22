@@ -18,6 +18,13 @@ describe("new-ticket feed", () => {
     expect(parseFeedCursor(new URLSearchParams({ after: timestamp, afterId: "b" }))).toEqual({ after: timestamp, afterId: "b" });
   });
 
+  it("names the actual cursor problem (#465)", () => {
+    expect(() => parseFeedCursor(new URLSearchParams(`after=${timestamp}`))).toThrow("Supply both after (an ISO timestamp) and afterId.");
+    expect(() => parseFeedCursor(new URLSearchParams("afterId=a"))).toThrow("Supply both after (an ISO timestamp) and afterId.");
+    expect(() => parseFeedCursor(new URLSearchParams("after=garbage&afterId=x"))).toThrow("after must be an ISO-8601 timestamp");
+    expect(() => parseFeedCursor(new URLSearchParams("after=2026-10-21&afterId=x"))).toThrow("after must be an ISO-8601 timestamp");
+  });
+
   it("uses the id to continue inside a shared timestamp, with tenant/project isolation", async () => {
     const cursor = { after: timestamp, afterId: "b" };
     const where = feedWhere("tenant-a", "project-a", cursor);
