@@ -87,6 +87,9 @@ import { logLoadFailure } from "@/lib/load-error";
 import { AREA_PARAM, parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
 import { intakeDetail, intakeLabel, openIssueStages, parseIssueStageView, type IssueStage } from "@/lib/issue-stage";
 import { issuePath } from "@/lib/issue-ref";
+import { PROJECT_ALL_PARAM, showsAllProjects } from "@/lib/issue-list-filters";
+import { DashboardSidebar } from "@/components/dashboard-sidebar";
+import { loadSidebarCounts } from "@/lib/dashboard-overview";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Issues" };
@@ -156,6 +159,17 @@ export default async function BugsPage({
     ? await prisma.project.findFirst({ where: { id: projectId, tenantId }, select: { slug: true, name: true, goal: true } }).catch(() => null)
     : null;
 
+  // The persistent sidebar's live badges. A failure leaves zeros rather than
+  // taking down the list; the counts are navigation, not page data.
+  let sidebarCounts = { unresolved: 0, assigned: 0, reported: 0 };
+  if (tenantId && userId) {
+    try {
+      sidebarCounts = await loadSidebarCounts({ userId, tenantId });
+    } catch (error) {
+      console.error("[bugs] sidebar counts failed", error);
+    }
+  }
+
   // #641: a short checklist for a new workspace's owner or admin, until it's
   // done or dismissed on this device.
   let gettingStarted: { tenantId: string; workspaceName: string; steps: GettingStartedStep[] } | null = null;
@@ -184,6 +198,8 @@ export default async function BugsPage({
   const deletedParam = toSingleQueryParam(params.deleted);
   const mineFilter = parseMineFilter(params.mine);
   const isDeletedView = canDelete && deletedParam === "true";
+  // Workspace-wide view (dashboard links). Absent → unchanged project scope.
+  const allProjects = showsAllProjects(params[PROJECT_ALL_PARAM]);
 
   const currentSort = parseBugSort(sortParam, defaultSortFor(mineFilter));
   const isWatchingView = mineFilter === "watching" && !!userId;
@@ -191,7 +207,7 @@ export default async function BugsPage({
   const showDuplicates = parseShowDuplicates(params[DUPLICATES_PARAM]);
   const where: Prisma.BugWhereInput = {
     ...bugInTenant(tenantId),
-    ...(projectId ? { projectId } : {}),
+    ...(projectId && !allProjects ? { projectId } : {}),
     isDeleted: isDeletedView,
     ...mineFilterWhere(mineFilter, userId),
     ...duplicatesWhere(showDuplicates),
@@ -617,9 +633,18 @@ export default async function BugsPage({
     low: "bg-emerald-500",
   };
 
-  // #1056: one centred column, a simple list going down; no stats card.
+  // #1056: one centred list column. The persistent sidebar (#dashboard) stays
+  // on this page so Overview is always one click away.
   const page = (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
+    <div className="mx-auto flex w-full max-w-5xl items-start gap-6">
+      <DashboardSidebar
+        active="issues"
+        counts={sidebarCounts}
+        userName={session?.user?.name ?? session?.user?.email}
+        userImage={session?.user?.image}
+        userEmail={session?.user?.email}
+      />
+      <div className="min-w-0 flex-1 space-y-6">
       {gettingStarted ? <GettingStarted {...gettingStarted} /> : null}
       {activeProject?.goal ? (
         <section aria-labelledby="project-goal-heading" className="rounded-xl border border-slate-200 bg-white px-4 py-3">
@@ -650,10 +675,17 @@ export default async function BugsPage({
                 Admin view
               </span>
             ) : null}
+            {allProjects && !isDeletedView ? (
+              <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-800">
+                All projects
+              </span>
+            ) : null}
           </div>
           {isDeletedView ? null : (
             <p className="mt-1 max-w-xl text-sm font-normal text-slate-600">
-              A report stays an idea until reviewers accept it and three people upvote it. Then it is an issue and can be passed on.
+              {allProjects
+                ? "Every issue in this workspace, across all projects."
+                : "A report stays an idea until reviewers accept it and three people upvote it. Then it is an issue and can be passed on."}
             </p>
           )}
         </div>
@@ -1005,10 +1037,12 @@ export default async function BugsPage({
                   deleted: isDeletedView,
                   showDuplicates,
                   showResolved,
+                  allProjects,
                 })}
               />
             </>
           )}
+        </div>
       </div>
     </div>
   );

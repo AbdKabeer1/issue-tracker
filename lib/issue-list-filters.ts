@@ -23,6 +23,22 @@ export type PlatformLike = { id: string };
 export const PLATFORM_NONE = "none";
 
 /**
+ * `?project=all` widens the Issues list to the whole workspace. It is an
+ * additive view override: when the param is absent (the normal case, and
+ * everything the app itself links to) the list keeps filtering by the active
+ * project exactly as before, and the active-project cookie/switcher is never
+ * written by it.
+ */
+export const PROJECT_ALL_PARAM = "project";
+export const PROJECT_ALL = "all";
+
+export function showsAllProjects(
+  raw: string | string[] | undefined,
+): boolean {
+  return toSingleQueryParam(raw) === PROJECT_ALL;
+}
+
+/**
  * The filters behind the issues list, as a Prisma `where` plus the sort.
  *
  * The CSV export has to return exactly what the list is showing, so both

@@ -19,12 +19,14 @@ describe("avatarTone", () => {
 });
 
 describe("tone contrast", () => {
-  // Tailwind's published hex values for the shades used.
+  // Tailwind's published hex values for the shades used. Teal and violet are
+  // re-seeded onto the Ziki brand ramp (app/theme-brand.css), so they use the
+  // brand's light-mode values here.
   const hex: Record<string, string> = {
-    "teal-100": "#ccfbf1", "teal-800": "#115e59",
+    "teal-100": "#dbe7fd", "teal-800": "#1d4695",
     "sky-100": "#e0f2fe", "sky-800": "#075985",
     "indigo-100": "#e0e7ff", "indigo-800": "#3730a3",
-    "violet-100": "#ede9fe", "violet-800": "#5b21b6",
+    "violet-100": "#dbe7fd", "violet-800": "#1d4695",
     "fuchsia-100": "#fae8ff", "fuchsia-800": "#86198f",
     "rose-100": "#ffe4e6", "rose-800": "#9f1239",
     "amber-100": "#fef3c7", "amber-900": "#78350f",

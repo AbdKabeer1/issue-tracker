@@ -4,6 +4,7 @@ import { MILESTONE_PARAM } from "@/lib/milestones";
 import { PLATFORM_PARAM } from "@/lib/platform-filter";
 import { AREA_PARAM } from "@/lib/project-area-filter";
 import { TAGS_PARAM } from "@/lib/tag-filter";
+import { PROJECT_ALL, PROJECT_ALL_PARAM } from "@/lib/issue-list-filters";
 
 /**
  * Every filter the issue list reads, as the page resolved it. Previous/Next
@@ -26,6 +27,8 @@ export type IssueListFilterValues = {
   showDuplicates: boolean;
   /** #1058: resolved and closed issues are hidden unless this is set. */
   showResolved: boolean;
+  /** Workspace-wide view: `?project=all`, which widens the list to every project. */
+  allProjects: boolean;
 };
 
 /** The query string the pagination links carry, without empty values. */
@@ -43,6 +46,7 @@ export function issueListPaginationParams(values: IssueListFilterValues): Record
     ["deleted", values.deleted ? "true" : undefined],
     [DUPLICATES_PARAM, values.showDuplicates ? SHOW_DUPLICATES : undefined],
     [SHOW_RESOLVED_PARAM, values.showResolved ? SHOW_RESOLVED : undefined],
+    [PROJECT_ALL_PARAM, values.allProjects ? PROJECT_ALL : undefined],
     ["sort", values.sort],
   ];
   return Object.fromEntries(entries.filter((entry): entry is [string, string] => Boolean(entry[1])));

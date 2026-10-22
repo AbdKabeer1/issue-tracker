@@ -91,9 +91,10 @@ export default auth((req) => {
   }
 
   // Allow reset links even when a session exists; only bounce login/signup.
+  // Signed-in people land on the Overview, the post-login home.
   if (isLoggedIn && isAuthPage) {
     return NextResponse.redirect(
-      new URL(BASE_PATH ? `${BASE_PATH}/issues` : "/issues", req.nextUrl.origin),
+      new URL(BASE_PATH ? `${BASE_PATH}/dashboard` : "/dashboard", req.nextUrl.origin),
     );
   }
 

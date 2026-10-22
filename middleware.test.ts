@@ -149,12 +149,12 @@ describe("middleware routing (#348)", () => {
     expect(location).toContain(encodeURIComponent("/settings/agents/pair?code=KX7P-2MQD"));
   });
 
-  it("redirects logged-in users visiting /login to /issues", () => {
+  it("redirects logged-in users visiting /login to /dashboard", () => {
     const req = createMockReq({ pathname: "/login", isLoggedIn: true });
     const res = runMiddleware(req);
 
     expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toBe("https://ziki.dev/issues");
+    expect(res.headers.get("location")).toBe("https://ziki.dev/dashboard");
   });
 
   it("allows logged-in users to proceed to protected pages", () => {

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 
 export function SignupForm({
-  callbackUrl = "/issues",
+  callbackUrl = "/dashboard",
 }: {
   callbackUrl?: string;
 }) {

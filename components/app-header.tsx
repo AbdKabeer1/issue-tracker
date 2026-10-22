@@ -9,6 +9,7 @@ import { WorkspaceSwitcher, type WorkspaceChoice } from "@/components/workspace-
 import { PAGE_CONTAINER_CLASS } from "@/components/page-container";
 import { RoleSwitcher } from "@/components/role-switcher";
 import {
+  AGENT_MENU_LINKS,
   SWITCH_TENANT_LINK,
   headerNavItems,
   isNavItemActive,
@@ -21,6 +22,13 @@ import { FOCUSABLE, wrapFocusIndex } from "@/lib/focus-trap";
 import { Avatar } from "@/components/avatar";
 import { ThemeToggle, AccountThemeSelector } from "@/components/theme-toggle";
 import { pointsProgress, TARGET_POINTS } from "@/lib/points/rules";
+
+const linkFocus =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2";
+
+/** Focus ring for controls painted on the navy chrome. */
+const chromeLinkFocus =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-tint focus-visible:ring-offset-2 focus-visible:ring-offset-deep-ocean";
 
 /** Closes a popover on outside click or Escape, returning focus to its trigger. */
 function useDismiss(
@@ -123,8 +131,8 @@ function NotificationsBell({ unreadCount, active }: { unreadCount: number; activ
       aria-label={label}
       aria-current={active ? "page" : undefined}
       title={label}
-      className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-slate-100 hover:text-slate-900 ${linkFocus} ${
-        active ? "bg-slate-100 text-slate-900" : "text-slate-600"
+      className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-white/5 hover:text-porcelain ${chromeLinkFocus} ${
+        active ? "bg-white/10 text-porcelain" : "text-slate-300"
       }`}
     >
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
@@ -137,17 +145,12 @@ function NotificationsBell({ unreadCount, active }: { unreadCount: number; activ
       {unreadCount > 0 ? (
         <span
           aria-hidden="true"
-          className="absolute -right-0.5 -top-0.5 inline-flex min-w-[1.125rem] items-center justify-center rounded-full bg-teal-700 px-1 text-[10px] font-semibold leading-[1.125rem] text-white ring-2 ring-white"
-        >
-          {unreadCount > 99 ? "99+" : unreadCount}
-        </span>
+          className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-electric-blue ring-2 ring-deep-ocean"
+        />
       ) : null}
     </Link>
   );
 }
-
-const linkFocus =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2";
 
 function CountBadge({ count }: { count: number }) {
   return (
@@ -161,10 +164,10 @@ function CountBadge({ count }: { count: number }) {
 }
 
 function tabClass(active: boolean) {
-  return `relative inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm transition-colors ${linkFocus} ${
+  return `relative inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm transition-colors ${chromeLinkFocus} ${
     active
-      ? "bg-teal-50 font-medium text-teal-900"
-      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+      ? "bg-white/10 font-medium text-porcelain"
+      : "text-slate-300 hover:bg-white/5 hover:text-porcelain"
   }`;
 }
 
@@ -211,7 +214,7 @@ function NavMenu({
         <span>{item.label}</span>
         {typeof item.badge === "number" && item.badge > 0 ? <CountBadge count={item.badge} /> : null}
         <svg
-          className={`h-4 w-4 text-slate-400 ${open ? "rotate-180" : ""}`}
+          className={`h-4 w-4 text-sky-tint/70 ${open ? "rotate-180" : ""}`}
           viewBox="0 0 20 20"
           fill="currentColor"
           aria-hidden="true"
@@ -260,6 +263,57 @@ function NavMenu({
   );
 }
 
+/** Dropdown targeting the real agent pages: pairing and management. */
+function AgentsMenu({ pathname }: { pathname: string | null }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  useDismiss(open, () => setOpen(false), containerRef, buttonRef);
+  // The two agent pages nest, so match the exact path rather than a prefix;
+  // otherwise both entries would claim to be the current page.
+  const current = (pathname ?? "").replace(/\/+$/, "");
+
+  return (
+    <div ref={containerRef} className="relative flex items-center">
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-controls="agents-nav-menu"
+        onClick={() => setOpen((value) => !value)}
+        className={`inline-flex h-9 items-center gap-1 rounded-full px-3 text-sm text-slate-300 transition-colors hover:bg-white/5 hover:text-porcelain ${chromeLinkFocus}`}
+      >
+        <span>Agents</span>
+        <svg className="h-3.5 w-3.5 text-sky-tint/70" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path
+            fillRule="evenodd"
+            d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </button>
+      {open ? (
+        <div
+          id="agents-nav-menu"
+          className="absolute left-0 top-full z-50 mt-2 w-44 rounded-lg border border-surface-border bg-[#142343] py-1 text-sm text-slate-200 shadow-xl"
+        >
+          {AGENT_MENU_LINKS.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              aria-current={current === link.href ? "page" : undefined}
+              className={`block px-4 py-2 text-slate-200 transition hover:bg-electric-blue/20 hover:text-white ${chromeLinkFocus}`}
+            >
+              {link.label}
+            </Link>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function PointsChip({
   points,
   solvedTasks,
@@ -276,13 +330,13 @@ function PointsChip({
     <Link
       href={`/users/${userId}`}
       title={label}
-      className={`inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-slate-700 hover:bg-slate-50 ${linkFocus}`}
+      className={`inline-flex h-9 items-center gap-2 rounded-full border border-surface-border bg-[#152649] px-3 text-slate-200 hover:border-sky-tint/40 hover:text-white ${chromeLinkFocus}`}
     >
-      <span className="text-sm font-semibold tabular-nums text-slate-900">{points}</span>
-      <span className="text-xs text-slate-500">pts</span>
+      <span className="text-sm font-semibold tabular-nums text-white">{points}</span>
+      <span className="text-xs text-sky-tint">pts</span>
       <span className="sr-only"> of {TARGET_POINTS}, {solvedTasks} solved</span>
-      <span className="hidden h-1.5 w-10 overflow-hidden rounded-full bg-slate-200 md:block" aria-hidden="true">
-        <span className="block h-full rounded-full bg-teal-700" style={{ width: `${progress.pointsPercent}%` }} />
+      <span className="hidden h-1.5 w-12 overflow-hidden rounded-full bg-white/15 md:block" aria-hidden="true">
+        <span className="block h-full rounded-full bg-electric-blue" style={{ width: `${progress.pointsPercent}%` }} />
       </span>
     </Link>
   );
@@ -358,37 +412,40 @@ export function AppHeader({
 
   return (
     <header ref={headerRef} className="sticky top-0 z-40">
-      {/* Blur lives on its own layer. backdrop-filter on the header itself
-          clips overflow, which hid the account menu under the bar. */}
+      {/* Chrome is navy in both themes, per the reference exports
+          ("Preserved Deep Blue"); no backdrop blur is needed on a solid bar. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 -z-10 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80"
+        className="pointer-events-none absolute inset-0 -z-10 border-b border-surface-border bg-deep-ocean"
       />
       <div className={`relative flex h-14 items-center gap-4 sm:gap-6 ${PAGE_CONTAINER_CLASS}`}>
         <div className="shrink-0">
-          <BrandLockup href="/issues" size="sm" />
+          <BrandLockup href="/dashboard" size="sm" tone="chrome" showWordmark={false} />
         </div>
 
         {/* Active workspace. Below lg it moves into the menu. */}
         <div className="hidden shrink-0 lg:block">
-          <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} />
+          <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} tone="chrome" />
         </div>
 
         <nav aria-label="Main" className="hidden h-full min-w-0 items-center lg:flex">
-          {items.map((item) =>
-            item.children && item.children.length > 0 ? (
-              <NavMenu
-                key={item.label}
-                item={item}
-                pathname={pathname}
-                open={openMenu === item.label}
-                onToggle={() => setOpenMenu((current) => (current === item.label ? null : item.label))}
-                onClose={() => setOpenMenu(null)}
-              />
-            ) : (
-              <NavTab key={item.href} item={item} pathname={pathname} />
-            ),
-          )}
+          {items
+            .filter((item) => item.href === "/escalations" || item.href === "/docs")
+            .map((item) =>
+              item.children && item.children.length > 0 ? (
+                <NavMenu
+                  key={item.label}
+                  item={item}
+                  pathname={pathname}
+                  open={openMenu === item.label}
+                  onToggle={() => setOpenMenu((current) => (current === item.label ? null : item.label))}
+                  onClose={() => setOpenMenu(null)}
+                />
+              ) : (
+                <NavTab key={item.href} item={item} pathname={pathname} />
+              ),
+            )}
+          <AgentsMenu pathname={pathname} />
         </nav>
 
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
@@ -405,7 +462,7 @@ export function AppHeader({
             href="/issues/new"
             aria-current={onNewIssue ? "page" : undefined}
             aria-label="New issue"
-            className={`inline-flex h-9 items-center gap-1.5 rounded-full bg-teal-700 px-2.5 text-sm font-medium text-white transition-colors hover:bg-teal-800 sm:px-3.5 ${linkFocus}`}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-lg bg-electric-blue-strong px-2.5 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-[#2552af] active:bg-[#1f4693] sm:px-3.5 ${chromeLinkFocus}`}
           >
             <PlusIcon />
             <span className="hidden sm:inline">New issue</span>
@@ -420,10 +477,10 @@ export function AppHeader({
               aria-expanded={accountOpen}
               aria-controls="account-menu"
               onClick={() => setAccountOpen((open) => !open)}
-              className={`relative flex items-center gap-1 rounded-full p-0.5 pr-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 ${linkFocus}`}
+              className={`relative flex items-center gap-1 rounded-full p-0.5 pr-1.5 text-slate-300 transition-colors hover:bg-white/5 hover:text-porcelain ${chromeLinkFocus}`}
             >
               <span className="sr-only">Account menu for {userName}</span>
-              <Avatar name={userName} image={userImage} size="md" />
+              <Avatar name={userName} image={userImage} size="md" variant="solid" />
               <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path
                   fillRule="evenodd"
@@ -480,7 +537,7 @@ export function AppHeader({
             aria-expanded={menuOpen}
             aria-controls="mobile-menu"
             aria-label={menuOpen ? "Close menu" : "Open menu"}
-            className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 lg:hidden ${linkFocus}`}
+            className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 hover:bg-white/5 hover:text-porcelain lg:hidden ${chromeLinkFocus}`}
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
               {menuOpen ? (
@@ -543,6 +600,16 @@ export function AppHeader({
                 </MenuLink>
               );
             })}
+            {AGENT_MENU_LINKS.map((link) => (
+              <MenuLink
+                key={link.href}
+                href={link.href}
+                active={(pathname ?? "").replace(/\/+$/, "") === link.href}
+                large
+              >
+                {link.label}
+              </MenuLink>
+            ))}
             {isAdmin(effectiveRole) ? (
               <MenuLink
                 href="/admin/dashboard"

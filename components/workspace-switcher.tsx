@@ -26,12 +26,16 @@ export function WorkspaceSwitcher({
   activeTenantId,
   className = "",
   fullWidth = false,
+  tone = "default",
 }: {
   workspaces: WorkspaceChoice[];
   activeTenantId: string | null;
   className?: string;
   fullWidth?: boolean;
+  /** "chrome" paints the control for the navy app header. */
+  tone?: "default" | "chrome";
 }) {
+  const chrome = tone === "chrome";
   const listId = useId();
   const formRef = useRef<HTMLFormElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -66,7 +70,11 @@ export function WorkspaceSwitcher({
     return (
       <Link
         href="/tenants"
-        className={`inline-flex h-8 items-center rounded-lg px-2 text-xs font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 ${fullWidth ? "w-full" : ""} ${className}`}
+        className={`inline-flex h-8 items-center rounded-lg px-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 ${
+          chrome
+            ? "border border-surface-border bg-[#132347] text-porcelain hover:bg-[#1a2d57]"
+            : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+        } ${fullWidth ? "w-full" : ""} ${className}`}
       >
         Workspaces
       </Link>
@@ -95,11 +103,18 @@ export function WorkspaceSwitcher({
           aria-expanded={open}
           aria-controls={listId}
           onClick={() => setOpen((current) => !current)}
-          className={`inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-slate-200 bg-white py-0 pl-2 pr-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 ${fullWidth ? "w-full justify-between" : ""}`}
+          className={`inline-flex h-9 max-w-full items-center gap-2 rounded-full border py-0 pl-3 pr-2 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 ${
+            chrome
+              ? "border-surface-border bg-white/[0.04] text-sm text-porcelain hover:bg-white/[0.08]"
+              : "border-slate-200 bg-white text-xs text-slate-800 hover:bg-slate-50"
+          } ${fullWidth ? "w-full justify-between" : ""}`}
         >
           <span className="sr-only">Active workspace, </span>
+          {chrome ? (
+            <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
+          ) : null}
           <span className="truncate">{selectedLabel}</span>
-          <svg className="h-3.5 w-3.5 shrink-0 text-slate-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <svg className={`h-3.5 w-3.5 shrink-0 ${chrome ? "text-sky-tint/70" : "text-slate-400"}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
             <path
               fillRule="evenodd"
               d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
@@ -112,7 +127,9 @@ export function WorkspaceSwitcher({
             id={listId}
             role="listbox"
             aria-label="Workspaces"
-            className={`absolute left-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-sm ${fullWidth ? "w-full" : "w-max min-w-full max-w-56"}`}
+            className={`absolute left-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border p-1 shadow-sm ${
+              chrome ? "border-surface-border bg-[#142343]" : "border-slate-200 bg-white"
+            } ${fullWidth ? "w-full" : "w-max min-w-full max-w-56"}`}
           >
             {workspaces.map((workspace) => {
               const label = visibleName(workspace, shared(workspace.name));
@@ -124,7 +141,15 @@ export function WorkspaceSwitcher({
                     role="option"
                     aria-selected={current}
                     onClick={() => choose(workspace.id)}
-                    className={`block w-full truncate rounded-md px-2 py-1.5 text-left text-xs ${current ? "bg-teal-50 font-medium text-teal-900" : "text-slate-700 hover:bg-slate-50"}`}
+                    className={`block w-full truncate rounded-md px-2 py-1.5 text-left text-xs ${
+                      current
+                        ? chrome
+                          ? "bg-electric-blue/20 font-medium text-white"
+                          : "bg-teal-50 font-medium text-teal-900"
+                        : chrome
+                          ? "text-slate-200 hover:bg-white/5"
+                          : "text-slate-700 hover:bg-slate-50"
+                    }`}
                   >
                     {label}
                   </button>

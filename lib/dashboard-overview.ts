@@ -1,0 +1,342 @@
+import "server-only";
+import { Prisma, type Status } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { bugInTenant } from "@/lib/tenant-context";
+import { pointTotals, tenantRankFor, type PointTotals } from "@/lib/points/leaderboard";
+
+/**
+ * The Overview dashboard's data (#dashboard): every number is counted live in
+ * Postgres, workspace-wide. Nothing here is cached or hard-coded — the
+ * screenshots' sample figures are design references, not data.
+ */
+
+/**
+ * Status partition. "Unresolved" is work still waiting on someone; "resolved"
+ * is the app's existing finished convention (lib/issue-state.ts's isDone()).
+ * The two sets are disjoint and together cover every issue, which the unit
+ * tests pin down.
+ */
+export const UNRESOLVED_STATUSES = ["open", "in_progress"] as const;
+export const RESOLVED_STATUSES = ["resolved", "closed"] as const;
+
+export type UnresolvedStatus = (typeof UNRESOLVED_STATUSES)[number];
+export type ResolvedStatus = (typeof RESOLVED_STATUSES)[number];
+
+export function isUnresolvedStatus(status: string): status is UnresolvedStatus {
+  return (UNRESOLVED_STATUSES as readonly string[]).includes(status);
+}
+
+export function isResolvedStatus(status: string): status is ResolvedStatus {
+  return (RESOLVED_STATUSES as readonly string[]).includes(status);
+}
+
+/** Preview rows: exactly the three the design places under each card. */
+export const PREVIEW_LIMIT = 3;
+
+export type OverviewIssue = {
+  id: string;
+  number: number;
+  title: string;
+  status: Status;
+  severity: string | null;
+  /** When it first reached resolved/closed, from the activity log. */
+  resolvedAt: Date | null;
+};
+
+export type WorkspaceOverview = {
+  unresolvedCount: number;
+  resolvedCount: number;
+  recentUnresolved: OverviewIssue[];
+  recentResolved: OverviewIssue[];
+  /** Sidebar queue counts — same semantics as the Issues page sidebar. */
+  assignedToMe: number;
+  reportedByMe: number;
+  points: PointTotals;
+  rank: { rank: number; total: number } | null;
+};
+
+/** Shown if the queries fail, so the shell still renders (all zeros). */
+export const EMPTY_OVERVIEW: WorkspaceOverview = {
+  unresolvedCount: 0,
+  resolvedCount: 0,
+  recentUnresolved: [],
+  recentResolved: [],
+  assignedToMe: 0,
+  reportedByMe: 0,
+  points: { points: 0, solvedTasks: 0 },
+  rank: null,
+};
+
+/**
+ * The moment each issue first reached resolved/closed, from the activity log.
+ * There is no resolvedAt column, and updatedAt moves on every later edit, so
+ * it cannot stand in for one — same FIRST_CLOSE derivation the admin
+ * dashboard uses (lib/dashboard-queries.ts).
+ */
+const FIRST_CLOSE = Prisma.sql`
+  SELECT a."bugId" AS bug_id, MIN(a."createdAt") AS closed_at
+  FROM "BugActivity" a
+  WHERE a.type = 'status_changed'
+    AND a.metadata ->> 'to' IN ('resolved', 'closed')
+  GROUP BY a."bugId"
+`;
+
+export async function loadWorkspaceOverview({
+  userId,
+  tenantId,
+}: {
+  userId: string;
+  tenantId: string | null;
+}): Promise<WorkspaceOverview> {
+  if (!tenantId) return EMPTY_OVERVIEW;
+
+  const base: Prisma.BugWhereInput = { ...bugInTenant(tenantId), isDeleted: false };
+
+  const [
+    unresolvedCount,
+    resolvedCount,
+    recentUnresolved,
+    resolvedRows,
+    assignedToMe,
+    reportedByMe,
+    points,
+    rank,
+  ] = await Promise.all([
+      prisma.bug.count({ where: { ...base, status: { in: [...UNRESOLVED_STATUSES] } } }),
+      prisma.bug.count({ where: { ...base, status: { in: [...RESOLVED_STATUSES] } } }),
+      prisma.bug.findMany({
+        where: { ...base, status: { in: [...UNRESOLVED_STATUSES] } },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: PREVIEW_LIMIT,
+        select: { id: true, number: true, title: true, status: true, severity: true },
+      }),
+      prisma.$queryRaw<
+        { id: string; number: number; title: string; status: string; severity: string | null; resolved_at: Date }[]
+      >`
+        SELECT b."id", b."number", b."title", b."status"::text AS status,
+               b."severity"::text AS severity, fc.closed_at AS resolved_at
+        FROM (${FIRST_CLOSE}) fc
+        JOIN "Bug" b ON b."id" = fc.bug_id
+        WHERE b."tenantId" = ${tenantId}
+          AND b."isDeleted" = false
+          AND b."status"::text IN ('resolved', 'closed')
+        ORDER BY fc.closed_at DESC, b."number" DESC
+        LIMIT ${PREVIEW_LIMIT}
+      `,
+      prisma.bug.count({ where: { ...base, assigneeId: userId } }),
+      prisma.bug.count({ where: { ...base, reporterId: userId } }),
+      pointTotals(prisma, tenantId, userId),
+      tenantRankFor(prisma, tenantId, userId),
+    ]);
+
+  return {
+    unresolvedCount,
+    resolvedCount,
+    recentUnresolved: recentUnresolved.map((bug) => ({
+      ...bug,
+      severity: bug.severity ?? null,
+      resolvedAt: null,
+    })),
+    recentResolved: resolvedRows.map((row) => ({
+      id: row.id,
+      number: row.number,
+      title: row.title,
+      status: row.status as Status,
+      severity: row.severity,
+      resolvedAt: row.resolved_at,
+    })),
+    assignedToMe,
+    reportedByMe,
+    points,
+    rank,
+  };
+}
+
+/**
+ * The three live badges in the persistent sidebar. Kept separate from
+ * `loadWorkspaceOverview` so pages that only need the sidebar (the issue list)
+ * do not pay for previews, points or the rank query.
+ */
+export type SidebarCounts = {
+  unresolved: number;
+  assigned: number;
+  reported: number;
+};
+
+export async function loadSidebarCounts({
+  userId,
+  tenantId,
+}: {
+  userId: string;
+  tenantId: string | null;
+}): Promise<SidebarCounts> {
+  if (!tenantId) return { unresolved: 0, assigned: 0, reported: 0 };
+
+  const base: Prisma.BugWhereInput = { ...bugInTenant(tenantId), isDeleted: false };
+  const [unresolved, assigned, reported] = await Promise.all([
+    prisma.bug.count({ where: { ...base, status: { in: [...UNRESOLVED_STATUSES] } } }),
+    prisma.bug.count({ where: { ...base, assigneeId: userId } }),
+    prisma.bug.count({ where: { ...base, reporterId: userId } }),
+  ]);
+  return { unresolved, assigned, reported };
+}
+
+/* ------------------------------------------------------------------ */
+/* Your agents                                                         */
+/* ------------------------------------------------------------------ */
+
+/** A claim older than this with no heartbeat is not "working" any more. */
+export const AGENT_WORKING_WINDOW_MS = 15 * 60 * 1000;
+/** Seen this recently without active work: idle, not offline. */
+export const AGENT_IDLE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export type AgentStatus = "waiting" | "working" | "idle" | "offline";
+
+export type DashboardAgent = {
+  id: string;
+  name: string;
+  model: string | null;
+  level: string;
+  status: AgentStatus;
+  /** What the table's "Current activity" column says. Never invented. */
+  activity: string;
+  lastSeenAt: Date | null;
+};
+
+/**
+ * Status from real signals only: an unanswered question means the agent is
+ * waiting on its owner; a live claim with a recent heartbeat means working;
+ * otherwise a recent event or key use means idle; anything else is offline.
+ * Pure so the precedence is unit-tested without a database.
+ */
+export function classifyAgentStatus({
+  hasUnansweredQuestion,
+  hasActiveClaim,
+  lastSeenAt,
+  now = new Date(),
+}: {
+  hasUnansweredQuestion: boolean;
+  hasActiveClaim: boolean;
+  lastSeenAt: Date | null;
+  now?: Date;
+}): AgentStatus {
+  if (hasUnansweredQuestion) return "waiting";
+  if (hasActiveClaim) return "working";
+  if (lastSeenAt && now.getTime() - lastSeenAt.getTime() <= AGENT_IDLE_WINDOW_MS) {
+    return "idle";
+  }
+  return "offline";
+}
+
+const latest = (...dates: (Date | null | undefined)[]): Date | null => {
+  let newest: Date | null = null;
+  for (const date of dates) {
+    if (date && (!newest || date.getTime() > newest.getTime())) newest = date;
+  }
+  return newest;
+};
+
+/**
+ * The signed-in person's own non-revoked agents in this workspace, with the
+ * table's four columns. Only reads: no agent row is created here.
+ */
+export async function loadOwnAgents({
+  userId,
+  tenantId,
+  now = new Date(),
+}: {
+  userId: string;
+  tenantId: string | null;
+  now?: Date;
+}): Promise<DashboardAgent[]> {
+  if (!tenantId) return [];
+
+  const agents = await prisma.agent.findMany({
+    where: { ownerUserId: userId, tenantId, revokedAt: null },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: {
+      id: true,
+      name: true,
+      model: true,
+      level: true,
+      apiKeys: { where: { revokedAt: null }, select: { lastUsedAt: true } },
+      questions: {
+        where: { answeredAt: null },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 1,
+        select: { createdAt: true },
+      },
+      claims: {
+        where: { releasedAt: null, status: "active" },
+        orderBy: [{ claimedAt: "desc" }, { id: "desc" }],
+        take: 1,
+        select: {
+          claimedAt: true,
+          lastHeartbeatAt: true,
+          bug: { select: { number: true, title: true, status: true, isDeleted: true } },
+        },
+      },
+    },
+  });
+  if (agents.length === 0) return [];
+
+  // Latest event per agent, one cheap grouped read.
+  const latestEvents = await prisma.agentEvent.groupBy({
+    by: ["actorAgentId"],
+    where: { actorAgentId: { in: agents.map((agent) => agent.id) } },
+    _max: { createdAt: true },
+  });
+  const eventById = new Map(
+    latestEvents.map((row) => [row.actorAgentId, row._max.createdAt ?? null]),
+  );
+
+  const workingCutoff = now.getTime() - AGENT_WORKING_WINDOW_MS;
+
+  return agents.map((agent) => {
+    const unanswered = agent.questions.length > 0;
+    const claim = agent.claims[0] ?? null;
+    const claimedBug = claim?.bug ?? null;
+    const heartbeat = claim?.lastHeartbeatAt ?? claim?.claimedAt ?? null;
+    const claimIsLive =
+      claim !== null &&
+      heartbeat !== null &&
+      heartbeat.getTime() >= workingCutoff &&
+      claimedBug !== null &&
+      !claimedBug.isDeleted &&
+      claimedBug.status === "in_progress";
+
+    const lastSeenAt = latest(
+      heartbeat,
+      eventById.get(agent.id) ?? null,
+      ...agent.apiKeys.map((key) => key.lastUsedAt),
+    );
+
+    const status = classifyAgentStatus({
+      hasUnansweredQuestion: unanswered,
+      hasActiveClaim: claimIsLive,
+      lastSeenAt,
+      now,
+    });
+
+    let activity: string;
+    if (status === "waiting") {
+      activity = "Waiting for your answer";
+    } else if (status === "working" && claimedBug) {
+      activity = `Working on #${claimedBug.number} ${claimedBug.title}`;
+    } else if (status === "idle") {
+      activity = "Standing by";
+    } else {
+      activity = "No recent activity";
+    }
+
+    return {
+      id: agent.id,
+      name: agent.name,
+      model: agent.model,
+      level: agent.level,
+      status,
+      activity,
+      lastSeenAt,
+    };
+  });
+}

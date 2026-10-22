@@ -168,7 +168,7 @@ export function ThemeToggle({
       aria-label={label}
       title={label}
       data-testid="theme-toggle"
-      className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 ${className}`}
+      className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-white/5 hover:text-porcelain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-tint focus-visible:ring-offset-2 focus-visible:ring-offset-deep-ocean ${className}`}
     >
       {isDark ? <SunIcon /> : <MoonIcon />}
     </button>

@@ -10,7 +10,10 @@ import {
   issueTypeBadgeClass,
 } from "./issue-type-styles";
 
-// Official Tailwind CSS v3 default palette colors (sRGB hex)
+// Palette colors (sRGB hex). Accent families that the Ziki brand layer
+// re-seeds (teal → Electric Blue, plus violet/purple) use the brand ramp's
+// light-mode values from app/theme-brand.css; the semantic families
+// (slate/zinc/red/orange/amber/emerald/sky/indigo/pink) are Tailwind defaults.
 const TAILWIND_COLORS: Record<string, string> = {
   // Slate
   "slate-100": "#f1f5f9",
@@ -36,22 +39,23 @@ const TAILWIND_COLORS: Record<string, string> = {
   // Emerald
   "emerald-100": "#d1fae5",
   "emerald-950": "#022c22",
-  // Teal
-  "teal-50": "#f0fdfa",
-  "teal-100": "#ccfbf1",
-  "teal-950": "#042f2e",
+  // Teal (brand ramp: Electric Blue)
+  "teal-50": "#edf3fe",
+  "teal-100": "#dbe7fd",
+  "teal-200": "#bccffb",
+  "teal-950": "#0f2549",
   // Sky
   "sky-100": "#e0f2fe",
   "sky-950": "#082f49",
   // Indigo
   "indigo-100": "#e0e7ff",
   "indigo-950": "#1e1b4b",
-  // Violet
-  "violet-100": "#ede9fe",
-  "violet-950": "#2e1065",
-  // Purple
-  "purple-100": "#f3e8ff",
-  "purple-950": "#3b0764",
+  // Violet (brand ramp: Electric Blue)
+  "violet-100": "#dbe7fd",
+  "violet-950": "#0f2549",
+  // Purple (brand ramp: Electric Blue)
+  "purple-100": "#dbe7fd",
+  "purple-950": "#0f2549",
   // Pink
   "pink-100": "#fce7f3",
   "pink-950": "#500724",
