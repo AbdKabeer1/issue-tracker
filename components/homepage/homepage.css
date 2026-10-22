@@ -599,3 +599,20 @@
 .ziki-homepage a { text-decoration: none; }
 .ziki-homepage .theme-toggle, .ziki-homepage .menu-button { min-height: 44px; min-width: 44px; }
 .ziki-homepage .hero-copy, .ziki-homepage .section-heading p { color: var(--muted); }
+
+/* Keep supporting copy readable while retaining the reference palette. */
+.ziki-homepage .control-copy > p,
+.ziki-homepage .feature-list p,
+.ziki-homepage .timeline-item p,
+.ziki-homepage .timeline-item small,
+.ziki-homepage .timeline-footer,
+.ziki-homepage .leaderboard small,
+.ziki-homepage .leader-row > b,
+.ziki-homepage .footer-brand p,
+.ziki-homepage .footer-links a,
+.ziki-homepage .footer-bottom,
+.ziki-homepage .closing-cta > span,
+.ziki-homepage .hero-frame-bottom,
+.ziki-homepage .hero-integrations b { color: var(--muted); }
+.ziki-homepage .button:not(.button-light):not(.button-secondary) { background: #2864d7; border-color: #2864d7; color: #fff; }
+.ziki-homepage a:focus-visible, .ziki-homepage button:focus-visible { outline: 3px solid #3978f6; outline-offset: 3px; }
