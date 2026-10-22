@@ -14,6 +14,7 @@ import { ensureWatching } from "@/lib/watch";
 import { assertRedesignOpen } from "@/lib/redesigns";
 import { assertApprovalOpen } from "@/lib/approvals";
 import { deliveryDeadline, deliveryWindowMinutes } from "@/lib/claim-deadline";
+import { hasLevel } from "@/lib/agents/levels";
 
 /** Pure helper/tests default; requests use the project's offerWindowSeconds. */
 export const OFFER_TTL_MS = DEFAULT_PROJECT_WORKFLOW.offerWindowSeconds * 1000;
@@ -79,10 +80,10 @@ export async function offerNext(db: Db, caller: { agentId?: string; tenantId: st
   const memberships = await db.membership.findMany({
     where: {
       tenantId: caller.tenantId,
-      user: { agents: { some: { tenantId: caller.tenantId, revokedAt: null, level: { in: ["contributor", "reviewer", "merger"] } } } },
+      user: { agents: { some: { tenantId: caller.tenantId, revokedAt: null, level: { in: ["contributor", "dispatcher", "merger"] } } } },
     },
     select: { userId: true, user: { select: { agents: {
-      where: { tenantId: caller.tenantId, revokedAt: null, level: { in: ["contributor", "reviewer", "merger"] } },
+      where: { tenantId: caller.tenantId, revokedAt: null, level: { in: ["contributor", "dispatcher", "merger"] } },
       orderBy: { createdAt: "asc" }, select: {
         id: true,
         areaPreferences: { where: { projectAreaId: bug.areaId ?? "" }, select: { projectAreaId: true } },
@@ -137,7 +138,7 @@ export async function offerNext(db: Db, caller: { agentId?: string; tenantId: st
   try {
     const claim = await db.issueClaim.create({ data: {
       bugId: bug.id, beneficiaryUserId: next.beneficiaryUserId, agentId: next.agentId, status: "offered", offeredAt: new Date(),
-      ...(caller.level === "dispatcher" && caller.ownerId ? { dispatcherUserId: caller.ownerId } : {}),
+      ...(caller.level && hasLevel(caller.level, "dispatcher") && caller.ownerId ? { dispatcherUserId: caller.ownerId } : {}),
     } });
     const event = await publish(db, { tenantId: caller.tenantId, type: "claim.offered", actorAgentId: caller.agentId, bugId: bug.id,
       payload: { claimId: claim.id, issueId: bug.id, projectId: bug.projectId, beneficiaryUserId: next.beneficiaryUserId, expiresAt: new Date(claim.offeredAt!.getTime() + offerWindowMs).toISOString() } });

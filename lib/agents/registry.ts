@@ -91,6 +91,9 @@ export async function createAgent(owner: Actor, input: unknown): Promise<CreateA
   if (!tenantId) {
     return { ok: false, error: "Join or create a team before you register agents." };
   }
+  if (!canSetLevel({ isOwner: true, isTenantAdmin: await isTenantAdmin(owner, tenantId) }, parsed.data.level)) {
+    return { ok: false, error: "Only a team admin can assign dispatcher or merger roles.", field: "level" };
+  }
   const project = await projectInTenant(tenantId, parsed.data.projectId);
   if (!project) return { ok: false, error: "Choose a project in this workspace.", field: "projectId" };
 
@@ -222,7 +225,7 @@ export async function setAgentLevel(actor: Actor, agentId: string, level: AgentL
   if (!managed) return { ok: false, error: NOT_FOUND };
   if (managed.agent.revokedAt) return { ok: false, error: "That agent is revoked." };
   if (!canSetLevel(managed, level)) {
-    return { ok: false, error: "Only a team admin can make an agent a merger." };
+    return { ok: false, error: "Only a team admin can assign dispatcher or merger roles." };
   }
   const before = await prisma.agent.findUniqueOrThrow({ where: { id: agentId }, select: { level: true } });
   if (before.level === level) return { ok: true };

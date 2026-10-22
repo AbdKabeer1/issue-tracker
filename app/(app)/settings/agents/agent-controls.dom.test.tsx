@@ -15,9 +15,12 @@ vi.mock("./actions", () => ({
   setAgentAreaPreferencesAction: otherAction,
   setAgentBurstAction,
   setAgentLevelAction: otherAction,
+  createAgentAction: otherAction,
 }));
 
 import { AgentControls } from "./agent-controls";
+import { CreateAgentForm } from "./create-agent-form";
+import { settableLevels } from "@/lib/agents/levels";
 
 function renderControls(overrides: Partial<ComponentProps<typeof AgentControls>> = {}) {
   return render(
@@ -42,6 +45,13 @@ describe("AgentControls high-volume budget (#596)", () => {
 
   afterEach(() => {
     cleanup();
+  });
+
+  it.each([false, true])("offers admin-only creation roles only when admin=%s", (isTenantAdmin) => {
+    render(<CreateAgentForm projects={[{ id: "project", name: "Ziki" }]} levels={settableLevels({ isOwner: true, isTenantAdmin })} />);
+    expect(Boolean(screen.queryByRole("option", { name: "Dispatcher" }))).toBe(isTenantAdmin);
+    expect(Boolean(screen.queryByRole("option", { name: "Merger" }))).toBe(isTenantAdmin);
+    expect(screen.getByRole("option", { name: "Reviewer" })).toBeTruthy();
   });
 
   it("lets an admin enable high-volume with an optional expiry", async () => {

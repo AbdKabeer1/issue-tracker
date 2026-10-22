@@ -58,6 +58,12 @@ beforeEach(() => {
 });
 
 describe("findReadyIssues", () => {
+  it("lets a merger inherit ready discovery, dispatch and metrics", async () => {
+    const merger = { ...dispatcher, level: "merger" as const };
+    expect(await findReadyIssues(merger, "project-1")).toEqual([{ ...readyBug, confirmed: true }]);
+    expect(await dispatchReadyIssues(merger, "project-1", { policy: "offer_only" })).toMatchObject({ offered: 1 });
+    await expect(getDispatcherMetrics(merger, "project-1")).resolves.toBeDefined();
+  });
   it("requires dispatcher level", async () => {
     await expect(findReadyIssues(contributor, "project-1")).rejects.toBeInstanceOf(AgentLevelError);
   });

@@ -57,6 +57,7 @@ pnpm build
 ## Testing (required before done)
 
 - Run `pnpm test` and fix failures before claiming a task complete.
+- Use Node 22 as required by `package.json`. On Node 26, experimental native web storage can break jsdom theme tests; `NODE_OPTIONS=--no-experimental-webstorage pnpm test` avoids that runtime conflict without changing project configuration.
 - Validation schemas live in `lib/validations/bug.ts`; unit tests cover happy + invalid cases under `lib/validations/`.
 - Prefer Vitest for pure logic; do not invent heavy E2E unless asked.
 
