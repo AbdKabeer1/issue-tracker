@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { reviewerConflict, type ReviewedBug } from "@/lib/agents/independence";
+import { reviewerConflict, reviewerCreditConflict, type ReviewedBug } from "@/lib/agents/independence";
 import { workflowFor } from "@/lib/workflow";
 import { DEFAULT_PROJECT_WORKFLOW } from "@/lib/workflow-config";
 import { WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
@@ -75,7 +75,7 @@ export function issueStage(input: {
   return "ready";
 }
 
-type AcceptingReview = { id: string; agentId: string; ownerUserId: string };
+type AcceptingReview = { id: string; agentId: string; ownerUserId: string; onBehalfOfUserId?: string };
 
 /** Distinct independent owners who accepted the issue as real. */
 export function confirmationCount(input: {
@@ -89,6 +89,7 @@ export function confirmationCount(input: {
     if (input.createdByAgentId && accept.agentId === input.createdByAgentId) continue;
     if (input.undoneIds.has(accept.id)) continue;
     if (reviewerConflict({ id: accept.agentId, ownerUserId: accept.ownerUserId }, input.bug)) continue;
+    if (reviewerCreditConflict(accept.onBehalfOfUserId ?? accept.ownerUserId, input.bug)) continue;
     owners.add(accept.ownerUserId);
   }
   return owners.size;
@@ -117,12 +118,13 @@ export async function openIssueStages(
       status: true,
       voteCount: true,
       beneficiaryUserId: true,
+      assigneeId: true,
       reporterId: true,
       createdByAgentId: true,
       createdByAgent: { select: { ownerUserId: true } },
       claims: {
         where: { status: "active", releasedAt: null },
-        select: { status: true, releasedAt: true, agent: { select: { ownerUserId: true } } },
+        select: { status: true, releasedAt: true, beneficiaryUserId: true, dispatcherUserId: true, agent: { select: { ownerUserId: true } } },
       },
     },
   });
@@ -146,6 +148,7 @@ export async function openIssueStages(
         bugId: true,
         createdAt: true,
         agentId: true,
+        onBehalfOfUserId: true,
         agent: { select: { ownerUserId: true } },
       },
     }),
@@ -177,6 +180,7 @@ export async function openIssueStages(
       id: validation.id,
       agentId: validation.agentId,
       ownerUserId: validation.agent.ownerUserId,
+      onBehalfOfUserId: validation.onBehalfOfUserId,
     });
     acceptsByBug.set(validation.bugId, list);
   }
@@ -185,6 +189,7 @@ export async function openIssueStages(
     const reviewed: ReviewedBug = {
       beneficiaryUserId: bug.beneficiaryUserId,
       reporterId: bug.reporterId,
+      assigneeId: bug.assigneeId,
       createdByAgent: bug.createdByAgent,
       claims: bug.claims,
     };

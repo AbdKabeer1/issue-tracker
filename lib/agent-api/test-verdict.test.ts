@@ -77,6 +77,11 @@ beforeEach(() => {
 });
 
 describe("submitTestVerdict: who may verdict (#434)", () => {
+  it("blocks the assigned solver's other reviewer agent even when credit is delegated", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ assigneeId: "rob" }));
+    expect(await submitTestVerdict(reviewer("second-agent", "rob"), "bug1", { ...good, onBehalfOfUserId: "someone-else" })).toMatchObject({ status: 403, error: "not_independent" });
+    expect(state.verdicts).toHaveLength(0);
+  });
   it("rejects a contributor before touching the issue", async () => {
     const result = await submitTestVerdict(reviewer("c1", "cara", "contributor"), "bug1", good);
     expect(result).toMatchObject({ status: 403, error: "insufficient_level" });

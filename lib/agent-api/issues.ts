@@ -4,6 +4,7 @@ import type { AgentLevel, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { agentErrorResponse, assertKeyProject, requireAgent, type AgentContext } from "@/lib/agents/require-agent";
 import { requireLevel } from "@/lib/agents/levels";
+import { reviewerConflict, ReviewerNotIndependentError, type ReviewedBug } from "@/lib/agents/independence";
 import { audit } from "@/lib/agents/audit";
 import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/rate-budget";
 import { withAgentBudgetHeaders, type AgentBudgetQuota } from "@/lib/agents/rate-budget-headers";
@@ -378,21 +379,30 @@ export async function createAgentIssue(agent: AgentContext, request: NextRequest
 export async function commentOnAgentIssue(agent: AgentContext, request: NextRequest, bugId: string) {
   const input = agentCommentSchema.parse(await issueJson(request));
   const scope = await issueProject(agent, request.nextUrl.searchParams, input.projectId);
-  let bug: {
+  let bug: ({
     id: string;
     title: string;
     reporterId: string;
     assigneeId: string | null;
     pullRequestUrl: string | null;
     proofLinks: string[];
-  } | null = null;
+  } & ReviewedBug) | null = null;
   let parentAuthorId: string | null = null;
   const comment = await prisma.$transaction(async (tx) => {
     bug = await tx.bug.findFirst({
       where: { ...scope, id: bugId, isDeleted: false },
-      select: { id: true, title: true, reporterId: true, assigneeId: true, pullRequestUrl: true, proofLinks: true },
+      select: {
+        id: true, title: true, reporterId: true, assigneeId: true, beneficiaryUserId: true,
+        pullRequestUrl: true, proofLinks: true,
+        createdByAgent: { select: { ownerUserId: true } },
+        claims: { where: { status: "active", releasedAt: null }, select: { status: true, releasedAt: true, beneficiaryUserId: true, dispatcherUserId: true, agent: { select: { ownerUserId: true } } } },
+      },
     });
     if (!bug) throw new IssueApiError(404, "Issue not found.");
+    if (input.type === "review") {
+      const conflict = reviewerConflict({ id: agent.agentId, ownerUserId: agent.ownerId }, bug);
+      if (conflict) throw new IssueApiError(403, "not_independent", { message: new ReviewerNotIndependentError(conflict).message });
+    }
     if (input.parentId) {
       const parent = await tx.comment.findFirst({ where: { id: input.parentId, bugId, deletedAt: null }, select: { id: true, authorId: true } });
       if (!parent) throw new IssueApiError(422, "Parent comment not found on this issue.");

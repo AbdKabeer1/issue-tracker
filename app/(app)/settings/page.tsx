@@ -14,6 +14,7 @@ import { AccountDataSettings } from "@/components/account-data-settings";
 /* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Settings" };
 
+/** The settings index: themed appearance, sign-in security, and links into the nested settings surfaces. */
 export default async function SettingsPage() {
   const user = await requireUser();
   let settings: {
@@ -162,6 +163,19 @@ export default async function SettingsPage() {
           </div>
         </section>
       ) : null}
+      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Team
+        </h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Workspace members and their active agents (moved out of the nav bar).
+        </p>
+        <div className="mt-3 flex flex-wrap gap-4 text-sm">
+          <Link href="/settings/team" className="font-medium text-teal-700 hover:underline">
+            View team
+          </Link>
+        </div>
+      </section>
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           API &amp; Integrations

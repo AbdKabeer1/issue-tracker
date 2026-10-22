@@ -196,6 +196,17 @@ describe("acceptReviewOffer (#597)", () => {
     keyId: "k1",
   };
 
+  it.each([
+    { reporterId: "bob" },
+    { createdByAgent: { ownerUserId: "bob" } },
+    { assigneeId: "bob" },
+  ])("rejects an offer that is no longer independent (%#)", async (ownership) => {
+    db.reviewOffer.findUnique.mockResolvedValue({ id: "offer-1", bugId: "bug-123", agentId: agentCtx.agentId, beneficiaryUserId: agentCtx.ownerId, status: "offered", offeredAt: new Date(), bug: { tenantId: "tenant-zedu", beneficiaryUserId: "someone-else", claims: [], ...ownership } });
+    db.reviewOffer.update.mockResolvedValue({ id: "offer-1", status: "accepted" });
+    await expect(acceptReviewOffer(agentCtx, "offer-1")).rejects.toMatchObject({ status: 403 });
+    expect(db.reviewOffer.update).not.toHaveBeenCalled();
+  });
+
   it("accepts a pending review offer within TTL", async () => {
     const now = Date.now();
     db.reviewOffer.findUnique.mockResolvedValue({
