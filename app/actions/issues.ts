@@ -21,6 +21,7 @@ import {
   type ActivityMetadata,
 } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
+import { readAgentResolution } from "@/lib/agent-resolution";
 import { requireUser } from "@/lib/auth-helpers";
 import {
   resolveSessionUserId,
@@ -920,6 +921,24 @@ export async function reopenBugAction(
 ): Promise<ActionResult> {
   const formData = new FormData();
   formData.append("status", "open");
+  return updateBugAction(bugId, formData);
+}
+
+/**
+ * Ziki #515: undo an agent's resolve in one click, back to the status the
+ * issue had before. Only when that resolve is still the latest status change;
+ * updateBugAction applies the usual rule for who may change status.
+ */
+export async function reopenAgentResolvedAction(bugId: string): Promise<ActionResult> {
+  const latest = await prisma.bugActivity.findFirst({
+    where: { bugId, type: "status_changed" },
+    orderBy: { createdAt: "desc" },
+    select: { metadata: true, bug: { select: { status: true } } },
+  });
+  const resolution = latest?.bug.status === "resolved" ? readAgentResolution(latest.metadata) : null;
+  if (!resolution) return { error: "This issue wasn't resolved by an agent, so there is nothing to undo." };
+  const formData = new FormData();
+  formData.append("status", resolution.previousStatus);
   return updateBugAction(bugId, formData);
 }
 

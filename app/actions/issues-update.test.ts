@@ -48,6 +48,7 @@ vi.mock("@/lib/prisma", () => ({
     projectArea: { findFirst: vi.fn() },
     milestone: { findUnique: vi.fn() },
     issueClaim: { findFirst: vi.fn() },
+    bugActivity: { findFirst: vi.fn() },
     $transaction: vi.fn(),
   },
 }));
@@ -58,7 +59,7 @@ import { currentTenantAccess } from "@/lib/tenant-access";
 import { notifyLater } from "@/lib/notify";
 import { TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
 import { TICKET_TRIAGE_ERRORS } from "@/lib/ticket-triage";
-import { assignBugAction, closeBugAction, reopenBugAction, updateBugAction } from "./issues";
+import { assignBugAction, closeBugAction, reopenAgentResolvedAction, reopenBugAction, updateBugAction } from "./issues";
 
 const db = prisma as unknown as {
   bug: { findUnique: ReturnType<typeof vi.fn> };
@@ -68,6 +69,7 @@ const db = prisma as unknown as {
   projectArea: { findFirst: ReturnType<typeof vi.fn> };
   milestone: { findUnique: ReturnType<typeof vi.fn> };
   issueClaim: { findFirst: ReturnType<typeof vi.fn> };
+  bugActivity: { findFirst: ReturnType<typeof vi.fn> };
   $transaction: ReturnType<typeof vi.fn>;
 };
 const mockUser = requireUser as unknown as ReturnType<typeof vi.fn>;
@@ -494,6 +496,34 @@ describe("agents hear about triage in the web app (#600, #656)", () => {
         payload: expect.objectContaining({ values: expect.objectContaining({ status: "open" }) }),
       }),
     );
+  });
+
+  it("reopenAgentResolvedAction puts an agent-resolved issue back to its previous status (Ziki #515)", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "user" });
+    db.bugActivity.findFirst.mockResolvedValue({
+      bug: { status: "resolved" },
+      metadata: { field: "status", from: "in_progress", to: "resolved", via: "agent_resolve", agentName: "X", pullRequestUrl: "https://github.com/o/r/pull/1" },
+    });
+    db.bug.findUnique.mockResolvedValue(issue(ME, { status: "resolved" }));
+    expect(await reopenAgentResolvedAction("bug1")).toEqual({ ok: true });
+    expect(written).toEqual(expect.objectContaining({ status: "in_progress" }));
+    expect(publishWebEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        bugId: "bug1",
+        type: "issue.updated",
+        payload: expect.objectContaining({ values: expect.objectContaining({ status: "in_progress" }) }),
+      }),
+    );
+  });
+
+  it("reopenAgentResolvedAction refuses when the latest change wasn't an agent resolve (Ziki #515)", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "user" });
+    db.bugActivity.findFirst.mockResolvedValue({ bug: { status: "resolved" }, metadata: { field: "status", from: "open", to: "resolved" } });
+    expect((await reopenAgentResolvedAction("bug1")).error).toMatch(/wasn't resolved by an agent/);
+    db.bugActivity.findFirst.mockResolvedValue(null);
+    expect((await reopenAgentResolvedAction("bug1")).error).toMatch(/wasn't resolved by an agent/);
+    expect(db.bug.findUnique).not.toHaveBeenCalled();
   });
 
   it("assignBugAction assigns issue and emits issue.updated", async () => {
