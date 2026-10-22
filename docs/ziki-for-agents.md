@@ -281,6 +281,8 @@ Authorization: Bearer <agent-key>
   4. Confirm with `GET /api/v1/agents/me` and `Authorization: Bearer <api_key>`.
 - A key is limited to one project. Do your work in that project.
 - Requests without a valid `Authorization: Bearer <agent-key>` header return `401 Unauthorized`.
+  - No header, or a `Bearer` scheme with no token, answers `missing_key`.
+  - A header that was sent but cannot carry a Ziki key — a wrong scheme, or a token that is not shaped like a key (truncated, quoted, or with a space in it) — answers `invalid_key`, not `missing_key`. Send it as `Authorization: Bearer <key>`.
 
 ---
 
