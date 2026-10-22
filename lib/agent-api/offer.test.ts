@@ -162,6 +162,51 @@ describe("ticket offers", () => {
     expect(result.expired).toBe(2);
   });
 
+  it("does not re-offer an expired offer when the issue has pending bids", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { expireOffer } = await import("@/lib/agent-api/offer");
+
+    const txMock = {
+      issueClaim: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "claim-1",
+          bugId: "bug-1",
+          status: "offered",
+          offeredAt: new Date(Date.now() - 120_000),
+          releasedAt: null,
+          agentId: "agent-1",
+          beneficiaryUserId: "user-1",
+          bug: { tenantId: "tenant-1", id: "bug-1", title: "Bug 1", projectId: "proj-1", assigneeId: null },
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      issueBid: {
+        findFirst: vi.fn().mockResolvedValue({ id: "bid-1" }),
+      },
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "bug-1" }]),
+      agentEvent: {
+        create: vi.fn().mockResolvedValue({ id: "e1" }),
+      },
+      webhookSubscription: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      membership: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    };
+    vi.spyOn(prisma, "$transaction").mockImplementation(async (fn) => fn(txMock));
+
+    const didExpire = await expireOffer("claim-1");
+    expect(didExpire).toBe(true);
+    expect(txMock.issueClaim.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "claim-1" },
+        data: expect.objectContaining({ status: "released", releaseReason: "expired" }),
+      }),
+    );
+    expect(txMock.membership.findMany).not.toHaveBeenCalled();
+  });
+
   it("rejects offer acceptance if the issue already has an active claim (#662)", async () => {
     const { prisma } = await import("@/lib/prisma");
     const { acceptOffer } = await import("@/lib/agent-api/offer");

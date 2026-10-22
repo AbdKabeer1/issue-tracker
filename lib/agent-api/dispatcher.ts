@@ -168,8 +168,12 @@ export async function dispatchReadyIssues(
     if (readyIssues.length < maxOffersPerRun) {
       const remainingLimit = maxOffersPerRun - readyIssues.length;
       const seenIds = new Set(readyIssues.map((i) => i.id));
-      const otherIssues = await findReadyIssues(agent, projectId, remainingLimit + readyIssues.length);
-      for (const issue of otherIssues) {
+      // Filter the fill scan to issues without bids so young ineligible bids do not
+      // consume remaining capacity and starve unbid issues that can be offered.
+      const unbidIssues = await findReadyIssues(agent, projectId, remainingLimit, {
+        hasBids: false,
+      });
+      for (const issue of unbidIssues) {
         if (!seenIds.has(issue.id) && readyIssues.length < maxOffersPerRun) {
           readyIssues.push(issue);
         }

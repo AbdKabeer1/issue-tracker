@@ -205,7 +205,15 @@ export async function expireOffer(claimId: string): Promise<boolean> {
     await tx.issueClaim.update({ where: { id: claimId }, data: { status: "released", releasedAt: now, releaseReason: "expired" } });
     await publish(tx, { tenantId: fresh.bug.tenantId, type: "claim.released", actorAgentId: fresh.agentId, bugId: fresh.bugId,
       payload: { claimId, issueId: fresh.bugId, beneficiaryUserId: fresh.beneficiaryUserId, reason: "expired" } });
-    const next = await offerNext(tx, { tenantId: fresh.bug.tenantId }, fresh.bug);
+    const hasPendingBids = await (tx.issueBid?.findFirst
+      ? tx.issueBid.findFirst({
+          where: { bugId: fresh.bugId, withdrawnAt: null, awardedAt: null },
+          select: { id: true },
+        })
+      : null);
+    const next = hasPendingBids
+      ? null
+      : await offerNext(tx, { tenantId: fresh.bug.tenantId }, fresh.bug);
     return { released: true, next };
   });
   if (result) {
