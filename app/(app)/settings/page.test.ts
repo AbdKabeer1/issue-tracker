@@ -20,6 +20,7 @@ vi.mock("@/components/account-data-settings", () => ({
 
 import { prisma } from "@/lib/prisma";
 import SettingsPage from "./page";
+import { DisplayNameForm } from "@/components/display-name-form";
 
 describe("SettingsPage resilience", () => {
   beforeEach(() => {
@@ -145,4 +146,22 @@ describe("SettingsPage resilience", () => {
     expect(hrefs).not.toContain("/settings/audit");
     delete process.env.AGENT_PLATFORM;
   });
+});
+
+
+it("links to the dedicated profile editor without rendering the display-name form (#576)", async () => {
+  requireUser.mockResolvedValue({ id: "user-1", name: "Ada", email: "ada@example.com", role: "user" });
+  vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({ name: "Ada", email: "ada@example.com" } as never);
+  const page = await SettingsPage();
+  const nodes: Array<{ type?: unknown; props?: { href?: string; children?: unknown } }> = [];
+  function visit(node: unknown) {
+    if (Array.isArray(node)) return node.forEach(visit);
+    if (!node || typeof node !== "object") return;
+    const element = node as (typeof nodes)[number];
+    nodes.push(element);
+    visit(element.props?.children);
+  }
+  visit(page);
+  expect(nodes.some((node) => node.props?.href === "/settings/profile")).toBe(true);
+  expect(nodes.some((node) => node.type === DisplayNameForm)).toBe(false);
 });

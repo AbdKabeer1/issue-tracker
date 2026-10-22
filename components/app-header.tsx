@@ -524,6 +524,9 @@ export function AppHeader({
                   >
                     {SWITCH_TENANT_LINK.label}
                   </MenuLink>
+                  <MenuLink href="/settings/profile" active={isNavItemActive(pathname, "/settings/profile")}>
+                    Profile
+                  </MenuLink>
                   <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")}>
                     Settings
                   </MenuLink>
@@ -632,6 +635,9 @@ export function AppHeader({
               large
             >
               {SWITCH_TENANT_LINK.label}
+            </MenuLink>
+            <MenuLink href="/settings/profile" active={isNavItemActive(pathname, "/settings/profile")} large>
+              Profile
             </MenuLink>
             <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")} large>
               Settings

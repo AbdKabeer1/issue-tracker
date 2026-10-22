@@ -11,8 +11,9 @@ vi.mock("next/image", () => ({
   default: (props: { alt?: string }) => <span data-testid="img" aria-hidden={props.alt === ""} />,
 }));
 
+const navigation = vi.hoisted(() => ({ pathname: "/issues" }));
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/issues",
+  usePathname: () => navigation.pathname,
 }));
 
 vi.mock("@/app/(app)/tenants/actions", () => ({
@@ -34,6 +35,7 @@ const selectTenant = vi.mocked(selectTenantAction);
 afterEach(() => cleanup());
 
 beforeEach(() => {
+  navigation.pathname = "/issues";
   switchRole.mockReset();
   switchRole.mockResolvedValue({ error: "refused" });
 });
@@ -195,5 +197,32 @@ describe("theme toggle in header (#659)", () => {
 
     expect(screen.getByRole("group", { name: /theme preference/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Dark" })).toBeTruthy();
+  });
+});
+
+
+describe("Profile account navigation (#576)", () => {
+  it.each([
+    ["/settings/profile", "Profile"],
+    ["/settings", "Settings"],
+    ["/settings/security", "Settings"],
+  ])("marks only %s current in both account menus", async (pathname, currentLabel) => {
+    navigation.pathname = pathname;
+    const user = userEvent.setup();
+    const { container } = renderHeader();
+
+    for (const [buttonName, panelId] of [
+      [/account menu/i, "account-menu"],
+      [/open menu/i, "mobile-menu"],
+    ] as const) {
+      await user.click(screen.getByRole("button", { name: buttonName }));
+      const panel = container.querySelector(`#${panelId}`)!;
+      const profile = panel.querySelector('a[href="/settings/profile"]')!;
+      const settings = panel.querySelector('a[href="/settings"]')!;
+      expect(profile.textContent).toBe("Profile");
+      expect(settings.textContent).toBe("Settings");
+      expect(profile.getAttribute("aria-current")).toBe(currentLabel === "Profile" ? "page" : null);
+      expect(settings.getAttribute("aria-current")).toBe(currentLabel === "Settings" ? "page" : null);
+    }
   });
 });

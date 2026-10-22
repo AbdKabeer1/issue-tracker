@@ -67,6 +67,14 @@ export function headerNavItems(
 export function isNavItemActive(pathname: string | null, href: string): boolean {
   if (!pathname) return false;
   const path = pathname.replace(/\/+$/, "") || "/";
+  // Profile has its own account-menu entry rather than sharing Settings' highlight.
+  if (href === "/settings") {
+    return (
+      (path === "/settings" || path.startsWith("/settings/")) &&
+      path !== "/settings/profile" &&
+      !path.startsWith("/settings/profile/")
+    );
+  }
   if (href === "/issues" || href === "/bugs") {
     return (
       path === "/issues" ||
