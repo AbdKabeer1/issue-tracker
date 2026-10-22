@@ -13,6 +13,7 @@ import { parsePlatformFilter, platformFilterWhere } from "@/lib/platform-filter"
 import { boundSearchTerm, escapeSearchQuery } from "@/lib/search";
 import { parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
 import { intakeKind, openIssueStages, type IssueStage } from "@/lib/issue-stage";
+import { WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
 import { parseIssueRef } from "@/lib/issue-ref";
 import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, hashCreateRequest, pageSize, toPage, type IssueCursor } from "@/lib/agent-api/create-policy";
 import { createdSummary, commentedSummary, commentPreview } from "@/lib/activity-log";
@@ -125,6 +126,8 @@ export const issueSelect = {
   id: true, number: true, title: true, description: true, status: true, severity: true,
   categoryId: true, typeId: true, reporterId: true, assigneeId: true, beneficiaryUserId: true,
   createdByAgentId: true, projectId: true, areaId: true, createdAt: true, updatedAt: true, proofLinks: true,
+  // #463: agents can see how close an idea is to the upvote gate.
+  voteCount: true,
   area: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.BugSelect;
 
@@ -218,11 +221,11 @@ export async function readAgentIssue(scope: Scope, id: string) {
   });
   if (!issue) throw new IssueApiError(404, "Issue not found.");
   const confirmed = await isConfirmed(issue.id);
-  const { voteCount, ...publicIssue } = issue;
   return {
-    ...publicIssue,
+    ...issue,
+    voteThreshold: WORK_READINESS_VOTE_THRESHOLD,
     confirmed,
-    intake: intakeKind({ status: issue.status, voteCount, confirmed }),
+    intake: intakeKind({ status: issue.status, voteCount: issue.voteCount, confirmed }),
   };
 }
 

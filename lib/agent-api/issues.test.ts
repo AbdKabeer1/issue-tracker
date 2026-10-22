@@ -795,7 +795,16 @@ describe("issue read confirmation", () => {
     const body = await readIssue();
     expect(body.confirmed).toBe(true);
     expect(body.intake).toBe("issue");
-    expect(body).not.toHaveProperty("voteCount");
+  });
+
+  it("shows the upvote count and the threshold an idea needs (#463)", async () => {
+    db.bug.findFirst.mockResolvedValue({ ...issue, status: "open", voteCount: 2 });
+    db.issueValidation.findMany.mockResolvedValue([accept("v1", "r1", "rob"), accept("v2", "r2", "sam")]);
+    const body = (await readIssue()) as unknown as { voteCount: number; voteThreshold: number; intake: string };
+    expect(body.voteCount).toBe(2);
+    expect(body.voteThreshold).toBe(3);
+    expect(body.intake).toBe("idea");
+    expect(db.bug.findFirst.mock.calls.at(-1)?.[0]?.select.voteCount).toBe(true);
   });
 
   it("does not confirm when both accepts belong to the same owner", async () => {
@@ -827,5 +836,10 @@ describe("issue read confirmation", () => {
     const body = await response.json();
     expect(body.items[0]).not.toHaveProperty("confirmed");
     expect(body.items[0]).not.toHaveProperty("validations");
+  });
+
+  it("selects the upvote count for each listed issue (#463)", async () => {
+    await list(request());
+    expect(db.bug.findMany.mock.calls.at(-1)?.[0]?.select.voteCount).toBe(true);
   });
 });
