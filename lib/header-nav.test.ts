@@ -23,67 +23,44 @@ describe("SWITCH_TENANT_LINK (#444)", () => {
 });
 
 describe("headerNavItems (#761)", () => {
-  it("shows Issues, Team, Workspace, and Agents to normal users by default", () => {
+  it("shows Issues, Team, and Escalations to normal users by default", () => {
     const items = headerNavItems("user");
-    expect(items.map((i) => i.label)).toEqual(["Issues", "Team", "Workspace", "Agents"]);
-    const project = items.find((i) => i.label === "Workspace");
-    expect(project?.children?.map((c) => c.label)).toEqual(["Projects", "Milestones"]);
-    const agents = items.find((i) => i.label === "Agents");
-    expect(agents?.children?.map((c) => c.label)).toEqual(["Escalations", "Redesigns", "API Docs"]);
+    expect(items.map((i) => i.label)).toEqual(["Issues", "Team", "Escalations"]);
+    expect(items.map((i) => i.label)).not.toContain("Workspace");
+    expect(items.find((i) => i.label === "Escalations")?.children).toBeUndefined();
   });
 
   it("shows API Docs on the bar when the agent platform is explicitly disabled", () => {
     expect(headerNavItems("user", { agentPlatform: false }).map((i) => i.label)).toEqual([
       "Issues",
       "Team",
-      "Workspace",
       "API Docs",
     ]);
   });
 
-  it("includes Escalations and Redesigns when agent platform is enabled (#627)", () => {
-    const agents = headerNavItems("user", { agentPlatform: true }).find((i) => i.label === "Agents");
-    expect(agents?.children?.map((c) => c.href)).toEqual(["/escalations", "/redesigns", "/docs"]);
+  it("links Escalations directly when the agent platform is enabled (#627)", () => {
+    const item = headerNavItems("user", { agentPlatform: true }).find((i) => i.label === "Escalations");
+    expect(item?.href).toBe("/escalations");
+    expect(item?.children).toBeUndefined();
   });
 
   it("includes pending escalations badge count when provided (#763)", () => {
-    const agents = headerNavItems("user", { agentPlatform: true, pendingEscalations: 3 }).find(
-      (i) => i.label === "Agents",
+    const item = headerNavItems("user", { agentPlatform: true, pendingEscalations: 3 }).find(
+      (i) => i.label === "Escalations",
     );
-    expect(agents?.badge).toBe(3);
-    expect(agents?.children?.find((c) => c.href === "/escalations")?.badge).toBe(3);
+    expect(item?.badge).toBe(3);
 
     const quiet = headerNavItems("user", { agentPlatform: true, pendingEscalations: 0 }).find(
-      (i) => i.label === "Agents",
+      (i) => i.label === "Escalations",
     );
     expect(quiet?.badge).toBeUndefined();
-    expect(quiet?.children?.find((c) => c.href === "/escalations")?.badge).toBeUndefined();
-  });
-
-  it("adds Platforms and Types under Workspace for admins (#761)", () => {
-    const items = headerNavItems("admin");
-    expect(items.map((i) => i.label)).toEqual(["Issues", "Team", "Workspace", "Agents"]);
-    const project = items.find((i) => i.label === "Workspace");
-    expect(project?.children?.map((c) => c.label)).toEqual([
-      "Projects",
-      "Milestones",
-      "Platforms",
-      "Types",
-    ]);
-  });
-
-  it("shows Platforms under Workspace to an organization owner who is not a site admin (#761)", () => {
-    const items = headerNavItems("user", { managePlatforms: true });
-    const project = items.find((i) => i.label === "Workspace");
-    expect(project?.children?.map((c) => c.label)).toEqual(["Projects", "Milestones", "Platforms"]);
   });
 
   it("adds Admins for super admins (#761)", () => {
     expect(headerNavItems("super_admin").map((i) => i.label)).toEqual([
       "Issues",
       "Team",
-      "Workspace",
-      "Agents",
+      "Escalations",
       "Admins",
     ]);
   });
@@ -112,6 +89,8 @@ describe("isNavItemActive", () => {
     expect(isNavItemActive("/escalations/q1", "/escalations")).toBe(true);
     expect(isNavItemActive("/questions", "/escalations")).toBe(true);
     expect(isNavItemActive("/questions/q1", "/escalations")).toBe(true);
+    expect(isNavItemActive("/redesigns", "/escalations")).toBe(true);
+    expect(isNavItemActive("/redesigns/r1", "/escalations")).toBe(true);
     expect(isNavItemActive("/issues", "/escalations")).toBe(false);
   });
 
