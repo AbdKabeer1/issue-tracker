@@ -5,16 +5,25 @@ import { isSuperAdminEmail } from "@/lib/super-admin";
 import { logger } from "@/lib/logger";
 import { clearTwoFactorAfterPasswordRemoved } from "@/lib/two-factor";
 
+type Db = typeof prisma;
+
 /**
- * After Google removes an unproven password, drop any two-factor set up for
- * it (#388). Best effort: a failure is logged, not a failed sign-in.
+ * Runs a user upsert. When it removes an unproven password, any two-factor
+ * set up for that password is cleared in the same transaction (#388): both
+ * happen or neither does, so a failure leaves the account with its password
+ * and factor (still usable, retried at the next sign-in), never with a factor
+ * that can no longer be turned off.
  */
-async function clearOrphanedTwoFactor(userId: string): Promise<void> {
-  try {
-    await clearTwoFactorAfterPasswordRemoved(userId);
-  } catch (error) {
-    logger.error("[auth] Clearing two-factor after removing the password failed:", error);
-  }
+async function upsertUser<T extends { id: string }>(
+  neutralizePassword: boolean,
+  run: (db: Db) => Promise<T>,
+): Promise<T> {
+  if (!neutralizePassword) return run(prisma);
+  return prisma.$transaction(async (tx) => {
+    const user = await run(tx as unknown as Db);
+    await clearTwoFactorAfterPasswordRemoved(user.id, tx);
+    return user;
+  });
 }
 
 export type GoogleAccount = {
@@ -67,7 +76,7 @@ export async function upsertGoogleUser(input: {
   }
 
   try {
-    const user = await prisma.user.upsert({
+    const user = await upsertUser(neutralizePassword, (db) => db.user.upsert({
       where: { email },
       create: {
         email,
@@ -86,23 +95,21 @@ export async function upsertGoogleUser(input: {
         ...(neutralizePassword ? { passwordHash: null } : {}),
       },
       select: { id: true, name: true, role: true, sessionVersion: true },
-    });
-    if (neutralizePassword) await clearOrphanedTwoFactor(user.id);
+    }));
     return { id: user.id, name: user.name, role: user.role, sessionVersion: user.sessionVersion };
   } catch (error) {
     logger.error("[auth] Google user upsert failed:", error);
   }
 
   try {
-    const user = await prisma.user.upsert({
+    const user = await upsertUser(neutralizePassword, (db) => db.user.upsert({
       where: { email },
       create: { email, name },
       update: {
         ...(neutralizePassword ? { passwordHash: null } : {}),
       },
       select: { id: true, name: true, sessionVersion: true },
-    });
-    if (neutralizePassword) await clearOrphanedTwoFactor(user.id);
+    }));
     return { id: user.id, name: user.name, role, sessionVersion: user.sessionVersion ?? 0 };
   } catch (error) {
     logger.error("[auth] Minimal Google user upsert failed:", error);

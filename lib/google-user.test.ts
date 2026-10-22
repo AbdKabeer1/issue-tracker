@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const prisma = {
     user: { upsert: vi.fn(), findUnique: vi.fn() },
     $executeRaw: vi.fn(),
-  },
-}));
+    // Runs the callback on the same mock: what matters here is which work is
+    // grouped into one transaction, and that a failure inside it propagates.
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(prisma)),
+  };
+  return { prisma };
+});
 vi.mock("@/lib/super-admin", () => ({ isSuperAdminEmail: () => false }));
 const twoFactor = vi.hoisted(() => ({ clearTwoFactorAfterPasswordRemoved: vi.fn(async () => true) }));
 vi.mock("@/lib/two-factor", () => twoFactor);
@@ -120,35 +124,49 @@ describe("upsertGoogleUser (#351)", () => {
 });
 
 describe("two-factor left behind by a removed password (#388)", () => {
-  it("clears it when Google removes an unverified password", async () => {
+  const transaction = prisma.$transaction as unknown as ReturnType<typeof vi.fn>;
+
+  it("clears it in the same transaction that removes an unverified password", async () => {
     findUnique.mockResolvedValueOnce({ passwordHash: "hash", emailVerified: null });
     upsert.mockResolvedValueOnce({ id: "u9", name: "N", role: "user", sessionVersion: 2 });
     await upsertGoogleUser({ email: "human@x.dev", name: "Human", emailVerified: true });
-    expect(twoFactor.clearTwoFactorAfterPasswordRemoved).toHaveBeenCalledWith("u9");
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(upsert.mock.calls[0][0].update.passwordHash).toBeNull();
+    expect(twoFactor.clearTwoFactorAfterPasswordRemoved).toHaveBeenCalledWith("u9", prisma);
   });
 
-  it("also clears it on the fallback upsert", async () => {
+  it("also clears it, atomically, on the fallback upsert", async () => {
     findUnique.mockResolvedValueOnce({ passwordHash: "hash", emailVerified: null });
     upsert.mockRejectedValueOnce(new Error("column image does not exist"));
     upsert.mockResolvedValueOnce({ id: "u9", name: "N", sessionVersion: 0 });
     await upsertGoogleUser({ email: "human@x.dev", name: "Human", emailVerified: true });
-    expect(twoFactor.clearTwoFactorAfterPasswordRemoved).toHaveBeenCalledWith("u9");
+    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(twoFactor.clearTwoFactorAfterPasswordRemoved).toHaveBeenCalledWith("u9", prisma);
   });
 
-  it("leaves two-factor alone when the password is kept or there is none", async () => {
+  it("does not open a transaction or touch two-factor when the password is kept or there is none", async () => {
     findUnique.mockResolvedValueOnce({ passwordHash: "hash", emailVerified: new Date() });
     upsert.mockResolvedValueOnce({ id: "u9", name: "N", role: "user", sessionVersion: 0 });
     await upsertGoogleUser({ email: "human@x.dev", name: "Human", emailVerified: true });
     findUnique.mockResolvedValueOnce({ passwordHash: null, emailVerified: null });
     upsert.mockResolvedValueOnce({ id: "u8", name: "N", role: "user", sessionVersion: 0 });
     await upsertGoogleUser({ email: "g-only@x.dev", emailVerified: true });
+    expect(transaction).not.toHaveBeenCalled();
     expect(twoFactor.clearTwoFactorAfterPasswordRemoved).not.toHaveBeenCalled();
   });
 
-  it("still signs the person in if the cleanup fails", async () => {
+  it("fails the password removal with the cleanup, so the next attempt redoes both", async () => {
     findUnique.mockResolvedValueOnce({ passwordHash: "hash", emailVerified: null });
     upsert.mockResolvedValueOnce({ id: "u9", name: "N", role: "user", sessionVersion: 2 });
+    upsert.mockResolvedValueOnce({ id: "u9", name: "N", sessionVersion: 2 });
     twoFactor.clearTwoFactorAfterPasswordRemoved.mockRejectedValueOnce(new Error("db down"));
+
     await expect(upsertGoogleUser({ email: "human@x.dev", name: "Human", emailVerified: true })).resolves.toMatchObject({ id: "u9" });
+
+    // The first transaction threw (rolled back in Postgres); the fallback
+    // transaction removed the password and cleared two-factor together.
+    expect(transaction).toHaveBeenCalledTimes(2);
+    await expect(transaction.mock.results[0].value).rejects.toThrow("db down");
+    expect(twoFactor.clearTwoFactorAfterPasswordRemoved).toHaveBeenCalledTimes(2);
   });
 });

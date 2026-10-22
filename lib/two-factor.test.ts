@@ -274,6 +274,17 @@ describe("clearTwoFactorAfterPasswordRemoved (#388)", () => {
     expect(db.securityAuditEvent.create).toHaveBeenCalledWith({ data: { userId: "u1", type: "totp.disabled" } });
   });
 
+  it("joins the caller's transaction instead of opening its own", async () => {
+    const tx = {
+      totpBackupCode: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      totpCredential: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      securityAuditEvent: { create: vi.fn() },
+    };
+    expect(await clearTwoFactorAfterPasswordRemoved("u3", tx as never)).toBe(true);
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(tx.securityAuditEvent.create).toHaveBeenCalledWith({ data: { userId: "u3", type: "totp.disabled" } });
+  });
+
   it("records nothing when there was no factor to remove", async () => {
     db.totpBackupCode.deleteMany.mockResolvedValueOnce({ count: 0 });
     db.totpCredential.deleteMany.mockResolvedValueOnce({ count: 0 });

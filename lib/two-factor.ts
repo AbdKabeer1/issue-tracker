@@ -221,15 +221,23 @@ export async function disableTwoFactor(userId: string): Promise<number> {
  * on a passwordless account can never be used, and an enrolled factor would
  * make Google refuse the account from then on. Writes `totp.disabled` only
  * when something was removed. Returns whether it did.
+ *
+ * Pass the transaction that removes the password, so the two happen together
+ * or not at all: a failure must never leave a passwordless account whose
+ * enrolled factor nobody can turn off.
  */
-export async function clearTwoFactorAfterPasswordRemoved(userId: string): Promise<boolean> {
-  return prisma.$transaction(async (tx) => {
-    const codes = await tx.totpBackupCode.deleteMany({ where: { userId } });
-    const credential = await tx.totpCredential.deleteMany({ where: { userId } });
+export async function clearTwoFactorAfterPasswordRemoved(
+  userId: string,
+  tx?: Pick<typeof prisma, "totpBackupCode" | "totpCredential" | "securityAuditEvent">,
+): Promise<boolean> {
+  const clear = async (db: Pick<typeof prisma, "totpBackupCode" | "totpCredential" | "securityAuditEvent">) => {
+    const codes = await db.totpBackupCode.deleteMany({ where: { userId } });
+    const credential = await db.totpCredential.deleteMany({ where: { userId } });
     if (codes.count === 0 && credential.count === 0) return false;
-    await record(userId, "totp.disabled", tx);
+    await record(userId, "totp.disabled", db);
     return true;
-  });
+  };
+  return tx ? clear(tx) : prisma.$transaction(clear);
 }
 
 export async function regenerateBackupCodes(userId: string): Promise<BackupCodesResult> {
