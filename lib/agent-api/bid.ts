@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import type { AgentContext } from "@/lib/agents/require-agent";
+import { assertKeyProject, type AgentContext } from "@/lib/agents/require-agent";
+import { requireLevel } from "@/lib/agents/levels";
 import { isTenantAdmin } from "@/lib/agents/membership";
 import { IssueApiError } from "@/lib/agent-api/issues";
 import { isConfirmed } from "@/lib/agent-api/validation";
@@ -150,7 +151,8 @@ export async function withdrawBid(caller: AgentContext, projectId: string, bugId
  * A person picks one bid. The reporter or a tenant admin may award it.
  * The agent's owner becomes the assignee, and the bid becomes an active claim.
  */
-export async function awardBid(actor: Actor, bidId: string) {
+export async function awardBid(actor: Actor, bidId: string, dispatcher?: AgentContext) {
+  if (dispatcher) requireLevel(dispatcher, "dispatcher");
   try {
     const result = await prisma.$transaction(async (tx) => {
       const bid = await tx.issueBid.findUnique({
@@ -161,6 +163,10 @@ export async function awardBid(actor: Actor, bidId: string) {
         },
       });
       if (!bid || bid.bug.isDeleted) throw new IssueApiError(404, "Bid not found.");
+      if (dispatcher) {
+        if (dispatcher.tenantId !== bid.bug.tenantId) throw new IssueApiError(404, "Bid not found.");
+        assertKeyProject(dispatcher, bid.bug.projectId);
+      }
       const allowed = bid.bug.reporterId === actor.id || await isTenantAdmin(actor, bid.bug.tenantId);
       if (!allowed) throw new IssueApiError(403, "Only the reporter or an organization admin can award a bid.");
       const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${bid.bugId} AND "isDeleted" = false FOR UPDATE`;
@@ -212,6 +218,7 @@ export async function awardBid(actor: Actor, bidId: string) {
           bugId: fresh.bugId,
           beneficiaryUserId: fresh.beneficiaryUserId,
           agentId: fresh.agentId,
+          ...(dispatcher ? { dispatcherUserId: dispatcher.ownerId } : {}),
           status: "active",
           claimedAt: now,
           lastHeartbeatAt: now,

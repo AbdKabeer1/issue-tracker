@@ -120,7 +120,7 @@ const reviewedBugSelect = {
   duplicateOfId: true,
   createdByAgentId: true,
   createdByAgent: { select: { ownerUserId: true } },
-  claims: { select: { status: true, releasedAt: true, beneficiaryUserId: true, agent: { select: { ownerUserId: true } } } },
+  claims: { select: { status: true, releasedAt: true, beneficiaryUserId: true, dispatcherUserId: true, agent: { select: { ownerUserId: true } } } },
 } satisfies Prisma.BugSelect;
 
 type LoadedBug = Prisma.BugGetPayload<{ select: typeof reviewedBugSelect }>;

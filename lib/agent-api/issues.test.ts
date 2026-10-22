@@ -753,6 +753,18 @@ describe("issue read confirmation", () => {
     expect((await readIssue()).confirmed).toBe(false);
   });
 
+  it("reads an issue by its readable number as well as its id (#457)", async () => {
+    db.bug.findFirst.mockResolvedValue({ ...issue, status: "open", voteCount: 0 });
+    db.issueValidation.findMany.mockResolvedValue([]);
+    for (const ref of ["12", "ZE-12"]) {
+      await read(request(), { params: Promise.resolve({ id: ref }) });
+      expect(db.bug.findFirst.mock.calls.at(-1)?.[0]?.where).toMatchObject({ number: 12, isDeleted: false });
+      expect(db.bug.findFirst.mock.calls.at(-1)?.[0]?.where).not.toHaveProperty("id");
+    }
+    await read(request(), context);
+    expect(db.bug.findFirst.mock.calls.at(-1)?.[0]?.where).toMatchObject({ id: issue.id });
+  });
+
   it("leaves the list response without validations or confirmed", async () => {
     const response = await list(request());
     expect(response.status).toBe(200);

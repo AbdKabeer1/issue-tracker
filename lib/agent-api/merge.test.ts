@@ -267,6 +267,45 @@ describe("acceptFix: the gate (#434)", () => {
   });
 });
 
+describe("acceptFix: dispatcher completion reward", () => {
+  it("pays the dispatcher of the completed claim, not an earlier abandoned claim", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({ claims: [
+      { status: "released", releasedAt: new Date(), dispatcherUserId: "old-dispatcher" },
+      { status: "active", releasedAt: null, agentId: "solver-agent", beneficiaryUserId: "ada", dispatcherUserId: "dispatcher-owner", agent: { ownerUserId: "ada" } },
+    ] }));
+
+    expect(await acceptFix(merger("m1", "mo"), "bug1")).toMatchObject({ status: 200 });
+    const rewards = db.pointEntry.createMany.mock.calls.flatMap((call) => call[0].data).filter((entry) => entry.role === "dispatcher");
+    expect(rewards).toEqual([{
+      tenantId: "tenant_zedu", bugId: "bug1", userId: "dispatcher-owner",
+      role: "dispatcher", points: 2, sourceKey: "dispatcher:bug1",
+    }]);
+  });
+
+  it("does not pay a dispatcher before independent verdicts accept the fix", async () => {
+    confirmWith("rob", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({ claims: [
+      { status: "active", releasedAt: null, agentId: "solver-agent", beneficiaryUserId: "ada", dispatcherUserId: "dispatcher-owner", agent: { ownerUserId: "ada" } },
+    ] }));
+    expect(await acceptFix(merger("m1", "mo"), "bug1")).toMatchObject({ status: 409, missing: "verdicts" });
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it("does not let the rewarded dispatcher accept its own assigned fix", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({ claims: [
+      { status: "active", releasedAt: null, agentId: "solver-agent", beneficiaryUserId: "ada", dispatcherUserId: "mo", agent: { ownerUserId: "ada" } },
+    ] }));
+    expect(await acceptFix(merger("m1", "mo"), "bug1")).toMatchObject({ status: 403, error: "not_independent" });
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+  });
+});
+
 describe("acceptFix: a successful accept (#434)", () => {
   it("resolves the issue and pays the assignee as solver, once", async () => {
     confirmWith("rob", "sam");

@@ -1,5 +1,7 @@
+import { createMethodNotAllowed, createOptions } from "@/lib/agent-api/http-errors";
 import { NextResponse, type NextRequest } from "next/server";
 import { clientRateLimitKey, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { PAIRING_LINK_MESSAGE } from "@/lib/agents/pairing-link";
 import { absoluteUrl } from "@/lib/site-url";
 import { consumePairingLimit } from "@/lib/agents/rate-limit";
 import { PAIRING_POLL_INTERVAL, pairingApprovalPath, startPairing } from "@/lib/agents/pairing";
@@ -39,9 +41,17 @@ export async function POST(req: NextRequest) {
       verification_uri_complete: absoluteUrl(pairingApprovalPath(result.userCode)),
       expires_at: result.expiresAt.toISOString(),
       interval: PAIRING_POLL_INTERVAL,
-      message:
-        "Open verification_uri_complete in the owner's browser yourself. Do not only print it. They approve it while signed in. Then poll the token URL with device_code until api_key is returned.",
+      message: PAIRING_LINK_MESSAGE,
     },
     { status: 201, headers: { "Cache-Control": "no-store" } },
   );
 }
+
+const apiMethodNotAllowed = createMethodNotAllowed(["POST", "OPTIONS"]);
+const apiOptions = createOptions(["POST", "OPTIONS"]);
+export const GET = apiMethodNotAllowed;
+export const PUT = apiMethodNotAllowed;
+export const PATCH = apiMethodNotAllowed;
+export const DELETE = apiMethodNotAllowed;
+export const HEAD = apiMethodNotAllowed;
+export const OPTIONS = apiOptions;

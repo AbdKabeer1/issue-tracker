@@ -52,43 +52,53 @@ export async function findReadyIssues(
 ): Promise<ReadyIssue[]> {
   requireLevel(agent, "dispatcher");
 
-  const issues = await prisma.bug.findMany({
-    where: {
-      tenantId: agent.tenantId,
-      projectId,
-      isDeleted: false,
-      status: "open",
-      voteCount: { gte: WORK_READINESS_VOTE_THRESHOLD },
-      claims: {
-        none: {
-          releasedAt: null,
-          status: { in: ["active", "offered"] },
+  const ready: ReadyIssue[] = [];
+  let cursor: string | undefined;
+  while (ready.length < limit) {
+    const issues = await prisma.bug.findMany({
+      where: {
+        tenantId: agent.tenantId,
+        projectId,
+        isDeleted: false,
+        status: "open",
+        voteCount: { gte: WORK_READINESS_VOTE_THRESHOLD },
+        claims: {
+          none: {
+            releasedAt: null,
+            status: { in: ["active", "offered"] },
+          },
         },
       },
-    },
-    select: {
-      id: true,
-      number: true,
-      title: true,
-      projectId: true,
-      areaId: true,
-      voteCount: true,
-      assigneeId: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: "asc" },
-    take: limit,
-  });
+      select: {
+        id: true,
+        number: true,
+        title: true,
+        projectId: true,
+        areaId: true,
+        voteCount: true,
+        assigneeId: true,
+        createdAt: true,
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: 50,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
 
-  // Filter to only confirmed issues
-  const confirmed = await Promise.all(
-    issues.map(async (issue) => ({
-      ...issue,
-      confirmed: await isConfirmed(issue.id),
-    }))
-  );
+    // Filter to only confirmed issues
+    for (let offset = 0; offset < issues.length && ready.length < limit; offset += 10) {
+      const confirmed = await Promise.all(
+        issues.slice(offset, offset + 10).map(async (issue) => ({
+          ...issue,
+          confirmed: await isConfirmed(issue.id),
+        }))
+      );
+      ready.push(...confirmed.filter((issue) => issue.confirmed));
+    }
+    if (issues.length < 50) break;
+    cursor = issues[issues.length - 1].id;
+  }
 
-  return confirmed.filter((issue) => issue.confirmed);
+  return ready.slice(0, limit);
 }
 
 /**
@@ -159,15 +169,15 @@ export async function dispatchReadyIssues(
             oldest.createdAt.getTime() <= Date.now() - autoAwardAfterHours * 3_600_000;
           if (policy === "auto_award" && waitedLongEnough) {
             if (!oldest.bug.reporterId) throw new IssueApiError(409, "Issue has no reporter to award the bid.");
-            await awardBid({ id: oldest.bug.reporterId }, oldest.id);
+            await awardBid({ id: oldest.bug.reporterId }, oldest.id, agent);
             result.awarded++;
           } else {
             result.skipped++;
           }
         } else {
           // No bids: offer to the top-ranked candidate.
-          await offerIssue(agent, issue);
-          result.offered++;
+          if (await offerIssue(agent, issue)) result.offered++;
+          else result.skipped++;
         }
       }
     } catch (error) {
@@ -187,7 +197,7 @@ export async function dispatchReadyIssues(
 async function offerIssue(
   agent: AgentContext,
   issue: ReadyIssue
-): Promise<void> {
+): Promise<boolean> {
   const offerResult = await offerNext(prisma, agent, {
     id: issue.id,
     projectId: issue.projectId,
@@ -206,6 +216,7 @@ async function offerIssue(
 
     scheduleOfferExpiry(offerResult.claim.id);
   }
+  return Boolean(offerResult);
 }
 
 /**
@@ -274,21 +285,7 @@ export async function getDispatcherMetrics(
   requireLevel(agent, "dispatcher");
 
   const [readyCount, activeClaims, pendingOffers, openBids] = await Promise.all([
-    prisma.bug.count({
-      where: {
-        tenantId: agent.tenantId,
-        projectId,
-        isDeleted: false,
-        status: "open",
-        voteCount: { gte: WORK_READINESS_VOTE_THRESHOLD },
-        claims: {
-          none: {
-            releasedAt: null,
-            status: { in: ["active", "offered"] },
-          },
-        },
-      },
-    }),
+    findReadyIssues(agent, projectId, Number.POSITIVE_INFINITY).then((issues) => issues.length),
     prisma.issueClaim.count({
       where: {
         bug: { tenantId: agent.tenantId, projectId },

@@ -3,9 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const resolve = vi.hoisted(() => vi.fn());
+const link = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 vi.mock("@/lib/github/pr-merged", async (original) => ({
   ...(await original<typeof import("@/lib/github/pr-merged")>()), resolveIssuesForMergedPullRequest: resolve,
+}));
+vi.mock("@/lib/github/pr-opened", async (original) => ({
+  ...(await original<typeof import("@/lib/github/pr-opened")>()), linkIssuesForOpenedPullRequest: link,
 }));
 import { POST } from "./route";
 
@@ -18,7 +22,7 @@ function call(body: object, { event = "pull_request", secret = SECRET, signWith 
     headers: { "x-github-event": event, "x-hub-signature-256": `sha256=${createHmac("sha256", signWith).update(raw).digest("hex")}` },
   }));
 }
-afterEach(() => { resolve.mockReset(); delete process.env.GITHUB_WEBHOOK_SECRET; });
+afterEach(() => { resolve.mockReset(); link.mockReset(); delete process.env.GITHUB_WEBHOOK_SECRET; });
 
 describe("POST /api/github/webhook (#474)", () => {
   const merged = { action: "closed", pull_request: { merged: true, html_url: "https://github.com/o/r/pull/9" } };
@@ -26,6 +30,7 @@ describe("POST /api/github/webhook (#474)", () => {
     expect((await call(merged, { secret: "" })).status).toBe(503);
     expect((await call(merged, { signWith: "wrong" })).status).toBe(401);
     expect(resolve).not.toHaveBeenCalled();
+    expect(link).not.toHaveBeenCalled();
   });
   it("resolves issues for a merged pull request", async () => {
     resolve.mockResolvedValue(["bug-1"]);
@@ -34,11 +39,33 @@ describe("POST /api/github/webhook (#474)", () => {
     expect(await response.json()).toEqual({ resolved: ["bug-1"] });
     expect(resolve).toHaveBeenCalledWith("https://github.com/o/r/pull/9");
   });
+  it("links issues named by an opened pull request", async () => {
+    link.mockResolvedValue(["bug-2"]);
+    const response = await call({
+      action: "opened",
+      pull_request: {
+        html_url: "https://github.com/o/r/pull/10",
+        title: "Fixes #490",
+        body: null,
+        head: { ref: "fix/ziki-490", sha: "sha-1" },
+      },
+      repository: { html_url: "https://github.com/o/r" },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ linked: ["bug-2"] });
+    expect(link).toHaveBeenCalledWith({
+      pullRequestUrl: "https://github.com/o/r/pull/10",
+      headSha: "sha-1",
+      repositoryUrl: "https://github.com/o/r",
+      text: ["Fixes #490", "", "fix/ziki-490"],
+    });
+  });
   it("ignores closed-without-merge, other actions and other events", async () => {
     expect((await call({ action: "closed", pull_request: { merged: false, html_url: "u" } })).status).toBe(202);
-    expect((await call({ action: "opened", pull_request: { merged: false, html_url: "u" } })).status).toBe(202);
+    expect((await call({ action: "assigned", pull_request: { html_url: "u" }, repository: { html_url: "r" } })).status).toBe(202);
     expect((await call(merged, { event: "push" })).status).toBe(202);
     expect((await call({}, { event: "ping" })).status).toBe(200);
     expect(resolve).not.toHaveBeenCalled();
+    expect(link).not.toHaveBeenCalled();
   });
 });

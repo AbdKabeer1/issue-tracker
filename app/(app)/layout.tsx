@@ -11,7 +11,6 @@ import { PAGE_CONTAINER_CLASS } from "@/components/page-container";
 import { FocusMainOnNavigate } from "@/components/focus-main-on-navigate";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { isAdmin } from "@/lib/roles";
-import { isTenantAdminRole } from "@/lib/agents/membership";
 import type { WorkspaceChoice } from "@/components/workspace-switcher";
 import { prisma } from "@/lib/prisma";
 import { currentTenantIdFor } from "@/lib/tenant-context";
@@ -49,7 +48,6 @@ export default async function AppLayout({
   // project inside the current workspace, so a foreign project id is ignored.
   let workspaces: WorkspaceChoice[] = [];
   let activeTenantId: string | null = null;
-  let canManagePlatforms = false;
   let tenantId: string | null = null;
   try {
     tenantId = await currentTenantIdFor(user.id);
@@ -58,13 +56,6 @@ export default async function AppLayout({
     workspaces = memberships
       .filter((tenant) => tenant.archivedAt === null)
       .map((tenant) => ({ id: tenant.id, name: tenant.name, slug: tenant.slug }));
-    if (tenantId) {
-      const membership = await prisma.membership.findUnique({
-        where: { tenantId_userId: { tenantId, userId: user.id } },
-        select: { role: true },
-      });
-      canManagePlatforms = isTenantAdminRole(membership?.role, user.role);
-    }
   } catch (error) {
     console.error("[layout] workspace context failed", error);
   }
@@ -122,7 +113,6 @@ export default async function AppLayout({
         userId={user.id}
         workspaces={workspaces}
         activeTenantId={activeTenantId}
-        canManagePlatforms={canManagePlatforms}
         points={points}
         solvedTasks={solvedTasks}
       />

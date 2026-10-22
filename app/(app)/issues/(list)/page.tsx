@@ -86,6 +86,7 @@ import { LoadError } from "@/components/load-error";
 import { logLoadFailure } from "@/lib/load-error";
 import { AREA_PARAM, parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
 import { intakeDetail, intakeLabel, openIssueStages, parseIssueStageView, type IssueStage } from "@/lib/issue-stage";
+import { issuePath } from "@/lib/issue-ref";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Issues" };
@@ -887,7 +888,7 @@ export default async function BugsPage({
                         />
                       </div>
                       <Link
-                        href={`/issues/${bug.id}`}
+                        href={issuePath(bug.number)}
                         data-issue-link=""
                         className="min-w-0 flex-1 basis-0 rounded-md scroll-my-24 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600"
                       >
