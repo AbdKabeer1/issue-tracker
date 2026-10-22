@@ -74,6 +74,14 @@ describe("standingValidations (#451)", () => {
     expect(await standingValidations("a1")).toBe(1);
   });
 
+  it("only reads validations that judge an issue, never `format` rows (#590)", async () => {
+    await standingValidations("a1");
+
+    expect(db.issueValidation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { agentId: "a1", kind: { in: ["real", "duplicate", "fix"] } } }),
+    );
+  });
+
   it("skips a validation by the agent that filed the issue", async () => {
     db.issueValidation.findMany.mockResolvedValue([
       validation(),
