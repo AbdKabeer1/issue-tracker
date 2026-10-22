@@ -16,6 +16,7 @@ const everything: IssueListFilterValues = {
   deleted: true,
   showDuplicates: true,
   showResolved: true,
+  allProjects: true,
 };
 
 const nothing: IssueListFilterValues = {
@@ -32,6 +33,7 @@ const nothing: IssueListFilterValues = {
   deleted: false,
   showDuplicates: false,
   showResolved: false,
+  allProjects: false,
 };
 
 describe("issueListPaginationParams (#967)", () => {
@@ -49,6 +51,7 @@ describe("issueListPaginationParams (#967)", () => {
       deleted: "true",
       duplicates: "show",
       resolved: "1",
+      project: "all",
       sort: "newest",
     });
   });
@@ -69,5 +72,11 @@ describe("issueListPaginationParams (#967)", () => {
     expect(next.searchParams.get("area")).toBe("area1");
     expect(next.searchParams.get("page")).toBe("2");
     expect(next.searchParams.get("sort")).toBe("newest");
+  });
+
+  it("carries the workspace-wide ?project=all view, and only when chosen", () => {
+    const params = issueListPaginationParams({ ...nothing, allProjects: true });
+    expect(params.project).toBe("all");
+    expect(issueListPaginationParams(nothing).project).toBeUndefined();
   });
 });

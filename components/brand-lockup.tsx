@@ -7,6 +7,8 @@ type BrandLockupProps = {
   href?: string;
   size?: "sm" | "md";
   showWordmark?: boolean;
+  /** "chrome" paints the wordmark for the navy app header. */
+  tone?: "default" | "chrome";
 };
 
 /** Icon-only mark from zedu-fe `public/login_logo.svg` (mark path, no wordmark). */
@@ -19,12 +21,14 @@ export function BrandLockup({
   href,
   size = "sm",
   showWordmark = true,
+  tone = "default",
 }: BrandLockupProps) {
   const dim = sizes[size];
+  const wordmarkColor = tone === "chrome" ? "text-porcelain" : "text-slate-900";
   const content = (
     <>
       <Image
-        src={BASE_PATH ? `${BASE_PATH}/ziki-mark.svg` : "/ziki-mark.svg"}
+        src={BASE_PATH ? `${BASE_PATH}/ziki-logo.png` : "/ziki-logo.png"}
         alt=""
         width={dim.px}
         height={dim.px}
@@ -36,8 +40,8 @@ export function BrandLockup({
         <span
           className={
             size === "md"
-              ? "text-2xl font-semibold tracking-tight text-slate-900"
-              : "whitespace-nowrap text-lg font-semibold tracking-tight text-slate-900"
+              ? `text-2xl font-semibold tracking-tight ${wordmarkColor}`
+              : `whitespace-nowrap text-lg font-semibold tracking-tight ${wordmarkColor}`
           }
         >
           Ziki
@@ -57,7 +61,11 @@ export function BrandLockup({
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-2.5"
+      className={`inline-flex items-center gap-2.5 rounded-md ${
+        tone === "chrome"
+          ? "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-tint focus-visible:ring-offset-2 focus-visible:ring-offset-deep-ocean"
+          : ""
+      }`}
       aria-label="Ziki"
     >
       {content}

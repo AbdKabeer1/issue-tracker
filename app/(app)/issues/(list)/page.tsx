@@ -87,6 +87,7 @@ import { logLoadFailure } from "@/lib/load-error";
 import { AREA_PARAM, parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
 import { intakeDetail, intakeLabel, openIssueStages, parseIssueStageView, type IssueStage } from "@/lib/issue-stage";
 import { issuePath } from "@/lib/issue-ref";
+import { PROJECT_ALL_PARAM, showsAllProjects } from "@/lib/issue-list-filters";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Issues" };
@@ -184,6 +185,8 @@ export default async function BugsPage({
   const deletedParam = toSingleQueryParam(params.deleted);
   const mineFilter = parseMineFilter(params.mine);
   const isDeletedView = canDelete && deletedParam === "true";
+  // Workspace-wide view (dashboard links). Absent → unchanged project scope.
+  const allProjects = showsAllProjects(params[PROJECT_ALL_PARAM]);
 
   const currentSort = parseBugSort(sortParam, defaultSortFor(mineFilter));
   const isWatchingView = mineFilter === "watching" && !!userId;
@@ -191,7 +194,7 @@ export default async function BugsPage({
   const showDuplicates = parseShowDuplicates(params[DUPLICATES_PARAM]);
   const where: Prisma.BugWhereInput = {
     ...bugInTenant(tenantId),
-    ...(projectId ? { projectId } : {}),
+    ...(projectId && !allProjects ? { projectId } : {}),
     isDeleted: isDeletedView,
     ...mineFilterWhere(mineFilter, userId),
     ...duplicatesWhere(showDuplicates),
@@ -650,10 +653,17 @@ export default async function BugsPage({
                 Admin view
               </span>
             ) : null}
+            {allProjects && !isDeletedView ? (
+              <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-800">
+                All projects
+              </span>
+            ) : null}
           </div>
           {isDeletedView ? null : (
             <p className="mt-1 max-w-xl text-sm font-normal text-slate-600">
-              A report stays an idea until reviewers accept it and three people upvote it. Then it is an issue and can be passed on.
+              {allProjects
+                ? "Every issue in this workspace, across all projects."
+                : "A report stays an idea until reviewers accept it and three people upvote it. Then it is an issue and can be passed on."}
             </p>
           )}
         </div>
@@ -1005,6 +1015,7 @@ export default async function BugsPage({
                   deleted: isDeletedView,
                   showDuplicates,
                   showResolved,
+                  allProjects,
                 })}
               />
             </>

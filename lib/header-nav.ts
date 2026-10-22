@@ -18,6 +18,15 @@ export type HeaderNavItem = {
 /** #444: pick another tenant, create one, or accept an invite. */
 export const SWITCH_TENANT_LINK: HeaderNavItem = { href: "/tenants", label: "Switch workspace" };
 
+/**
+ * The Agents dropdown in the top bar. Both destinations are real pages: the
+ * pairing flow to get an agent connected, and the management page.
+ */
+export const AGENT_MENU_LINKS: HeaderNavItem[] = [
+  { href: "/settings/agents/pair", label: "Get started" },
+  { href: "/settings/agents", label: "Manage agents" },
+];
+
 /** Links shown in the header for the role the user is currently viewing as (#761). */
 export function headerNavItems(
   role?: AppRole | null,
@@ -29,6 +38,8 @@ export function headerNavItems(
       : undefined;
 
   const items: HeaderNavItem[] = [
+    // Post-login landing: the workspace overview.
+    { href: "/dashboard", label: "Overview" },
     { href: "/issues", label: "Issues" },
   ];
 

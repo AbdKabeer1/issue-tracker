@@ -55,12 +55,13 @@ function renderHeader(props?: Partial<Parameters<typeof AppHeader>[0]>) {
 }
 
 describe("account menu role switch", () => {
-  it("keeps the account menu outside the blurred header layer", () => {
+  it("keeps the account menu outside the header's painted chrome layer", () => {
     renderHeader();
     const header = document.querySelector("header");
     expect(header?.className).not.toContain("backdrop-blur");
     const background = header?.querySelector(":scope > [aria-hidden='true']");
-    expect(background?.className).toContain("backdrop-blur");
+    // Chrome is solid navy in both themes; the layer must not blur/clip the menu.
+    expect(background?.className).toContain("bg-deep-ocean");
     const account = screen.getByRole("button", { name: /account menu/i });
     expect(account.parentElement?.parentElement?.className).toContain("shrink-0");
   });
@@ -82,7 +83,6 @@ describe("account menu role switch", () => {
     const link = screen.getByRole("link", { name: /escalations/i });
     expect(link.getAttribute("href")).toBe("/escalations");
     expect(screen.getAllByLabelText("5 pending").length).toBeGreaterThan(0);
-    expect(screen.queryByRole("button", { name: /agents/i })).toBeNull();
   });
 
   it("does not put a Workspace menu in the bar", () => {

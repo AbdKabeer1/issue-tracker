@@ -1,9 +1,12 @@
 @import "tailwindcss";
 /* Dark mode (#277): the palette, mirrored. Generated; see the file header. */
 @import "./theme-dark.css";
+/* Ziki brand re-seed: accent families + surfaces, both themes. */
+@import "./theme-brand.css";
 
 :root {
-  --background: #f8fafc;
+  /* Light canvas: the reference export's exact light-mode surface. */
+  --background: #f8f9ff;
   --foreground: #0f172a;
   color-scheme: light;
 }
@@ -11,14 +14,27 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-inter);
   --font-mono: var(--font-geist-mono);
+}
+
+/* Ziki brand utilities. Chrome navy is theme-independent in the reference
+   exports ("Preserved Deep Blue"), so these stay literal. */
+@theme {
+  --color-deep-ocean: #0b1733;
+  --color-sidebar-navy: #0c1938;
+  --color-blue-slate: #263b63;
+  --color-electric-blue: #3978f6;
+  --color-sky-tint: #8fc9ff;
+  --color-porcelain: #f5f7fc;
+  --color-surface-border: rgba(143, 201, 255, 0.12);
+  --color-surface-hover: rgba(57, 120, 246, 0.08);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
 
 /* Header account menu opening (respects reduced motion via motion-safe:). */

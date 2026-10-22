@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBugListFilters } from "./issue-list-filters";
+import { parseBugListFilters, showsAllProjects } from "./issue-list-filters";
 
 const tagTypes = [
   { id: "t1", name: "Design" },
@@ -165,5 +165,21 @@ describe("project area filter (#609)", () => {
   it("supports no area and ignores a stale area id", () => {
     expect(withAreas({ area: "none" }).where.areaId).toBeNull();
     expect(withAreas({ area: "area-deleted" }).where.areaId).toBeUndefined();
+  });
+});
+
+describe("workspace-wide ?project=all view", () => {
+  it("is off unless the exact value is present", () => {
+    expect(showsAllProjects(undefined)).toBe(false);
+    expect(showsAllProjects("")).toBe(false);
+    expect(showsAllProjects("ziki")).toBe(false);
+    expect(showsAllProjects("all")).toBe(true);
+    expect(showsAllProjects(["all"])).toBe(true);
+  });
+
+  it("never changes the shared list/export row filters", () => {
+    // `project` is a view override handled by the list page, not a row filter,
+    // so the export parser must keep producing the same where for it.
+    expect(parse({ project: "all" }).where).toEqual(parse({}).where);
   });
 });

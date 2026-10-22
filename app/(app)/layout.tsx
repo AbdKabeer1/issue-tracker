@@ -31,7 +31,7 @@ export default async function AppLayout({
     const ua = (await headers()).get("user-agent");
     if (isLinkPreviewBot(ua)) {
       return (
-        <div className="flex min-h-screen flex-col bg-slate-50">
+        <div className="flex min-h-screen flex-col bg-background">
           <main
             id={MAIN_CONTENT_ID}
             className={`${PAGE_CONTAINER_CLASS} flex-1 py-8`}
@@ -100,7 +100,7 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
+    <div className="flex min-h-screen flex-col bg-background">
       <SkipLink />
       <AppHeader
         userName={user.name ?? user.email}

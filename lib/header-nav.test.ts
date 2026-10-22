@@ -23,9 +23,9 @@ describe("SWITCH_TENANT_LINK (#444)", () => {
 });
 
 describe("headerNavItems (#761)", () => {
-  it("shows Issues and Escalations to normal users; Team moved to Settings (#423)", () => {
+  it("shows Overview, Issues and Escalations to normal users; Team moved to Settings (#423)", () => {
     const items = headerNavItems("user");
-    expect(items.map((i) => i.label)).toEqual(["Issues", "Escalations"]);
+    expect(items.map((i) => i.label)).toEqual(["Overview", "Issues", "Escalations"]);
     expect(items.map((i) => i.href)).not.toContain("/team");
     expect(items.map((i) => i.label)).not.toContain("Workspace");
     expect(items.find((i) => i.label === "Escalations")?.children).toBeUndefined();
@@ -33,13 +33,16 @@ describe("headerNavItems (#761)", () => {
 
   it("shows API Docs on the bar when the agent platform is explicitly disabled", () => {
     expect(headerNavItems("user", { agentPlatform: false }).map((i) => i.label)).toEqual([
+      "Overview",
       "Issues",
       "API Docs",
     ]);
   });
 
   it("links Escalations directly when the agent platform is enabled (#627)", () => {
-    const item = headerNavItems("user", { agentPlatform: true }).find((i) => i.label === "Escalations");
+    const items = headerNavItems("user", { agentPlatform: true });
+    expect(items.map((i) => i.label)).toEqual(["Overview", "Issues", "Escalations"]);
+    const item = items.find((i) => i.label === "Escalations");
     expect(item?.href).toBe("/escalations");
     expect(item?.children).toBeUndefined();
   });
@@ -58,6 +61,7 @@ describe("headerNavItems (#761)", () => {
 
   it("adds Admins for super admins (#761)", () => {
     expect(headerNavItems("super_admin").map((i) => i.label)).toEqual([
+      "Overview",
       "Issues",
       "Escalations",
       "Admins",
