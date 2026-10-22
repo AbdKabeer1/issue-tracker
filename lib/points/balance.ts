@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { z } from "zod";
 
 /**
  * Reading a person's balance straight off the ledger (#618).
@@ -38,9 +39,10 @@ export type PointBalanceQuery = {
   to?: Date | string | null;
 };
 
-const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const timestamp = z.string().datetime({ offset: true });
+const dateBound = z.union([timestamp, z.string().date()]);
 
-/** A bound the caller supplied, as a Date, or null. Rejects anything unparseable or non-ISO. */
+/** A bound the caller supplied, as a Date, or null. Rejects anything unparseable, non-ISO, or impossible calendar dates. */
 function bound(value: Date | string | null | undefined, field: "from" | "to"): Date | null {
   if (value === null || value === undefined || value === "") return null;
   if (value instanceof Date) {
@@ -51,18 +53,14 @@ function bound(value: Date | string | null | undefined, field: "from" | "to"): D
   }
   if (typeof value === "string") {
     const trimmed = value.trim();
-    if (/^\d+$/.test(trimmed) || Number.isNaN(Date.parse(trimmed))) {
+    if (!dateBound.safeParse(trimmed).success) {
       throw new Error(`${field} must be a valid date.`);
     }
-    if (DATE_ONLY_REGEX.test(trimmed)) {
-      const dateStr = field === "to" ? `${trimmed}T23:59:59.999Z` : `${trimmed}T00:00:00.000Z`;
-      const date = new Date(dateStr);
-      if (Number.isNaN(date.getTime())) {
-        throw new Error(`${field} must be a valid date.`);
-      }
-      return date;
-    }
-    const date = new Date(trimmed);
+    const isDateOnly = trimmed.length === 10;
+    const dateStr = isDateOnly
+      ? (field === "to" ? `${trimmed}T23:59:59.999Z` : `${trimmed}T00:00:00.000Z`)
+      : trimmed;
+    const date = new Date(dateStr);
     if (Number.isNaN(date.getTime())) {
       throw new Error(`${field} must be a valid date.`);
     }

@@ -127,6 +127,9 @@ describe("pointBalance (#618)", () => {
       pointBalance(db as never, { tenantId: "t", userId: "u", from: "1" }),
     ).rejects.toThrow("from must be a valid date.");
     await expect(
+      pointBalance(db as never, { tenantId: "t", userId: "u", to: "2026-02-31" }),
+    ).rejects.toThrow("to must be a valid date.");
+    await expect(
       pointBalance(db as never, {
         tenantId: "t",
         userId: "u",
