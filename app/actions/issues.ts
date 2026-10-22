@@ -926,20 +926,65 @@ export async function reopenBugAction(
 
 /**
  * Ziki #515: undo an agent's resolve in one click, back to the status the
- * issue had before. Only when that resolve is still the latest status change;
- * updateBugAction applies the usual rule for who may change status.
+ * issue had before, while that resolve is still the latest status change.
+ *
+ * Authorized like any status change (assignee or admin, #202), but not routed
+ * through updateBugAction: that also wants a non-admin to hold an active
+ * claim, and the agent resolve released it (a person-assigned issue never had
+ * one), so the assignee could never undo it.
  */
 export async function reopenAgentResolvedAction(bugId: string): Promise<ActionResult> {
+  const user = await requireUser();
+  const access = await currentTenantAccess(user.id, user.role);
+  const tenantId = await currentTenantIdFor(user.id);
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId, ...bugInTenant(tenantId) },
+    select: { id: true, status: true, assigneeId: true, isDeleted: true },
+  });
+  if (!existing || existing.isDeleted) return { error: "Issue not found" };
+  if (
+    !canChangeTicketStatus({
+      actorId: user.id,
+      actorRole: user.role,
+      membershipRole: access.membershipRole,
+      currentAssigneeId: existing.assigneeId,
+    })
+  ) {
+    return { error: TICKET_TRIAGE_ERRORS.statusUnauthorized };
+  }
+
   const latest = await prisma.bugActivity.findFirst({
     where: { bugId, type: "status_changed" },
     orderBy: { createdAt: "desc" },
-    select: { metadata: true, bug: { select: { status: true } } },
+    select: { metadata: true },
   });
-  const resolution = latest?.bug.status === "resolved" ? readAgentResolution(latest.metadata) : null;
+  const resolution = existing.status === "resolved" ? readAgentResolution(latest?.metadata) : null;
   if (!resolution) return { error: "This issue wasn't resolved by an agent, so there is nothing to undo." };
-  const formData = new FormData();
-  formData.append("status", resolution.previousStatus);
-  return updateBugAction(bugId, formData);
+  const to = resolution.previousStatus;
+
+  const reopened = await prisma.$transaction(async (tx) => {
+    // Someone may have changed the status since the read above.
+    const changed = await tx.bug.updateMany({ where: { id: bugId, status: "resolved" }, data: { status: to } });
+    if (changed.count !== 1) return false;
+    await tx.bugActivity.create({
+      data: {
+        bugId,
+        actorId: user.id,
+        type: "status_changed",
+        summary: statusChangedSummary("resolved", to),
+        metadata: { field: "status", from: "resolved", to, via: "reopen_agent_resolve" },
+      },
+    });
+    await publishWebEvent(tx, { bugId, type: "issue.updated", actorUserId: user.id, payload: issueChangePayload({ status: to }) });
+    return true;
+  });
+  if (!reopened) return { error: "The issue's status changed meanwhile. Refresh and try again." };
+
+  revalidatePath("/issues");
+  revalidatePath(`/issues/${bugId}`);
+  revalidatePath("/bugs");
+  revalidatePath(`/bugs/${bugId}`);
+  return { ok: true };
 }
 
 /**

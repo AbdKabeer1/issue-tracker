@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { publish } from "@/lib/agent-api/events";
-import { statusChangedSummary } from "@/lib/activity-log";
+import { statusChangedSummary, unboostedSummary } from "@/lib/activity-log";
 import { AGENT_RESOLVE_VIA } from "@/lib/agent-resolution";
 import {
   clientForInstallation,
@@ -44,7 +44,7 @@ export async function resolveMergedFix(
   const bug = await prisma.bug.findFirst({
     where: { id: bugId, ...scope, isDeleted: false },
     select: {
-      id: true, status: true, assigneeId: true, reporterId: true, pullRequestUrl: true,
+      id: true, status: true, assigneeId: true, reporterId: true, pullRequestUrl: true, isBoosted: true,
       project: { select: { repoUrl: true, githubInstallationId: true } },
       claims: {
         where: { status: "active", releasedAt: null },
@@ -82,10 +82,16 @@ export async function resolveMergedFix(
   if (!pullRequest.merged) return fail(409, "not_merged", "That pull request isn't merged yet.");
 
   const resolved = await prisma.$transaction(async (tx) => {
-    // A person or the #474 webhook may have resolved it since the read above.
+    // Only from the status read above: a person, the #474 webhook or anyone
+    // else may have changed it since, and the activity records `from`.
     const changed = await tx.bug.updateMany({
-      where: { id: bug.id, status: { notIn: ["resolved", "closed"] } },
-      data: { status: "resolved", ...(bug.pullRequestUrl ? {} : { pullRequestUrl }) },
+      where: { id: bug.id, status: bug.status },
+      data: {
+        status: "resolved",
+        // #256: a finished issue shouldn't stay pinned above open work.
+        ...(bug.isBoosted ? { isBoosted: false, boostedAt: null } : {}),
+        ...(bug.pullRequestUrl ? {} : { pullRequestUrl }),
+      },
     });
     if (changed.count !== 1) return false;
 
@@ -101,6 +107,14 @@ export async function resolveMergedFix(
         },
       },
     });
+    if (bug.isBoosted) {
+      await tx.bugActivity.create({
+        data: {
+          bugId: bug.id, actorId: agent.ownerId, type: "unboosted",
+          summary: unboostedSummary(), metadata: { field: "isBoosted", to: "false" },
+        },
+      });
+    }
     await tx.issueClaim.updateMany({
       where: { bugId: bug.id, status: "active", releasedAt: null },
       data: { status: "released", releasedAt: new Date(), releaseReason: "resolved" },
@@ -121,7 +135,7 @@ export async function resolveMergedFix(
     });
     return true;
   });
-  if (!resolved) return fail(409, "already_resolved", "This issue was resolved or closed while the request ran.");
+  if (!resolved) return fail(409, "status_changed", "This issue's status changed while the request ran. Read it again and retry.");
 
   return { status: 200, body: { resolved: true, issueId: bug.id, previousStatus: bug.status, pullRequestUrl } };
 }

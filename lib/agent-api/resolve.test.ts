@@ -59,7 +59,7 @@ describe("resolveMergedFix (Ziki #515)", () => {
       const result = await resolveMergedFix(agent("owner", level), scope, "bug1", PR, () => gh.client);
       expect(result).toEqual({ status: 200, body: { resolved: true, issueId: "bug1", previousStatus: "in_progress", pullRequestUrl: PR } });
       expect(db.tx.bug.updateMany).toHaveBeenCalledWith({
-        where: { id: "bug1", status: { notIn: ["resolved", "closed"] } },
+        where: { id: "bug1", status: "in_progress" },
         data: { status: "resolved", pullRequestUrl: PR },
       });
     }
@@ -83,6 +83,13 @@ describe("resolveMergedFix (Ziki #515)", () => {
     expect((await resolveMergedFix(agent(), scope, "bug1", PR, () => github().client)).status).toBe(200);
     expect(db.tx.issueClaim.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "released", releaseReason: "resolved" }) }));
     expect(publish.mock.calls.map((c) => c[1].type)).toEqual(["claim.released", "issue.updated"]);
+  });
+
+  it("clears the boost on a boosted issue and logs the unboost (#256)", async () => {
+    db.bug.findFirst.mockResolvedValue(bug({ isBoosted: true }));
+    await resolveMergedFix(agent(), scope, "bug1", PR, () => github().client);
+    expect(db.tx.bug.updateMany.mock.calls[0][0].data).toEqual({ status: "resolved", isBoosted: false, boostedAt: null, pullRequestUrl: PR });
+    expect(db.tx.bugActivity.create.mock.calls.map((c) => c[0].data.type)).toEqual(["status_changed", "unboosted"]);
   });
 
   it("keeps an already linked PR instead of overwriting it", async () => {
@@ -127,10 +134,10 @@ describe("resolveMergedFix (Ziki #515)", () => {
     expect(await resolveMergedFix(agent(), scope, "bug1", PR, () => null)).toMatchObject({ status: 409, body: { error: "github_unavailable" } });
   });
 
-  it("records and publishes nothing when someone resolved it first", async () => {
+  it("records and publishes nothing when the status changed after it was read", async () => {
     db.bug.findFirst.mockResolvedValue(bug({ claims: [{ id: "c1", agentId: "a9", beneficiaryUserId: "owner" }] }));
     db.tx.bug.updateMany.mockResolvedValue({ count: 0 });
-    expect(await resolveMergedFix(agent(), scope, "bug1", PR, () => github().client)).toMatchObject({ status: 409, body: { error: "already_resolved" } });
+    expect(await resolveMergedFix(agent(), scope, "bug1", PR, () => github().client)).toMatchObject({ status: 409, body: { error: "status_changed" } });
     expect(db.tx.bugActivity.create).not.toHaveBeenCalled();
     expect(db.tx.issueClaim.updateMany).not.toHaveBeenCalled();
     expect(publish).not.toHaveBeenCalled();
