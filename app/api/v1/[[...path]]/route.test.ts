@@ -10,7 +10,7 @@ describe("unknown agent API routes", () => {
     ["DELETE", DELETE],
     ["OPTIONS", OPTIONS],
   ])("returns a JSON 404 for %s", async (method, handler) => {
-    const response = handler();
+    const response = handler(new Request("https://ziki.dev/api/v1/unknown", { method }));
 
     expect(response.status).toBe(404);
     expect(response.headers.get("content-type")).toContain("application/json");

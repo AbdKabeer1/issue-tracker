@@ -1,9 +1,9 @@
 import { apiNotFound } from "@/lib/agent-api/http-errors";
 
-export const GET = apiNotFound;
-export const POST = apiNotFound;
-export const PUT = apiNotFound;
-export const PATCH = apiNotFound;
-export const DELETE = apiNotFound;
-export const HEAD = apiNotFound;
-export const OPTIONS = apiNotFound;
+export const GET = (req: Request) => apiNotFound(req);
+export const POST = (req: Request) => apiNotFound(req);
+export const PUT = (req: Request) => apiNotFound(req);
+export const PATCH = (req: Request) => apiNotFound(req);
+export const DELETE = (req: Request) => apiNotFound(req);
+export const HEAD = (req: Request) => apiNotFound(req);
+export const OPTIONS = (req: Request) => apiNotFound(req);
