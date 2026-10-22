@@ -447,19 +447,17 @@ export async function submitValidation(
       const validationSelect = { id: true, kind: true, verdict: true, severity: true, duplicateOfId: true, onBehalfOfUserId: true } as const;
       // #493: an edit voids earlier validations, and an agent has one row per
       // issue and kind. When this agent's row predates the latest edit, the
-      // re-review replaces it (fresh timestamp, so it counts again) instead
-      // of being refused forever. A row made after the edit still gets 409.
+      // re-review replaces it instead of being refused forever. A row made
+      // after the edit still gets 409. The stale row is deleted, not updated,
+      // so the replacement gets a new id: an undo of the old review (which
+      // keys on its validationId) can neither hide nor reverse the new one.
+      // Its `issue.validated` audit event stays as history.
       const stale = await staleValidationOf(tx, bug, agent.agentId, body.kind);
-      const validation = stale
-        ? await tx.issueValidation.update({
-            where: { id: stale.id },
-            data: { ...fields, createdAt: new Date() },
-            select: validationSelect,
-          })
-        : await tx.issueValidation.create({
-            data: { bugId: bug.id, agentId: agent.agentId, kind: body.kind, ...fields },
-            select: validationSelect,
-          });
+      if (stale) await tx.issueValidation.delete({ where: { id: stale.id } });
+      const validation = await tx.issueValidation.create({
+        data: { bugId: bug.id, agentId: agent.agentId, kind: body.kind, ...fields },
+        select: validationSelect,
+      });
       if (escalatesSeverity) {
         await tx.bug.update({ where: { id: bug.id }, data: { severity: setsSeverity! } });
       }

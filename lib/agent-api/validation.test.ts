@@ -24,7 +24,7 @@ const db = vi.hoisted(() => ({
   bug: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
   bugRevision: { findFirst: vi.fn() },
   membership: { findMany: vi.fn(), findUnique: vi.fn() },
-  issueValidation: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), count: vi.fn() },
+  issueValidation: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), delete: vi.fn(), count: vi.fn() },
   issueClaim: { findFirst: vi.fn(), groupBy: vi.fn(), findMany: vi.fn(), create: vi.fn() },
   redesignProposal: { count: vi.fn() },
   pointEntry: { createMany: vi.fn() },
@@ -136,9 +136,9 @@ beforeEach(() => {
   db.issueValidation.findFirst.mockImplementation(async ({ where }: { where: Record<string, string> }) =>
     state.validations.find((v) => v.bugId === where.bugId && v.agentId === where.agentId && v.kind === where.kind) ?? null,
   );
-  db.issueValidation.update.mockImplementation(async ({ where, data }: { where: { id: string }; data: Partial<Row> }) => {
+  db.issueValidation.delete.mockImplementation(async ({ where }: { where: { id: string } }) => {
     const row = state.validations.find((v) => v.id === where.id)!;
-    Object.assign(row, data);
+    state.validations = state.validations.filter((v) => v.id !== where.id);
     return row;
   });
 });
@@ -630,9 +630,12 @@ describe("re-review after an edit (#493)", () => {
     expect(second).toMatchObject({ status: 201, newlyConfirmed: true });
     expect(await isConfirmed("bug1")).toBe(true);
 
-    // The stale rows were replaced, not duplicated.
-    expect(state.validations.filter((v) => v.kind === "real")).toHaveLength(2);
-    expect(db.issueValidation.update).toHaveBeenCalledTimes(2);
+    // The stale rows were replaced (new ids), not duplicated.
+    const real = state.validations.filter((v) => v.kind === "real");
+    expect(real).toHaveLength(2);
+    expect(real.map((v) => v.id)).not.toContain("v1");
+    expect(real.map((v) => v.id)).not.toContain("v2");
+    expect(db.issueValidation.delete).toHaveBeenCalledTimes(2);
   });
 
   it("still refuses a second validation when nothing was edited since", async () => {
@@ -640,7 +643,7 @@ describe("re-review after an edit (#493)", () => {
     db.bugRevision.findFirst.mockResolvedValue({ editedAt: tEdit });
     expect(await submitValidation(rob, "bug1", acceptReal)).toMatchObject({ status: 201 });
     expect(await submitValidation(rob, "bug1", acceptReal)).toMatchObject({ status: 409, error: "already_validated" });
-    expect(db.issueValidation.update).not.toHaveBeenCalled();
+    expect(db.issueValidation.delete).not.toHaveBeenCalled();
   });
 
   it("lets a triager re-clear an issue after an edit", async () => {
@@ -650,5 +653,25 @@ describe("re-review after an edit (#493)", () => {
     ];
     db.bugRevision.findFirst.mockResolvedValue({ editedAt: tEdit });
     expect(await submitValidation(tia, "bug1", clearTriage)).toMatchObject({ status: 201 });
+  });
+});
+
+describe("re-review after an undone review (#493, CodeRabbit)", () => {
+  it("counts the replacement even when the old review was undone", async () => {
+    const tBefore = new Date("2026-10-21T20:00:00Z");
+    const rob = reviewer("r1", "rob");
+    const sam = reviewer("r2", "sam");
+    const tia = reviewer("t1", "tia", "triager");
+    state.validations = [
+      { id: "v-old", bugId: "bug1", agentId: "r1", kind: "real", verdict: "accept", severity: "high", duplicateOfId: null, onBehalfOfUserId: "rob", createdAt: tBefore },
+    ];
+    // An admin undid Rob's old review, then the issue was edited.
+    db.agentAuditEvent.findMany.mockResolvedValue([{ payload: { validationId: "v-old" } }]);
+    db.bugRevision.findFirst.mockResolvedValue({ editedAt: new Date("2026-10-21T21:02:00Z") });
+
+    expect(await submitValidation(tia, "bug1", clearTriage)).toMatchObject({ status: 201 });
+    expect(await submitValidation(rob, "bug1", acceptReal)).toMatchObject({ status: 201 });
+    expect(await submitValidation(sam, "bug1", acceptReal)).toMatchObject({ status: 201, newlyConfirmed: true });
+    expect(state.validations.some((v) => v.id === "v-old")).toBe(false);
   });
 });
