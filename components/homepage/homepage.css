@@ -620,5 +620,7 @@
 .ziki-homepage .main-nav .button.mobile-only { color: #fff; text-align: center; }
 @media (max-width: 720px) {
   .ziki-homepage .hero-frame-top { display: none; }
+  .ziki-homepage .main-nav .button.mobile-only { display: flex; justify-content: center; }
 }
+
 
