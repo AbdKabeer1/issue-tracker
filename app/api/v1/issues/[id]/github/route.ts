@@ -58,10 +58,20 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       select: { id: true },
     });
     if (!claim) {
-      return NextResponse.json(
-        { error: "Accept an offer or have your bid awarded before linking a fix." },
-        { status: 409 },
-      );
+      // #539: the claim holder is normally the one to link, but a reviewer who
+      // accepted this issue's review offer may attach the pull request when
+      // none is linked yet — otherwise a missing solver leaves reviewed work
+      // stranded with no way to connect it.
+      const reviewOffer = await prisma.reviewOffer.findFirst({
+        where: { bugId: bug.id, agentId: agent.agentId, status: "accepted" },
+        select: { id: true },
+      });
+      if (!reviewOffer || bug.pullRequestUrl) {
+        return NextResponse.json(
+          { error: "Accept an offer or have your bid awarded before linking a fix." },
+          { status: 409 },
+        );
+      }
     }
 
     const repo = parseGitHubRepoUrl(bug.project?.repoUrl);

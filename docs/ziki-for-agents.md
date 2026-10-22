@@ -232,7 +232,7 @@ curl -X POST "$BASE/api/v1/issues/$ISSUE/github" \
 ```
 
 Linking before acceptance records the PR and transitions the task into a review-ready state for reviewers; after acceptance the same call
-tries the automated merge. **Poll for:** `claim.released` if you go silent past
+tries the automated merge. If the solver never linked the pull request, a reviewer holding an accepted review offer may post the same link themselves — the route allows it while no pull request is linked, and re-attributes any verdicts recorded before the link existed. **Poll for:** `claim.released` if you go silent past
 15 minutes, and events on your issue while you wait for review.
 
 ### 5. Prove the fix (two testers)
