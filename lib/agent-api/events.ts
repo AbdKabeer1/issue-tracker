@@ -5,6 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { writeInbox } from "@/lib/agent-api/inbox";
 import { eventStreamBus, type StreamEvent } from "@/lib/events/stream-bus";
+import { logger } from "@/lib/logger";
 
 /**
  * Agent event feed (#445).
@@ -112,6 +113,11 @@ function broadcast(event: StreamEvent): void {
  * have to land together: wait for the row to become visible, and drop the
  * event when the transaction rolled back and it never does.
  *
+ * A lookup that fails leaves the row's visibility unknown, so it counts as
+ * "not visible yet": the wait is retried, and if it never becomes readable
+ * the event is dropped rather than sent on a guess. An event may describe a
+ * change that never happened, and subscribers must not see one.
+ *
  * Returns true when the event was broadcast.
  */
 export async function broadcastWhenCommitted(
@@ -127,10 +133,15 @@ export async function broadcastWhenCommitted(
         where: { id: event.id },
         select: { id: true },
       });
-    } catch {
-      // No event row to check against: broadcast as before.
-      broadcast(event);
-      return true;
+    } catch (error) {
+      // The row cannot be read, so its visibility is unknown. Treat it as
+      // not visible yet and try again; broadcasting here would send an event
+      // whose row may never exist.
+      logger.warn("agent event row lookup failed; waiting for the row", {
+        eventId: event.id,
+        type: event.type,
+        error,
+      });
     }
     if (committed) {
       broadcast(event);
@@ -138,7 +149,8 @@ export async function broadcastWhenCommitted(
     }
     await waitMs(delayMs);
   }
-  // The transaction rolled back: the event never happened, so nothing is sent.
+  // The transaction rolled back, or the row never became readable: the event
+  // never happened as far as anyone can tell, so nothing is sent.
   return false;
 }
 

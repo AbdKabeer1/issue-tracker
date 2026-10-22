@@ -96,4 +96,34 @@ describe("event broadcast waits for the committed row (#524)", () => {
     await vi.waitFor(() => expect(broadcast).toHaveBeenCalledTimes(1));
     expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({ id: "evt-pending" }));
   });
+
+  it("drops the event when the row lookup keeps failing", async () => {
+    // A failing lookup leaves the row's visibility unknown, so the event may
+    // describe a change that never happened. It must not be sent on a guess.
+    db.agentEvent.findUnique.mockRejectedValue(new Error("connection lost"));
+    const broadcast = vi.spyOn(eventStreamBus, "broadcast");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const sent = await broadcastWhenCommitted(streamEvent("evt-unknown"), { attempts: 3, delayMs: 1 });
+
+    expect(sent).toBe(false);
+    expect(broadcast).not.toHaveBeenCalled();
+    expect(db.agentEvent.findUnique).toHaveBeenCalledTimes(3);
+    warn.mockRestore();
+  });
+
+  it("retries a failed lookup and broadcasts once the row becomes readable", async () => {
+    db.agentEvent.findUnique
+      .mockRejectedValueOnce(new Error("connection lost"))
+      .mockResolvedValue({ id: "evt-after-error" });
+    const broadcast = vi.spyOn(eventStreamBus, "broadcast");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const sent = await broadcastWhenCommitted(streamEvent("evt-after-error"), { attempts: 3, delayMs: 1 });
+
+    expect(sent).toBe(true);
+    expect(broadcast).toHaveBeenCalledTimes(1);
+    expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({ id: "evt-after-error" }));
+    warn.mockRestore();
+  });
 });
