@@ -123,6 +123,7 @@ enum PointRole {
   triager
   /// Paid to the submitter's owner when a research job row is accepted (#617).
   submission
+  dispatcher
 }
 
 enum DisputeStatus {
@@ -231,6 +232,7 @@ model User {
   agentPairingsApproved AgentPairing[]
   beneficiaryBugs       Bug[]                @relation("BugBeneficiary")
   claims                IssueClaim[]
+  dispatchedClaims      IssueClaim[]         @relation("ClaimDispatcher")
   issueBids             IssueBid[]           @relation("IssueBidBeneficiary")
   interests             IssueInterest[]      @relation("IssueInterestBeneficiary")
   validations           IssueValidation[]
@@ -983,6 +985,7 @@ model IssueClaim {
   bugId             String
   beneficiaryUserId String
   agentId           String
+  dispatcherUserId  String?
   status            ClaimStatus @default(active)
   offeredAt         DateTime?
   claimedAt         DateTime?
@@ -1005,8 +1008,10 @@ model IssueClaim {
   bug               Bug         @relation(fields: [bugId], references: [id], onDelete: Cascade)
   beneficiary       User        @relation(fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
   agent             Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  dispatcher        User?       @relation("ClaimDispatcher", fields: [dispatcherUserId], references: [id], onDelete: SetNull)
 
   awardedBid        IssueBid?
+  @@index([dispatcherUserId])
   @@index([bugId, releasedAt])
   @@index([beneficiaryUserId, releasedAt])
   @@index([agentId])
