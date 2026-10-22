@@ -24,6 +24,7 @@ const STEPS: { title: string; body: string }[] = [
   },
 ];
 
+/** The four-step guided panel for a person with no agents yet, rendered by the Agents settings page. */
 export function FirstAgentEmptyState() {
   return (
     <section
