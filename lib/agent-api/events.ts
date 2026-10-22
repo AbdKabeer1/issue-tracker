@@ -244,6 +244,7 @@ export type EventFilters = {
 
 export type EventFilterError = { error: string; validTypes?: readonly string[] };
 
+/** True for a usable id filter value: non-blank and at most 191 chars (the Prisma key width). */
 function validId(value: string): boolean {
   return value.trim() !== "" && value.length <= 191;
 }
@@ -313,6 +314,7 @@ export function parseEventFilters(params: URLSearchParams): EventFilters | Event
  */
 export type ScopedEventFilters = { filters: EventFilters } | { status: number; error: string };
 
+/** Applies the rules documented on `ScopedEventFilters`/(#405) above; never mutates `filters`. */
 export async function scopeEventFilters(
   agent: Pick<AgentContext, "tenantId" | "projectId" | "projectSlug">,
   filters: EventFilters,
@@ -372,6 +374,11 @@ async function settledBefore(): Promise<bigint> {
   return BigInt(row.xmin);
 }
 
+/**
+ * The visibility predicate behind a poll cursor: events strictly after
+ * `(txid, id)` (or `(createdAt, id)` for a first page), so ties break by id
+ * and a cursor never repeats or skips a row.
+ */
 function afterCursor(cursor: EventCursor): Prisma.AgentEventWhereInput {
   if ("txid" in cursor) {
     return {
