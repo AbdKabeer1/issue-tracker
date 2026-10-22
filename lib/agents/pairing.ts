@@ -7,6 +7,7 @@ import { SELF_REGISTRATION_LEVELS } from "@/lib/agents/levels";
 import { agentModelSchema, agentNameSchema, insertAgentWithKey, type Actor, type IssuedKey } from "@/lib/agents/registry";
 import { AGENT_LIMIT_MESSAGE, MAX_ACTIVE_AGENTS_PER_OWNER } from "@/lib/agents/registry-limits";
 import { logger } from "@/lib/logger";
+import { AGENT_INSTRUCTIONS_MAX } from "@/lib/agent-messages";
 
 /**
  * Pairing an agent with its owner (#427), like a TV signing in to an account:
@@ -41,6 +42,21 @@ function parseRequestedLevel(level: unknown): { ok: true; level: AgentLevel } | 
   return { ok: false, error: `Unknown level. Send one of: ${SELF_REGISTRATION_LEVELS.join(", ")}.` };
 }
 
+/**
+ * Standing instructions offered at pairing (#431). Optional; blank means none.
+ * Text the agent proposes is only a suggestion shown to the owner. The agent is
+ * created with whatever the owner approves, which may be edited or cleared.
+ */
+function parseInstructions(value: unknown): { ok: true; instructions: string | null } | { ok: false; error: string } {
+  if (value == null) return { ok: true, instructions: null };
+  if (typeof value !== "string") return { ok: false, error: "Instructions must be text." };
+  const trimmed = value.trim();
+  if (trimmed.length > AGENT_INSTRUCTIONS_MAX) {
+    return { ok: false, error: `Instructions must be ${AGENT_INSTRUCTIONS_MAX} characters or fewer.` };
+  }
+  return { ok: true, instructions: trimmed || null };
+}
+
 /** The page a signed-in person opens to approve the agent. The code is not the device secret. */
 export function pairingApprovalPath(userCode: string): string {
   return `/settings/agents/pair?code=${encodeURIComponent(userCode)}`;
@@ -50,13 +66,18 @@ export type StartPairingResult =
   | { ok: true; userCode: string; deviceCode: string; expiresAt: Date }
   | { ok: false; error: string };
 
-export async function startPairing(input: { name?: unknown; model?: unknown; level?: unknown }, now = new Date()): Promise<StartPairingResult> {
+export async function startPairing(
+  input: { name?: unknown; model?: unknown; level?: unknown; instructions?: unknown },
+  now = new Date(),
+): Promise<StartPairingResult> {
   const name = agentNameSchema.safeParse(input.name ?? "");
   if (!name.success) return { ok: false, error: name.error.issues[0]?.message ?? "Send the agent's name." };
   const model = input.model == null ? null : agentModelSchema.safeParse(input.model);
   if (model && !model.success) return { ok: false, error: model.error.issues[0]?.message ?? "Invalid model." };
   const level = parseRequestedLevel(input.level);
   if (!level.ok) return { ok: false, error: level.error };
+  const instructions = parseInstructions(input.instructions);
+  if (!instructions.ok) return { ok: false, error: instructions.error };
 
   const userCode = generateUserCode();
   const deviceCode = generateDeviceCode();
@@ -68,6 +89,7 @@ export async function startPairing(input: { name?: unknown; model?: unknown; lev
       proposedName: name.data,
       proposedModel: model?.data || null,
       proposedLevel: level.level,
+      proposedInstructions: instructions.instructions,
       expiresAt,
     },
   });
@@ -75,7 +97,14 @@ export async function startPairing(input: { name?: unknown; model?: unknown; lev
   return { ok: true, userCode, deviceCode, expiresAt };
 }
 
-export type PendingPairing = { id: string; proposedName: string; proposedModel: string | null; proposedLevel: AgentLevel | null; expiresAt: Date };
+export type PendingPairing = {
+  id: string;
+  proposedName: string;
+  proposedModel: string | null;
+  proposedLevel: AgentLevel | null;
+  proposedInstructions: string | null;
+  expiresAt: Date;
+};
 
 /** The pairing a typed code names, if it can still be approved. */
 export async function findPendingPairing(userCode: string, now = new Date()): Promise<PendingPairing | null> {
@@ -83,7 +112,7 @@ export async function findPendingPairing(userCode: string, now = new Date()): Pr
   if (!code) return null;
   return prisma.agentPairing.findFirst({
     where: { codeHash: hashSecret(code), approvedAt: null, expiresAt: { gt: now } },
-    select: { id: true, proposedName: true, proposedModel: true, proposedLevel: true, expiresAt: true },
+    select: { id: true, proposedName: true, proposedModel: true, proposedLevel: true, proposedInstructions: true, expiresAt: true },
   });
 }
 
@@ -111,7 +140,9 @@ async function tenantForApproval(userId: string, tenantId?: string | null): Prom
 
 /**
  * The signed-in owner approves. Single use: the first approval wins.
- * `tenantId` is the organization they are in now.
+ * `tenantId` is the organization they are in now. `instructions` is the
+ * standing brief the owner approved on the form (#431): the agent's proposal,
+ * edited or cleared. Left out, the agent starts with none.
  */
 export async function approvePairing(
   owner: Actor,
@@ -119,9 +150,13 @@ export async function approvePairing(
   now = new Date(),
   projectId = "",
   tenantId?: string | null,
+  instructions?: unknown,
 ): Promise<ApprovePairingResult> {
   const code = normalizeUserCode(userCode);
   if (!code) return { ok: false, error: CODE_NOT_FOUND };
+  // Checked before the pairing is claimed, so too-long text doesn't burn the code.
+  const approvedInstructions = parseInstructions(instructions);
+  if (!approvedInstructions.ok) return { ok: false, error: approvedInstructions.error };
   const tenant = await tenantForApproval(owner.id, tenantId);
   if (!tenant) return { ok: false, error: NO_TENANT };
 
@@ -157,6 +192,7 @@ export async function approvePairing(
       proposedName: pairing.proposedName,
       proposedModel: pairing.proposedModel,
       proposedLevel: pairing.proposedLevel,
+      instructions: approvedInstructions.instructions,
       ownerUserId: owner.id,
       tenantId: tenant,
     });
@@ -200,7 +236,16 @@ type PairingTx = Prisma.TransactionClient;
 /** The approved agent, created once. A second caller keeps the agent the first one stored. */
 async function attachApprovedAgent(
   tx: PairingTx,
-  pairing: { id: string; proposedName: string; proposedModel: string | null; proposedLevel: AgentLevel | null; ownerUserId: string; tenantId: string },
+  pairing: {
+    id: string;
+    proposedName: string;
+    proposedModel: string | null;
+    proposedLevel: AgentLevel | null;
+    /** The brief the owner approved (#431); never the agent's unreviewed proposal. */
+    instructions?: string | null;
+    ownerUserId: string;
+    tenantId: string;
+  },
 ): Promise<string> {
   const requested = parseRequestedLevel(pairing.proposedLevel);
   if (!requested.ok) throw new Error(requested.error);
@@ -211,6 +256,7 @@ async function attachApprovedAgent(
       name: pairing.proposedName,
       model: pairing.proposedModel,
       level: pairing.proposedLevel ?? PAIRED_AGENT_LEVEL,
+      ...(pairing.instructions ? { instructions: pairing.instructions } : {}),
     },
     select: { id: true },
   });
@@ -228,7 +274,13 @@ async function attachApprovedAgent(
     { agentId: created.id, tenantId: pairing.tenantId },
     "agent.created",
     `agent:${created.id}`,
-    { name: pairing.proposedName, model: pairing.proposedModel, level: pairing.proposedLevel ?? PAIRED_AGENT_LEVEL, via: "pairing" },
+    {
+      name: pairing.proposedName,
+      model: pairing.proposedModel,
+      level: pairing.proposedLevel ?? PAIRED_AGENT_LEVEL,
+      via: "pairing",
+      instructionsLength: pairing.instructions?.length ?? 0,
+    },
     { actorUserId: pairing.ownerUserId, db: tx },
   );
   return created.id;

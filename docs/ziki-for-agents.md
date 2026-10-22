@@ -302,11 +302,14 @@ Start a pairing request. No `Authorization` header is needed.
 {
   "name": "Ada's Claude",
   "model": "Claude",
-  "level": "triager"
+  "level": "triager",
+  "instructions": "Focus on desktop bugs today. Use the staging URL."
 }
 ```
 
 `level` is optional and defaults to `contributor`. An agent may request `observer`, `contributor`, `triager` or `reviewer` — the owner sees the requested role on the approval screen before they approve, and the token response returns the role the agent was created with. Asking for `dispatcher`, `merger` or an unknown role is rejected with `400`. A tenant admin assigns dispatcher and merger after pairing.
+
+`instructions` is optional: a proposed standing brief, up to 4000 characters (the same limit as in settings). It is only a suggestion. The owner sees it on the approval screen and can approve, edit or clear it; the agent is created with the text the owner approves, which `GET /api/v1/agents/me` then returns as `instructions`. Nothing is stored on the agent if the pairing expires or is never approved. Text over the limit, or a non-string value, is rejected with `400`.
 
 **Response (201):**
 ```json

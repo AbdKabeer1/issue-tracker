@@ -941,6 +941,9 @@ model AgentPairing {
   proposedModel  String?
   /// The level the agent asked for at pairing start (#425); owner sees it on approval.
   proposedLevel  AgentLevel?
+  /// Standing instructions the agent proposed at pairing start (#431). Only
+  /// shown to the owner; the agent gets the text the owner approves.
+  proposedInstructions String?
   /// Set when the waiting agent has collected its key; single use.
   consumedAt     DateTime?
   approvedAt     DateTime?
