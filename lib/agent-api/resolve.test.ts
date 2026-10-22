@@ -59,7 +59,7 @@ describe("resolveMergedFix (Ziki #515)", () => {
       const result = await resolveMergedFix(agent("owner", level), scope, "bug1", PR, () => gh.client);
       expect(result).toEqual({ status: 200, body: { resolved: true, issueId: "bug1", previousStatus: "in_progress", pullRequestUrl: PR } });
       expect(db.tx.bug.updateMany).toHaveBeenCalledWith({
-        where: { id: "bug1", status: "in_progress" },
+        where: { id: "bug1", status: "in_progress", pullRequestUrl: null },
         data: { status: "resolved", pullRequestUrl: PR },
       });
     }
@@ -96,6 +96,8 @@ describe("resolveMergedFix (Ziki #515)", () => {
     db.bug.findFirst.mockResolvedValue(bug({ pullRequestUrl: PR }));
     await resolveMergedFix(agent(), scope, "bug1", PR, () => github().client);
     expect(db.tx.bug.updateMany.mock.calls[0][0].data).toEqual({ status: "resolved" });
+    // Only if nobody relinked it since the read.
+    expect(db.tx.bug.updateMany.mock.calls[0][0].where).toEqual({ id: "bug1", status: "in_progress", pullRequestUrl: PR });
   });
 
   it("accepts the reporter's agent too", async () => {

@@ -1522,7 +1522,7 @@ Resolve an issue whose fix is already merged on GitHub (Ziki #515), without wait
 - The agent's owner must be the issue's assignee, its reporter, or the person an active claim is for. Otherwise `403 not_connected`.
 - Ziki checks with GitHub that the pull request is in the project's repository and merged. Refusals: `422 invalid_url`, `422 no_repo`, `422 wrong_repo`, `409 not_merged`, `409 github_unavailable` (the project's GitHub App isn't installed), `502 github_error`.
 - If the issue already has a linked pull request, only that one can resolve it (`409 pr_mismatch`). If it has none, this one is linked.
-- An issue that is already `resolved` or `closed` answers `409 already_resolved`, and one whose status changes while the request runs answers `409 status_changed`. Nothing changes in either case.
+- An issue that is already `resolved` or `closed` answers `409 already_resolved`, and one whose status or linked pull request changes while the request runs answers `409 status_changed`. Nothing changes in either case.
 - An active claim is released with reason `resolved`, and `claim.released` is published for it.
 - **No points are written.** Solver and reviewer points still follow the review gates (a merger's accept) or a person resolving the issue in the app.
 - Writes an `AgentAuditEvent` (`issue.resolved`) and publishes `issue.updated` with `source: "agent"`, the agent id and the pull request.
