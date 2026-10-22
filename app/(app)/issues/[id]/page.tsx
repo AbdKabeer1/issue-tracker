@@ -1032,7 +1032,12 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
 
       <IssuePullRequest pullRequestUrl={bug.pullRequestUrl} />
 
-      <EditableProofLinks bugId={bug.id} initialLinks={proofLinks} canEdit={canEdit} />
+      <EditableProofLinks
+        bugId={bug.id}
+        initialLinks={proofLinks}
+        linkedPullRequestUrl={bug.pullRequestUrl}
+        canEdit={(canEdit || isAssignee) && !bug.isDeleted}
+      />
 
       {canUpdateStatus && !bug.isDeleted ? (
         <UpdateIssueForm

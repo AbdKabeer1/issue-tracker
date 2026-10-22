@@ -546,6 +546,22 @@ describe("agent comments", () => {
     expect(db.comment.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ metadata }) }));
   });
 
+  it("attaches a pull request the assignee mentions in a comment", async () => {
+    const pr = "https://github.com/Zedu-Endor/issue-tracker/pull/1230";
+    db.bug.findFirst.mockResolvedValue({
+      ...issue,
+      reporterId: "reporter-a",
+      assigneeId: "owner-a",
+      pullRequestUrl: null,
+      proofLinks: [],
+    });
+    expect((await comment(request("POST", { body: `Implementation ready: ${pr}` }), context)).status).toBe(201);
+    expect(db.bug.update).toHaveBeenCalledWith({
+      where: { id: issue.id },
+      data: expect.objectContaining({ pullRequestUrl: pr, proofLinks: [pr] }),
+    });
+  });
+
   it("rejects invalid confidence before writing a comment", async () => {
     expect((await comment(request("POST", { body: "Review", metadata: { confidence: 101 } }), context)).status).toBe(422);
     expect(db.comment.create).not.toHaveBeenCalled();

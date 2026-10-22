@@ -196,11 +196,11 @@ describe("updateBugAction authorization (#218)", () => {
     },
   );
 
-  it("refuses a status change when the assignee has no active claim", async () => {
+  it("lets an assignee change status without an active claim", async () => {
     db.issueClaim.findFirst.mockResolvedValue(null);
-    const result = await run("user", ME, { status: "in_progress" });
-    expect(result).toEqual({ error: TICKET_ASSIGN_ERRORS.needsAgentClaim });
-    expect(written).toBeNull();
+    const result = await run("user", ME, { status: "resolved" });
+    expect(result).toEqual({ ok: true });
+    expect(written).toEqual({ status: "resolved" });
   });
 
   it("rejects an assignee who is not a member of the issue tenant", async () => {

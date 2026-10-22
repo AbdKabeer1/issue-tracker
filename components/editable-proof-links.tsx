@@ -10,6 +10,8 @@ import { formatProofLinkLabel } from "@/lib/proof-links";
 export type EditableProofLinksProps = {
   bugId: string;
   initialLinks: string[];
+  /** The issue's attached pull request, shown here even when it is not in the link list. */
+  linkedPullRequestUrl?: string | null;
   canEdit: boolean;
 };
 
@@ -33,21 +35,24 @@ function ExternalLinkIcon({ className = "h-4 w-4 shrink-0" }: { className?: stri
 }
 
 /** The issue's proof links, which the reporter or an admin can change after filing (#737). */
-export function EditableProofLinks({ bugId, initialLinks, canEdit }: EditableProofLinksProps) {
+export function EditableProofLinks({ bugId, initialLinks, linkedPullRequestUrl, canEdit }: EditableProofLinksProps) {
   const router = useRouter();
+  const links = linkedPullRequestUrl && !initialLinks.includes(linkedPullRequestUrl)
+    ? [linkedPullRequestUrl, ...initialLinks]
+    : initialLinks;
   const [isEditing, setIsEditing] = useState(false);
-  const [value, setValue] = useState(initialLinks.join("\n"));
+  const [value, setValue] = useState(links.join("\n"));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const handleStartEdit = () => {
-    setValue(initialLinks.join("\n"));
+    setValue(links.join("\n"));
     setError(null);
     setIsEditing(true);
   };
 
   const handleCancel = () => {
-    setValue(initialLinks.join("\n"));
+    setValue(links.join("\n"));
     setError(null);
     setIsEditing(false);
   };
@@ -126,11 +131,11 @@ export function EditableProofLinks({ bugId, initialLinks, canEdit }: EditablePro
             </Button>
           </div>
         </form>
-      ) : initialLinks.length === 0 ? (
+      ) : links.length === 0 ? (
         <p className="mt-3 text-sm text-slate-500">No GitHub PR attached to this report.</p>
       ) : (
         <ul className="mt-3 space-y-2">
-          {initialLinks.map((url, index) => (
+          {links.map((url, index) => (
             <li key={`${index}-${url}`}>
               <a
                 href={url}
