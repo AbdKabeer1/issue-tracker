@@ -115,6 +115,15 @@ export async function upsertGoogleUser(input: {
     logger.error("[auth] Minimal Google user upsert failed:", error);
   }
 
+  // #388: the raw insert below only creates a new row (ON CONFLICT DO
+  // NOTHING), so for an existing account it would return the user with the
+  // unproven password still in place. Refuse instead of signing in.
+  if (neutralizePassword) {
+    throw new Error(
+      "Google sign-in could not remove the unproven password on this account; refusing to sign in",
+    );
+  }
+
   const id = randomUUID();
   try {
     await prisma.$executeRaw`

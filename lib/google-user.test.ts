@@ -169,4 +169,17 @@ describe("two-factor left behind by a removed password (#388)", () => {
     await expect(transaction.mock.results[0].value).rejects.toThrow("db down");
     expect(twoFactor.clearTwoFactorAfterPasswordRemoved).toHaveBeenCalledTimes(2);
   });
+
+  it("refuses the sign-in when both attempts to remove the password fail (CodeRabbit)", async () => {
+    findUnique.mockResolvedValueOnce({ passwordHash: "hash", emailVerified: null });
+    upsert.mockRejectedValueOnce(new Error("db down"));
+    upsert.mockRejectedValueOnce(new Error("db down"));
+
+    await expect(
+      upsertGoogleUser({ email: "human@x.dev", name: "Human", emailVerified: true }),
+    ).rejects.toThrow(/refusing to sign in/);
+    // Never falls through to the raw insert, which would hand back the
+    // account with its unproven password intact.
+    expect(executeRaw).not.toHaveBeenCalled();
+  });
 });
