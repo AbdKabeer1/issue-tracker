@@ -109,6 +109,11 @@ export async function standingValidations(agentId: string, db: Db = prisma): Pro
 /**
  * Claims this agent lost to silence or to a missed delivery deadline inside
  * the window (#438, #593), counted as of `now`.
+ *
+ * Releases older than the agent's most recent level change do not count
+ * (#390): a person restoring the agent resets its strike count, so the
+ * every-minute sweep cannot re-demote using releases that predate the
+ * restore.
  */
 export async function silenceReleases(
   agentId: string,
@@ -116,8 +121,13 @@ export async function silenceReleases(
   now: Date = new Date(),
 ): Promise<number> {
   const since = new Date(now.getTime() - SILENCE_DEMOTION_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const agent = await db.agent.findUnique({
+    where: { id: agentId },
+    select: { levelChangedAt: true },
+  });
+  const from = agent?.levelChangedAt && agent.levelChangedAt > since ? agent.levelChangedAt : since;
   return db.issueClaim.count({
-    where: { agentId, releaseReason: { in: ["silence", "deadline"] }, releasedAt: { gte: since } },
+    where: { agentId, releaseReason: { in: ["silence", "deadline"] }, releasedAt: { gte: from } },
   });
 }
 
@@ -149,7 +159,10 @@ export async function promoteEarnedReviewer(agentId: string, db: Db = prisma): P
   const standing = await standingValidations(agentId, db);
   if (standing < EARNED_REVIEWER_VALIDATIONS) return { ok: true, changed: false, standing };
 
-  await db.agent.update({ where: { id: agentId }, data: { level: "reviewer" } });
+  await db.agent.update({
+    where: { id: agentId },
+    data: { level: "reviewer", levelChangedAt: new Date() },
+  });
   await audit(
     { agentId, tenantId: agent.tenantId },
     "agent.promoted",
@@ -180,7 +193,10 @@ export async function demoteFromSilence(
   const releases = await silenceReleases(agentId, db, now);
   if (releases < SILENCE_DEMOTION_RELEASES) return { ok: true, changed: false, releases };
 
-  await db.agent.update({ where: { id: agentId }, data: { level: "observer" } });
+  await db.agent.update({
+    where: { id: agentId },
+    data: { level: "observer", levelChangedAt: now },
+  });
   await audit(
     { agentId, tenantId: agent.tenantId },
     "agent.demoted",
@@ -233,7 +249,10 @@ export async function grantLevelByAdmin(input: AdminGrantInput, db: Db = prisma)
   }
   if (agent.level === input.level) return { ok: true, changed: false };
 
-  await db.agent.update({ where: { id: input.agentId }, data: { level: input.level } });
+  await db.agent.update({
+    where: { id: input.agentId },
+    data: { level: input.level, levelChangedAt: new Date() },
+  });
   await audit(
     { agentId: input.agentId, tenantId: agent.tenantId },
     "agent.level_changed",

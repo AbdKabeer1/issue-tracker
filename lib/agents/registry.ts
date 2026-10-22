@@ -230,7 +230,7 @@ export async function setAgentLevel(actor: Actor, agentId: string, level: AgentL
   const before = await prisma.agent.findUniqueOrThrow({ where: { id: agentId }, select: { level: true } });
   if (before.level === level) return { ok: true };
   await prisma.$transaction(async (tx) => {
-    await tx.agent.update({ where: { id: agentId }, data: { level } });
+    await tx.agent.update({ where: { id: agentId }, data: { level, levelChangedAt: new Date() } });
     await audit(
       { agentId, tenantId: managed.agent.tenantId },
       "agent.level_changed",
