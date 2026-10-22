@@ -17,6 +17,7 @@ const db = vi.hoisted(() => ({
   job: { findFirst: vi.fn() },
   jobSubmission: { findMany: vi.fn() },
   agentAuditEvent: { create: vi.fn() },
+  membership: { findUnique: vi.fn() },
 }));
 
 vi.mock("@/lib/agents/require-agent", async (original) => ({
@@ -52,6 +53,7 @@ const agent = {
   ownerId: "user1",
   tenantId: "tenant1",
   level: "contributor" as const,
+  ownerRole: "user" as const,
   burst: false,
   keyId: "k1",
   projectId: null,
@@ -72,6 +74,8 @@ beforeEach(() => {
   db.project.findFirst.mockResolvedValue({ id: "project1" });
   db.job.findFirst.mockResolvedValue({ id: "job1", tenantId: "tenant1", projectId: "project1" });
   db.agentAuditEvent.create.mockResolvedValue({});
+  // #512: posting a job needs an organization admin's agent.
+  db.membership.findUnique.mockResolvedValue({ role: "admin" });
   mocks.createJob.mockResolvedValue({ id: "job1" });
   mocks.listJobs.mockResolvedValue([]);
   mocks.readJob.mockResolvedValue({ id: "job1", tenantId: "tenant1", projectId: "project1" });
@@ -107,6 +111,80 @@ describe("POST /api/v1/jobs (#617)", () => {
     mocks.requireAgent.mockResolvedValue({ ...agent, level: "observer" });
     const res = await createPOST(request("http://localhost/api/v1/jobs?projectId=project1", { brief: "x" }));
     expect(res.status).toBe(403);
+  });
+
+  it("403s when the agent's owner is not an organization admin (#512)", async () => {
+    db.membership.findUnique.mockResolvedValue({ role: "member" });
+    const res = await createPOST(
+      request("http://localhost/api/v1/jobs?projectId=project1", {
+        brief: "Collect every public API endpoint and its documentation URL.",
+        dedupeKey: "url",
+        maxSubmissions: 10,
+        pointsPerAccepted: 10000,
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "Only an organization admin can post a job." });
+    expect(mocks.createJob).not.toHaveBeenCalled();
+  });
+
+  it("403s when the agent's owner has no membership in the workspace (#512)", async () => {
+    db.membership.findUnique.mockResolvedValue(null);
+    const res = await createPOST(
+      request("http://localhost/api/v1/jobs?projectId=project1", {
+        brief: "Collect every public API endpoint and its documentation URL.",
+        dedupeKey: "url",
+        maxSubmissions: 10,
+        pointsPerAccepted: 10000,
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(mocks.createJob).not.toHaveBeenCalled();
+  });
+
+  it("lets an organization admin's agent post a job (#512)", async () => {
+    db.membership.findUnique.mockResolvedValue({ role: "owner" });
+    const res = await createPOST(
+      request("http://localhost/api/v1/jobs?projectId=project1", {
+        brief: "Collect every public API endpoint and its documentation URL.",
+        dedupeKey: "url",
+        maxSubmissions: 10,
+        pointsPerAccepted: 5,
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(mocks.createJob).toHaveBeenCalled();
+  });
+
+  it("lets the site super admin's agent post a job (#512)", async () => {
+    // The web form lets the site super admin post a job in any workspace.
+    mocks.requireAgent.mockResolvedValue({ ...agent, ownerRole: "super_admin" });
+    db.membership.findUnique.mockResolvedValue({ role: "member" });
+    const res = await createPOST(
+      request("http://localhost/api/v1/jobs?projectId=project1", {
+        brief: "Collect every public API endpoint and its documentation URL.",
+        dedupeKey: "url",
+        maxSubmissions: 10,
+        pointsPerAccepted: 5,
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(mocks.createJob).toHaveBeenCalled();
+  });
+
+  it("503s when the membership lookup fails (#512)", async () => {
+    db.membership.findUnique.mockRejectedValue(new Error("connection lost"));
+    const res = await createPOST(
+      request("http://localhost/api/v1/jobs?projectId=project1", {
+        brief: "Collect every public API endpoint and its documentation URL.",
+        dedupeKey: "url",
+        maxSubmissions: 10,
+        pointsPerAccepted: 5,
+      }),
+    );
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "Could not check your permissions; try again." });
+    expect(mocks.createJob).not.toHaveBeenCalled();
   });
 });
 
