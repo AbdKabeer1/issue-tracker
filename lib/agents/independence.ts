@@ -19,22 +19,35 @@ export type ReviewedBug = {
   beneficiaryUserId: string | null;
   /** The person who filed the ticket (web form or agent on their behalf). */
   reporterId?: string | null;
+  /** The person assigned to solve the ticket, when there is no active claim. */
+  assigneeId?: string | null;
   /** The agent that filed it, if an agent did. */
   createdByAgent?: AgentOwner;
   /** Claims on the ticket; only the active one counts. */
   claims?: ReadonlyArray<{
     status: string;
     releasedAt?: Date | null;
+    beneficiaryUserId?: string | null;
+    dispatcherUserId?: string | null;
     agent?: AgentOwner;
   }>;
 };
 
-export type ReviewerConflict = "created-by-own-agent" | "own-ticket" | "claimed-by-own-agent";
+export type ReviewerConflict =
+  | "created-by-own-agent"
+  | "own-ticket"
+  | "claimed-by-own-agent"
+  | "assigned-solver"
+  | "claim-beneficiary"
+  | "claim-dispatcher";
 
 const MESSAGES: Record<ReviewerConflict, string> = {
   "created-by-own-agent": "An agent of the same owner filed this ticket, so this agent can't review it.",
   "own-ticket": "This ticket is for the agent's owner, so this agent can't review it.",
   "claimed-by-own-agent": "An agent of the same owner is working on this ticket, so this agent can't review it.",
+  "assigned-solver": "The person assigned to solve this ticket can't review it.",
+  "claim-beneficiary": "The beneficiary of the active claim can't review this ticket.",
+  "claim-dispatcher": "The dispatcher rewarded for the active claim can't review this ticket.",
 };
 
 export class ReviewerNotIndependentError extends Error {
@@ -52,6 +65,10 @@ function activeClaimOwner(bug: ReviewedBug): string | null {
   return claim?.agent?.ownerUserId ?? null;
 }
 
+function activeClaim(bug: ReviewedBug) {
+  return bug.claims?.find((c) => c.status === "active" && !c.releasedAt);
+}
+
 /**
  * Why `actor` may not review `bug`, or null when it may. Rejects when the
  * actor's owner owns the agent that created the ticket, is the ticket's
@@ -65,7 +82,15 @@ export function reviewerConflict(actor: ReviewingAgent, bug: ReviewedBug): Revie
   // though a web-filed bug has no beneficiary set (#620).
   if (bug.beneficiaryUserId === owner || bug.reporterId === owner) return "own-ticket";
   if (activeClaimOwner(bug) === owner) return "claimed-by-own-agent";
+  if (bug.assigneeId === owner) return "assigned-solver";
+  if (activeClaim(bug)?.beneficiaryUserId === owner) return "claim-beneficiary";
+  if (activeClaim(bug)?.dispatcherUserId === owner) return "claim-dispatcher";
   return null;
+}
+
+/** Independence checks for the person credited on a review, in addition to the reviewing agent's owner. */
+export function reviewerCreditConflict(userId: string, bug: ReviewedBug): ReviewerConflict | null {
+  return reviewerConflict({ id: "credited-user", ownerUserId: userId }, bug);
 }
 
 /** Throws `ReviewerNotIndependentError` unless `actor` is independent of `bug`. */

@@ -1,15 +1,18 @@
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import type { AgentContext } from "@/lib/agents/require-agent";
+import { assertKeyProject, type AgentContext } from "@/lib/agents/require-agent";
+import { requireLevel } from "@/lib/agents/levels";
 import { isTenantAdmin } from "@/lib/agents/membership";
 import { IssueApiError } from "@/lib/agent-api/issues";
 import { isConfirmed } from "@/lib/agent-api/validation";
 import { publish } from "@/lib/agent-api/events";
-import { MAX_ACTIVE_CLAIMS } from "@/lib/agent-api/claim";
+import { workflowFor } from "@/lib/workflow";
 import { isOfferExpired } from "@/lib/agent-api/offer";
 import { assertRedesignOpen } from "@/lib/redesigns";
+import { deliveryDeadline, deliveryWindowMinutes } from "@/lib/claim-deadline";
 import { assigneeChangedSummary, statusChangedSummary } from "@/lib/activity-log";
+import { WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
 import { ensureWatching } from "@/lib/watch";
 import type { AppRole } from "@/lib/roles";
 
@@ -44,21 +47,24 @@ async function competingClaim(tx: Tx, bugId: string) {
 /** An agent asks for a task. The issue stays open until a person awards a bid. */
 export async function placeBid(caller: AgentContext, projectId: string, bugId: string, note?: string) {
   return prisma.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${bugId} AND "tenantId" = ${caller.tenantId} AND "projectId" = ${projectId} AND "isDeleted" = false FOR NO KEY UPDATE`;
+    const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${bugId} AND "tenantId" = ${caller.tenantId} AND "projectId" = ${projectId} AND "isDeleted" = false FOR UPDATE`;
     if (!locked.length) throw new IssueApiError(404, "Issue not found in this project.");
     const bug = await tx.bug.findFirst({
       where: { id: bugId, tenantId: caller.tenantId, projectId, isDeleted: false },
-      select: { id: true, projectId: true, status: true },
+      select: { id: true, projectId: true, status: true, voteCount: true },
     });
     if (!bug) throw new IssueApiError(404, "Issue not found in this project.");
     if (bug.status !== "open") throw new IssueApiError(409, "Only open issues can take bids.");
-    if (!await isConfirmed(bugId, tx)) throw new IssueApiError(409, "The issue must be confirmed before an agent can bid.");
+    if (!await isConfirmed(bugId, tx) || bug.voteCount < WORK_READINESS_VOTE_THRESHOLD) {
+      throw new IssueApiError(409, "This is still an idea. Reviewers must accept it, and it needs at least 3 upvotes, before it can be passed on.");
+    }
     await assertRedesignOpen(bugId, tx);
     await competingClaim(tx, bugId);
     const activeClaims = await tx.issueClaim.count({
       where: { beneficiaryUserId: caller.ownerId, status: "active", releasedAt: null, bug: { tenantId: caller.tenantId, projectId } },
     });
-    if (activeClaims >= MAX_ACTIVE_CLAIMS) throw new IssueApiError(409, "This person already has the maximum number of active tasks.");
+    const { maxActiveClaims } = await workflowFor(projectId, tx);
+    if (activeClaims >= maxActiveClaims) throw new IssueApiError(409, "This person already has the maximum number of active tasks.");
 
     const existing = await tx.issueBid.findUnique({ where: { bugId_agentId: { bugId, agentId: caller.agentId } } });
     if (existing?.awardedAt) throw new IssueApiError(409, "This bid was already awarded.");
@@ -86,10 +92,10 @@ export async function placeBid(caller: AgentContext, projectId: string, bugId: s
 export async function listBids(caller: AgentContext, projectId: string, bugId: string) {
   const bug = await prisma.bug.findFirst({
     where: { id: bugId, tenantId: caller.tenantId, projectId, isDeleted: false },
-    select: { id: true },
+    select: { id: true, areaId: true },
   });
   if (!bug) throw new IssueApiError(404, "Issue not found in this project.");
-  return prisma.issueBid.findMany({
+  const bids = await prisma.issueBid.findMany({
     where: openBidWhere(bugId),
     orderBy: { createdAt: "asc" },
     select: {
@@ -98,9 +104,15 @@ export async function listBids(caller: AgentContext, projectId: string, bugId: s
       beneficiaryUserId: true,
       note: true,
       createdAt: true,
-      agent: { select: { name: true } },
+      agent: { select: { name: true, areaPreferences: {
+        where: { projectAreaId: bug.areaId ?? "" },
+        select: { projectAreaId: true },
+      } } },
     },
   });
+  return bids
+    .map(({ agent, ...bid }) => ({ ...bid, agent, areaMatch: Boolean(bug.areaId && agent.areaPreferences.length) }))
+    .sort((a, b) => Number(b.areaMatch) - Number(a.areaMatch) || a.createdAt.getTime() - b.createdAt.getTime());
 }
 
 /** The bidding agent takes its own bid back. Awarded bids stay. */
@@ -139,104 +151,128 @@ export async function withdrawBid(caller: AgentContext, projectId: string, bugId
  * A person picks one bid. The reporter or a tenant admin may award it.
  * The agent's owner becomes the assignee, and the bid becomes an active claim.
  */
-export async function awardBid(actor: Actor, bidId: string) {
-  const result = await prisma.$transaction(async (tx) => {
-    const bid = await tx.issueBid.findUnique({
-      where: { id: bidId },
-      include: {
-        beneficiary: { select: { name: true } },
-        bug: { select: { id: true, title: true, status: true, assigneeId: true, tenantId: true, projectId: true, reporterId: true, isDeleted: true, assignee: { select: { name: true } } } },
-      },
-    });
-    if (!bid || bid.bug.isDeleted) throw new IssueApiError(404, "Bid not found.");
-    const allowed = bid.bug.reporterId === actor.id || await isTenantAdmin(actor, bid.bug.tenantId);
-    if (!allowed) throw new IssueApiError(403, "Only the reporter or an organization admin can award a bid.");
-    const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${bid.bugId} AND "isDeleted" = false FOR NO KEY UPDATE`;
-    if (!locked.length) throw new IssueApiError(404, "Bid not found.");
-    const fresh = await tx.issueBid.findUnique({
-      where: { id: bidId },
-      include: {
-        beneficiary: { select: { name: true } },
-        bug: { select: { id: true, status: true, assigneeId: true, tenantId: true, projectId: true, reporterId: true, assignee: { select: { name: true } } } },
-      },
-    });
-    if (!fresh || fresh.withdrawnAt || fresh.awardedAt) throw new IssueApiError(409, "This bid is no longer open.");
-    if (fresh.bug.status !== "open") throw new IssueApiError(409, "Only open issues can be awarded.");
-    if (fresh.bug.assigneeId && fresh.bug.assigneeId !== fresh.beneficiaryUserId) {
-      throw new IssueApiError(409, "This issue is already assigned to someone else.");
-    }
-    const now = new Date();
-    const competing = await competingClaim(tx, fresh.bugId);
-    if (competing?.expired) {
-      await tx.issueClaim.update({
-        where: { id: competing.expired.id },
-        data: { status: "released", releasedAt: now, releaseReason: "expired" },
-      });
-      await publish(tx, {
-        tenantId: competing.expired.bug.tenantId,
-        type: "claim.released",
-        actorAgentId: competing.expired.agentId,
-        bugId: fresh.bugId,
-        payload: { claimId: competing.expired.id, issueId: fresh.bugId, beneficiaryUserId: competing.expired.beneficiaryUserId, reason: "expired" },
-      });
-    }
-    const activeClaims = await tx.issueClaim.count({
-      where: { beneficiaryUserId: fresh.beneficiaryUserId, status: "active", releasedAt: null, bug: { tenantId: fresh.bug.tenantId, projectId: fresh.bug.projectId } },
-    });
-    if (activeClaims >= MAX_ACTIVE_CLAIMS) throw new IssueApiError(409, "This person already has the maximum number of active tasks.");
-
-    const claim = await tx.issueClaim.create({
-      data: {
-        bugId: fresh.bugId,
-        beneficiaryUserId: fresh.beneficiaryUserId,
-        agentId: fresh.agentId,
-        status: "active",
-        claimedAt: now,
-        lastHeartbeatAt: now,
-      },
-    });
-    const marked = await tx.issueBid.updateMany({
-      where: { id: fresh.id, awardedAt: null, withdrawnAt: null },
-      data: { awardedAt: now, claimId: claim.id },
-    });
-    if (marked.count !== 1) throw new IssueApiError(409, "This bid is no longer open.");
-    await tx.issueBid.updateMany({
-      where: { bugId: fresh.bugId, id: { not: fresh.id }, withdrawnAt: null, awardedAt: null },
-      data: { withdrawnAt: now },
-    });
-    await tx.bug.update({
-      where: { id: fresh.bugId },
-      data: { assigneeId: fresh.beneficiaryUserId, status: "in_progress" },
-    });
-    await tx.bugActivity.createMany({
-      data: [
-        ...(fresh.bug.assigneeId !== fresh.beneficiaryUserId
-          ? [{
-              bugId: fresh.bugId,
-              actorId: actor.id,
-              type: "assignee_changed" as const,
-              summary: assigneeChangedSummary(fresh.bug.assignee?.name ?? null, fresh.beneficiary.name),
-              metadata: { field: "assignee", from: fresh.bug.assigneeId, to: fresh.beneficiaryUserId },
-            }]
-          : []),
-        {
-          bugId: fresh.bugId,
-          actorId: actor.id,
-          type: "status_changed" as const,
-          summary: statusChangedSummary("open", "in_progress"),
-          metadata: { field: "status", from: "open", to: "in_progress" },
+export async function awardBid(actor: Actor, bidId: string, dispatcher?: AgentContext) {
+  if (dispatcher) requireLevel(dispatcher, "dispatcher");
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const bid = await tx.issueBid.findUnique({
+        where: { id: bidId },
+        include: {
+          beneficiary: { select: { name: true } },
+          bug: { select: { id: true, title: true, status: true, assigneeId: true, tenantId: true, projectId: true, reporterId: true, isDeleted: true, assignee: { select: { name: true } } } },
         },
-      ],
+      });
+      if (!bid || bid.bug.isDeleted) throw new IssueApiError(404, "Bid not found.");
+      if (dispatcher) {
+        if (dispatcher.tenantId !== bid.bug.tenantId) throw new IssueApiError(404, "Bid not found.");
+        assertKeyProject(dispatcher, bid.bug.projectId);
+      }
+      const allowed = bid.bug.reporterId === actor.id || await isTenantAdmin(actor, bid.bug.tenantId);
+      if (!allowed) throw new IssueApiError(403, "Only the reporter or an organization admin can award a bid.");
+      const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${bid.bugId} AND "isDeleted" = false FOR UPDATE`;
+      if (!locked.length) throw new IssueApiError(404, "Bid not found.");
+      const fresh = await tx.issueBid.findUnique({
+        where: { id: bidId },
+        include: {
+          beneficiary: { select: { name: true } },
+          bug: { select: { id: true, status: true, assigneeId: true, tenantId: true, projectId: true, reporterId: true, severity: true, voteCount: true, assignee: { select: { name: true } } } },
+        },
+      });
+      if (!fresh || fresh.withdrawnAt || fresh.awardedAt) throw new IssueApiError(409, "This bid is no longer open.");
+      if (fresh.bug.status !== "open") throw new IssueApiError(409, "Only open issues can be awarded.");
+      if (!await isConfirmed(fresh.bugId, tx) || fresh.bug.voteCount < WORK_READINESS_VOTE_THRESHOLD) {
+        throw new IssueApiError(409, "This is still an idea. Reviewers must accept it, and it needs at least 3 upvotes, before it can be passed on.");
+      }
+      if (fresh.bug.assigneeId && fresh.bug.assigneeId !== fresh.beneficiaryUserId) {
+        throw new IssueApiError(409, "This issue is already assigned to someone else.");
+      }
+      const existingActive = await tx.issueClaim.findFirst({
+        where: { bugId: fresh.bugId, status: "active", releasedAt: null },
+      });
+      if (existingActive) {
+        throw new IssueApiError(409, "This issue already has an active claim.");
+      }
+      const now = new Date();
+      const competing = await competingClaim(tx, fresh.bugId);
+      if (competing?.expired) {
+        await tx.issueClaim.update({
+          where: { id: competing.expired.id },
+          data: { status: "released", releasedAt: now, releaseReason: "expired" },
+        });
+        await publish(tx, {
+          tenantId: competing.expired.bug.tenantId,
+          type: "claim.released",
+          actorAgentId: competing.expired.agentId,
+          bugId: fresh.bugId,
+          payload: { claimId: competing.expired.id, issueId: fresh.bugId, beneficiaryUserId: competing.expired.beneficiaryUserId, reason: "expired" },
+        });
+      }
+      const activeClaims = await tx.issueClaim.count({
+        where: { beneficiaryUserId: fresh.beneficiaryUserId, status: "active", releasedAt: null, bug: { tenantId: fresh.bug.tenantId, projectId: fresh.bug.projectId } },
+      });
+      const workflow = await workflowFor(fresh.bug.projectId, tx);
+      if (activeClaims >= workflow.maxActiveClaims) throw new IssueApiError(409, "This person already has the maximum number of active tasks.");
+
+      const claim = await tx.issueClaim.create({
+        data: {
+          bugId: fresh.bugId,
+          beneficiaryUserId: fresh.beneficiaryUserId,
+          agentId: fresh.agentId,
+          ...(dispatcher ? { dispatcherUserId: dispatcher.ownerId } : {}),
+          status: "active",
+          claimedAt: now,
+          lastHeartbeatAt: now,
+          deliverBy: deliveryDeadline(now, deliveryWindowMinutes(fresh.bug.severity, workflow.deliveryMinutes)),
+        },
+      });
+      const marked = await tx.issueBid.updateMany({
+        where: { id: fresh.id, awardedAt: null, withdrawnAt: null },
+        data: { awardedAt: now, claimId: claim.id },
+      });
+      if (marked.count !== 1) throw new IssueApiError(409, "This bid is no longer open.");
+      await tx.issueBid.updateMany({
+        where: { bugId: fresh.bugId, id: { not: fresh.id }, withdrawnAt: null, awardedAt: null },
+        data: { withdrawnAt: now },
+      });
+      await tx.bug.update({
+        where: { id: fresh.bugId },
+        data: { assigneeId: fresh.beneficiaryUserId, status: "in_progress" },
+      });
+      await tx.bugActivity.createMany({
+        data: [
+          ...(fresh.bug.assigneeId !== fresh.beneficiaryUserId
+            ? [{
+                bugId: fresh.bugId,
+                actorId: actor.id,
+                type: "assignee_changed" as const,
+                summary: assigneeChangedSummary(fresh.bug.assignee?.name ?? null, fresh.beneficiary.name),
+                metadata: { field: "assignee", from: fresh.bug.assigneeId, to: fresh.beneficiaryUserId },
+              }]
+            : []),
+          {
+            bugId: fresh.bugId,
+            actorId: actor.id,
+            type: "status_changed" as const,
+            summary: statusChangedSummary("open", "in_progress"),
+            metadata: { field: "status", from: "open", to: "in_progress" },
+          },
+        ],
+      });
+      await ensureWatching(tx, fresh.bugId, [fresh.beneficiaryUserId]);
+      await publish(tx, {
+        tenantId: fresh.bug.tenantId,
+        type: "issue.bid_awarded",
+        actorAgentId: fresh.agentId,
+        bugId: fresh.bugId,
+        payload: { bidId: fresh.id, claimId: claim.id, issueId: fresh.bugId, projectId: fresh.bug.projectId, beneficiaryUserId: fresh.beneficiaryUserId },
+      });
+      return { bidId: fresh.id, claimId: claim.id, bugId: fresh.bugId };
     });
-    await ensureWatching(tx, fresh.bugId, [fresh.beneficiaryUserId]);
-    await publish(tx, {
-      tenantId: fresh.bug.tenantId,
-      type: "issue.bid_awarded",
-      actorAgentId: fresh.agentId,
-      bugId: fresh.bugId,
-      payload: { bidId: fresh.id, claimId: claim.id, issueId: fresh.bugId, projectId: fresh.bug.projectId, beneficiaryUserId: fresh.beneficiaryUserId },
-    });
-    return { bidId: fresh.id, claimId: claim.id, bugId: fresh.bugId };
-  });
-  return result;
+    return result;
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new IssueApiError(409, "This issue already has an active claim.");
+    }
+    throw error;
+  }
 }

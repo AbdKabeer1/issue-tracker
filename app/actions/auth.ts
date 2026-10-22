@@ -1,12 +1,15 @@
 "use server";
 
 import { fromZodError } from "@/lib/form-errors";
+import { logger } from "@/lib/logger";
 
 /** An error, and the field it is about when there is one (#309). */
 type FieldAwareResult = {
   error?: string;
   field?: string;
   fieldErrors?: Record<string, string>;
+  /** The password was right and the account needs a second-factor code (#648). */
+  needsCode?: boolean;
 };
 import { AuthError } from "next-auth";
 import { hash } from "bcryptjs";
@@ -88,16 +91,29 @@ export async function loginAction(
     await signIn("credentials", {
       email: String(formData.get("email") ?? ""),
       password: String(formData.get("password") ?? ""),
+      totp: String(formData.get("totp") ?? ""),
       redirect: false,
     });
   } catch (error) {
+    // Reached only after a correct password (see auth.ts), so asking for the
+    // code does not reveal whether an account exists (#648).
+    const code = (error as { code?: unknown } | null)?.code;
+    if (code === "two_factor_required") {
+      return { error: "Enter the code from your authenticator app.", needsCode: true };
+    }
+    if (code === "two_factor_invalid") {
+      return {
+        error: "That code isn't right. Try the next one, or use a backup code.",
+        needsCode: true,
+      };
+    }
     // Points at the email field so focus lands there, but deliberately not
     // at a single culprit: saying which one was wrong would reveal whether
     // the account exists.
     if (error instanceof AuthError) {
       return { error: "Invalid email or password", field: "email" };
     }
-    console.error("[loginAction] signIn error:", error);
+    logger.error("[loginAction] signIn error:", error);
     return { error: "Invalid email or password", field: "email" };
   }
 
@@ -158,7 +174,7 @@ export async function signupAction(
         error: "Account created, but sign-in failed. Try logging in.",
       };
     }
-    console.error("[signupAction] signIn error after user creation:", error);
+    logger.error("[signupAction] signIn error after user creation:", error);
     return {
       error: "Account created! Please sign in with your email and password.",
     };
@@ -318,7 +334,7 @@ export async function forgotPasswordAction(
       });
     }
   } catch (error) {
-    console.error("[forgot-password]", error);
+    logger.error("[forgot-password]", error);
     // Still return the generic message — do not leak failure mode.
   }
 

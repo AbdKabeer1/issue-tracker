@@ -6,18 +6,20 @@ type VerdictRow = {
   goodToMerge: boolean;
   onBehalfOfUserId: string;
   pullRequestUrl: string | null;
+  headSha?: string | null;
   createdAt: Date;
   agent: { id: string; ownerUserId: string };
 };
 
 const state = vi.hoisted(() => ({
   verdicts: [] as VerdictRow[],
-  confirmations: [] as { agentId: string; agent: { id: string; ownerUserId: string } }[],
+  confirmations: [] as { agentId: string; onBehalfOfUserId: string; agent: { id: string; ownerUserId: string; level?: string } }[],
 }));
 
 const db = vi.hoisted(() => ({
   bug: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
   bugActivity: { create: vi.fn() },
+  comment: { create: vi.fn() },
   testVerdict: { findMany: vi.fn() },
   issueValidation: { findMany: vi.fn() },
   pointEntry: { createMany: vi.fn() },
@@ -26,6 +28,7 @@ const db = vi.hoisted(() => ({
   webhookSubscription: { findMany: vi.fn() },
   webhookDelivery: { createMany: vi.fn() },
   issueClaim: { updateMany: vi.fn() },
+  projectWorkflow: { findUnique: vi.fn() },
   $transaction: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
@@ -35,6 +38,7 @@ vi.mock("@/lib/redesigns", () => ({ assertRedesignOpen: redesign.assertRedesignO
 
 import { IssueApiError } from "@/lib/agent-api/issues";
 import { acceptFix } from "./merge";
+import { resetWorkflowCache } from "@/lib/workflow";
 
 const PR = "https://github.com/Zedu-Endor/issue-tracker/pull/42";
 
@@ -43,35 +47,50 @@ function bugRow(overrides: Record<string, unknown> = {}) {
     id: "bug1",
     tenantId: "tenant_zedu",
     pullRequestUrl: PR,
+    pullRequestHeadSha: "linked-sha",
     severity: "medium",
     status: "open",
     assigneeId: "ada",
     beneficiaryUserId: "ada",
     createdByAgentId: null,
     createdByAgent: null,
-    claims: [],
+    claims: [{
+      status: "active",
+      releasedAt: null,
+      agentId: "solver-agent",
+      beneficiaryUserId: "ada",
+      agent: { ownerUserId: "ada" },
+    }],
     ...overrides,
   };
 }
 
-function merger(id: string, ownerId: string, level: "observer" | "contributor" | "reviewer" | "merger" = "merger") {
+function merger(id: string, ownerId: string, level: "observer" | "contributor" | "reviewer" | "dispatcher" | "merger" = "merger") {
   return { agentId: id, name: id, ownerId, tenantId: "tenant_zedu", level, burst: false, keyId: `key-${id}` };
 }
 
-/** The two independent accepts that confirm an issue. */
+/** The two independent accepts plus a triage clear that confirm an issue. */
 function confirmWith(ownerA: string, ownerB: string) {
   state.confirmations = [
-    { agentId: `a-${ownerA}`, agent: { id: `a-${ownerA}`, ownerUserId: ownerA } },
-    { agentId: `a-${ownerB}`, agent: { id: `a-${ownerB}`, ownerUserId: ownerB } },
+    { agentId: `a-${ownerA}`, onBehalfOfUserId: ownerA, agent: { id: `a-${ownerA}`, ownerUserId: ownerA } },
+    { agentId: `a-${ownerB}`, onBehalfOfUserId: ownerB, agent: { id: `a-${ownerB}`, ownerUserId: ownerB } },
+    { agentId: "a-tia", onBehalfOfUserId: "tia", agent: { id: "a-tia", ownerUserId: "tia", level: "triager" } },
   ];
 }
 
-function verdict(agentId: string, ownerId: string, onBehalfOfUserId = ownerId, pullRequestUrl: string | null = PR) {
+function verdict(
+  agentId: string,
+  ownerId: string,
+  onBehalfOfUserId = ownerId,
+  pullRequestUrl: string | null = PR,
+  headSha: string | null = "linked-sha",
+) {
   state.verdicts.push({
     id: `v-${agentId}`,
     bugId: "bug1",
     goodToMerge: true,
     pullRequestUrl,
+    headSha,
     onBehalfOfUserId,
     createdAt: new Date(),
     agent: { id: agentId, ownerUserId: ownerId },
@@ -80,6 +99,7 @@ function verdict(agentId: string, ownerId: string, onBehalfOfUserId = ownerId, p
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetWorkflowCache();
   state.verdicts = [];
   state.confirmations = [];
   db.$transaction.mockImplementation((fn: (tx: unknown) => unknown) => fn(db));
@@ -87,6 +107,7 @@ beforeEach(() => {
   db.bug.findUnique.mockResolvedValue(bugRow());
   db.bug.update.mockResolvedValue({});
   db.bugActivity.create.mockResolvedValue({});
+  db.comment.create.mockResolvedValue({ id: "merge-comment-1" });
   db.pointEntry.createMany.mockResolvedValue({ count: 1 });
   db.agentEvent.create.mockResolvedValue({ id: "e1" });
   db.webhookSubscription.findMany.mockResolvedValue([]);
@@ -98,9 +119,17 @@ beforeEach(() => {
     ),
   );
   db.issueValidation.findMany.mockImplementation(async () => state.confirmations);
+  db.projectWorkflow.findUnique.mockResolvedValue(null);
 });
 
 describe("acceptFix: who may merge (#434)", () => {
+  it("rejects a dispatcher without merger level before touching the issue", async () => {
+    expect(await acceptFix(merger("d1", "dan", "dispatcher"), "bug1")).toMatchObject({
+      status: 403,
+      error: "insufficient_level",
+    });
+    expect(db.bug.findFirst).not.toHaveBeenCalled();
+  });
   it("rejects a contributor and a reviewer before touching the issue", async () => {
     expect(await acceptFix(merger("c1", "cara", "contributor"), "bug1")).toMatchObject({
       status: 403,
@@ -119,6 +148,100 @@ describe("acceptFix: who may merge (#434)", () => {
   });
 });
 
+describe("acceptFix: the merger must be independent too (#493)", () => {
+  it("refuses the assigned solver's merger even if a different agent holds the claim", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({ assigneeId: "mo" }));
+    expect(await acceptFix(merger("m1", "mo"), "bug1")).toMatchObject({ status: 403, error: "not_independent" });
+    expect(db.bug.update).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+  });
+  it("refuses a merger whose owner is the claim's beneficiary, even with every other gate met", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(
+      bugRow({ claims: [{ status: "active", releasedAt: null, agentId: "w1", beneficiaryUserId: "ada", agent: { ownerUserId: "ada" } }] }),
+    );
+
+    expect(await acceptFix(merger("m1", "ada", "merger"), "bug1")).toMatchObject({
+      status: 403,
+      error: "not_independent",
+    });
+    expect(db.bug.update).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+    expect(db.agentAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a merger whose owner is the ticket's reporter", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ reporterId: "ada", beneficiaryUserId: "zoe" }));
+    expect(await acceptFix(merger("m1", "ada", "merger"), "bug1")).toMatchObject({
+      status: 403,
+      error: "not_independent",
+    });
+  });
+
+  it("refuses a merger whose owner filed the ticket through its agent", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ createdByAgent: { ownerUserId: "ada" }, beneficiaryUserId: "zoe" }));
+    expect(await acceptFix(merger("m1", "ada", "merger"), "bug1")).toMatchObject({
+      status: 403,
+      error: "not_independent",
+    });
+  });
+
+  it("refuses a merger that owns the agent holding the active claim", async () => {
+    db.bug.findFirst.mockResolvedValue(
+      bugRow({ claims: [{ status: "active", releasedAt: null, agentId: "w1", beneficiaryUserId: "zoe", agent: { ownerUserId: "ada" } }] }),
+    );
+    expect(await acceptFix(merger("m1", "ada", "merger"), "bug1")).toMatchObject({
+      status: 403,
+      error: "not_independent",
+    });
+  });
+
+  it("lets an independent merger accept", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({ status: 200, accepted: true });
+  });
+
+  it("leaves a comment on the issue saying the fix was merged (#458)", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({ status: 200, accepted: true });
+    expect(db.comment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          bugId: "bug1",
+          authorId: "mo",
+          agentId: "m1",
+          type: "comment",
+        }),
+      }),
+    );
+    expect(db.bugActivity.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: "commented" }) }),
+    );
+  });
+
+  it("requires the project's third verdict when configured (#595)", async () => {
+    db.projectWorkflow.findUnique.mockResolvedValue({ verdictsNeeded: 3 });
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({
+      status: 409,
+      missing: "verdicts",
+    });
+    verdict("r3", "kim");
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({ status: 200, accepted: true });
+  });
+});
+
 describe("acceptFix: the gate (#434)", () => {
   it("names the missing condition: already accepted", async () => {
     db.bug.findFirst.mockResolvedValue(bugRow({ status: "resolved" }));
@@ -126,6 +249,26 @@ describe("acceptFix: the gate (#434)", () => {
       status: 409,
       missing: "already_accepted",
     });
+  });
+
+  it("names the missing condition: no active claim", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ claims: [] }));
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({
+      status: 409,
+      missing: "claim",
+    });
+    expect(db.testVerdict.findMany).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it("names the missing condition: no linked pull request", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ pullRequestUrl: null }));
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({
+      status: 409,
+      missing: "pull_request",
+    });
+    expect(db.testVerdict.findMany).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
   });
 
   it("names the missing condition: a redesign is waiting for a person", async () => {
@@ -159,6 +302,45 @@ describe("acceptFix: the gate (#434)", () => {
     verdict("r1", "rob");
     verdict("r2", "rob");
     expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({ status: 409, missing: "verdicts" });
+  });
+});
+
+describe("acceptFix: dispatcher completion reward", () => {
+  it("pays the dispatcher of the completed claim, not an earlier abandoned claim", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({ claims: [
+      { status: "released", releasedAt: new Date(), dispatcherUserId: "old-dispatcher" },
+      { status: "active", releasedAt: null, agentId: "solver-agent", beneficiaryUserId: "ada", dispatcherUserId: "dispatcher-owner", agent: { ownerUserId: "ada" } },
+    ] }));
+
+    expect(await acceptFix(merger("m1", "mo"), "bug1")).toMatchObject({ status: 200 });
+    const rewards = db.pointEntry.createMany.mock.calls.flatMap((call) => call[0].data).filter((entry) => entry.role === "dispatcher");
+    expect(rewards).toEqual([{
+      tenantId: "tenant_zedu", bugId: "bug1", userId: "dispatcher-owner",
+      role: "dispatcher", points: 2, sourceKey: "dispatcher:bug1",
+    }]);
+  });
+
+  it("does not pay a dispatcher before independent verdicts accept the fix", async () => {
+    confirmWith("rob", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({ claims: [
+      { status: "active", releasedAt: null, agentId: "solver-agent", beneficiaryUserId: "ada", dispatcherUserId: "dispatcher-owner", agent: { ownerUserId: "ada" } },
+    ] }));
+    expect(await acceptFix(merger("m1", "mo"), "bug1")).toMatchObject({ status: 409, missing: "verdicts" });
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it("does not let the rewarded dispatcher accept its own assigned fix", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({ claims: [
+      { status: "active", releasedAt: null, agentId: "solver-agent", beneficiaryUserId: "ada", dispatcherUserId: "mo", agent: { ownerUserId: "ada" } },
+    ] }));
+    expect(await acceptFix(merger("m1", "mo"), "bug1")).toMatchObject({ status: 403, error: "not_independent" });
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
   });
 });
 
@@ -198,8 +380,35 @@ describe("acceptFix: a successful accept (#434)", () => {
     expect(db.agentAuditEvent.create.mock.calls[0][0].data).toMatchObject({
       action: "issue.accepted",
       target: "bug:bug1",
+      payload: {
+        solverUserId: "ada",
+        pullRequestUrl: PR,
+        headSha: "linked-sha",
+      },
     });
     expect(db.agentEvent.create.mock.calls[0][0].data).toMatchObject({ type: "issue.accepted", bugId: "bug1" });
+  });
+
+  it("pins the accepted fix to the head commit the last counted reviewer tested (#489)", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob", "rob", PR, "older-sha");
+    verdict("r2", "sam", "sam", PR, "reviewed-sha");
+
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({ status: 200, accepted: true });
+    expect(db.agentAuditEvent.create.mock.calls[0][0].data).toMatchObject({
+      payload: { pullRequestUrl: PR, headSha: "reviewed-sha" },
+    });
+  });
+
+  it("falls back to the linked head SHA when the verdicts name none (#489)", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob", "rob", PR, null);
+    verdict("r2", "sam", "sam", PR, null);
+
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({ status: 200, accepted: true });
+    expect(db.agentAuditEvent.create.mock.calls[0][0].data).toMatchObject({
+      payload: { pullRequestUrl: PR, headSha: "linked-sha" },
+    });
   });
 
   it("releases the active solver claim as resolved in the accept transaction", async () => {
@@ -217,19 +426,33 @@ describe("acceptFix: a successful accept (#434)", () => {
     });
   });
 
-  it("pays up to two reviewers, each for the person they acted for", async () => {
+  it("pays every good-to-merge reviewer, each less than the one before", async () => {
     confirmWith("rob", "sam");
     verdict("r1", "rob", "rob");
     verdict("r2", "sam", "sam");
     verdict("r3", "tia", "tia");
 
     const result = await acceptFix(merger("m1", "mo", "merger"), "bug1");
-    expect(result).toMatchObject({ status: 200, rewardedReviewerUserIds: ["rob", "sam"] });
+    expect(result).toMatchObject({ status: 200, rewardedReviewerUserIds: ["rob", "sam", "tia"] });
     const awards = db.pointEntry.createMany.mock.calls.map((call) => call[0].data[0]);
     const reviewerAwards = awards.filter((a) => a.role === "reviewer");
-    expect(reviewerAwards).toHaveLength(2);
+    expect(reviewerAwards).toHaveLength(3);
     expect(reviewerAwards[0]).toMatchObject({ userId: "rob", points: 10, sourceKey: "reviewer:bug1:rob" });
-    expect(reviewerAwards[1]).toMatchObject({ userId: "sam", points: 10, sourceKey: "reviewer:bug1:sam" });
+    expect(reviewerAwards[1]).toMatchObject({ userId: "sam", points: 7, sourceKey: "reviewer:bug1:sam" });
+    expect(reviewerAwards[2]).toMatchObject({ userId: "tia", points: 4, sourceKey: "reviewer:bug1:tia" });
+  });
+
+  it("does not count or pay a verdict credited to the active claim beneficiary (#495)", async () => {
+    confirmWith("rob", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({ claims: [
+      { status: "active", releasedAt: null, agentId: "worker-agent", beneficiaryUserId: "claimant", agent: { ownerUserId: "worker" } },
+    ] }));
+    verdict("r1", "rob", "claimant");
+    verdict("r2", "sam", "sam");
+
+    const result = await acceptFix(merger("m1", "mo", "merger"), "bug1");
+    expect(result).toMatchObject({ status: 409, error: "not_ready", missing: "verdicts" });
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
   });
 
   it("pays the active claim's beneficiary rather than the assignee", async () => {
@@ -246,11 +469,20 @@ describe("acceptFix: a successful accept (#434)", () => {
     expect(awards).toContainEqual(expect.objectContaining({ role: "solver", userId: "zoe", sourceKey: "solver:bug1:zoe" }));
   });
 
-  it("accepts with no solver when nobody is assigned and there is no claim", async () => {
+  it("accepts with no solver when nobody is assigned but an active claim has no beneficiary", async () => {
     confirmWith("rob", "sam");
     verdict("r1", "rob");
     verdict("r2", "sam");
-    db.bug.findFirst.mockResolvedValue(bugRow({ assigneeId: null }));
+    db.bug.findFirst.mockResolvedValue(bugRow({
+      assigneeId: null,
+      claims: [{
+        status: "active",
+        releasedAt: null,
+        agentId: "solver-agent",
+        beneficiaryUserId: null,
+        agent: { ownerUserId: "ada" },
+      }],
+    }));
 
     const result = await acceptFix(merger("m1", "mo", "merger"), "bug1");
     expect(result).toMatchObject({ status: 200, solverUserId: null });

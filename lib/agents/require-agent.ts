@@ -1,10 +1,12 @@
 import type { AgentLevel } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { bearerToken, hashSecret } from "@/lib/agents/keys";
+import { authorizationToken, hashSecret } from "@/lib/agents/keys";
 import { AgentLevelError } from "@/lib/agents/levels";
 import { AgentPlatformDisabledError, agentPlatformDisabledResponse } from "@/lib/agents/platform-gate";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
+import { logger } from "@/lib/logger";
+import type { AppRole } from "@/lib/roles";
 
 export { AgentPlatformDisabledError, agentPlatformDisabledResponse };
 
@@ -22,8 +24,15 @@ export type AgentContext = {
   ownerId: string;
   tenantId: string;
   level: AgentLevel;
+  /**
+   * The owner's site-wide role, read from the agent's owner row. Routes that
+   * mirror the web app's admin gate need it (#512).
+   */
+  ownerRole?: AppRole | null;
   /** For the rate budget (#440). */
   burst: boolean;
+  /** When the higher budget lapses; null means no expiry (#596). */
+  burstUntil?: Date | null;
   /** The key used for this call, so rotation can revoke exactly it. */
   keyId: string;
   /**
@@ -39,7 +48,7 @@ export type AgentAuthFailure = "missing_key" | "invalid_key" | "revoked";
 
 const MESSAGES: Record<AgentAuthFailure, string> = {
   missing_key: "Send your agent key as Authorization: Bearer <key>.",
-  invalid_key: "That agent key is not valid.",
+  invalid_key: "That agent key is not valid. Send it as Authorization: Bearer <key>.",
   revoked: "That agent key has been revoked.",
 };
 
@@ -83,8 +92,12 @@ const LAST_USED_THROTTLE_MS = 60 * 1000;
 
 export async function requireAgent(request: HeaderSource): Promise<AgentContext> {
   if (!isAgentPlatformEnabled()) throw new AgentPlatformDisabledError();
-  const raw = bearerToken(request.headers.get("authorization"));
-  if (!raw) throw new AgentAuthError("missing_key");
+  const auth = authorizationToken(request.headers.get("authorization"));
+  // No header (or a Bearer with no token) is a missing key; a header that was
+  // sent but cannot be a Ziki key is a bad key, not a missing one (#467).
+  if (auth.status === "missing") throw new AgentAuthError("missing_key");
+  if (auth.status === "malformed") throw new AgentAuthError("invalid_key");
+  const raw = auth.token;
 
   const key = await prisma.agentApiKey.findUnique({
     where: { keyHash: hashSecret(raw) },
@@ -102,8 +115,9 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
           tenantId: true,
           level: true,
           burst: true,
+          burstUntil: true,
           revokedAt: true,
-          owner: { select: { memberships: { select: { tenantId: true } } } },
+          owner: { select: { role: true, memberships: { select: { tenantId: true } } } },
         },
       },
     },
@@ -129,7 +143,7 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
         data: { lastUsedAt: now },
       }),
     ).catch((error) => {
-      console.error("[requireAgent] failed to update lastUsedAt", error);
+      logger.error("[requireAgent] failed to update lastUsedAt", error);
     });
   }
 
@@ -139,7 +153,9 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
     ownerId: agent.ownerUserId,
     tenantId: agent.tenantId,
     level: agent.level,
+    ownerRole: agent.owner.role ?? null,
     burst: agent.burst,
+    burstUntil: agent.burstUntil ?? null,
     keyId: key.id,
     projectId: key.projectId,
     projectSlug: key.project?.slug ?? null,

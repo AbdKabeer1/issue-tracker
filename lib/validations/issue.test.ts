@@ -8,6 +8,7 @@ import {
   resetPasswordSchema,
   signupSchema,
   updateBugSchema,
+  walletAddressSchema,
 } from "./issue";
 
 const validCuid = "clxxxxxxxxxxxxxxxxxxxxxxxxx";
@@ -207,6 +208,20 @@ describe("updateBugSchema", () => {
 });
 
 describe("commentSchema", () => {
+  it.each([0, 80, 100])("accepts optional confidence %s with evidence and other metadata", (confidence) => {
+    const metadata = { confidence, confidenceReason: "Source inspected; not reproduced.", verdict: "assessment" };
+    expect(commentSchema.parse({ body: "Review", metadata }).metadata).toEqual(metadata);
+  });
+
+  it.each([-1, 101, 1.5, "80", null])("rejects invalid confidence %s", (confidence) => {
+    expect(commentSchema.safeParse({ body: "Review", metadata: { confidence } }).success).toBe(false);
+  });
+
+  it("rejects blank or overlong confidence explanations", () => {
+    for (const confidenceReason of [" ", "x".repeat(501)]) {
+      expect(commentSchema.safeParse({ body: "Review", metadata: { confidence: 80, confidenceReason } }).success).toBe(false);
+    }
+  });
   it("accepts a non-empty comment", () => {
     const result = commentSchema.safeParse({ body: "Looks fixed on staging." });
     expect(result.success).toBe(true);
@@ -484,7 +499,7 @@ describe("createBugSchema proofLinks", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0]?.message).toBe(
-        "You entered 24 links. At most 20 proof links are allowed.",
+        "You entered 24 links. At most 20 GitHub PR links are allowed.",
       );
     }
   });
@@ -578,3 +593,45 @@ describe("saving code samples (#114)", () => {
   });
 });
 
+describe("walletAddressSchema (#618)", () => {
+  it("accepts a lowercase EVM address", () => {
+    const address = `0x${"a".repeat(40)}`;
+    const parsed = walletAddressSchema.safeParse(address);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data).toBe(address);
+  });
+
+  it("accepts a mixed-case checksummed address", () => {
+    const address = "0x52908400098527886E0F7030069857D2E4169EE7";
+    const parsed = walletAddressSchema.safeParse(address);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data).toBe(address);
+  });
+
+  it("trims what the person typed", () => {
+    const parsed = walletAddressSchema.safeParse(`  0x${"b".repeat(40)}  `);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data).toBe(`0x${"b".repeat(40)}`);
+  });
+
+  it("clears the address on an empty value", () => {
+    for (const input of ["", "   "]) {
+      const parsed = walletAddressSchema.safeParse(input);
+      expect(parsed.success).toBe(true);
+      if (parsed.success) expect(parsed.data).toBeNull();
+    }
+  });
+
+  it.each([
+    ["no 0x prefix", `0${"a".repeat(40)}`],
+    ["one hex character short", `0x${"a".repeat(39)}`],
+    ["one hex character long", `0x${"a".repeat(41)}`],
+    ["a non-hex character", `0x${"g".repeat(40)}`],
+    ["an uppercase 0X prefix", `0X${"a".repeat(40)}`],
+    ["nothing at all", "points please"],
+    ["an address with 0x in the middle", `abc0x${"a".repeat(40)}`],
+    ["a truncated address", "0xdeadbeef"],
+  ])("rejects %s", (_label, input) => {
+    expect(walletAddressSchema.safeParse(input).success).toBe(false);
+  });
+});

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
@@ -37,6 +38,19 @@ export const IDEMPOTENCY_KEY_MAX = 255;
 /** Agents never choose severity on create (#441, #433). */
 export const AGENT_CREATE_SEVERITY = "medium" as const;
 
+/** Stable JSON serialization so equivalent request objects hash consistently. */
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`;
+}
+
+/** Hash the normalized issue-create payload for idempotency comparisons. */
+export function hashCreateRequest(body: unknown): string {
+  return createHash("sha256").update(stableJson(body)).digest("hex");
+}
+
 /** A key is 1–255 visible ASCII characters, like a UUID or a hash. */
 export function parseIdempotencyKey(raw: string | null | undefined): string | null {
   const key = raw?.trim();
@@ -56,8 +70,6 @@ export function isAcknowledged(value: unknown): boolean {
 /** Searched over, then cut to SIMILAR_LIMIT once scored (as /api/issues/similar). */
 const CANDIDATES = 10;
 
-let trigramUnavailable = false;
-
 /**
  * Open issues in this project whose title looks like `title`, using the same
  * scoring as the reporter's "is it one of these?" hint (lib/similar-issues.ts).
@@ -69,24 +81,21 @@ export async function findSimilarIssues(
 ): Promise<SimilarIssue[]> {
   const query = normalizeQuery(title);
   if (!shouldSearch(query)) return [];
-  if (!trigramUnavailable) {
-    try {
-      const rows = await db.$queryRaw<ScoredIssue[]>`
-        SELECT "id", "number", "title", "status", "voteCount",
-               GREATEST(similarity("title", ${query}), word_similarity(${query}, "title")) AS "score"
-        FROM "Bug"
-        WHERE "isDeleted" = false
-          AND "tenantId" = ${scope.tenantId}
-          AND "projectId" = ${scope.projectId}
-          AND "status"::text = ANY(${SIMILAR_STATUSES as string[]})
-          AND ("title" % ${query} OR ${query} <% "title")
-        ORDER BY "score" DESC
-        LIMIT ${CANDIDATES}`;
-      return pickSimilar(rows);
-    } catch (error) {
-      trigramUnavailable = true;
-      console.error("[agent-create] trigram search failed; using plain matching from now on", error);
-    }
+  try {
+    const rows = await db.$queryRaw<ScoredIssue[]>`
+      SELECT "id", "number", "title", "status", "voteCount",
+             GREATEST(similarity("title", ${query}), word_similarity(${query}, "title")) AS "score"
+      FROM "Bug"
+      WHERE "isDeleted" = false
+        AND "tenantId" = ${scope.tenantId}
+        AND "projectId" = ${scope.projectId}
+        AND "status"::text = ANY(${SIMILAR_STATUSES as string[]})
+        AND ("title" % ${query} OR ${query} <% "title")
+      ORDER BY "score" DESC
+      LIMIT ${CANDIDATES}`;
+    return pickSimilar(rows);
+  } catch (error) {
+    console.error("[agent-create] trigram search failed; using plain matching for this request", error);
   }
   const terms = fallbackTerms(query);
   if (terms.length < 1) return [];
@@ -116,6 +125,8 @@ export type CreatePolicyInput = {
   projectId: string;
   /** The raw `Idempotency-Key` header. */
   idempotencyKey: string | null | undefined;
+  /** SHA-256 hash of the normalized create request. */
+  requestHash: string;
   /** Already validated by the route; used for the similar-issue check. */
   title: string;
   typeId?: unknown;
@@ -136,10 +147,17 @@ export type CreatePolicyResult =
   | { status: 409; error: "idempotency_conflict"; message: string };
 
 /** An active issue type, `null` for none, or `undefined` when it isn't one. */
-async function resolveTypeId(db: Db, typeId: unknown): Promise<string | null | undefined> {
+async function resolveTypeId(
+  db: Db,
+  typeId: unknown,
+  tenantId: string,
+): Promise<string | null | undefined> {
   if (typeId === undefined || typeId === null || typeId === "") return null;
   if (typeof typeId !== "string" || typeId.length > 191) return undefined;
-  const type = await db.issueType.findUnique({ where: { id: typeId }, select: { isActive: true } });
+  const type = await db.issueType.findUnique({
+    where: { id_tenantId: { id: typeId, tenantId } },
+    select: { isActive: true },
+  });
   return type?.isActive ? typeId : undefined;
 }
 
@@ -147,10 +165,29 @@ async function resolveTypeId(db: Db, typeId: unknown): Promise<string | null | u
 async function replayFor(db: Db, agentId: string, key: string, cutoff: Date) {
   const existing = await db.idempotencyKey.findUnique({
     where: { agentId_key: { agentId, key } },
-    select: { bugId: true, createdAt: true },
+    select: { bugId: true, createdAt: true, requestHash: true },
   });
   if (!existing || existing.createdAt <= cutoff) return null;
   return existing;
+}
+
+function replayOrConflict(
+  existing: { bugId: string | null; requestHash: string | null },
+  requestHash: string,
+): CreatePolicyResult {
+  if (existing.requestHash !== requestHash) {
+    return {
+      status: 409,
+      error: "idempotency_conflict",
+      message: "This Idempotency-Key was already used with a different request body.",
+    };
+  }
+  if (existing.bugId) return { status: 200, bugId: existing.bugId, replayed: true };
+  return {
+    status: 409,
+    error: "idempotency_conflict",
+    message: "A request with this Idempotency-Key is in progress or failed. Use a new key.",
+  };
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -178,19 +215,11 @@ export async function createIssueWithPolicy(input: CreatePolicyInput): Promise<C
     };
   }
 
-  // A retry gets the issue it already made, whatever else it sends.
+  // A retry only replays when its normalized request matches the original.
   const earlier = await replayFor(prisma, agent.agentId, key, cutoff);
-  if (earlier?.bugId) return { status: 200, bugId: earlier.bugId, replayed: true };
-  if (earlier) {
-    // The key is held but its issue is gone or still being written.
-    return {
-      status: 409,
-      error: "idempotency_conflict",
-      message: "A request with this Idempotency-Key is in progress or failed. Use a new key.",
-    };
-  }
+  if (earlier) return replayOrConflict(earlier, input.requestHash);
 
-  const typeId = await resolveTypeId(prisma, input.typeId);
+  const typeId = await resolveTypeId(prisma, input.typeId, agent.tenantId);
   if (typeId === undefined) {
     return { status: 422, error: "invalid_type", message: "typeId is not an active issue type." };
   }
@@ -201,7 +230,7 @@ export async function createIssueWithPolicy(input: CreatePolicyInput): Promise<C
       // A concurrent retry may have just created the issue, which then looks
       // "similar" to itself: replay it instead.
       const justMade = await replayFor(prisma, agent.agentId, key, cutoff);
-      if (justMade?.bugId) return { status: 200, bugId: justMade.bugId, replayed: true };
+      if (justMade) return replayOrConflict(justMade, input.requestHash);
       return {
         status: 409,
         error: "similar_issues",
@@ -221,7 +250,7 @@ export async function createIssueWithPolicy(input: CreatePolicyInput): Promise<C
       // Taking the key first means a concurrent retry waits on it, then fails
       // the unique check and replays this issue below.
       const held = await tx.idempotencyKey.create({
-        data: { agentId: agent.agentId, key, createdAt: now },
+        data: { agentId: agent.agentId, key, requestHash: input.requestHash, createdAt: now },
         select: { id: true },
       });
       const bug = await input.insert(tx, { severity: AGENT_CREATE_SEVERITY, typeId });
@@ -232,7 +261,7 @@ export async function createIssueWithPolicy(input: CreatePolicyInput): Promise<C
   } catch (error) {
     if (!isUniqueViolation(error)) throw error;
     const winner = await replayFor(prisma, agent.agentId, key, cutoff);
-    if (winner?.bugId) return { status: 200, bugId: winner.bugId, replayed: true };
+    if (winner) return replayOrConflict(winner, input.requestHash);
     return {
       status: 409,
       error: "idempotency_conflict",

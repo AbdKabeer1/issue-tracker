@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient, Severity, Status } from "@prisma/client";
 import { award, type PointAward } from "./award";
 import { pointSourceKey, REPORTER_POINTS, solverPoints } from "./rules";
-import { isConfirmed } from "@/lib/agent-api/validation";
+import { isConfirmed, standingValidationAwards } from "@/lib/agent-api/validation";
 
 /**
  * Points for tickets that existed before the ledger (#435), by the same
@@ -145,7 +145,17 @@ export async function backfillPoints(db: Db, options: BackfillOptions = {}): Pro
       }
     }
 
-    const entries = bugs.flatMap((b) => backfillEntries(b, { cutoffDate }));
+    // #539: validations pay at submit time only, so any that landed before
+    // the award code are missed unless the backfill recomputes them. The
+    // sourceKey makes re-running safe.
+    const entries = (
+      await Promise.all(
+        bugs.map(async (b) => [
+          ...backfillEntries(b, { cutoffDate }),
+          ...(b.isDeleted ? [] : await standingValidationAwards(db, b.id)),
+        ]),
+      )
+    ).flat();
     if (entries.length > 0) {
       const present = await db.pointEntry.findMany({
         where: { sourceKey: { in: entries.map((e) => e.sourceKey) } },

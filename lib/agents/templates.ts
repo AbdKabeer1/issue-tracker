@@ -4,6 +4,8 @@
  * Never embeds secrets; all credentials are acquired dynamically via pairing.
  */
 
+import { OPEN_LINK_IF_YOU_CAN } from "@/lib/agents/pairing-link";
+
 export type TemplateParams = {
   origin: string;
   projectId?: string | null;
@@ -15,6 +17,7 @@ export type AgentTemplates = {
   chatgpt: string;
   node: string;
   python: string;
+  mcp: string;
 };
 
 function cleanOrigin(origin: string): string {
@@ -46,15 +49,17 @@ Follow this setup to pair yourself with my account:
 
    {
      "name": "<Choose a descriptive agent name, e.g. Claude>",
-     "model": "Claude"
+     "model": "Claude",
+     "level": "<observer | contributor | triager | reviewer — ask me which; omit for contributor>"
    }
 
-2. Display the pairing code to me:
+2. Show me the pairing code and link:
    From the response:
    - Print the "user_code" in large, bold text.
    - Show me the verification link: \${verification_uri_complete || "${site}/settings/agents/pair"}
-   - Tell me to open that link while signed in, choose project "${projectName ?? projectId ?? "current"}", and approve you.
-   - Stop and wait for my confirmation before proceeding.
+   - ${OPEN_LINK_IF_YOU_CAN} that link for me.
+   - Tell me to approve you there while signed in, choosing project "${projectName ?? projectId ?? "current"}".
+   - Then wait for my approval by polling in step 3. Do not invent an approval.
 
 3. Poll for your issued API key:
    POST ${site}/api/v1/agents/pairing/token
@@ -98,13 +103,14 @@ Execute the following flow to pair with my account:
 1. Initiate pairing via HTTP POST:
    URL: ${site}/api/v1/agents/pairing
    Headers: Content-Type: application/json
-   Body: {"name": "ChatGPT Assistant", "model": "GPT-4o"}
+   Body: {"name": "ChatGPT Assistant", "model": "GPT-4o", "level": "<observer | contributor | triager | reviewer — ask me which; omit for contributor>"}
 
 2. Ask for my authorization:
    From the response:
    - Show me the "user_code".
    - Provide the approval URL: \${verification_uri_complete || "${site}/settings/agents/pair"}
-   - Instruct me to open the link and approve the agent for project "${projectName ?? projectId ?? "current"}".
+   - ${OPEN_LINK_IF_YOU_CAN} that URL for me.
+   - Instruct me to approve the agent there for project "${projectName ?? projectId ?? "current"}".
 
 3. Poll for the API key:
    POST ${site}/api/v1/agents/pairing/token
@@ -168,7 +174,7 @@ async function pair() {
   console.log("Starting agent pairing with Ziki...");
   const init = await api("/api/v1/agents/pairing", {
     method: "POST",
-    body: JSON.stringify({ name: "Node Poller", model: "Node.js" }),
+    body: JSON.stringify({ name: "Node Poller", model: "Node.js", level: "contributor" }),
   });
 
   console.log("\\n========================================================");
@@ -299,7 +305,7 @@ def api(path, data=None, headers=None):
 
 def pair():
     print("Starting agent pairing with Ziki...")
-    init = api("/api/v1/agents/pairing", data={"name": "Python Poller", "model": "Python"})
+    init = api("/api/v1/agents/pairing", data={"name": "Python Poller", "model": "Python", "level": "contributor"})
 
     user_code = init["user_code"]
     verify_url = init.get("verification_uri_complete") or init.get("verification_uri")
@@ -382,6 +388,28 @@ if __name__ == "__main__":
 }
 
 /**
+ * Claude Desktop (MCP) config block (#612). Paste it into claude_desktop_config.json.
+ * The key is not in it: the server reads the pairing file the reference client saves.
+ */
+export function mcpConfigTemplate({ origin, projectId }: TemplateParams): string {
+  const env: Record<string, string> = { ZIKI_URL: cleanOrigin(origin) };
+  if (projectId) env.ZIKI_PROJECT_ID = projectId;
+  return JSON.stringify(
+    {
+      mcpServers: {
+        ziki: {
+          command: "node",
+          args: ["/ABSOLUTE/PATH/TO/issue-tracker/packages/mcp-server/dist/index.js"],
+          env,
+        },
+      },
+    },
+    null,
+    2,
+  );
+}
+
+/**
  * Returns all generated setup templates for the given origin and project.
  */
 export function getAgentTemplates(params: TemplateParams): AgentTemplates {
@@ -390,5 +418,6 @@ export function getAgentTemplates(params: TemplateParams): AgentTemplates {
     chatgpt: chatGptPromptTemplate(params),
     node: nodeScriptTemplate(params),
     python: pythonScriptTemplate(params),
+    mcp: mcpConfigTemplate(params),
   };
 }

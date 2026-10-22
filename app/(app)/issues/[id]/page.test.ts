@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import type { ReactElement } from "react";
 
 // #425: run as a member of the Zedu tenant.
 vi.mock("@/lib/tenant-context", async (importOriginal) => ({
@@ -32,6 +34,9 @@ const pageSource = readFileSync(
 vi.mock("next/navigation", () => ({
   notFound: vi.fn(),
   redirect: vi.fn(),
+  permanentRedirect: vi.fn((to: string) => {
+    throw new Error(`REDIRECT ${to}`);
+  }),
 }));
 
 vi.mock("@/lib/session-user", () => ({
@@ -47,7 +52,8 @@ vi.mock("@/lib/roles", () => ({
   isSuperAdmin: vi.fn((role) => role === "super_admin"),
 }));
 
-vi.mock("@/lib/ticket-deletion", () => ({
+vi.mock("@/lib/ticket-deletion", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/ticket-deletion")>()),
   canDeleteTicket: vi.fn().mockReturnValue(false),
 }));
 
@@ -76,6 +82,7 @@ vi.mock("@/lib/lookups", () => ({
 }));
 
 vi.mock("@/lib/comment-window", () => ({
+  COMMENT_PARAM: "comment",
   COMMENT_THREADS_PER_PAGE: 10,
   earlierThreadsHref: vi.fn().mockReturnValue("#"),
   loadCommentWindow: vi.fn().mockResolvedValue({
@@ -96,8 +103,8 @@ vi.mock("@/lib/platforms", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    bug: { findUnique: vi.fn() },
-    membership: { findUnique: vi.fn().mockResolvedValue({ role: "member", userId: "user-123" }) },
+    membership: { findUnique: vi.fn().mockResolvedValue({ role: "member", userId: "user-123" }), findMany: vi.fn().mockResolvedValue([]) },
+    bug: { findUnique: vi.fn(), findFirst: vi.fn(async () => ({ id: "bug-1", number: 1 })) },
     redesignProposal: { findMany: vi.fn().mockResolvedValue([]) },
     issueBid: { findMany: vi.fn().mockResolvedValue([]) },
     user: { findMany: vi.fn() },
@@ -107,10 +114,10 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn().mockResolvedValue([]),
       findFirst: vi.fn().mockResolvedValue(null),
     },
-    issueWatch: { findUnique: vi.fn().mockResolvedValue(null) },
     attachment: { findMany: vi.fn().mockResolvedValue([]) },
     bugRevision: { findFirst: vi.fn().mockResolvedValue(null) },
     milestone: { findMany: vi.fn().mockResolvedValue([]) },
+    goal: { findMany: vi.fn().mockResolvedValue([]) },
     issueValidation: { findMany: vi.fn().mockResolvedValue([]) },
     issueClaim: { findMany: vi.fn().mockResolvedValue([]) },
     testVerdict: { findMany: vi.fn().mockResolvedValue([]) },
@@ -121,6 +128,8 @@ vi.mock("@/lib/prisma", () => ({
 import { resolveSessionUserId } from "@/lib/session-user";
 import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { notFound } from "next/navigation";
+import { parseCommentTarget } from "@/lib/comment-window";
 import BugDetailPage from "./page";
 
 const mockResolveSessionUserId = vi.mocked(resolveSessionUserId);
@@ -134,6 +143,58 @@ describe("BugDetailPage conditional user query (#349)", () => {
     expect(pageSource).toMatch(/canTriage[\s\S]*?prisma\.user\.findMany/);
   });
 
+  it("does not render CopyLinkButton, BoostTicketButton, or DeleteIssueButton in the header (#760)", () => {
+    const pageSourceFresh = readFileSync(
+      path.resolve(__dirname, "page.tsx"),
+      "utf8",
+    );
+    // Find the header action bar container
+    const headerActionBlockMatch = pageSourceFresh.match(
+      /<div className="flex shrink-0 flex-wrap items-center gap-2 self-start print:hidden">([\s\S]*?)<\/div>/,
+    );
+    expect(headerActionBlockMatch).toBeTruthy();
+    const headerActionBlock = headerActionBlockMatch![1];
+
+    expect(headerActionBlock).not.toContain("CopyLinkButton");
+    expect(headerActionBlock).not.toContain("BoostTicketButton");
+    expect(headerActionBlock).not.toContain("DeleteIssueButton");
+    expect(headerActionBlock).not.toContain("RestoreIssueButton");
+
+    // Danger zone still retains DeleteIssueButton
+    expect(pageSourceFresh).toContain("Danger zone");
+    expect(pageSourceFresh).toMatch(/Danger zone[\s\S]*?<DeleteIssueButton/);
+  });
+
+  it("does not render a Watch button or read the viewer's watch row (#417)", () => {
+    const pageSourceFresh = readFileSync(
+      path.resolve(__dirname, "page.tsx"),
+      "utf8",
+    );
+    expect(pageSourceFresh).not.toContain("WatchButton");
+    expect(pageSourceFresh).not.toContain("issueWatch");
+    expect(pageSourceFresh).not.toContain("isWatchingIssue");
+  });
+
+  it("labels people by their role in this issue's organization, not their account-wide role (#489)", () => {
+    const pageSourceFresh = readFileSync(path.resolve(__dirname, "page.tsx"), "utf8");
+    expect(pageSourceFresh).toMatch(
+      /prisma\.membership\.findMany\(\{\s*where: \{ tenantId: bug\.tenantId, userId: \{ in: namedUserIds \} \}/,
+    );
+    expect(pageSourceFresh).toContain("organizationRole={organizationRoles[bug.reporterId]}");
+    expect(pageSourceFresh).toContain("organizationRole={bug.assigneeId ? organizationRoles[bug.assigneeId] : null}");
+    expect(pageSourceFresh).toContain("organizationRoles={organizationRoles}");
+  });
+
+  it("renders Conversation section heading and supports conversation anchor (#753)", () => {
+    const pageSourceFresh = readFileSync(
+      path.resolve(__dirname, "page.tsx"),
+      "utf8",
+    );
+    expect(pageSourceFresh).toContain('id="conversation"');
+    expect(pageSourceFresh).toContain('id="comments"');
+    expect(pageSourceFresh).toContain("Conversation ({comments.visibleCount})");
+  });
+
   describe("runtime execution", () => {
     beforeEach(() => {
       vi.clearAllMocks();
@@ -141,6 +202,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
       mockBugFindUnique.mockResolvedValue({
         id: "bug-1",
         number: 42,
+        tenantId: "tenant-zedu",
         title: "Test Bug",
         description: "Test Description",
         status: "open",
@@ -171,7 +233,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
       } as unknown as Awaited<ReturnType<typeof requireUser>>);
 
       await BugDetailPage({
-        params: Promise.resolve({ id: "bug-1" }),
+        params: Promise.resolve({ id: "1" }),
       });
 
       expect(mockUserFindMany).not.toHaveBeenCalled();
@@ -184,7 +246,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
       } as unknown as Awaited<ReturnType<typeof requireUser>>);
 
       await BugDetailPage({
-        params: Promise.resolve({ id: "bug-1" }),
+        params: Promise.resolve({ id: "1" }),
       });
 
       expect(mockUserFindMany).not.toHaveBeenCalled();
@@ -207,11 +269,13 @@ describe("BugDetailPage conditional user query (#349)", () => {
       ] as unknown as Awaited<ReturnType<typeof prisma.user.findMany>>);
 
       await BugDetailPage({
-        params: Promise.resolve({ id: "bug-1" }),
+        params: Promise.resolve({ id: "1" }),
       });
 
       expect(mockUserFindMany).toHaveBeenCalledTimes(1);
+      // #502: only the issue's tenant can be mentioned or assigned.
       expect(mockUserFindMany).toHaveBeenCalledWith({
+        where: { memberships: { some: { tenantId: "tenant-zedu" } } },
         orderBy: { name: "asc" },
         select: { id: true, name: true, role: true, image: true },
       });
@@ -227,11 +291,13 @@ describe("BugDetailPage conditional user query (#349)", () => {
       ] as unknown as Awaited<ReturnType<typeof prisma.user.findMany>>);
 
       await BugDetailPage({
-        params: Promise.resolve({ id: "bug-1" }),
+        params: Promise.resolve({ id: "1" }),
       });
 
       expect(mockUserFindMany).toHaveBeenCalledTimes(1);
+      // #502: only the issue's tenant can be mentioned or assigned.
       expect(mockUserFindMany).toHaveBeenCalledWith({
+        where: { memberships: { some: { tenantId: "tenant-zedu" } } },
         orderBy: { name: "asc" },
         select: { id: true, name: true, role: true, image: true },
       });
@@ -250,7 +316,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
 
       const before = countQueries();
       await BugDetailPage({
-        params: Promise.resolve({ id: "bug-1" }),
+        params: Promise.resolve({ id: "1" }),
       });
       const executed = countQueries() - before;
 
@@ -292,7 +358,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
         } as unknown as Awaited<ReturnType<typeof prisma.bug.findUnique>>);
 
       const element = await BugDetailPage({
-        params: Promise.resolve({ id: "bug-1" }),
+        params: Promise.resolve({ id: "1" }),
       });
 
       expect(element).toBeDefined();
@@ -304,6 +370,60 @@ describe("BugDetailPage conditional user query (#349)", () => {
           }),
         }),
       );
+    });
+
+    it("shows a reference instead of the database error when the issue can't load", async () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+      mockRequireUser.mockResolvedValue({
+        id: "user-123",
+        role: "user",
+      } as unknown as Awaited<ReturnType<typeof requireUser>>);
+      const dbError = new Error('relation "Bug" violates constraint "Bug_tenantId_fkey" on column secret_col');
+      mockBugFindUnique.mockRejectedValueOnce(dbError);
+
+      const element = await BugDetailPage({ params: Promise.resolve({ id: "1" }) });
+      const html = renderToStaticMarkup(element as ReactElement);
+
+      expect(html).toContain("This issue could not be loaded");
+      expect(html).not.toContain("Bug_tenantId_fkey");
+      expect(html).not.toContain("secret_col");
+      // The full error is logged, under the reference the page shows.
+      const reference = html.match(/<code[^>]*>([0-9a-f]{8})<\/code>/)?.[1];
+      expect(reference).toBeDefined();
+      expect(consoleError).toHaveBeenCalledWith(`[issue] detail query failed (ref ${reference})`, dbError);
+      consoleError.mockRestore();
+    });
+
+    describe("readable issue addresses (#457)", () => {
+      beforeEach(() => {
+        mockRequireUser.mockResolvedValue({ id: "user-123", role: "user" } as unknown as Awaited<ReturnType<typeof requireUser>>);
+      });
+
+      it("redirects an old internal-id link to the number, keeping the query", async () => {
+        mockBugFindUnique.mockResolvedValueOnce({ id: "cmlegacy0001", number: 1 } as never);
+        vi.mocked(parseCommentTarget).mockReturnValueOnce("c9");
+        await expect(
+          BugDetailPage({
+            params: Promise.resolve({ id: "cmlegacy0001" }),
+            searchParams: Promise.resolve({ comment: "c9" }),
+          }),
+        ).rejects.toThrow("REDIRECT /issues/1?comment=c9#comment-c9");
+      });
+
+      it("loads the issue by number inside the viewer's organisation", async () => {
+        await BugDetailPage({ params: Promise.resolve({ id: "ZE-1" }) });
+        expect(vi.mocked(prisma.bug.findFirst)).toHaveBeenCalledWith(
+          expect.objectContaining({ where: expect.objectContaining({ number: 1 }) }),
+        );
+        expect(mockBugFindUnique).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: "bug-1" }) }));
+      });
+
+      it("finds nothing for a number another organisation owns", async () => {
+        vi.mocked(prisma.bug.findFirst).mockResolvedValueOnce(null);
+        mockBugFindUnique.mockResolvedValue(null as never);
+        await BugDetailPage({ params: Promise.resolve({ id: "999" }) });
+        expect(vi.mocked(notFound)).toHaveBeenCalled();
+      });
     });
   });
 });

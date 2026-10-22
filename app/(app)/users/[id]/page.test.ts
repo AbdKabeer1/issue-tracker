@@ -19,10 +19,21 @@ vi.mock("@/lib/points/leaderboard", () => ({
   pointTotals: vi.fn(async () => ({ points: 0, solvedTasks: 0 })),
 }));
 
+// #618: the page also reads the ledger balance; stub it so these specs stay
+// about which issues a viewer may see.
+vi.mock("@/lib/points/balance", () => ({
+  pointBalance: vi.fn(async () => ({
+    lifetime: { points: 0, entries: 0, from: null, to: null },
+    period: { points: 0, entries: 0, from: null, to: null },
+  })),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: { findUnique: vi.fn() },
-    membership: { findFirst: vi.fn() },
+    membership: { findFirst: vi.fn(), findUnique: vi.fn() },
+    agent: { findMany: vi.fn() },
+    issueClaim: { findMany: vi.fn() },
     bug: {
       findMany: vi.fn(),
       groupBy: vi.fn(),
@@ -34,6 +45,11 @@ vi.mock("@/lib/prisma", () => ({
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import ProfilePage, { generateMetadata } from "./page";
+import { pointEntries } from "@/lib/points/entries";
+vi.mock("@/lib/points/entries", async original => ({
+  ...await original<typeof import("@/lib/points/entries")>(),
+  pointEntries: vi.fn(async () => ({ items: [], nextCursor: null })),
+}));
 
 const person = {
   id: "reporter-1",
@@ -48,8 +64,12 @@ beforeEach(() => {
   vi.mocked(prisma.bug.findMany).mockResolvedValue([] as never);
   vi.mocked(prisma.bug.groupBy).mockResolvedValue([] as never);
   vi.mocked(prisma.bug.count).mockResolvedValue(0 as never);
+  vi.mocked(prisma.agent.findMany).mockResolvedValue([] as never);
+  vi.mocked(prisma.issueClaim.findMany).mockResolvedValue([] as never);
   // By default the viewer and the person share a tenant.
   vi.mocked(prisma.membership.findFirst).mockResolvedValue({ id: "m-1" } as never);
+  // #618: the viewer is an ordinary member, so no wallet is shown.
+  vi.mocked(prisma.membership.findUnique).mockResolvedValue({ role: "member" } as never);
 });
 
 describe("profile issues (#439)", () => {
@@ -79,6 +99,9 @@ describe("profile issues (#439)", () => {
         where: expect.objectContaining({ reporterId: person.id, tenantId: "tenant-zedu" }),
       }),
     );
+    expect(prisma.agent.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tenantId: "tenant-zedu", ownerUserId: { in: [person.id] }, revokedAt: null },
+    }));
   });
 });
 
@@ -115,5 +138,27 @@ describe("profiles outside your tenants (#503)", () => {
     expect(notFound).not.toHaveBeenCalled();
     const meta = await generateMetadata({ params: Promise.resolve({ id: person.id }) });
     expect(meta.title).toBe("Ada");
+  });
+});
+
+
+describe("owner-only points history (#461)", () => {
+  beforeEach(() => {
+    vi.mocked(notFound).mockImplementation(() => { throw new Error("NEXT_NOT_FOUND"); });
+    currentTenantIdFor.mockResolvedValue("tenant-zedu");
+  });
+  it("does not query ledger entries when viewing someone else's profile", async () => {
+    await ProfilePage({ params: Promise.resolve({ id: person.id }) });
+    expect(pointEntries).not.toHaveBeenCalled();
+  });
+  it("loads the authenticated owner's entries with requested date filters", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({ ...person, id: "viewer-1" } as never);
+    await ProfilePage({ params: Promise.resolve({ id: "viewer-1" }), searchParams: Promise.resolve({ from: "2026-10-01", to: "2026-10-22" }) });
+    expect(pointEntries).toHaveBeenCalledWith(prisma, { tenantId: "tenant-zedu", userId: "viewer-1" }, { from: "2026-10-01", to: "2026-10-22", limit: 25 });
+  });
+  it("does not query the ledger with an invalid cursor", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({ ...person, id: "viewer-1" } as never);
+    await ProfilePage({ params: Promise.resolve({ id: "viewer-1" }), searchParams: Promise.resolve({ cursor: "invalid" }) });
+    expect(pointEntries).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,11 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   AgentLevelError,
+  AGENT_LEVELS,
+  OWNER_REVIEW_LIMIT,
+  SEPARATE_LEVEL_AGENTS,
   canSetLevel,
   hasLevel,
   isAgentLevel,
@@ -9,12 +14,35 @@ import {
 } from "./levels";
 
 describe("agent levels (#427)", () => {
-  it("orders the ladder so each level includes the ones below", () => {
+  it("keeps specialist roles separate and lets only dispatcher and merger inherit", () => {
     expect(hasLevel("merger", "observer")).toBe(true);
-    expect(hasLevel("reviewer", "contributor")).toBe(true);
+    expect(hasLevel("reviewer", "contributor")).toBe(false);
+    expect(hasLevel("reviewer", "triager")).toBe(false);
+    expect(hasLevel("triager", "contributor")).toBe(false);
     expect(hasLevel("contributor", "contributor")).toBe(true);
     expect(hasLevel("observer", "contributor")).toBe(false);
     expect(hasLevel("reviewer", "merger")).toBe(false);
+    expect(hasLevel("merger", "dispatcher")).toBe(true);
+    expect(hasLevel("dispatcher", "merger")).toBe(false);
+    expect(hasLevel("dispatcher", "reviewer")).toBe(true);
+  });
+
+  it("enforces the complete capability matrix", () => {
+    const ladder = ["observer", "contributor", "triager", "reviewer", "dispatcher", "merger"] as const;
+    expect(AGENT_LEVELS).toEqual(ladder);
+    const allowed = {
+      observer: ["observer"],
+      contributor: ["observer", "contributor"],
+      triager: ["observer", "triager"],
+      reviewer: ["observer", "reviewer"],
+      dispatcher: ["observer", "contributor", "triager", "reviewer", "dispatcher"],
+      merger: [...ladder],
+    };
+    for (const level of ladder) {
+      for (const required of ladder) {
+        expect(hasLevel(level, required)).toBe(allowed[level].includes(required));
+      }
+    }
   });
 
   it("requireLevel throws a 403-shaped error below the level", () => {
@@ -27,13 +55,29 @@ describe("agent levels (#427)", () => {
     }
   });
 
-  it("lets the owner set anything but merger, and a tenant admin anything", () => {
+  it("reserves dispatcher and merger grants for tenant admins", () => {
     const owner = { isOwner: true, isTenantAdmin: false };
     expect(canSetLevel(owner, "reviewer")).toBe(true);
+    expect(canSetLevel(owner, "triager")).toBe(true);
     expect(canSetLevel(owner, "merger")).toBe(false);
+    expect(canSetLevel(owner, "dispatcher")).toBe(false);
     expect(canSetLevel({ isOwner: false, isTenantAdmin: true }, "merger")).toBe(true);
+    expect(canSetLevel({ isOwner: false, isTenantAdmin: true }, "dispatcher")).toBe(true);
     expect(canSetLevel({ isOwner: false, isTenantAdmin: false }, "observer")).toBe(false);
-    expect(settableLevels(owner)).toEqual(["observer", "contributor", "reviewer"]);
+    expect(settableLevels(owner)).toEqual(["observer", "contributor", "triager", "reviewer"]);
+  });
+
+  it("explains specialist roles without weakening review independence", () => {
+    expect(SEPARATE_LEVEL_AGENTS).toContain("Only dispatcher and merger inherit");
+    expect(SEPARATE_LEVEL_AGENTS).toMatch(/observer/);
+    expect(SEPARATE_LEVEL_AGENTS).toMatch(/contributor/);
+    expect(SEPARATE_LEVEL_AGENTS).toMatch(/reviewer/);
+    expect(SEPARATE_LEVEL_AGENTS).toMatch(/merger/);
+    expect(OWNER_REVIEW_LIMIT).toMatch(/not an independent reviewer/);
+    expect(OWNER_REVIEW_LIMIT).toMatch(/ticket you filed/);
+    const doc = readFileSync(path.resolve(__dirname, "../../docs/ziki-for-agents.md"), "utf8");
+    expect(doc).toContain("separate agent for each level");
+    expect(doc).toContain("Independence is by **owner**, not by agent");
   });
 
   it("recognises only real levels, so a forged body can't set one", () => {

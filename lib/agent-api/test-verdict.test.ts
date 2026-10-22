@@ -35,6 +35,7 @@ function bugRow(overrides: Record<string, unknown> = {}) {
     tenantId: "tenant_zedu",
     status: "in_progress",
     pullRequestUrl: "https://github.com/Zedu-Endor/issue-tracker/pull/42",
+    pullRequestHeadSha: null as string | null,
     severity: "medium",
     beneficiaryUserId: "ada",
     createdByAgentId: null,
@@ -76,6 +77,11 @@ beforeEach(() => {
 });
 
 describe("submitTestVerdict: who may verdict (#434)", () => {
+  it("blocks the assigned solver's other reviewer agent even when credit is delegated", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ assigneeId: "rob" }));
+    expect(await submitTestVerdict(reviewer("second-agent", "rob"), "bug1", { ...good, onBehalfOfUserId: "someone-else" })).toMatchObject({ status: 403, error: "not_independent" });
+    expect(state.verdicts).toHaveLength(0);
+  });
   it("rejects a contributor before touching the issue", async () => {
     const result = await submitTestVerdict(reviewer("c1", "cara", "contributor"), "bug1", good);
     expect(result).toMatchObject({ status: 403, error: "insufficient_level" });
@@ -129,6 +135,25 @@ describe("submitTestVerdict: who may verdict (#434)", () => {
       status: 403,
       error: "not_independent",
     });
+  });
+
+  it("rejects verdicts credited to the reporter, assigned solver, or claim beneficiary (#495)", async () => {
+    for (const bug of [
+      bugRow({ reporterId: "reporter", beneficiaryUserId: "beneficiary" }),
+      bugRow({ reporterId: "reporter", beneficiaryUserId: "beneficiary", assigneeId: "solver" }),
+      bugRow({ reporterId: "reporter", beneficiaryUserId: "beneficiary", claims: [
+        { status: "active", releasedAt: null, agentId: "worker-agent", beneficiaryUserId: "claimant", agent: { ownerUserId: "worker" } },
+      ] }),
+    ]) {
+      db.bug.findFirst.mockResolvedValueOnce(bug);
+    }
+    for (const creditedUser of ["reporter", "solver", "claimant"]) {
+      expect(await submitTestVerdict(reviewer("r1", "rob"), "bug1", { ...good, onBehalfOfUserId: creditedUser })).toMatchObject({
+        status: 403,
+        error: "not_independent",
+      });
+    }
+    expect(state.verdicts).toHaveLength(0);
   });
 });
 
@@ -245,5 +270,35 @@ describe("submitTestVerdict: needs a pull request (#526)", () => {
     expect(db.testVerdict.create.mock.calls[0][0].data).toMatchObject({
       pullRequestUrl: "https://github.com/Zedu-Endor/issue-tracker/pull/42",
     });
+  });
+});
+
+describe("submitTestVerdict: the head commit it tested (#489)", () => {
+  it("records the head commit named in the body", async () => {
+    await submitTestVerdict(reviewer("r1", "rob"), "bug1", { goodToMerge: true, headSha: "abc1234" });
+    expect(db.testVerdict.create.mock.calls[0][0].data).toMatchObject({
+      pullRequestUrl: "https://github.com/Zedu-Endor/issue-tracker/pull/42",
+      headSha: "abc1234",
+    });
+  });
+
+  it("defaults to the head SHA recorded when the pull request was linked", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ pullRequestHeadSha: "linked-sha" }));
+    await submitTestVerdict(reviewer("r1", "rob"), "bug1", good);
+    expect(db.testVerdict.create.mock.calls[0][0].data).toMatchObject({ headSha: "linked-sha" });
+  });
+
+  it("stores no head commit when neither the body nor the link names one", async () => {
+    await submitTestVerdict(reviewer("r1", "rob"), "bug1", good);
+    expect(db.testVerdict.create.mock.calls[0][0].data).toMatchObject({ headSha: null });
+  });
+
+  it("rejects a head commit that is not a hexadecimal SHA", async () => {
+    const result = await submitTestVerdict(reviewer("r1", "rob"), "bug1", {
+      goodToMerge: true,
+      headSha: "not-a-sha",
+    });
+    expect(result).toMatchObject({ status: 400, field: "headSha" });
+    expect(db.testVerdict.create).not.toHaveBeenCalled();
   });
 });

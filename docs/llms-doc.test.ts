@@ -38,4 +38,85 @@ describe("llms.txt accuracy", () => {
       expect(doc).toContain(needle);
     }
   });
+
+  it("documents the agent inbox and every item kind (#601)", async () => {
+    const { INBOX_KINDS } = await import("@/lib/agent-api/inbox");
+    expect(doc).toContain("GET /api/v1/inbox");
+    expect(doc).toContain("POST /api/v1/inbox/read");
+    expect(doc).toContain("unread=1");
+    expect(doc).toContain("upTo");
+    for (const kind of INBOX_KINDS) expect(doc).toContain(`| \`${kind}\` |`);
+  });
+
+  it("defines agent persona, user interaction protocol, and capability explanation (#756)", () => {
+    expect(doc).toContain("Agent Persona & Interaction Protocol");
+    expect(doc).toContain("Introduction & Ziki Briefing");
+    expect(doc).toContain("Capability Explanation");
+    expect(doc).toContain("Interactive Bidding Consultation");
+    expect(doc).toMatch(/autonomous software development agent on Ziki/i);
+    expect(doc).toMatch(/collaborative issue tracking and bounty platform/i);
+    expect(doc).toMatch(/Should I submit a bid on this issue for you\?/i);
+    expect(doc).toMatch(/waits for the owner's affirmative response/i);
+  });
+
+  it("documents agent PR completion callback workflow (#746)", () => {
+    expect(doc).toContain("Execute the completion callback");
+    expect(doc).toContain("POST /api/v1/issues/{id}/github");
+    expect(doc).toContain("issue.pr_linked");
+  });
+
+  it("documents common agent errors and recovery (#468)", () => {
+    expect(doc).toContain("## Common Agent Errors and Recovery");
+    expect(doc).toContain("[Common Agent Errors and Recovery](#common-agent-errors-and-recovery)");
+
+    const errorNeedles = [
+      "missing_key",
+      "invalid_key",
+      "revoked",
+      "project_forbidden",
+      "insufficient_level",
+      "authorization_pending",
+      "expired_token",
+      "used_token",
+      "invalid_grant",
+      "Send your agent key as Authorization: Bearer <key>.",
+      "That agent key is not valid. Send it as Authorization: Bearer <key>.",
+      "That agent key has been revoked.",
+      "Waiting for your owner to approve the code.",
+      "This is still an idea. Reviewers must accept it, and it needs at least 3 upvotes, before it can be passed on.",
+      "This issue has a pending offer.",
+      "This person already has the maximum number of active tasks.",
+      "Accept an offer or have your bid awarded before linking a fix.",
+      "The delivery deadline has passed.",
+      "Direct claims are gone",
+      "You're doing that too fast. Please wait a moment.",
+      "No such API route. See /llms.txt.",
+      "Method not allowed.",
+    ];
+    for (const needle of errorNeedles) {
+      expect(doc).toContain(needle);
+    }
+  });
+
+  it("links every common error to an existing route or guide section (#468)", () => {
+    const errorSectionStart = doc.indexOf("## Common Agent Errors and Recovery");
+    expect(errorSectionStart).toBeGreaterThan(-1);
+    const errorSection = doc.slice(errorSectionStart, doc.indexOf("\n---\n", errorSectionStart));
+    const anchors = [...errorSection.matchAll(/\[[^\]]+\]\(#([^)]+)\)/g)].map((m) => m[1]);
+    expect(anchors.length).toBeGreaterThan(10);
+
+    const normalizedHeadings = [...doc.matchAll(/^#{2,3}\s+(.+)$/gm)].map((m) =>
+      m[1]
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, "")
+        .replace(/\s+/g, "-"),
+    );
+
+    for (const anchor of anchors) {
+      expect(
+        normalizedHeadings,
+        `Anchor #${anchor} in Common Errors table should point to a real heading in llms.txt`,
+      ).toContain(anchor);
+    }
+  });
 });

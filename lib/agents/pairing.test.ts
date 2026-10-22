@@ -12,7 +12,7 @@ const db = vi.hoisted(() => {
       updateMany: vi.fn(),
       deleteMany: vi.fn(),
     },
-    agent: { create: vi.fn(), delete: vi.fn(), count: vi.fn(async () => 0) },
+    agent: { create: vi.fn(), delete: vi.fn(), count: vi.fn(async () => 0), findUnique: vi.fn() },
     agentApiKey: { create: vi.fn() },
     agentAuditEvent: { create: vi.fn() },
     membership: { findMany: vi.fn(), findUnique: vi.fn() },
@@ -34,17 +34,20 @@ import {
   startPairing,
 } from "./pairing";
 import { MAX_ACTIVE_AGENTS_PER_OWNER } from "./registry-limits";
+import { AGENT_INSTRUCTIONS_MAX } from "@/lib/agent-messages";
 
 const NOW = new Date("2026-10-19T12:00:00Z");
 const DEVICE = "d".repeat(43);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv("AUTH_SECRET", "test-secret-at-least-16-chars");
   db.$transaction.mockImplementation((fn: (tx: unknown) => unknown) => fn(db));
   db.agentPairing.deleteMany.mockResolvedValue({ count: 0 });
   db.membership.findMany.mockResolvedValue([{ tenantId: "tenant_zedu", role: "member", tenant: { slug: "zedu" } }]);
   db.project.findFirst.mockResolvedValue({ id: "project_zedu" });
   db.agent.create.mockResolvedValue({ id: "agent9", name: "Ada's Claude" });
+  db.agent.findUnique.mockResolvedValue({ level: "contributor" });
 });
 
 describe("startPairing (#427)", () => {
@@ -60,9 +63,52 @@ describe("startPairing (#427)", () => {
     expect(data.ownerUserId).toBeUndefined();
   });
 
+  it("stores the level the agent asked for (#425)", async () => {
+    const result = await startPairing({ name: "Ada", level: "triager" }, NOW);
+    expect(result.ok).toBe(true);
+    expect(db.agentPairing.create.mock.calls[0][0].data.proposedLevel).toBe("triager");
+  });
+
+  it("accepts specialist roles but refuses admin-only roles and unknown roles", async () => {
+    for (const level of ["observer", "contributor", "triager", "reviewer"]) {
+      expect(await startPairing({ name: "Ada", level }, NOW)).toMatchObject({ ok: true });
+    }
+    expect(await startPairing({ name: "Ada", level: "dispatcher" }, NOW)).toMatchObject({ ok: false });
+    const merger = await startPairing({ name: "Ada", level: "merger" }, NOW);
+    expect(merger).toMatchObject({ ok: false });
+    if (!merger.ok) expect(merger.error).toContain("merger");
+    expect(await startPairing({ name: "Ada", level: "wizard" }, NOW)).toMatchObject({ ok: false });
+    // No level still pairs as a contributor.
+    expect(db.agentPairing.create.mock.calls.at(-1)![0].data.proposedLevel).toBe("reviewer");
+    await startPairing({ name: "Ada" }, NOW);
+    expect(db.agentPairing.create.mock.calls.at(-1)![0].data.proposedLevel).toBe("contributor");
+  });
+
   it("needs a name", async () => {
     expect(await startPairing({}, NOW)).toMatchObject({ ok: false });
     expect(db.agentPairing.create).not.toHaveBeenCalled();
+  });
+
+  it("stores proposed instructions, trimmed, for the owner to review (#431)", async () => {
+    await startPairing({ name: "Ada", instructions: "  Focus on desktop bugs.  " }, NOW);
+    expect(db.agentPairing.create.mock.calls[0][0].data.proposedInstructions).toBe("Focus on desktop bugs.");
+  });
+
+  it("treats omitted or blank instructions as none (#431)", async () => {
+    await startPairing({ name: "Ada" }, NOW);
+    await startPairing({ name: "Ada", instructions: "   " }, NOW);
+    expect(db.agentPairing.create.mock.calls[0][0].data.proposedInstructions).toBeNull();
+    expect(db.agentPairing.create.mock.calls[1][0].data.proposedInstructions).toBeNull();
+  });
+
+  it("refuses instructions over 4000 characters, or that aren't text (#431)", async () => {
+    const tooLong = await startPairing({ name: "Ada", instructions: "x".repeat(AGENT_INSTRUCTIONS_MAX + 1) }, NOW);
+    expect(tooLong).toMatchObject({ ok: false });
+    if (!tooLong.ok) expect(tooLong.error).toContain(String(AGENT_INSTRUCTIONS_MAX));
+    expect(await startPairing({ name: "Ada", instructions: { text: "hi" } }, NOW)).toMatchObject({ ok: false });
+    expect(db.agentPairing.create).not.toHaveBeenCalled();
+    // Exactly at the limit is fine.
+    expect(await startPairing({ name: "Ada", instructions: "x".repeat(AGENT_INSTRUCTIONS_MAX) }, NOW)).toMatchObject({ ok: true });
   });
 
   it("builds an approval link that carries the user code, not the device secret", () => {
@@ -88,8 +134,46 @@ describe("approvePairing (#427)", () => {
       approvedAt: null,
       ownerUserId: null,
       expiresAt: { gt: NOW },
+      OR: [{ proposedLevel: null }, { proposedLevel: { in: ["observer", "contributor", "triager", "reviewer"] } }],
     });
     expect(data).toEqual({ ownerUserId: "ada", tenantId: "tenant_zedu", projectId: "project_zedu", approvedAt: NOW });
+  });
+
+  it("creates the agent at the requested level stored at pairing start (#425)", async () => {
+    db.agentPairing.updateMany.mockResolvedValue({ count: 1 });
+    db.agentPairing.findUnique.mockResolvedValue({ id: "p1", proposedName: "Ada", proposedModel: null, proposedLevel: "reviewer" });
+    await approvePairing({ id: "ada" }, "ABCD-2345", NOW, "project_zedu");
+    expect(db.agent.create.mock.calls[0][0].data.level).toBe("reviewer");
+  });
+
+  it("creates the agent with the instructions the owner approved, not the agent's proposal (#431)", async () => {
+    db.agentPairing.updateMany.mockResolvedValue({ count: 1 });
+    db.agentPairing.findUnique.mockResolvedValue({ id: "p1", proposedName: "Ada", proposedModel: null, proposedLevel: null });
+    await approvePairing({ id: "ada" }, "ABCD-2345", NOW, "project_zedu", undefined, "  Owner-edited brief.  ");
+    expect(db.agent.create.mock.calls[0][0].data.instructions).toBe("Owner-edited brief.");
+  });
+
+  it("stores no instructions when the owner clears them or the form sends none (#431)", async () => {
+    db.agentPairing.updateMany.mockResolvedValue({ count: 1 });
+    db.agentPairing.findUnique.mockResolvedValue({ id: "p1", proposedName: "Ada", proposedModel: null, proposedLevel: null });
+    await approvePairing({ id: "ada" }, "ABCD-2345", NOW, "project_zedu", undefined, "   ");
+    await approvePairing({ id: "ada" }, "ABCD-2345", NOW, "project_zedu");
+    expect(db.agent.create.mock.calls[0][0].data).not.toHaveProperty("instructions");
+    expect(db.agent.create.mock.calls[1][0].data).not.toHaveProperty("instructions");
+  });
+
+  it("refuses over-long approved instructions without burning the code (#431)", async () => {
+    const result = await approvePairing(
+      { id: "ada" },
+      "ABCD-2345",
+      NOW,
+      "project_zedu",
+      undefined,
+      "x".repeat(AGENT_INSTRUCTIONS_MAX + 1),
+    );
+    expect(result).toMatchObject({ ok: false });
+    expect(db.agentPairing.updateMany).not.toHaveBeenCalled();
+    expect(db.agent.create).not.toHaveBeenCalled();
   });
 
   it("refuses to approve past the owner's agent cap without burning the code (#511)", async () => {
@@ -173,6 +257,15 @@ describe("collectPairing (#427)", () => {
     expect(db.agentApiKey.create.mock.calls[0][0].data).toMatchObject({ agentId: "agent9", projectId: "project_zedu" });
   });
 
+  it("reports the level the agent actually has, if the owner changed it after approval", async () => {
+    db.agentPairing.findUnique.mockResolvedValue({ ...approved, agentId: "agent9", proposedLevel: "dispatcher" });
+    db.agent.findUnique.mockResolvedValue({ level: "observer" });
+    db.agentPairing.updateMany.mockResolvedValue({ count: 1 });
+    const result = await collectPairing(DEVICE, NOW);
+    expect(result.status).toBe("issued");
+    if (result.status === "issued") expect(result.key.level).toBe("observer");
+  });
+
   it("creates the agent for the approver, as a contributor, and returns its key once", async () => {
     db.agentPairing.findUnique.mockResolvedValue(approved);
     db.agentPairing.updateMany.mockResolvedValue({ count: 1 });
@@ -187,6 +280,14 @@ describe("collectPairing (#427)", () => {
       apiKeys: { create: { projectId: "project_zedu" } },
     });
     expect(db.agentPairing.update.mock.calls[0][0].data).toEqual({ agentId: "agent9" });
+  });
+
+  it.each(["dispatcher", "merger"])("rejects an old approved %s pairing that has not created an agent", async (proposedLevel) => {
+    db.agentPairing.findUnique.mockResolvedValue({ ...approved, proposedLevel });
+    expect(await collectPairing(DEVICE, NOW)).toEqual({ status: "invalid" });
+    expect(db.agent.create).not.toHaveBeenCalled();
+    expect(db.agentApiKey.create).not.toHaveBeenCalled();
+    expect(db.agentPairing.updateMany).not.toHaveBeenCalled();
   });
 
   it("never issues twice", async () => {

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { revalidateIssue } from "@/lib/revalidate-issue";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { commentInTenant, currentTenantIdFor } from "@/lib/tenant-context";
@@ -10,9 +11,12 @@ import { requireUser } from "@/lib/auth-helpers";
 import { commentSchema } from "@/lib/validations/issue";
 import {
   extractMentionedUserIds,
+  newlyMentionedAgentIds,
   newlyMentionedUserIds,
   normalizeMentions,
 } from "@/lib/mentions";
+import { agentMentionNames, agentOwnerIds, mentionedAgents } from "@/lib/agent-mentions";
+import { tenantMemberWhere } from "@/lib/tenant-mentions";
 import {
   canDeleteComment,
   canEditComment,
@@ -25,7 +29,7 @@ import {
 } from "@/lib/activity-log";
 import { notifyLater } from "@/lib/notify";
 import {
-  checkRateLimit,
+  consumeRateLimit,
   ACTION_RATE_LIMITS,
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
@@ -44,7 +48,7 @@ async function loadComment(commentId: unknown, tenantId: string | null) {
       body: true,
       deletedAt: true,
       author: { select: { name: true } },
-      bug: { select: { isDeleted: true, title: true } },
+      bug: { select: { isDeleted: true, title: true, tenantId: true } },
     },
   });
 }
@@ -56,7 +60,7 @@ export async function updateCommentAction(
 ): Promise<CommentActionResult> {
   const user = await requireUser();
 
-  const limit = checkRateLimit(
+  const limit = await consumeRateLimit(
     `edit-comment:${user.id}`,
     ACTION_RATE_LIMITS.editComment,
   );
@@ -78,13 +82,18 @@ export async function updateCommentAction(
   const mentionedIds = extractMentionedUserIds(parsed.data.body);
   const known = mentionedIds.length
     ? await prisma.user.findMany({
-        where: { id: { in: mentionedIds } },
+        where: { id: { in: mentionedIds }, ...tenantMemberWhere(comment.bug.tenantId) },
         select: { id: true, name: true },
       })
     : [];
+  // #603: agent tags survive only for agents in this issue's organization.
+  const agents = await mentionedAgents(prisma, comment.bug.tenantId, parsed.data.body);
   const body = normalizeMentions(
     parsed.data.body,
-    new Map(known.map((u) => [u.id, u.name])),
+    new Map([
+      ...known.map((u) => [u.id, u.name] as [string, string]),
+      ...agentMentionNames(agents),
+    ]),
   );
 
   const result = await prisma.$transaction(async (tx) => {
@@ -133,7 +142,13 @@ export async function updateCommentAction(
     return result;
   }
 
-  const newlyMentioned = newlyMentionedUserIds(comment.body, body);
+  const newlyMentionedAgents = new Set(newlyMentionedAgentIds(comment.body, body));
+  const newlyMentioned = [
+    ...new Set([
+      ...newlyMentionedUserIds(comment.body, body),
+      ...agentOwnerIds(agents.filter((agent) => newlyMentionedAgents.has(agent.id))),
+    ]),
+  ];
   if (newlyMentioned.length > 0) {
     notifyLater({
       kind: "mentioned",
@@ -142,12 +157,13 @@ export async function updateCommentAction(
       bugId: comment.bugId,
       bugTitle: comment.bug.title,
       place: "comment",
+      commentId: comment.id,
       recipientIds: newlyMentioned,
       excerpt: commentPreview(body),
     });
   }
 
-  revalidatePath(`/issues/${comment.bugId}`);
+  revalidateIssue(comment.bugId);
   revalidatePath(`/bugs/${comment.bugId}`);
   return { ok: true };
 }
@@ -227,7 +243,7 @@ export async function deleteCommentAction(
     return { error: COMMENT_ERRORS.failed };
   }
 
-  revalidatePath(`/issues/${comment.bugId}`);
+  revalidateIssue(comment.bugId);
   revalidatePath(`/bugs/${comment.bugId}`);
   return { ok: true };
 }

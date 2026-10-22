@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { backfillEntries, backfillPoints, parseBackfillArgs, type HistoricalBug } from "./backfill";
+import { standingValidationAwards } from "@/lib/agent-api/validation";
 
 const bug = (overrides: Partial<HistoricalBug>): HistoricalBug => ({
   id: "bug-1",
@@ -206,6 +207,85 @@ describe("backfill points (#435)", () => {
     const { db, ledger } = fixture(bugs);
     expect(await backfillPoints(db, { batchSize: 3 })).toMatchObject({ bugs: 7, written: 7 });
     expect(ledger).toHaveLength(7);
+  });
+});
+
+describe("standingValidationAwards (#539)", () => {
+  const loadedBug = {
+    id: "bug-1",
+    tenantId: "tenant-zedu",
+    projectId: "p1",
+    title: "t",
+    status: "open",
+    assigneeId: null,
+    voteCount: 0,
+    severity: "medium",
+    reporterId: "reporter-1",
+    beneficiaryUserId: null,
+    duplicateOfId: null,
+    createdByAgentId: null,
+    createdByAgent: null,
+    claims: [],
+  };
+
+  const val = (kind: string, verdict: string, userId: string, level = "reviewer") => ({
+    id: `v-${kind}-${verdict}-${userId}`,
+    kind,
+    verdict,
+    onBehalfOfUserId: userId,
+    agent: { id: `a-${userId}`, ownerUserId: userId, level },
+  });
+
+  function dbWith(validations: ReturnType<typeof val>[]) {
+    const match = (where: { kind?: string; verdict?: string }) =>
+      validations.filter(
+        (v) => (!where.kind || v.kind === where.kind) && (!where.verdict || v.verdict === where.verdict),
+      );
+    return {
+      bug: { findUnique: async () => loadedBug },
+      issueValidation: {
+        findMany: async ({ where }: { where: { kind?: string; verdict?: string } }) => match(where),
+        count: async ({ where }: { where: { kind?: string; verdict?: string } }) => match(where).length,
+      },
+      agentAuditEvent: { findMany: async () => [] },
+    } as never;
+  }
+
+  it("pays counted real accepts at the diminishing reviewer rate", async () => {
+    const db = dbWith([val("real", "accept", "u1"), val("real", "accept", "u2")]);
+    expect(await standingValidationAwards(db, "bug-1")).toEqual([
+      { tenantId: "tenant-zedu", userId: "u1", bugId: "bug-1", role: "reviewer", points: 3, sourceKey: "reviewer-confirm:bug-1:u1" },
+      { tenantId: "tenant-zedu", userId: "u2", bugId: "bug-1", role: "reviewer", points: 1, sourceKey: "reviewer-confirm:bug-1:u2" },
+    ]);
+  });
+
+  it("pays a standing triager clearance and a duplicate marker, once per person", async () => {
+    const db = dbWith([
+      val("duplicate", "reject", "u3", "triager"),
+      val("duplicate", "reject", "u3", "triager"),
+      val("duplicate", "reject", "u4"), // reviewer level: never a clearance
+      val("duplicate", "accept", "u5", "triager"),
+    ]);
+    const entries = await standingValidationAwards(db, "bug-1");
+    expect(entries).toContainEqual({
+      tenantId: "tenant-zedu", userId: "u3", bugId: "bug-1", role: "triager", points: 1, sourceKey: "triager-clear:bug-1:u3",
+    });
+    expect(entries).toContainEqual({
+      tenantId: "tenant-zedu", userId: "u5", bugId: "bug-1", role: "triager", points: 5, sourceKey: "duplicate-marker:bug-1:u5",
+    });
+    expect(entries.filter((e) => e.userId === "u3")).toHaveLength(1);
+    expect(entries.some((e) => e.userId === "u4")).toBe(false);
+  });
+
+  it("pays no confirming reviewers once a duplicate marker stands", async () => {
+    const db = dbWith([val("real", "accept", "u1"), val("duplicate", "accept", "u5", "triager")]);
+    const entries = await standingValidationAwards(db, "bug-1");
+    expect(entries.map((e) => e.sourceKey)).toEqual(["duplicate-marker:bug-1:u5"]);
+  });
+
+  it("returns nothing when the db lacks the validation delegates (test doubles)", async () => {
+    const { db } = fixture([bug({})]);
+    expect(await standingValidationAwards(db, "bug-1")).toEqual([]);
   });
 });
 

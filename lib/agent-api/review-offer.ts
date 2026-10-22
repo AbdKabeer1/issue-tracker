@@ -5,13 +5,16 @@ import { IssueApiError } from "@/lib/agent-api/issues";
 import { publish } from "@/lib/agent-api/events";
 import {
   reviewerConflict,
+  reviewerCreditConflict,
+  ReviewerNotIndependentError,
   type ReviewedBug,
 } from "@/lib/agents/independence";
-import { MERGE_VERDICTS_NEEDED } from "@/lib/agent-api/merge";
+import { workflowFor } from "@/lib/workflow";
+import { DEFAULT_PROJECT_WORKFLOW } from "@/lib/workflow-config";
 
 export const REVIEW_OFFER_TTL_MS = 60_000; // 60 seconds to accept
 export const REVIEW_DEADLINE_MS = 30 * 60_000; // 30 minutes to review after acceptance
-export const DEFAULT_REVIEW_VERDICTS_NEEDED = MERGE_VERDICTS_NEEDED; // 2 independent reviewers
+export const DEFAULT_REVIEW_VERDICTS_NEEDED = DEFAULT_PROJECT_WORKFLOW.verdictsNeeded;
 
 type Db = typeof prisma | Prisma.TransactionClient;
 
@@ -65,6 +68,7 @@ const bugReviewSelect = {
   status: true,
   pullRequestUrl: true,
   beneficiaryUserId: true,
+  assigneeId: true,
   reporterId: true,
   createdByAgentId: true,
   createdByAgent: { select: { ownerUserId: true } },
@@ -74,6 +78,7 @@ const bugReviewSelect = {
       releasedAt: true,
       agentId: true,
       beneficiaryUserId: true,
+      dispatcherUserId: true,
       agent: { select: { ownerUserId: true } },
     },
   },
@@ -100,7 +105,7 @@ async function findEligibleReviewerCandidates(
           some: {
             tenantId,
             revokedAt: null,
-            level: { in: ["reviewer", "merger"] },
+            level: { in: ["reviewer", "dispatcher", "merger"] },
           },
         },
       },
@@ -113,7 +118,7 @@ async function findEligibleReviewerCandidates(
             where: {
               tenantId,
               revokedAt: null,
-              level: { in: ["reviewer", "merger"] },
+              level: { in: ["reviewer", "dispatcher", "merger"] },
             },
             orderBy: { createdAt: "asc" },
             take: 1,
@@ -224,7 +229,8 @@ export async function createReviewOffers(
   });
   if (!bug) return { offers: [] };
 
-  const verdictsNeeded = options.verdictsNeeded ?? DEFAULT_REVIEW_VERDICTS_NEEDED;
+  const verdictsNeeded =
+    options.verdictsNeeded ?? (await workflowFor(bug.projectId, db)).verdictsNeeded;
 
   // Determine existing reviewers already holding an active/accepted/completed offer for this bug
   const excludeUserIds = new Set<string>();
@@ -342,6 +348,9 @@ export async function acceptReviewOffer(agent: AgentContext, offerId: string) {
       throw new IssueApiError(409, `This review offer is already ${offer.status}.`);
     }
 
+    const conflict = reviewerConflict({ id: agent.agentId, ownerUserId: agent.ownerId }, offer.bug) ?? reviewerCreditConflict(offer.beneficiaryUserId, offer.bug);
+    if (conflict) throw new IssueApiError(403, "not_independent", { message: new ReviewerNotIndependentError(conflict).message });
+
     const deadlineAt = new Date(now.getTime() + REVIEW_DEADLINE_MS);
     const updated = await tx.reviewOffer.update({
       where: { id: offer.id },
@@ -396,7 +405,8 @@ export async function reofferReview(
     }
   }
 
-  if (excludeUserIds.size >= DEFAULT_REVIEW_VERDICTS_NEEDED) return null;
+  const { verdictsNeeded } = await workflowFor(bug.projectId, db);
+  if (excludeUserIds.size >= verdictsNeeded) return null;
 
   const candidates = await findEligibleReviewerCandidates(db, bug.tenantId, bug, excludeUserIds);
   const next = candidates.find((c) => !excludeUserIds.has(c.beneficiaryUserId));
@@ -557,7 +567,8 @@ export async function handleTestVerdictSubmitted(
   }
 
   const count = independentVerdicts.length;
-  if (count >= MERGE_VERDICTS_NEEDED) {
+  const { verdictsNeeded } = await workflowFor(bug.projectId, db);
+  if (count >= verdictsNeeded) {
     // Check if review.completed has already been emitted for this bug to prevent duplicates
     const alreadyPublished = await db.agentEvent.findFirst({
       where: {
@@ -578,7 +589,7 @@ export async function handleTestVerdictSubmitted(
           issueId: params.bugId,
           pullRequestUrl: params.pullRequestUrl,
           verdictCount: count,
-          threshold: MERGE_VERDICTS_NEEDED,
+          threshold: verdictsNeeded,
         },
       });
     }

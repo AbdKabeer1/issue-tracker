@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { revalidateIssue } from "@/lib/revalidate-issue";
 import type { Status } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
@@ -31,7 +32,7 @@ function revalidate(...bugIds: (string | null | undefined)[]) {
   revalidatePath("/bugs");
   for (const id of new Set(bugIds)) {
     if (id) {
-      revalidatePath(`/issues/${id}`);
+      revalidateIssue(id);
       revalidatePath(`/bugs/${id}`);
     }
   }
@@ -189,7 +190,7 @@ export async function findDuplicateCandidatesAction(
   };
   const where =
     ref && "number" in ref
-      ? { ...base, OR: [{ number: ref.number }, { title: { contains: text, mode: "insensitive" as const } }] }
+      ? { ...base, OR: [{ number: ref.number }, { title: { contains: escapeSearchQuery(text), mode: "insensitive" as const } }] }
       : ref && "id" in ref
         ? { ...base, id: ref.id }
         : text.length >= 2
