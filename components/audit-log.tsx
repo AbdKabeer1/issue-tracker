@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useId, useState } from "react";
 import type { UndoAuditActionResult } from "@/app/actions/audit";
 import { LocalTime } from "@/components/local-time";
+import { useToast } from "@/components/ui/toast";
 
 /** One agent audit event, already filtered for the viewer on the server (#447). */
 export type AuditLogRow = {
@@ -48,12 +49,14 @@ function AuditLogEntry({
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const detailsId = useId();
+  const toast = useToast();
 
   const handleUndo = async () => {
     const formData = new FormData();
     formData.append("auditEventId", row.id);
     startTransition(async () => {
-      await onUndo?.(undefined, formData);
+      const result = await onUndo?.(undefined, formData);
+      if (result && !result.ok) toast(result.error, "error");
     });
   };
 

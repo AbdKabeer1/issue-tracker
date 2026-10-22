@@ -42,7 +42,7 @@ export async function undoAuditEventAction(
     tenantId,
   });
   if (!result.ok) {
-    return { ok: false, error: result.error };
+    return { ok: false, error: result.message };
   }
 
   revalidatePath("/settings/audit");
