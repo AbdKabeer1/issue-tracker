@@ -110,7 +110,7 @@ export function DashboardAgents({
               </p>
               <Link
                 href="/settings/agents/pair"
-                className="mt-4 inline-flex items-center justify-center rounded-lg bg-electric-blue px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-[#2f66d4]"
+                className="mt-4 inline-flex items-center justify-center rounded-lg bg-electric-blue-strong px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-[#2552af]"
               >
                 Pair your first agent
               </Link>

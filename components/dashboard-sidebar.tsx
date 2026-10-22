@@ -69,7 +69,7 @@ function SidebarLink({
       aria-current={active ? "page" : undefined}
       className={`flex h-10 items-center justify-between gap-2 rounded-lg px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-tint focus-visible:ring-offset-2 focus-visible:ring-offset-deep-ocean ${
         active
-          ? "bg-electric-blue font-semibold text-white shadow-[0_6px_18px_rgba(57,120,246,0.35)]"
+          ? "bg-electric-blue-strong font-semibold text-white shadow-[0_6px_18px_rgba(57,120,246,0.35)]"
           : "font-medium text-slate-200 hover:bg-white/5 hover:text-white"
       }`}
     >

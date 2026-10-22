@@ -462,7 +462,7 @@ export function AppHeader({
             href="/issues/new"
             aria-current={onNewIssue ? "page" : undefined}
             aria-label="New issue"
-            className={`inline-flex h-9 items-center gap-1.5 rounded-lg bg-electric-blue px-2.5 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-[#2f66d4] active:bg-[#2552af] sm:px-3.5 ${chromeLinkFocus}`}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-lg bg-electric-blue-strong px-2.5 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-[#2552af] active:bg-[#1f4693] sm:px-3.5 ${chromeLinkFocus}`}
           >
             <PlusIcon />
             <span className="hidden sm:inline">New issue</span>

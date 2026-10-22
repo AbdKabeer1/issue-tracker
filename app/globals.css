@@ -25,6 +25,9 @@
   --color-sidebar-navy: #0c1938;
   --color-blue-slate: #263b63;
   --color-electric-blue: #3978f6;
+  /* Filled buttons and the active sidebar pill paint white text on this
+     shade: #3978F6 is only 4.03:1 against white, this one is 5.28:1 (AA). */
+  --color-electric-blue-strong: #2f66d4;
   --color-sky-tint: #8fc9ff;
   --color-porcelain: #f5f7fc;
   --color-surface-border: rgba(143, 201, 255, 0.12);
