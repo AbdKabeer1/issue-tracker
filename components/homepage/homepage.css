@@ -617,10 +617,11 @@
 
 /* All landing-page button variants and controls share the pill treatment. */
 .ziki-homepage .button, .ziki-homepage button, .ziki-homepage .main-nav .button { border-radius: var(--button-radius); }
-.ziki-homepage .main-nav .button.mobile-only { color: #fff; text-align: center; }
+.ziki-homepage .main-nav a.button.mobile-only { color: #fff; text-align: center; }
 @media (max-width: 720px) {
   .ziki-homepage .hero-frame-top { display: none; }
   .ziki-homepage .main-nav .button.mobile-only { display: flex; justify-content: center; }
 }
+
 
 
