@@ -1,3 +1,4 @@
+import { createMethodNotAllowed, createOptions } from "@/lib/agent-api/http-errors";
 import { NextResponse, type NextRequest } from "next/server";
 import { agentErrorResponse, assertKeyProject, requireAgent, type AgentContext } from "@/lib/agents/require-agent";
 import { requireLevel } from "@/lib/agents/levels";
@@ -58,3 +59,11 @@ export async function GET(request: NextRequest) {
     return withAgentBudgetHeaders(agentErrorResponse(error), quota);
   }
 }
+
+const apiMethodNotAllowed = createMethodNotAllowed(["GET", "HEAD", "OPTIONS"]);
+const apiOptions = createOptions(["GET", "HEAD", "OPTIONS"]);
+export const POST = apiMethodNotAllowed;
+export const PUT = apiMethodNotAllowed;
+export const PATCH = apiMethodNotAllowed;
+export const DELETE = apiMethodNotAllowed;
+export const OPTIONS = apiOptions;
