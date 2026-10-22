@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import type { AgentLevel } from "@prisma/client";
 import { describe, expect, it } from "vitest";
@@ -46,6 +46,51 @@ function sectionLevels(): Map<string, AgentLevel> {
   return levels;
 }
 
+const repo = path.resolve(__dirname, "../..");
+const apiRoot = path.join(repo, "app/api/v1");
+
+/** `app/api/v1/issues/[id]/route.ts` → `/api/v1/issues/{id}`. */
+function routePath(file: string): string {
+  const rel = path.relative(apiRoot, path.dirname(file)).split(path.sep)
+    .map((part) => part.replace(/^\[(\w+)\]$/, "{$1}")).join("/");
+  return rel ? `/api/v1/${rel}` : "/api/v1";
+}
+
+function routeFiles(dir = apiRoot): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) return routeFiles(full);
+    return entry.name === "route.ts" ? [full] : [];
+  });
+}
+
+/** The level each handler passes to `agentIssueRequest` or `requireLevel`, keyed `METHOD /api/v1/...`. */
+function codeLevels(): Map<string, string> {
+  const levels = new Map<string, string>();
+  for (const file of routeFiles()) {
+    const source = readFileSync(file, "utf8");
+    const handlers = [...source.matchAll(/export\s+(?:async\s+function|const)\s+(GET|POST|PUT|PATCH|DELETE)\b/g)];
+    handlers.forEach((handler, i) => {
+      const body = source.slice(handler.index, handlers[i + 1]?.index ?? source.length);
+      const level = /agentIssueRequest\(\s*[^,]+,\s*[^,]+,\s*"(\w+)"/.exec(body) ?? /requireLevel\(\s*\w+,\s*"(\w+)"\)/.exec(body);
+      if (level) levels.set(`${handler[1]} ${routePath(file)}`, level[1]);
+    });
+  }
+  return levels;
+}
+
+/**
+ * Routes whose handler states no level (or a lower one) and enforces the real
+ * one later, with the file and check that does it.
+ */
+const ENFORCED_ELSEWHERE: Record<string, { file: string; check: string }> = {
+  "GET /api/v1/dispatcher/metrics": { file: "app/api/v1/dispatcher/metrics/route.ts", check: 'agent.level !== "dispatcher"' },
+  "GET /api/v1/dispatcher/ready-issues": { file: "app/api/v1/dispatcher/ready-issues/route.ts", check: 'agent.level !== "dispatcher"' },
+  "POST /api/v1/issues/{id}/merge": { file: "lib/agent-api/merge.ts", check: 'hasLevel(agent.level, "merger")' },
+  "POST /api/v1/issues/{id}/test-results": { file: "lib/agent-api/test-verdict.ts", check: 'hasLevel(agent.level, "reviewer")' },
+  "POST /api/v1/issues/{id}/validations": { file: "lib/agent-api/validation.ts", check: 'body.kind === "duplicate" ? "triager" : "reviewer"' },
+};
+
 describe("llms.txt Agent Levels table matches the per-route Level lines (#464)", () => {
   const rows = tableRoutes();
   const sections = sectionLevels();
@@ -72,6 +117,22 @@ describe("llms.txt Agent Levels table matches the per-route Level lines (#464)",
       }
     }
     expect(misplaced).toEqual([]);
+  });
+
+  it("states the level each route's handler enforces", () => {
+    const code = codeLevels();
+    const wrong: string[] = [];
+    for (const [route, level] of sections) {
+      const elsewhere = ENFORCED_ELSEWHERE[route];
+      if (elsewhere) {
+        const source = readFileSync(path.join(repo, elsewhere.file), "utf8");
+        if (!source.includes(elsewhere.check)) wrong.push(`${route}: ${elsewhere.file} no longer has ${elsewhere.check}`);
+        continue;
+      }
+      const enforced = code.get(route);
+      if (enforced !== level) wrong.push(`${route}: section ${level}, handler ${enforced ?? "none"}`);
+    }
+    expect(wrong).toEqual([]);
   });
 
   it("gives the inbox and the event stream a Level line", () => {
