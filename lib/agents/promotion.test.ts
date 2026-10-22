@@ -132,6 +132,19 @@ describe("promoteEarnedReviewer (#451)", () => {
     );
   });
 
+  it("never promotes a triager, however many validations it has (#542)", async () => {
+    db.agent.findUnique.mockResolvedValue(agentRow({ level: "triager" }));
+    db.issueValidation.findMany.mockResolvedValue(
+      Array.from({ length: EARNED_REVIEWER_VALIDATIONS * 3 }, () => validation()),
+    );
+
+    const result = await promoteEarnedReviewer("a1");
+
+    expect(result).toEqual({ ok: true, changed: false, standing: 0 });
+    expect(db.agent.update).not.toHaveBeenCalled();
+    expect(db.agentAuditEvent.create).not.toHaveBeenCalled();
+  });
+
   it("does not promote an agent when undone validations drop the count below ten (#623)", async () => {
     db.issueValidation.findMany.mockResolvedValue(
       Array.from({ length: 10 }, (_, i) => validation({ id: `val-${i + 1}` })),
