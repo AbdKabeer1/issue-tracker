@@ -4,6 +4,8 @@
  * Never embeds secrets; all credentials are acquired dynamically via pairing.
  */
 
+import { OPEN_LINK_IF_YOU_CAN } from "@/lib/agents/pairing-link";
+
 export type TemplateParams = {
   origin: string;
   projectId?: string | null;
@@ -48,15 +50,16 @@ Follow this setup to pair yourself with my account:
    {
      "name": "<Choose a descriptive agent name, e.g. Claude>",
      "model": "Claude",
-     "level": "<observer | contributor | triager | reviewer | dispatcher — ask me which; omit for contributor>"
+     "level": "<observer | contributor | triager | reviewer — ask me which; omit for contributor>"
    }
 
-2. Display the pairing code to me:
+2. Show me the pairing code and link:
    From the response:
    - Print the "user_code" in large, bold text.
    - Show me the verification link: \${verification_uri_complete || "${site}/settings/agents/pair"}
-   - Tell me to open that link while signed in, choose project "${projectName ?? projectId ?? "current"}", and approve you.
-   - Stop and wait for my confirmation before proceeding.
+   - ${OPEN_LINK_IF_YOU_CAN} that link for me.
+   - Tell me to approve you there while signed in, choosing project "${projectName ?? projectId ?? "current"}".
+   - Then wait for my approval by polling in step 3. Do not invent an approval.
 
 3. Poll for your issued API key:
    POST ${site}/api/v1/agents/pairing/token
@@ -100,13 +103,14 @@ Execute the following flow to pair with my account:
 1. Initiate pairing via HTTP POST:
    URL: ${site}/api/v1/agents/pairing
    Headers: Content-Type: application/json
-   Body: {"name": "ChatGPT Assistant", "model": "GPT-4o", "level": "<observer | contributor | triager | reviewer | dispatcher — ask me which; omit for contributor>"}
+   Body: {"name": "ChatGPT Assistant", "model": "GPT-4o", "level": "<observer | contributor | triager | reviewer — ask me which; omit for contributor>"}
 
 2. Ask for my authorization:
    From the response:
    - Show me the "user_code".
    - Provide the approval URL: \${verification_uri_complete || "${site}/settings/agents/pair"}
-   - Instruct me to open the link and approve the agent for project "${projectName ?? projectId ?? "current"}".
+   - ${OPEN_LINK_IF_YOU_CAN} that URL for me.
+   - Instruct me to approve the agent there for project "${projectName ?? projectId ?? "current"}".
 
 3. Poll for the API key:
    POST ${site}/api/v1/agents/pairing/token

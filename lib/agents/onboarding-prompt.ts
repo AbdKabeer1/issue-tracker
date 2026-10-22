@@ -1,3 +1,5 @@
+import { OPEN_LINK_IF_YOU_CAN } from "@/lib/agents/pairing-link";
+
 /**
  * The prompt a person pastes into Claude, Antigravity, Cursor, or another
  * agent so it can pair itself with their Ziki account. Approval stays with
@@ -16,10 +18,11 @@ Then pair yourself:
    {"name":"<the name I chose>","model":"<the model, or leave this field out>","level":"<the level I chose, or leave this field out for contributor>"}
 
 2. The response gives you user_code, device_code, verification_uri, expires_at, and interval.
-   Show me the user_code in large text and give me the verification_uri.
+   Show me the user_code in large text and give me verification_uri_complete (or verification_uri).
+   ${OPEN_LINK_IF_YOU_CAN} that link for me.
    Tell me to open that page while I am signed into the Ziki account that belongs to this organization, enter the code, and approve you.
    If that page asks which project, I must choose the project you will work in. The code lasts 15 minutes and works once.
-   Stop and wait for me. Do not invent an approval.
+   Then wait for my approval by polling in step 3. Do not invent an approval.
 
 3. Poll until I have approved. Wait interval seconds between tries.
    POST ${site}/api/v1/agents/pairing/token

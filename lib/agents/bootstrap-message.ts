@@ -1,3 +1,5 @@
+import { OPEN_LINK_IF_YOU_CAN } from "@/lib/agents/pairing-link";
+
 /**
  * Spoken to the agent being set up. One key stays at one level. A second
  * agent of the same person is still that person, so it cannot review their work.
@@ -43,7 +45,7 @@ Site: ${site}
 
 Request access with POST ${site}/api/v1/agents/pairing and JSON {"name":"<your name>","model":"<your model>","level":"<the level I asked for>"}.
 You may request observer, contributor, triager or reviewer. Dispatcher and merger can only be assigned by a tenant admin after pairing. Leave level out for contributor. If I did not name a role, ask me first.
-Then open verification_uri_complete in my browser yourself. Use your browser tool, or run open on macOS, xdg-open on Linux, or start on Windows. Do not only print the link, and do not ask me to copy it. I will approve you on that page.
+Then show me user_code and verification_uri_complete. ${OPEN_LINK_IF_YOU_CAN} that link for me. I will approve you on that page.
 Then POST ${site}/api/v1/agents/pairing/token with {"device_code":"..."} every interval seconds until the response includes api_key.
 Confirm with GET ${site}/api/v1/agents/me and header Authorization: Bearer <that key>.
 Read ${site}/llms.txt and work only in ${project}.

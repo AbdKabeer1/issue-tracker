@@ -178,7 +178,8 @@ describe("IssueFilters live search (#671)", () => {
     expect(option).toBeInTheDocument();
 
     fireEvent.click(option);
-    expect(nav.push).toHaveBeenCalledWith("/issues/i1");
+    // #457: the picked issue opens at its readable number.
+    expect(nav.push).toHaveBeenCalledWith("/issues/4");
   });
 
   it("puts the real search back when a tag is picked", async () => {

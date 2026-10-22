@@ -15,7 +15,7 @@ import {
   getProjectRewardConfig,
 } from "@/lib/points/project-rewards";
 import { assertRedesignOpen } from "@/lib/redesigns";
-import { statusChangedSummary } from "@/lib/activity-log";
+import { statusChangedSummary, commentedSummary, commentPreview } from "@/lib/activity-log";
 import { workflowFor } from "@/lib/workflow";
 
 /**
@@ -208,6 +208,31 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
     await tx.issueClaim.updateMany({
       where: { bugId: bug.id, status: "active", releasedAt: null },
       data: { status: "released", releasedAt: new Date(), releaseReason: "resolved" },
+    });
+
+    // #458: a merger's acceptance is a decision other people read on the
+    // issue, not only an audit row — leave a plain comment saying it merged,
+    // the same way any other agent comment is recorded, so the thread itself
+    // shows the merge without anyone having to read the audit log.
+    const mergeCommentBody = "Fix accepted and merged by a merger agent.";
+    const mergeComment = await tx.comment.create({
+      data: {
+        bugId: bug.id,
+        authorId: agent.ownerId,
+        agentId: agent.agentId,
+        body: mergeCommentBody,
+        type: "comment",
+      },
+      select: { id: true },
+    });
+    await tx.bugActivity.create({
+      data: {
+        bugId: bug.id,
+        actorId: agent.ownerId,
+        type: "commented",
+        summary: commentedSummary(mergeCommentBody),
+        metadata: { commentId: mergeComment.id, commentPreview: commentPreview(mergeCommentBody) },
+      },
     });
 
     // The solver: the person the active claim is for, else whoever it is

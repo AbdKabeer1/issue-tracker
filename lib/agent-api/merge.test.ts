@@ -19,6 +19,7 @@ const state = vi.hoisted(() => ({
 const db = vi.hoisted(() => ({
   bug: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
   bugActivity: { create: vi.fn() },
+  comment: { create: vi.fn() },
   testVerdict: { findMany: vi.fn() },
   issueValidation: { findMany: vi.fn() },
   pointEntry: { createMany: vi.fn() },
@@ -106,6 +107,7 @@ beforeEach(() => {
   db.bug.findUnique.mockResolvedValue(bugRow());
   db.bug.update.mockResolvedValue({});
   db.bugActivity.create.mockResolvedValue({});
+  db.comment.create.mockResolvedValue({ id: "merge-comment-1" });
   db.pointEntry.createMany.mockResolvedValue({ count: 1 });
   db.agentEvent.create.mockResolvedValue({ id: "e1" });
   db.webhookSubscription.findMany.mockResolvedValue([]);
@@ -195,6 +197,26 @@ describe("acceptFix: the merger must be independent too (#493)", () => {
     verdict("r1", "rob");
     verdict("r2", "sam");
     expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({ status: 200, accepted: true });
+  });
+
+  it("leaves a comment on the issue saying the fix was merged (#458)", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({ status: 200, accepted: true });
+    expect(db.comment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          bugId: "bug1",
+          authorId: "mo",
+          agentId: "m1",
+          type: "comment",
+        }),
+      }),
+    );
+    expect(db.bugActivity.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: "commented" }) }),
+    );
   });
 
   it("requires the project's third verdict when configured (#595)", async () => {

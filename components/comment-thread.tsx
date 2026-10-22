@@ -9,6 +9,7 @@ import {
 } from "@/lib/comments";
 import { canDeleteComment, canEditComment } from "@/lib/comment-permissions";
 import type { AppRole } from "@/lib/roles";
+import type { OrganizationRole } from "@/lib/organization-role";
 import type { CommentType } from "@/lib/validations/issue";
 import { deleteCommentAction, updateCommentAction } from "@/app/actions/comments";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,8 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 
 type AttachmentsByComment = Record<string, AttachmentView[]>;
+/** Each author's role in the issue's organization, by user id (#489). */
+type OrganizationRoles = Record<string, OrganizationRole>;
 
 type UserOption = { id: string; name: string };
 
@@ -180,6 +183,7 @@ function CommentItem({
   currentUserRole,
   tenantAdmin = false,
   attachmentsByComment = {},
+  organizationRoles = {},
   readOnly = false,
 }: {
   comment: CommentNode;
@@ -189,6 +193,7 @@ function CommentItem({
   reporterId: string;
   users: UserOption[];
   attachmentsByComment?: AttachmentsByComment;
+  organizationRoles?: OrganizationRoles;
 } & ViewerProps) {
   const [replying, setReplying] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -248,6 +253,7 @@ function CommentItem({
                 <UserNameWithBadges
                   name={comment.author.name}
                   role={comment.author.role}
+                  organizationRole={organizationRoles[comment.authorId]}
                   image={comment.author.image}
                   avatar="sm"
                   userId={comment.authorId}
@@ -313,6 +319,7 @@ function CommentItem({
               <CommentForm
                 bugId={bugId}
                 users={users}
+                viewerId={currentUserId}
                 parentId={comment.id}
                 parentAuthorName={comment.author.name}
                 onCancel={() => setReplying(false)}
@@ -376,6 +383,7 @@ function CommentItem({
               currentUserRole={currentUserRole}
               tenantAdmin={tenantAdmin}
               attachmentsByComment={attachmentsByComment}
+              organizationRoles={organizationRoles}
               readOnly={readOnly}
             />
           ))}
@@ -395,6 +403,7 @@ export function CommentThread({
   currentUserRole,
   tenantAdmin = false,
   attachmentsByComment = {},
+  organizationRoles = {},
   readOnly = false,
 }: {
   bugId: string;
@@ -404,6 +413,7 @@ export function CommentThread({
   users: UserOption[];
   /** Files attached to each comment, by comment id (#215). */
   attachmentsByComment?: AttachmentsByComment;
+  organizationRoles?: OrganizationRoles;
 } & ViewerProps) {
   const [typeFilter, setTypeFilter] = useState<string>("all");
 
@@ -442,13 +452,21 @@ export function CommentThread({
         </div>
       ) : null}
 
-      {filteredComments.length === 0 ? (
+      {comments.length === 0 && !readOnly ? (
+        <div role="status" className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
+          <p className="text-sm font-medium text-slate-700">No comments yet.</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Agents and reviewers haven’t posted any updates here yet.
+          </p>
+          <p className="mt-2 text-sm text-slate-600">
+            Start the conversation below with a question, helpful context, or a proposed solution.
+          </p>
+        </div>
+      ) : filteredComments.length === 0 ? (
         <p className="text-sm text-slate-500">
           {comments.length > 0
             ? "No timeline entries match this filter."
-            : readOnly
-              ? "No conversation."
-              : "No conversation yet. Start the conversation with a comment, bid, or instruction."}
+            : "No conversation."}
         </p>
       ) : (
         <ul className="space-y-4">
@@ -464,12 +482,15 @@ export function CommentThread({
               currentUserRole={currentUserRole}
               tenantAdmin={tenantAdmin}
               attachmentsByComment={attachmentsByComment}
+              organizationRoles={organizationRoles}
               readOnly={readOnly}
             />
           ))}
         </ul>
       )}
-      {readOnly ? null : <CommentForm bugId={bugId} users={users} />}
+      {readOnly ? null : (
+        <CommentForm bugId={bugId} users={users} viewerId={currentUserId} />
+      )}
     </div>
   );
 }
