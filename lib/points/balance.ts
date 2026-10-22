@@ -38,14 +38,37 @@ export type PointBalanceQuery = {
   to?: Date | string | null;
 };
 
-/** A bound the caller supplied, as a Date, or null. Rejects anything unparseable. */
-function bound(value: Date | string | null | undefined, field: string): Date | null {
+const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A bound the caller supplied, as a Date, or null. Rejects anything unparseable or non-ISO. */
+function bound(value: Date | string | null | undefined, field: "from" | "to"): Date | null {
   if (value === null || value === undefined || value === "") return null;
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    throw new Error(`${field} must be a valid date.`);
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      throw new Error(`${field} must be a valid date.`);
+    }
+    return value;
   }
-  return date;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (/^\d+$/.test(trimmed) || Number.isNaN(Date.parse(trimmed))) {
+      throw new Error(`${field} must be a valid date.`);
+    }
+    if (DATE_ONLY_REGEX.test(trimmed)) {
+      const dateStr = field === "to" ? `${trimmed}T23:59:59.999Z` : `${trimmed}T00:00:00.000Z`;
+      const date = new Date(dateStr);
+      if (Number.isNaN(date.getTime())) {
+        throw new Error(`${field} must be a valid date.`);
+      }
+      return date;
+    }
+    const date = new Date(trimmed);
+    if (Number.isNaN(date.getTime())) {
+      throw new Error(`${field} must be a valid date.`);
+    }
+    return date;
+  }
+  throw new Error(`${field} must be a valid date.`);
 }
 
 async function totals(

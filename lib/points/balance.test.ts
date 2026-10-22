@@ -87,6 +87,29 @@ describe("pointBalance (#618)", () => {
     ]);
   });
 
+  it("normalizes a date-only 'to' bound to end-of-day UTC", async () => {
+    const db = dbWith({ points: 65, entries: 3 });
+
+    const balance = await pointBalance(db as never, {
+      tenantId: "tenant-zedu",
+      userId: "user-1",
+      to: "2026-10-20",
+    });
+
+    expect(balance.period.from).toBeNull();
+    expect(balance.period.to).toBe("2026-10-20T23:59:59.999Z");
+    const bounded = db.pointEntry.count.mock.calls
+      .map((call) => call[0].where)
+      .filter((where) => where.createdAt !== undefined);
+    expect(bounded).toEqual([
+      {
+        tenantId: "tenant-zedu",
+        userId: "user-1",
+        createdAt: { lte: new Date("2026-10-20T23:59:59.999Z") },
+      },
+    ]);
+  });
+
   it("starts at zero with no ledger rows", async () => {
     const db = dbWith({ points: null, entries: 0 });
     expect(await pointBalance(db as never, { tenantId: "t", userId: "u" })).toEqual({
@@ -99,6 +122,9 @@ describe("pointBalance (#618)", () => {
     const db = dbWith({ points: 1, entries: 1 });
     await expect(
       pointBalance(db as never, { tenantId: "t", userId: "u", from: "yesterday" }),
+    ).rejects.toThrow("from must be a valid date.");
+    await expect(
+      pointBalance(db as never, { tenantId: "t", userId: "u", from: "1" }),
     ).rejects.toThrow("from must be a valid date.");
     await expect(
       pointBalance(db as never, {
