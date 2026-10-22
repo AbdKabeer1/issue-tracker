@@ -1,6 +1,7 @@
 import { createMethodNotAllowed, createOptions } from "@/lib/agent-api/http-errors";
 import { NextResponse, type NextRequest } from "next/server";
 import { clientRateLimitKey, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { PAIRING_LINK_MESSAGE } from "@/lib/agents/pairing-link";
 import { absoluteUrl } from "@/lib/site-url";
 import { consumePairingLimit } from "@/lib/agents/rate-limit";
 import { PAIRING_POLL_INTERVAL, pairingApprovalPath, startPairing } from "@/lib/agents/pairing";
@@ -11,7 +12,9 @@ import { agentPlatformDisabledResponse } from "@/lib/agents/platform-gate";
  * POST /api/v1/agents/pairing — an agent without a key asks to join (#427).
  * Body: `{ "name": "Ada's Claude", "model": "Claude", "level": "contributor" }`.
  * `level` may be any of observer, contributor, triager, reviewer, dispatcher;
- * omitting it gives contributor, and merger is refused (#425, #451). Show
+ * omitting it gives contributor, and merger is refused (#425, #451).
+ * Optional `instructions` (up to 4000 characters) proposes a standing brief;
+ * the owner sees it on the approval page and may edit or clear it (#431). Show
  * `verification_uri_complete` in the owner's browser. After they approve,
  * poll `/api/v1/agents/pairing/token` with `device_code` every `interval` seconds.
  */
@@ -26,8 +29,15 @@ export async function POST(req: NextRequest) {
 
   // #505: switched off means switched off, not just hidden in Settings.
   if (!isAgentPlatformEnabled()) return agentPlatformDisabledResponse();
-  const body = (await req.json().catch(() => null)) as { name?: unknown; model?: unknown; level?: unknown } | null;
-  const result = await startPairing({ name: body?.name, model: body?.model, level: body?.level });
+  const body = (await req.json().catch(() => null)) as
+    | { name?: unknown; model?: unknown; level?: unknown; instructions?: unknown }
+    | null;
+  const result = await startPairing({
+    name: body?.name,
+    model: body?.model,
+    level: body?.level,
+    instructions: body?.instructions,
+  });
   if (!result.ok) {
     return NextResponse.json({ error: "invalid_request", message: result.error }, { status: 400 });
   }
@@ -40,8 +50,7 @@ export async function POST(req: NextRequest) {
       verification_uri_complete: absoluteUrl(pairingApprovalPath(result.userCode)),
       expires_at: result.expiresAt.toISOString(),
       interval: PAIRING_POLL_INTERVAL,
-      message:
-        "Open verification_uri_complete in the owner's browser yourself. Do not only print it. They approve it while signed in. Then poll the token URL with device_code until api_key is returned.",
+      message: PAIRING_LINK_MESSAGE,
     },
     { status: 201, headers: { "Cache-Control": "no-store" } },
   );

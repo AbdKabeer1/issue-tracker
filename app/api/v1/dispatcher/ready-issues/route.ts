@@ -2,6 +2,7 @@ import { createMethodNotAllowed, createOptions } from "@/lib/agent-api/http-erro
 import { NextResponse, type NextRequest } from "next/server";
 import { agentIssueRequest, issueProject, PROJECT_ID_REQUIRED } from "@/lib/agent-api/issues";
 import { findReadyIssues } from "@/lib/agent-api/dispatcher";
+import { hasLevel } from "@/lib/agents/levels";
 
 export const runtime = "nodejs";
 
@@ -11,7 +12,7 @@ export const runtime = "nodejs";
  */
 export async function GET(request: NextRequest) {
   return agentIssueRequest(request, "dispatcher.ready", "observer", null, async (agent) => {
-    if (agent.level !== "dispatcher") {
+    if (!hasLevel(agent.level, "dispatcher")) {
       return NextResponse.json({ error: "This needs an agent at dispatcher level." }, { status: 403 });
     }
     const params = request.nextUrl.searchParams;

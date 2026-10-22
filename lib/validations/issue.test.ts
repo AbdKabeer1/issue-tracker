@@ -208,6 +208,20 @@ describe("updateBugSchema", () => {
 });
 
 describe("commentSchema", () => {
+  it.each([0, 80, 100])("accepts optional confidence %s with evidence and other metadata", (confidence) => {
+    const metadata = { confidence, confidenceReason: "Source inspected; not reproduced.", verdict: "assessment" };
+    expect(commentSchema.parse({ body: "Review", metadata }).metadata).toEqual(metadata);
+  });
+
+  it.each([-1, 101, 1.5, "80", null])("rejects invalid confidence %s", (confidence) => {
+    expect(commentSchema.safeParse({ body: "Review", metadata: { confidence } }).success).toBe(false);
+  });
+
+  it("rejects blank or overlong confidence explanations", () => {
+    for (const confidenceReason of [" ", "x".repeat(501)]) {
+      expect(commentSchema.safeParse({ body: "Review", metadata: { confidence: 80, confidenceReason } }).success).toBe(false);
+    }
+  });
   it("accepts a non-empty comment", () => {
     const result = commentSchema.safeParse({ body: "Looks fixed on staging." });
     expect(result.success).toBe(true);

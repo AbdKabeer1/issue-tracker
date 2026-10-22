@@ -96,8 +96,8 @@ vi.mock("@/lib/platforms", () => ({
 }));
 
 const mockDb = vi.hoisted(() => ({
+  membership: { findUnique: vi.fn().mockResolvedValue({ role: "admin", userId: "user-123" }), findMany: vi.fn().mockResolvedValue([]) },
   bug: { findUnique: vi.fn(), findFirst: vi.fn(async () => ({ id: "bug-1", number: 1 })) },
-  membership: { findUnique: vi.fn().mockResolvedValue({ role: "admin", userId: "user-123" }) },
   redesignProposal: { findMany: vi.fn().mockResolvedValue([]) },
   issueBid: { findMany: vi.fn().mockResolvedValue([]) },
   issueInterest: { count: vi.fn().mockResolvedValue(0) },

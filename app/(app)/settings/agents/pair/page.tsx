@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { findPendingPairing } from "@/lib/agents/pairing";
+import { AGENT_INSTRUCTIONS_MAX } from "@/lib/agent-messages";
 import { projectContextFor } from "@/lib/project-context";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { PairForm } from "./pair-form";
@@ -56,10 +57,20 @@ export default async function PairAgentPage({
         ) : (
           <PairForm
             initialCode={initialCode}
-            pending={pending ? { name: pending.proposedName, model: pending.proposedModel, level: pending.proposedLevel } : null}
+            pending={
+              pending
+                ? {
+                    name: pending.proposedName,
+                    model: pending.proposedModel,
+                    level: pending.proposedLevel,
+                    instructions: pending.proposedInstructions,
+                  }
+                : null
+            }
             unknownCode={Boolean(initialCode) && !pending}
             projects={context.projects}
             activeProjectId={context.activeProjectId}
+            instructionsMaxLength={AGENT_INSTRUCTIONS_MAX}
           />
         )}
       </section>

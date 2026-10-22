@@ -15,12 +15,14 @@ vi.mock("@/lib/agents/registry", () => ({
   setAgentLevel: vi.fn(),
 }));
 vi.mock("@/lib/agents/rate-limit", () => ({ consumePairingLimit: vi.fn() }));
-vi.mock("@/lib/agents/pairing", () => ({ approvePairing: vi.fn(), findPendingPairing: vi.fn() }));
+const approvePairing = vi.hoisted(() => vi.fn());
+const findPendingPairing = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/agents/pairing", () => ({ approvePairing, findPendingPairing }));
 vi.mock("@/lib/tenant-context", () => ({ currentTenantIdFor: vi.fn(async () => "tenant_1") }));
 vi.mock("@/lib/feature-flags", () => ({ isAgentPlatformEnabled: () => true }));
 vi.mock("@/lib/rate-limit", () => ({ RATE_LIMIT_MESSAGE: "Too fast." }));
 
-import { setAgentBurstAction } from "./actions";
+import { pairAgentAction, setAgentBurstAction } from "./actions";
 
 describe("setAgentBurstAction (#596)", () => {
   beforeEach(() => {
@@ -70,5 +72,48 @@ describe("setAgentBurstAction (#596)", () => {
     setAgentBurst.mockResolvedValue({ ok: false, error: "Couldn't change the write budget. Try again." });
     expect(await setAgentBurstAction("agent1", true)).toMatchObject({ ok: false });
     expect(revalidatePath).not.toHaveBeenCalled();
+  });
+});
+
+describe("pairAgentAction instructions (#431)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireUser.mockResolvedValue({ id: "ada" });
+  });
+
+  it("shows the agent's proposed instructions on the confirm step", async () => {
+    findPendingPairing.mockResolvedValue({
+      id: "p1",
+      proposedName: "Ada's Claude",
+      proposedModel: "Claude",
+      proposedLevel: "contributor",
+      proposedInstructions: "Focus on desktop bugs.",
+      expiresAt: new Date(),
+    });
+    const form = new FormData();
+    form.set("code", "ABCD-2345");
+    expect(await pairAgentAction(undefined, form)).toMatchObject({
+      ok: true,
+      step: "confirm",
+      instructions: "Focus on desktop bugs.",
+    });
+  });
+
+  it("passes the owner's approved text to approvePairing", async () => {
+    approvePairing.mockResolvedValue({ ok: true, name: "Ada's Claude" });
+    const form = new FormData();
+    form.set("code", "ABCD-2345");
+    form.set("intent", "approve");
+    form.set("projectId", "project_1");
+    form.set("instructions", "Owner-edited brief.");
+    expect(await pairAgentAction(undefined, form)).toEqual({ ok: true, step: "done", name: "Ada's Claude" });
+    expect(approvePairing).toHaveBeenCalledWith(
+      { id: "ada" },
+      "ABCD-2345",
+      expect.any(Date),
+      "project_1",
+      "tenant_1",
+      "Owner-edited brief.",
+    );
   });
 });

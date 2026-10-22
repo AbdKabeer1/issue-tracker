@@ -9,6 +9,7 @@ import {
 } from "@/lib/comments";
 import { canDeleteComment, canEditComment } from "@/lib/comment-permissions";
 import type { AppRole } from "@/lib/roles";
+import type { OrganizationRole } from "@/lib/organization-role";
 import type { CommentType } from "@/lib/validations/issue";
 import { deleteCommentAction, updateCommentAction } from "@/app/actions/comments";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,8 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 
 type AttachmentsByComment = Record<string, AttachmentView[]>;
+/** Each author's role in the issue's organization, by user id (#489). */
+type OrganizationRoles = Record<string, OrganizationRole>;
 
 type UserOption = { id: string; name: string };
 
@@ -69,6 +72,18 @@ function CommentTypeBadge({ type, metadata }: { type?: CommentType | null; metad
     default:
       return null;
   }
+}
+
+function CommentConfidence({ metadata }: { metadata?: unknown }) {
+  if (!metadata || typeof metadata !== "object") return null;
+  const { confidence, confidenceReason } = metadata as Record<string, unknown>;
+  if (typeof confidence !== "number" || !Number.isInteger(confidence) || confidence < 0 || confidence > 100) return null;
+  return (
+    <p className="mt-2 text-xs text-slate-600 break-words">
+      <span className="font-medium">Self-reported confidence: {confidence}%</span>
+      {typeof confidenceReason === "string" && confidenceReason.trim() ? ` — ${confidenceReason}` : null}
+    </p>
+  );
 }
 
 function commentCardStyle(type?: CommentType | null): string {
@@ -168,6 +183,7 @@ function CommentItem({
   currentUserRole,
   tenantAdmin = false,
   attachmentsByComment = {},
+  organizationRoles = {},
   readOnly = false,
 }: {
   comment: CommentNode;
@@ -177,6 +193,7 @@ function CommentItem({
   reporterId: string;
   users: UserOption[];
   attachmentsByComment?: AttachmentsByComment;
+  organizationRoles?: OrganizationRoles;
 } & ViewerProps) {
   const [replying, setReplying] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -236,6 +253,7 @@ function CommentItem({
                 <UserNameWithBadges
                   name={comment.author.name}
                   role={comment.author.role}
+                  organizationRole={organizationRoles[comment.authorId]}
                   image={comment.author.image}
                   avatar="sm"
                   userId={comment.authorId}
@@ -262,6 +280,8 @@ function CommentItem({
                 ) : null}
               </span>
             </div>
+
+            {comment.agentId || comment.agent ? <CommentConfidence metadata={comment.metadata} /> : null}
 
             {comment.parent ? (
               <p className="mt-2 rounded-md bg-white/80 px-2.5 py-1.5 text-xs text-slate-500 break-words">
@@ -363,6 +383,7 @@ function CommentItem({
               currentUserRole={currentUserRole}
               tenantAdmin={tenantAdmin}
               attachmentsByComment={attachmentsByComment}
+              organizationRoles={organizationRoles}
               readOnly={readOnly}
             />
           ))}
@@ -382,6 +403,7 @@ export function CommentThread({
   currentUserRole,
   tenantAdmin = false,
   attachmentsByComment = {},
+  organizationRoles = {},
   readOnly = false,
 }: {
   bugId: string;
@@ -391,6 +413,7 @@ export function CommentThread({
   users: UserOption[];
   /** Files attached to each comment, by comment id (#215). */
   attachmentsByComment?: AttachmentsByComment;
+  organizationRoles?: OrganizationRoles;
 } & ViewerProps) {
   const [typeFilter, setTypeFilter] = useState<string>("all");
 
@@ -459,6 +482,7 @@ export function CommentThread({
               currentUserRole={currentUserRole}
               tenantAdmin={tenantAdmin}
               attachmentsByComment={attachmentsByComment}
+              organizationRoles={organizationRoles}
               readOnly={readOnly}
             />
           ))}

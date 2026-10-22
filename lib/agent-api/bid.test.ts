@@ -149,6 +149,29 @@ describe("awardBid", () => {
     bug: openBug,
   };
 
+  it("preserves the dispatcher owner on an auto-awarded claim", async () => {
+    db.issueBid.findUnique.mockResolvedValue(stored);
+    db.issueClaim.create.mockResolvedValue({ id: "claim1" });
+    const dispatcher = { ...caller, ownerId: "dispatcher-owner", level: "dispatcher" as const };
+    await awardBid({ id: "reporter" }, "bid1", dispatcher);
+    expect(db.issueClaim.create.mock.calls[0][0].data).toMatchObject({
+      dispatcherUserId: "dispatcher-owner", beneficiaryUserId: "ada", status: "active",
+    });
+  });
+
+  it("rejects forged dispatcher attribution from a lower-level caller", async () => {
+    await expect(awardBid({ id: "reporter" }, "bid1", caller)).rejects.toThrow("dispatcher");
+    expect(db.issueClaim.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects dispatcher attribution from another tenant", async () => {
+    db.issueBid.findUnique.mockResolvedValue(stored);
+    await expect(awardBid({ id: "reporter" }, "bid1", {
+      ...caller, tenantId: "another-tenant", level: "dispatcher",
+    })).rejects.toMatchObject({ status: 404 });
+    expect(db.issueClaim.create).not.toHaveBeenCalled();
+  });
+
   it("lets the reporter turn one bid into the active claim", async () => {
     db.issueBid.findUnique.mockResolvedValue(stored);
     db.issueClaim.create.mockResolvedValue({ id: "claim1" });

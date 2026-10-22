@@ -45,9 +45,10 @@ const agentCommentSchema = commentSchema.extend({ projectId: idSchema.optional()
 
 /** Authenticate before parsing input, charge the shared budget, and audit outcomes including denials. */
 export async function agentIssueRequest(
-  request: NextRequest, action: string, level: AgentLevel, target: string | null,
+  request: NextRequest, action: string, level: AgentLevel | "comment", target: string | null,
   run: (agent: AgentContext) => Promise<Response>,
-  options: { budget?: "none" } = {},
+  // `write` charges an observer-level route that changes data (#515) to the write budget.
+  options: { budget?: "none" | "write" } = {},
 ): Promise<Response> {
   let agent: AgentContext | undefined;
   let response: Response | undefined;
@@ -61,7 +62,7 @@ export async function agentIssueRequest(
     } else {
       const budget = await consumeAgentBudget(
         { id: agent.agentId, burst: agent.burst, burstUntil: agent.burstUntil ?? null },
-        level === "observer" ? "read" : "write",
+        level === "observer" && options.budget !== "write" ? "read" : "write",
       );
       quota = budget;
       response = budget.allowed ? await run(agent) : agentBudgetExceededResponse(budget.retryAfterSeconds, budget);

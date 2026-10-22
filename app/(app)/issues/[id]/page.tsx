@@ -52,6 +52,7 @@ import { AttachmentList, type AttachmentView } from "@/components/attachment-lis
 import { ChooseRedesignButton } from "@/components/choose-redesign-button";
 import { IssueApprovalBanner } from "@/components/issue-approval-banner";
 import { isTenantAdminRole } from "@/lib/agents/membership";
+import type { OrganizationRole } from "@/lib/organization-role";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
@@ -80,6 +81,8 @@ import { withCurrentOption } from "@/lib/triage-options";
 import { issueTenantHintFor } from "@/lib/issue-tenant-hint";
 import { IssueTenantSwitch } from "@/components/issue-tenant-hint";
 import { tenantMemberWhere } from "@/lib/tenant-mentions";
+import { readAgentResolution } from "@/lib/agent-resolution";
+import { AgentResolvedNotice } from "@/components/agent-resolved-notice";
 
 type BugPageProps = {
   params: Promise<{ id: string }>;
@@ -617,6 +620,27 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       ? (bug.votes[0].value ?? 1)
       : 0;
   const commentTree = buildCommentTree(comments.comments);
+  // #489: the Admin label follows each person's role in this issue's
+  // organization, not their account-wide role, the same rule as admin powers.
+  const namedUserIds = [
+    ...new Set(
+      [bug.reporterId, bug.assigneeId, ...comments.comments.map((c) => c.authorId)].filter(
+        (id): id is string => Boolean(id),
+      ),
+    ),
+  ];
+  const organizationRoleRows = await loadOptional<{ userId: string; role: OrganizationRole }[]>(
+    "organization roles",
+    [],
+    () =>
+      prisma.membership.findMany({
+        where: { tenantId: bug.tenantId, userId: { in: namedUserIds } },
+        select: { userId: true, role: true },
+      }),
+  );
+  const organizationRoles: Record<string, OrganizationRole> = Object.fromEntries(
+    organizationRoleRows.map((row) => [row.userId, row.role]),
+  );
   const pageQuery = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     if (typeof value === "string") pageQuery.set(key, value);
@@ -624,6 +648,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   const proofLinks = bug.proofLinks ?? [];
 
   const resolution = currentResolution(bug.status, latestStatusChange);
+  const agentResolution =
+    bug.status === "resolved" && !bug.isDeleted ? readAgentResolution(latestStatusChange?.metadata) : null;
 
   // Workflow badges that are always visible: status and severity. Anything
   // else (boost, volunteers) is supplementary and folds into the mobile +N
@@ -785,17 +811,24 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
-          <Link href="/issues" className="text-sm text-teal-700 hover:underline print:hidden">
-            ← Back to issues
-          </Link>
-          <div className="mt-3 space-y-3">
+          <div className="space-y-3">
             <div className="space-y-2">
-              <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 break-words">
-                <span className="font-normal text-slate-500 tabular-nums">
-                  {formatIssueNumber(bug.number)}
-                </span>{" "}
-                {bug.title}
-              </h1>
+              <div className="flex items-start gap-2">
+                <Link
+                  href="/issues"
+                  aria-label="Back to issues"
+                  title="Back to issues"
+                  className="-mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 print:hidden"
+                >
+                  <span aria-hidden="true" className="text-lg leading-none">←</span>
+                </Link>
+                <h1 className="min-w-0 text-xl sm:text-2xl font-semibold text-slate-900 break-words">
+                  <span className="font-normal text-slate-500 tabular-nums">
+                    {formatIssueNumber(bug.number)}
+                  </span>{" "}
+                  {bug.title}
+                </h1>
+              </div>
               {intakeStage ? (
                 <p
                   className={`rounded-lg border px-3 py-2 text-sm ${
@@ -806,6 +839,9 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 >
                   {intakeDetail(intakeStage, bug.voteCount)}
                 </p>
+              ) : null}
+              {agentResolution ? (
+                <AgentResolvedNotice bugId={bug.id} resolution={agentResolution} canReopen={canUpdateStatus} />
               ) : null}
 
               {/* On mobile (<sm): compact horizontal scroll action row pinned directly under title (#698) */}
@@ -886,9 +922,9 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         </div>
 
         <div className="hidden sm:block">
-          {/* #687: the back-link sits above the title, so actions must offset
-              past it to share the title's top edge (36px ≈ sm:pt-9). */}
-          <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:pt-9 print:hidden">
+          {/* #451: the back arrow now sits inline with the title, so the
+              action row no longer offsets past a separate back-link row. */}
+          <div className="flex shrink-0 flex-wrap items-center gap-2 self-start print:hidden">
             {headerActions}
           </div>
         </div>
@@ -925,6 +961,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
               <UserNameWithBadges
                 name={bug.reporter.name}
                 role={bug.reporter.role}
+                organizationRole={organizationRoles[bug.reporterId]}
                 image={bug.reporter.image}
                 avatar="sm"
                 userId={bug.reporterId}
@@ -940,6 +977,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 <UserNameWithBadges
                   name={bug.assignee.name}
                   role={bug.assignee.role}
+                  organizationRole={bug.assigneeId ? organizationRoles[bug.assigneeId] : null}
                   image={bug.assignee.image}
                   avatar="sm"
                   userId={bug.assigneeId}
@@ -1086,6 +1124,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           reporterId={bug.reporterId}
           comments={commentTree}
           attachmentsByComment={attachmentsByComment}
+          organizationRoles={organizationRoles}
           users={commentMentionUsers}
           currentUserId={user.id}
           currentUserRole={user.role}

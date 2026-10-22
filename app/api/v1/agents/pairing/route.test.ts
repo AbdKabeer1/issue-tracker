@@ -37,7 +37,7 @@ describe("POST /api/v1/agents/pairing", () => {
       verification_uri: "https://ziki.dev/settings/agents/pair",
       verification_uri_complete: "https://ziki.dev/settings/agents/pair?code=KX7P-2MQD",
       interval: 5,
-      message: expect.stringContaining("Open verification_uri_complete in the owner's browser"),
+      message: expect.stringContaining("If you can open a browser, also open verification_uri_complete"),
     });
     expect(startPairing).toHaveBeenCalledWith({ name: "Claude", model: "Claude", level: undefined });
   });
@@ -51,5 +51,28 @@ describe("POST /api/v1/agents/pairing", () => {
       }),
     );
     expect(startPairing).toHaveBeenCalledWith({ name: "Claude", model: undefined, level: "dispatcher" });
+  });
+
+  it("passes proposed instructions through (#431)", async () => {
+    startPairing.mockResolvedValue({ ok: true, userCode: "KX7P-2MQD", deviceCode: "d", expiresAt: new Date() });
+    await POST(
+      new NextRequest("https://ziki.dev/api/v1/agents/pairing", {
+        method: "POST",
+        body: JSON.stringify({ name: "Claude", instructions: "Focus on desktop bugs." }),
+      }),
+    );
+    expect(startPairing).toHaveBeenCalledWith(expect.objectContaining({ instructions: "Focus on desktop bugs." }));
+  });
+
+  it("answers 400 when the proposed instructions are rejected (#431)", async () => {
+    startPairing.mockResolvedValue({ ok: false, error: "Instructions must be 4000 characters or fewer." });
+    const response = await POST(
+      new NextRequest("https://ziki.dev/api/v1/agents/pairing", {
+        method: "POST",
+        body: JSON.stringify({ name: "Claude", instructions: "x".repeat(4001) }),
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_request", message: expect.stringContaining("4000") });
   });
 });

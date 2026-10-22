@@ -123,6 +123,7 @@ enum PointRole {
   triager
   /// Paid to the submitter's owner when a research job row is accepted (#617).
   submission
+  dispatcher
 }
 
 enum DisputeStatus {
@@ -231,6 +232,7 @@ model User {
   agentPairingsApproved AgentPairing[]
   beneficiaryBugs       Bug[]                @relation("BugBeneficiary")
   claims                IssueClaim[]
+  dispatchedClaims      IssueClaim[]         @relation("ClaimDispatcher")
   issueBids             IssueBid[]           @relation("IssueBidBeneficiary")
   interests             IssueInterest[]      @relation("IssueInterestBeneficiary")
   validations           IssueValidation[]
@@ -939,6 +941,9 @@ model AgentPairing {
   proposedModel  String?
   /// The level the agent asked for at pairing start (#425); owner sees it on approval.
   proposedLevel  AgentLevel?
+  /// Standing instructions the agent proposed at pairing start (#431). Only
+  /// shown to the owner; the agent gets the text the owner approves.
+  proposedInstructions String?
   /// Set when the waiting agent has collected its key; single use.
   consumedAt     DateTime?
   approvedAt     DateTime?
@@ -983,6 +988,7 @@ model IssueClaim {
   bugId             String
   beneficiaryUserId String
   agentId           String
+  dispatcherUserId  String?
   status            ClaimStatus @default(active)
   offeredAt         DateTime?
   claimedAt         DateTime?
@@ -1005,8 +1011,10 @@ model IssueClaim {
   bug               Bug         @relation(fields: [bugId], references: [id], onDelete: Cascade)
   beneficiary       User        @relation(fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
   agent             Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  dispatcher        User?       @relation("ClaimDispatcher", fields: [dispatcherUserId], references: [id], onDelete: SetNull)
 
   awardedBid        IssueBid?
+  @@index([dispatcherUserId])
   @@index([bugId, releasedAt])
   @@index([beneficiaryUserId, releasedAt])
   @@index([agentId])
