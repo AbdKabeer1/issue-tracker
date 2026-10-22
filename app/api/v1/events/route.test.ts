@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const db = vi.hoisted(() => ({
   agentApiKey: { findUnique: vi.fn() }, agentAuditEvent: { create: vi.fn() }, agentEvent: { findMany: vi.fn() }, $queryRaw: vi.fn(),
-  bug: { findUnique: vi.fn() },
+  bug: { findFirst: vi.fn() },
   webhookSubscription: { findMany: vi.fn(), findFirst: vi.fn(), count: vi.fn(), create: vi.fn(), delete: vi.fn(), update: vi.fn() },
 }));
 const budget = vi.hoisted(() => vi.fn());
@@ -139,7 +139,7 @@ describe("events endpoint", () => {
 describe("events endpoint project scope (#405)", () => {
   beforeEach(() => {
     db.agentApiKey.findUnique.mockResolvedValue(key("observer", { id: "proj-ziki", slug: "ziki" }));
-    db.bug.findUnique.mockReset();
+    db.bug.findFirst.mockReset();
     db.agentEvent.findMany.mockResolvedValue([]);
   });
 
@@ -148,20 +148,39 @@ describe("events endpoint project scope (#405)", () => {
     expect(response.status).toBe(403);
     expect((await response.json()).error).toBe("project_forbidden");
     expect(db.agentEvent.findMany).not.toHaveBeenCalled();
-    expect(db.bug.findUnique).not.toHaveBeenCalled();
+    expect(db.bug.findFirst).not.toHaveBeenCalled();
   });
 
   it("rejects a foreign project's bugId with 403 and an unknown bugId with 404", async () => {
-    db.bug.findUnique.mockResolvedValueOnce({ projectId: "proj-web" });
+    db.bug.findFirst.mockResolvedValueOnce({ projectId: "proj-web" });
     const foreign = await GET(request("/events?bugId=issue-web"));
     expect(foreign.status).toBe(403);
     expect((await foreign.json()).error).toBe("project_forbidden");
     expect(db.agentEvent.findMany).not.toHaveBeenCalled();
 
-    db.bug.findUnique.mockResolvedValueOnce(null);
+    db.bug.findFirst.mockResolvedValueOnce(null);
     const unknown = await GET(request("/events?bugId=issue-missing"));
     expect(unknown.status).toBe(404);
     expect((await unknown.json()).error).toBe("Issue not found.");
+    expect(db.agentEvent.findMany).not.toHaveBeenCalled();
+  });
+
+  it("treats another tenant's bugId like an unknown one and never confirms its existence", async () => {
+    // The lookup is tenant-scoped: a cross-tenant id yields no row, so the
+    // response is the same 404 an unknown id produces.
+    db.bug.findFirst.mockResolvedValueOnce(null);
+    const response = await GET(request("/events?bugId=issue-other-tenant"));
+    expect(response.status).toBe(404);
+    expect((await response.json()).error).toBe("Issue not found.");
+    expect(db.bug.findFirst).toHaveBeenCalledWith({ where: { id: "issue-other-tenant", tenantId: "tenant-a" }, select: { projectId: true } });
+    expect(db.agentEvent.findMany).not.toHaveBeenCalled();
+  });
+
+  it("answers a structured 503 when the bug lookup fails", async () => {
+    db.bug.findFirst.mockRejectedValueOnce(new Error("db down"));
+    const response = await GET(request("/events?bugId=issue-ziki"));
+    expect(response.status).toBe(503);
+    expect((await response.json()).error).toBe("Event feed unavailable.");
     expect(db.agentEvent.findMany).not.toHaveBeenCalled();
   });
 
@@ -169,10 +188,10 @@ describe("events endpoint project scope (#405)", () => {
     db.agentEvent.findMany.mockResolvedValueOnce([event]);
     const own = await GET(request("/events?projectId=proj-ziki"));
     expect(own.status).toBe(200);
-    expect(db.bug.findUnique).not.toHaveBeenCalled();
+    expect(db.bug.findFirst).not.toHaveBeenCalled();
     expect(db.agentEvent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ projectId: "proj-ziki", tenantId: "tenant-a" }) }));
 
-    db.bug.findUnique.mockResolvedValueOnce({ projectId: "proj-ziki" });
+    db.bug.findFirst.mockResolvedValueOnce({ projectId: "proj-ziki" });
     db.agentEvent.findMany.mockResolvedValueOnce([{ ...event, id: "event-b" }]);
     const withBug = await GET(request("/events?bugId=issue-ziki"));
     expect(withBug.status).toBe(200);
@@ -188,14 +207,14 @@ describe("events endpoint project scope (#405)", () => {
 
   it("reads only the project of a bugId and keeps legacy keys tenant-wide", async () => {
     await GET(request("/events?bugId=issue-ziki"));
-    expect(db.bug.findUnique).toHaveBeenCalledWith({ where: { id: "issue-ziki" }, select: { projectId: true } });
+    expect(db.bug.findFirst).toHaveBeenCalledWith({ where: { id: "issue-ziki", tenantId: "tenant-a" }, select: { projectId: true } });
 
-    db.bug.findUnique.mockClear();
+    db.bug.findFirst.mockClear();
     db.agentApiKey.findUnique.mockResolvedValueOnce(key("observer"));
     db.agentEvent.findMany.mockResolvedValueOnce([]);
     expect((await GET(request("/events?projectId=proj-web"))).status).toBe(200);
     expect(db.agentEvent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-a", projectId: "proj-web" }) }));
-    expect(db.bug.findUnique).not.toHaveBeenCalled();
+    expect(db.bug.findFirst).not.toHaveBeenCalled();
   });
 });
 
