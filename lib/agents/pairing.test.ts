@@ -33,6 +33,8 @@ import {
   pairingApprovalPath,
   startPairing,
 } from "./pairing";
+import { DEFAULT_AGENT_LEVEL } from "./levels";
+import { createAgentSchema } from "./registry";
 import { MAX_ACTIVE_AGENTS_PER_OWNER } from "./registry-limits";
 import { AGENT_INSTRUCTIONS_MAX } from "@/lib/agent-messages";
 
@@ -78,10 +80,15 @@ describe("startPairing (#427)", () => {
     expect(merger).toMatchObject({ ok: false });
     if (!merger.ok) expect(merger.error).toContain("merger");
     expect(await startPairing({ name: "Ada", level: "wizard" }, NOW)).toMatchObject({ ok: false });
-    // No level still pairs as a contributor.
     expect(db.agentPairing.create.mock.calls.at(-1)![0].data.proposedLevel).toBe("reviewer");
     await startPairing({ name: "Ada" }, NOW);
-    expect(db.agentPairing.create.mock.calls.at(-1)![0].data.proposedLevel).toBe("contributor");
+    expect(db.agentPairing.create.mock.calls.at(-1)![0].data.proposedLevel).toBe(DEFAULT_AGENT_LEVEL);
+  });
+
+  it("uses the same default level as the settings path (#426)", async () => {
+    await startPairing({ name: "Ada" }, NOW);
+    expect(db.agentPairing.create.mock.calls[0][0].data.proposedLevel).toBe(DEFAULT_AGENT_LEVEL);
+    expect(createAgentSchema.parse({ name: "Ada", projectId: "project_zedu" }).level).toBe(DEFAULT_AGENT_LEVEL);
   });
 
   it("needs a name", async () => {
@@ -125,7 +132,7 @@ describe("approvePairing (#427)", () => {
       ownerUserId: "ada",
       tenantId: "tenant_zedu",
       name: "Ada's Claude",
-      level: "contributor",
+      level: DEFAULT_AGENT_LEVEL,
     });
     expect(db.agent.create.mock.calls[0][0].data.apiKeys).toBeUndefined();
     const { where, data } = db.agentPairing.updateMany.mock.calls[0][0];
@@ -266,7 +273,7 @@ describe("collectPairing (#427)", () => {
     if (result.status === "issued") expect(result.key.level).toBe("observer");
   });
 
-  it("creates the agent for the approver, as a contributor, and returns its key once", async () => {
+  it("creates the agent for the approver at the shared default, and returns its key once", async () => {
     db.agentPairing.findUnique.mockResolvedValue(approved);
     db.agentPairing.updateMany.mockResolvedValue({ count: 1 });
     const result = await collectPairing(DEVICE, NOW);
@@ -276,7 +283,7 @@ describe("collectPairing (#427)", () => {
       ownerUserId: "ada",
       tenantId: "tenant_zedu",
       name: "Ada's Claude",
-      level: "contributor",
+      level: DEFAULT_AGENT_LEVEL,
       apiKeys: { create: { projectId: "project_zedu" } },
     });
     expect(db.agentPairing.update.mock.calls[0][0].data).toEqual({ agentId: "agent9" });
