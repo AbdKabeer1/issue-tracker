@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { agentIssueRequest } from "@/lib/agent-api/issues";
 import { parseEventCursor, parseEventFilters, pollEvents, encodeEventCursor, scopeEventFilters } from "@/lib/agent-api/events";
+import { AgentProjectError } from "@/lib/agents/require-agent";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -61,8 +62,16 @@ export async function GET(request: NextRequest) {
     // #405: a project-scoped key never reads another project's events. A
     // foreign `projectId` throws and the wrapper answers `project_forbidden`;
     // a foreign/missing `bugId` is rejected here; an unfiltered poll is
-    // narrowed to the key's project.
-    const scoped = await scopeEventFilters(agent, filters);
+    // narrowed to the key's project. A lookup failure must not crash the
+    // route callback: `AgentProjectError` is rethrown (still `project_forbidden`),
+    // anything unexpected becomes the same structured 503 as a feed failure.
+    let scoped: Awaited<ReturnType<typeof scopeEventFilters>>;
+    try {
+      scoped = await scopeEventFilters(agent, filters);
+    } catch (error) {
+      if (error instanceof AgentProjectError) throw error;
+      return NextResponse.json({ error: "Event feed unavailable." }, { status: 503 });
+    }
     if ("status" in scoped) return NextResponse.json({ error: scoped.error }, { status: scoped.status });
 
     const rows = await pollEvents(agent, cursorResult, waitSeconds, scoped.filters).catch(() => null);

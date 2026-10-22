@@ -299,9 +299,10 @@ export function parseEventFilters(params: URLSearchParams): EventFilters | Event
  * key:
  * - an explicit `projectId` for another project throws `AgentProjectError`
  *   (the wrapper answers `403 project_forbidden`);
- * - a `bugId` must exist and belong to the key's project (missing → 404,
- *   foreign → 403); events for it are only written for issues in the
- *   key's project;
+ * - a `bugId` is looked up only inside the caller's tenant, so an
+ *   unknown id and another tenant's id are indistinguishable (both 404);
+ *   a same-tenant bug outside the key's project throws `AgentProjectError`
+ *   (403); events for a bug are only written for issues in the key's project;
  * - with no explicit `projectId`, the poll is filtered to the key's project
  *   so an unfiltered poll cannot sweep the whole tenant.
  *
@@ -313,7 +314,7 @@ export function parseEventFilters(params: URLSearchParams): EventFilters | Event
 export type ScopedEventFilters = { filters: EventFilters } | { status: number; error: string };
 
 export async function scopeEventFilters(
-  agent: Pick<AgentContext, "projectId" | "projectSlug">,
+  agent: Pick<AgentContext, "tenantId" | "projectId" | "projectSlug">,
   filters: EventFilters,
   db: Pick<typeof prisma, "bug"> = prisma,
 ): Promise<ScopedEventFilters> {
@@ -322,7 +323,12 @@ export async function scopeEventFilters(
     throw new AgentProjectError(agent.projectSlug);
   }
   if (filters.bugId) {
-    const bug = await db.bug.findUnique({ where: { id: filters.bugId }, select: { projectId: true } });
+    // Tenant-bound lookup: an id from another tenant must look exactly like a
+    // missing one, so the lookup never confirms a cross-tenant bug exists.
+    const bug = await db.bug.findFirst({
+      where: { id: filters.bugId, tenantId: agent.tenantId },
+      select: { projectId: true },
+    });
     if (!bug) return { status: 404, error: "Issue not found." };
     if (bug.projectId !== agent.projectId) throw new AgentProjectError(agent.projectSlug);
   }
