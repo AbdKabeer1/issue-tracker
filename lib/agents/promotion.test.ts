@@ -45,7 +45,7 @@ function validation(overrides: Record<string, unknown> = {}) {
 }
 
 function agentRow(overrides: Record<string, unknown> = {}) {
-  return { id: "a1", tenantId: "t1", level: "contributor", ...overrides };
+  return { id: "a1", tenantId: "t1", level: "contributor", levelChangedAt: null, ...overrides };
 }
 
 beforeEach(() => {
@@ -121,7 +121,7 @@ describe("promoteEarnedReviewer (#451)", () => {
     const result = await promoteEarnedReviewer("a1");
 
     expect(result).toEqual({ ok: true, changed: true, standing: 10 });
-    expect(db.agent.update).toHaveBeenCalledWith({ where: { id: "a1" }, data: { level: "reviewer" } });
+    expect(db.agent.update).toHaveBeenCalledWith({ where: { id: "a1" }, data: { level: "reviewer", levelChangedAt: expect.any(Date) } });
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -169,6 +169,26 @@ describe("silenceReleases / demoteFromSilence (#451)", () => {
     expect(where.releasedAt.gte).toEqual(new Date("2026-10-12T12:00:00.000Z"));
   });
 
+  it("counts only releases after the last level change (#390)", async () => {
+    const now = new Date("2026-10-19T12:00:00.000Z");
+    const restored = new Date("2026-10-17T09:00:00.000Z");
+    // Restored two days ago: newer than the window start, older than `now`.
+    db.agent.findUnique.mockResolvedValue(agentRow({ levelChangedAt: restored }));
+    await silenceReleases("a1", undefined, now);
+
+    const where = db.issueClaim.count.mock.calls[0][0].where;
+    expect(where.releasedAt.gte).toEqual(restored);
+  });
+
+  it("keeps the window when the level change is older than it (#390)", async () => {
+    const now = new Date("2026-10-19T12:00:00.000Z");
+    db.agent.findUnique.mockResolvedValue(agentRow({ levelChangedAt: new Date("2026-10-01T00:00:00.000Z") }));
+    await silenceReleases("a1", undefined, now);
+
+    const where = db.issueClaim.count.mock.calls[0][0].where;
+    expect(where.releasedAt.gte).toEqual(new Date("2026-10-12T12:00:00.000Z"));
+  });
+
   it("does not demote on two silence releases", async () => {
     db.issueClaim.count.mockResolvedValue(SILENCE_DEMOTION_RELEASES - 1);
 
@@ -178,13 +198,25 @@ describe("silenceReleases / demoteFromSilence (#451)", () => {
     expect(db.agent.update).not.toHaveBeenCalled();
   });
 
+  it("leaves a just-restored contributor alone: releases before the restore do not count (#390)", async () => {
+    // The old three strikes happened before the owner restored the agent, so
+    // the sweep's count (now filtered to post-restore releases) is zero.
+    db.issueClaim.count.mockResolvedValue(0);
+
+    const result = await demoteFromSilence("a1");
+
+    expect(result).toEqual({ ok: true, changed: false, releases: 0 });
+    expect(db.agent.update).not.toHaveBeenCalled();
+    expect(db.agentAuditEvent.create).not.toHaveBeenCalled();
+  });
+
   it("demotes a contributor to observer at three silence releases", async () => {
     db.issueClaim.count.mockResolvedValue(SILENCE_DEMOTION_RELEASES);
 
     const result = await demoteFromSilence("a1");
 
     expect(result).toEqual({ ok: true, changed: true, releases: 3 });
-    expect(db.agent.update).toHaveBeenCalledWith({ where: { id: "a1" }, data: { level: "observer" } });
+    expect(db.agent.update).toHaveBeenCalledWith({ where: { id: "a1" }, data: { level: "observer", levelChangedAt: expect.any(Date) } });
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -222,7 +254,7 @@ describe("grantLevelByAdmin (#451)", () => {
     const result = await grantLevelByAdmin({ actor: admin, agentId: "a1", level: "merger", reason: "field lead" });
 
     expect(result).toEqual({ ok: true, changed: true });
-    expect(db.agent.update).toHaveBeenCalledWith({ where: { id: "a1" }, data: { level: "merger" } });
+    expect(db.agent.update).toHaveBeenCalledWith({ where: { id: "a1" }, data: { level: "merger", levelChangedAt: expect.any(Date) } });
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -249,7 +281,7 @@ describe("grantLevelByAdmin (#451)", () => {
     const result = await grantLevelByAdmin({ actor: admin, agentId: "a1", level: "reviewer", reason: "earned elsewhere" });
 
     expect(result).toEqual({ ok: true, changed: true });
-    expect(db.agent.update).toHaveBeenCalledWith({ where: { id: "a1" }, data: { level: "reviewer" } });
+    expect(db.agent.update).toHaveBeenCalledWith({ where: { id: "a1" }, data: { level: "reviewer", levelChangedAt: expect.any(Date) } });
   });
 });
 

@@ -140,7 +140,7 @@ describe("revokeAgent and setAgentLevel (#427)", () => {
     db.agent.findUnique.mockResolvedValue(agentRow);
     db.agent.findUniqueOrThrow.mockResolvedValue({ level: "observer" });
     expect(await setAgentLevel(ada, "agent1", "reviewer")).toEqual({ ok: true });
-    expect(db.agent.update.mock.calls[0][0].data).toEqual({ level: "reviewer" });
+    expect(db.agent.update.mock.calls[0][0].data).toEqual({ level: "reviewer", levelChangedAt: expect.any(Date) });
     expect(await setAgentLevel(ada, "agent1", "merger")).toMatchObject({ ok: false });
     expect(await setAgentLevel(ada, "agent1", "dispatcher")).toMatchObject({ ok: false });
     expect(db.agent.update).toHaveBeenCalledTimes(1);
@@ -150,7 +150,7 @@ describe("revokeAgent and setAgentLevel (#427)", () => {
     db.agent.findUnique.mockResolvedValue(agentRow);
     db.agent.findUniqueOrThrow.mockResolvedValue({ level: "contributor" });
     expect(await setAgentLevel({ id: "root", role: "super_admin" }, "agent1", "merger")).toEqual({ ok: true });
-    expect(db.agent.update.mock.calls[0][0].data).toEqual({ level: "merger" });
+    expect(db.agent.update.mock.calls[0][0].data).toEqual({ level: "merger", levelChangedAt: expect.any(Date) });
     expect(db.membership.findUnique).not.toHaveBeenCalled();
   });
 });
