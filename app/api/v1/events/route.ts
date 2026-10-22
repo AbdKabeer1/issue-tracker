@@ -1,7 +1,8 @@
 import { createMethodNotAllowed, createOptions } from "@/lib/agent-api/http-errors";
 import { NextResponse, type NextRequest } from "next/server";
 import { agentIssueRequest } from "@/lib/agent-api/issues";
-import { parseEventCursor, eventCursorError, parseEventFilters, pollEvents, encodeEventCursor } from "@/lib/agent-api/events";
+import { parseEventCursor, eventCursorError, parseEventFilters, pollEvents, encodeEventCursor, scopeEventFilters } from "@/lib/agent-api/events";
+import { AgentProjectError } from "@/lib/agents/require-agent";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
