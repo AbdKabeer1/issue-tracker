@@ -288,7 +288,7 @@ describe("agent issue reads", () => {
     expect(db.bug.findMany.mock.lastCall?.[0].where).toMatchObject({ areaId: null });
   });
 
-  it("rejects absent/foreign projects, invalid enums, and malformed cursors", async () => {
+  it("rejects absent/foreign projects and malformed cursors", async () => {
     // #563: a missing projectId names the parameter instead of a raw validation dump.
     const missing = await list(request("GET", undefined, ""));
     expect(missing.status).toBe(400);
@@ -297,9 +297,22 @@ describe("agent issue reads", () => {
     db.project.findFirst.mockResolvedValueOnce(null);
     expect((await list(request())).status).toBe(404);
     expect(db.project.findFirst).toHaveBeenCalledWith({ where: { id: "project-a", tenantId: "tenant-a" }, select: { id: true } });
-    expect((await list(request("GET", undefined, "?projectId=project-a&status=unknown"))).status).toBe(422);
-    expect((await list(request("GET", undefined, "?projectId=project-a&stage=queued"))).status).toBe(422);
     expect((await list(request("GET", undefined, "?projectId=project-a&cursor=bad"))).status).toBe(400);
+    expect(db.bug.findMany).not.toHaveBeenCalled();
+  });
+
+  it("names invalid status, severity, stage and assignee filters (#406)", async () => {
+    const cases: [string, string][] = [
+      ["status=unknown", "status must be one of open, in_progress, resolved, closed."],
+      ["severity=urgent", "severity must be one of low, medium, high, critical."],
+      ["stage=queued", "stage must be one of reported, confirmed, ready."],
+      ["assignee=%20", 'assignee must be "none" or a valid user id.'],
+    ];
+    for (const [query, error] of cases) {
+      const response = await list(request("GET", undefined, `?projectId=project-a&${query}`));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error });
+    }
     expect(db.bug.findMany).not.toHaveBeenCalled();
   });
 
