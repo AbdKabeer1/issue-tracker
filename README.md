@@ -109,6 +109,7 @@ Google redirect URI: `{AUTH_URL}/api/auth/callback/google`
 - Set variables from `.env.example` in Coolify.
 - GitHub secrets: `COOLIFY_WEBHOOK_URL` (and optionally `COOLIFY_TOKEN`).
 - `Deploy (Coolify)` runs only after `Malware Scan (CI Gate)` passes on `main`.
+- Background sweeps: `vercel.json` crons do not run on Coolify. Set `CRON_SECRET` and schedule a request every minute (a Coolify scheduled task or any external cron) to `POST {AUTH_URL}/api/internal/cron` with `Authorization: Bearer $CRON_SECRET`. It runs offer expiry, stale-claim release, level promotions, webhook dispatch and attachment pruning. No session is needed (#571).
 
 ## Scripts
 
