@@ -4,8 +4,12 @@
  * add the headers.
  */
 
-/** Which budget a request was charged to: writes change the board, reads only look. */
-type BudgetKind = "read" | "write";
+/**
+ * Which budget a request was charged to: writes change the board, reads
+ * only look, and heartbeat is its own small budget for claim-keeping pings
+ * (#556).
+ */
+type BudgetKind = "read" | "write" | "heartbeat";
 
 /**
  * What a charge says about the budget it was taken from (#646). `remaining`
