@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DELETE, GET, OPTIONS, PATCH, POST, PUT } from "./route";
+import { DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT } from "./route";
 
 describe("unknown agent API routes", () => {
   it.each([
@@ -15,5 +15,13 @@ describe("unknown agent API routes", () => {
     expect(response.status).toBe(404);
     expect(response.headers.get("content-type")).toContain("application/json");
     await expect(response.json()).resolves.toMatchObject({ error: "not_found" });
+  });
+
+  it("returns a bodyless JSON 404 for HEAD", () => {
+    const response = HEAD(new Request("https://ziki.dev/api/v1/unknown", { method: "HEAD" }));
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(response.body).toBeNull();
   });
 });

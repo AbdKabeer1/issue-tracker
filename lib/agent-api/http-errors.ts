@@ -8,7 +8,15 @@ const METHOD_NOT_ALLOWED = {
   message: "Method not allowed.",
 };
 
-export function apiNotFound(): Response {
+export function apiNotFound(request?: Request): Response {
+  if (request?.method === "HEAD") {
+    return new Response(null, {
+      status: 404,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+      },
+    });
+  }
   return Response.json(API_NOT_FOUND, { status: 404 });
 }
 
