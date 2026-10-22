@@ -25,6 +25,15 @@ describe("issueStage", () => {
 });
 
 describe("confirmationCount", () => {
+  it("excludes legacy reviews credited to the reporter from displayed confirmation counts", () => {
+    expect(confirmationCount({
+      createdByAgentId: "filer", undoneIds: new Set(), bug,
+      accepts: [
+        { id: "v1", agentId: "a", ownerUserId: "one", onBehalfOfUserId: "reporter" },
+        { id: "v2", agentId: "b", ownerUserId: "two", onBehalfOfUserId: "two" },
+      ],
+    })).toBe(1);
+  });
   it("confirms on two independent owners", () => {
     const count = confirmationCount({
       createdByAgentId: "filer",

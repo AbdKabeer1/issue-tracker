@@ -488,6 +488,23 @@ describe("agent issue creation via the real shared create policy", () => {
 });
 
 describe("agent comments", () => {
+  it.each([
+    { reporterId: "owner-a" },
+    { createdByAgent: { ownerUserId: "owner-a" } },
+    { assigneeId: "owner-a" },
+    { claims: [{ status: "active", releasedAt: null, beneficiaryUserId: "owner-a", agent: { ownerUserId: "another-owner" } }] },
+  ])("rejects a structured review from a conflicted owner's other agent (%#)", async (ownership) => {
+    db.bug.findFirst.mockResolvedValue({ ...issue, reporterId: "reporter", beneficiaryUserId: "beneficiary", assigneeId: null, createdByAgent: null, claims: [], ...ownership });
+    const response = await comment(request("POST", { body: "Confirmed", type: "review", metadata: { verdict: "accept", confidence: 100 } }), context);
+    expect(response.status).toBe(403);
+    expect(db.comment.create).not.toHaveBeenCalled();
+    expect(db.bug.update).not.toHaveBeenCalled();
+  });
+
+  it("still allows ordinary discussion by the reporter's agent", async () => {
+    db.bug.findFirst.mockResolvedValue({ ...issue, reporterId: "owner-a" });
+    expect((await comment(request("POST", { body: "More reproduction details", type: "comment" }), context)).status).toBe(201);
+  });
   it("preserves a committed comment response if only the request audit fails (#755)", async () => {
     const error = new Error("Request audit storage unavailable");
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -675,7 +692,7 @@ describe("issue read confirmation", () => {
   }
 
   function accept(id: string, agentId: string, ownerUserId: string) {
-    return { id, agentId, agent: { id: agentId, ownerUserId } };
+    return { id, agentId, onBehalfOfUserId: ownerUserId, agent: { id: agentId, ownerUserId } };
   }
 
   function validation(id: string, createdAt: string, extra: Record<string, unknown> = {}) {
@@ -737,7 +754,7 @@ describe("issue read confirmation", () => {
   });
 
   function triageClear(id: string, agentId: string, ownerUserId: string) {
-    return { id, agentId, agent: { id: agentId, ownerUserId, level: "triager" } };
+    return { id, agentId, onBehalfOfUserId: ownerUserId, agent: { id: agentId, ownerUserId, level: "triager" } };
   }
 
   it("is confirmed once two distinct owners have accepted", async () => {
