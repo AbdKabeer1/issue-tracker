@@ -62,6 +62,8 @@ describe("GET /api/attachments/[id]", () => {
       size: 100,
       data: Buffer.from("pdf-data"),
       bug: null,
+      comment: null,
+      redesignProposal: null,
     });
     const res = await makeRequest("att-1");
     expect(res.status).toBe(404);
@@ -75,6 +77,8 @@ describe("GET /api/attachments/[id]", () => {
       size: 10,
       data: Buffer.from("log-content"),
       bug: null,
+      comment: null,
+      redesignProposal: null,
     });
     const res = await makeRequest("att-1");
     expect(res.status).toBe(200);
@@ -92,6 +96,8 @@ describe("GET /api/attachments/[id]", () => {
       size: 50,
       data: Buffer.from("png-bytes"),
       bug: { isDeleted: true },
+      comment: null,
+      redesignProposal: null,
     });
     const res = await makeRequest("att-2");
     expect(res.status).toBe(404);
@@ -106,6 +112,8 @@ describe("GET /api/attachments/[id]", () => {
       size: 50,
       data: Buffer.from("png-bytes"),
       bug: { isDeleted: true, tenantId: "tenant-ziki" },
+      comment: null,
+      redesignProposal: null,
     });
     const res = await makeRequest("att-2");
     expect(res.status).toBe(404);
@@ -127,6 +135,8 @@ describe("GET /api/attachments/[id]", () => {
       size: 50,
       data: Buffer.from("png-bytes"),
       bug: { isDeleted: true, tenantId: "tenant-ziki" },
+      comment: null,
+      redesignProposal: null,
     });
     membershipFindUnique.mockResolvedValue({ userId: "admin-1" });
     const res = await makeRequest("att-2");
@@ -142,6 +152,8 @@ describe("GET /api/attachments/[id]", () => {
       size: 100,
       data: Buffer.from("webp-bytes"),
       bug: { isDeleted: false, tenantId: "tenant-ziki" },
+      comment: null,
+      redesignProposal: null,
     });
     membershipFindUnique.mockResolvedValue({ userId: "user-3" });
     const res = await makeRequest("att-3");
@@ -149,11 +161,50 @@ describe("GET /api/attachments/[id]", () => {
     expect(res.headers.get("Content-Type")).toBe("image/webp");
   });
 
+  it("returns 200 for normal user if attachment belongs to a comment on an active issue (#578)", async () => {
+    userMock.mockResolvedValue({ id: "user-3", role: "user" });
+    findUnique.mockResolvedValue({
+      uploaderId: "user-2",
+      filename: "comment-attachment.png",
+      contentType: "image/png",
+      size: 100,
+      data: Buffer.from("png-bytes"),
+      bug: null,
+      comment: { bug: { isDeleted: false, tenantId: "tenant-ziki" } },
+      redesignProposal: null,
+    });
+    membershipFindUnique.mockResolvedValue({ userId: "user-3" });
+    const res = await makeRequest("att-comment");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("image/png");
+    expect(membershipFindUnique).toHaveBeenCalledWith({
+      where: { tenantId_userId: { tenantId: "tenant-ziki", userId: "user-3" } },
+      select: { userId: true },
+    });
+  });
+
+  it("returns 404 for non-member if attachment belongs to a comment (#578)", async () => {
+    userMock.mockResolvedValue({ id: "user-3", role: "user" });
+    findUnique.mockResolvedValue({
+      uploaderId: "user-2",
+      filename: "comment-attachment.png",
+      contentType: "image/png",
+      size: 100,
+      data: Buffer.from("png-bytes"),
+      bug: null,
+      comment: { bug: { isDeleted: false, tenantId: "tenant-ziki" } },
+      redesignProposal: null,
+    });
+    membershipFindUnique.mockResolvedValue(null);
+    const res = await makeRequest("att-comment");
+    expect(res.status).toBe(404);
+  });
+
   it("serves a proposal mockup only to members of its tenant", async () => {
     userMock.mockResolvedValue({ id: "user-3", role: "user" });
     findUnique.mockResolvedValue({
       uploaderId: "user-2", filename: "mockup.png", contentType: "image/png", size: 50,
-      data: Buffer.from("png-bytes"), bug: null, redesignProposal: { tenantId: "tenant-1" },
+      data: Buffer.from("png-bytes"), bug: null, comment: null, redesignProposal: { tenantId: "tenant-1" },
     });
     membershipFindUnique.mockResolvedValue({ userId: "user-3" });
     expect((await makeRequest("att-proposal")).status).toBe(200);
@@ -248,4 +299,3 @@ describe("DELETE /api/attachments/[id] (#658)", () => {
     expect(attachmentDelete).toHaveBeenCalledWith({ where: { id: "att-2" } });
   });
 });
-
