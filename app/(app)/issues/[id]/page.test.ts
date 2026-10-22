@@ -34,6 +34,9 @@ const pageSource = readFileSync(
 vi.mock("next/navigation", () => ({
   notFound: vi.fn(),
   redirect: vi.fn(),
+  permanentRedirect: vi.fn((to: string) => {
+    throw new Error(`REDIRECT ${to}`);
+  }),
 }));
 
 vi.mock("@/lib/session-user", () => ({
@@ -79,6 +82,7 @@ vi.mock("@/lib/lookups", () => ({
 }));
 
 vi.mock("@/lib/comment-window", () => ({
+  COMMENT_PARAM: "comment",
   COMMENT_THREADS_PER_PAGE: 10,
   earlierThreadsHref: vi.fn().mockReturnValue("#"),
   loadCommentWindow: vi.fn().mockResolvedValue({
@@ -99,7 +103,7 @@ vi.mock("@/lib/platforms", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    bug: { findUnique: vi.fn() },
+    bug: { findUnique: vi.fn(), findFirst: vi.fn(async () => ({ id: "bug-1", number: 1 })) },
     membership: { findUnique: vi.fn().mockResolvedValue({ role: "member", userId: "user-123" }) },
     redesignProposal: { findMany: vi.fn().mockResolvedValue([]) },
     issueBid: { findMany: vi.fn().mockResolvedValue([]) },
@@ -124,6 +128,8 @@ vi.mock("@/lib/prisma", () => ({
 import { resolveSessionUserId } from "@/lib/session-user";
 import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { notFound } from "next/navigation";
+import { parseCommentTarget } from "@/lib/comment-window";
 import BugDetailPage from "./page";
 
 const mockResolveSessionUserId = vi.mocked(resolveSessionUserId);
@@ -217,7 +223,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
       } as unknown as Awaited<ReturnType<typeof requireUser>>);
 
       await BugDetailPage({
-        params: Promise.resolve({ id: "bug-1" }),
+        params: Promise.resolve({ id: "1" }),
       });
 
       expect(mockUserFindMany).not.toHaveBeenCalled();
@@ -230,7 +236,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
       } as unknown as Awaited<ReturnType<typeof requireUser>>);
 
       await BugDetailPage({
-        params: Promise.resolve({ id: "bug-1" }),
+        params: Promise.resolve({ id: "1" }),
       });
 
       expect(mockUserFindMany).not.toHaveBeenCalled();
@@ -253,7 +259,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
       ] as unknown as Awaited<ReturnType<typeof prisma.user.findMany>>);
 
       await BugDetailPage({
-        params: Promise.resolve({ id: "bug-1" }),
+        params: Promise.resolve({ id: "1" }),
       });
 
       expect(mockUserFindMany).toHaveBeenCalledTimes(1);
@@ -275,7 +281,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
       ] as unknown as Awaited<ReturnType<typeof prisma.user.findMany>>);
 
       await BugDetailPage({
-        params: Promise.resolve({ id: "bug-1" }),
+        params: Promise.resolve({ id: "1" }),
       });
 
       expect(mockUserFindMany).toHaveBeenCalledTimes(1);
@@ -300,7 +306,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
 
       const before = countQueries();
       await BugDetailPage({
-        params: Promise.resolve({ id: "bug-1" }),
+        params: Promise.resolve({ id: "1" }),
       });
       const executed = countQueries() - before;
 
@@ -342,7 +348,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
         } as unknown as Awaited<ReturnType<typeof prisma.bug.findUnique>>);
 
       const element = await BugDetailPage({
-        params: Promise.resolve({ id: "bug-1" }),
+        params: Promise.resolve({ id: "1" }),
       });
 
       expect(element).toBeDefined();
@@ -365,7 +371,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
       const dbError = new Error('relation "Bug" violates constraint "Bug_tenantId_fkey" on column secret_col');
       mockBugFindUnique.mockRejectedValueOnce(dbError);
 
-      const element = await BugDetailPage({ params: Promise.resolve({ id: "bug-1" }) });
+      const element = await BugDetailPage({ params: Promise.resolve({ id: "1" }) });
       const html = renderToStaticMarkup(element as ReactElement);
 
       expect(html).toContain("This issue could not be loaded");
@@ -376,6 +382,38 @@ describe("BugDetailPage conditional user query (#349)", () => {
       expect(reference).toBeDefined();
       expect(consoleError).toHaveBeenCalledWith(`[issue] detail query failed (ref ${reference})`, dbError);
       consoleError.mockRestore();
+    });
+
+    describe("readable issue addresses (#457)", () => {
+      beforeEach(() => {
+        mockRequireUser.mockResolvedValue({ id: "user-123", role: "user" } as unknown as Awaited<ReturnType<typeof requireUser>>);
+      });
+
+      it("redirects an old internal-id link to the number, keeping the query", async () => {
+        mockBugFindUnique.mockResolvedValueOnce({ id: "cmlegacy0001", number: 1 } as never);
+        vi.mocked(parseCommentTarget).mockReturnValueOnce("c9");
+        await expect(
+          BugDetailPage({
+            params: Promise.resolve({ id: "cmlegacy0001" }),
+            searchParams: Promise.resolve({ comment: "c9" }),
+          }),
+        ).rejects.toThrow("REDIRECT /issues/1?comment=c9#comment-c9");
+      });
+
+      it("loads the issue by number inside the viewer's organisation", async () => {
+        await BugDetailPage({ params: Promise.resolve({ id: "ZE-1" }) });
+        expect(vi.mocked(prisma.bug.findFirst)).toHaveBeenCalledWith(
+          expect.objectContaining({ where: expect.objectContaining({ number: 1 }) }),
+        );
+        expect(mockBugFindUnique).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: "bug-1" }) }));
+      });
+
+      it("finds nothing for a number another organisation owns", async () => {
+        vi.mocked(prisma.bug.findFirst).mockResolvedValueOnce(null);
+        mockBugFindUnique.mockResolvedValue(null as never);
+        await BugDetailPage({ params: Promise.resolve({ id: "999" }) });
+        expect(vi.mocked(notFound)).toHaveBeenCalled();
+      });
     });
   });
 });

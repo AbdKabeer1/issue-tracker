@@ -2,12 +2,13 @@ import Link from "next/link";
 import Image from "next/image";
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { agentMentionId } from "@/lib/mentions";
 import { requireUser } from "@/lib/auth-helpers";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { viewerBugScope } from "@/lib/tenant-viewer";
+import { issuePath, parseIssueRef, queryString, resolveIssueRef } from "@/lib/issue-ref";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { LocalTime } from "@/components/local-time";
 import { ClearDuplicateButton, MarkDuplicateButton } from "@/components/duplicate-controls";
@@ -17,6 +18,7 @@ import { formatIssueNumber } from "@/lib/issue-number";
 import { intakeDetail, openIssueStages, type IssueStage } from "@/lib/issue-stage";
 import { buildCommentTree } from "@/lib/comments";
 import {
+  COMMENT_PARAM,
   COMMENT_THREADS_PER_PAGE,
   earlierThreadsHref,
   loadCommentWindow,
@@ -113,9 +115,11 @@ function issueLoadError(reference: string) {
 export async function generateMetadata({
   params,
 }: BugPageProps): Promise<Metadata> {
-  const { id } = await params;
-  const bug = await prisma.bug.findUnique({
-    where: { id, ...(await viewerBugScope()) },
+  const { id: rawId } = await params;
+  const scope = await viewerBugScope();
+  const ref = await resolveIssueRef(prisma, parseIssueRef(rawId), scope);
+  const bug = ref && await prisma.bug.findUnique({
+    where: { id: ref.id, ...scope },
     select: {
       number: true,
       title: true,
@@ -136,7 +140,7 @@ export async function generateMetadata({
   // Title and status only: these tags are served to anyone with a preview-bot
   // User-Agent, signed in or not (#117).
   const description = bugLinkPreviewDescription({ status: bug.status });
-  const canonical = absoluteUrl(`/issues/${id}`);
+  const canonical = absoluteUrl(issuePath(bug.number));
   const image = absoluteUrl(SHARE_IMAGE.url);
   // The reference goes in the tab title too: with several issues open, the
   // number is what tells two similar titles apart.
@@ -179,7 +183,8 @@ export async function generateMetadata({
  * @param props.searchParams - Optional query params for thread windowing or permalinks.
  */
 export default async function BugDetailPage({ params, searchParams }: BugPageProps) {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const ref = parseIssueRef(rawId);
   const query = (await searchParams) ?? {};
   const resolved = await resolveSessionUserId();
   const userId = "userId" in resolved ? resolved.userId : undefined;
@@ -188,8 +193,10 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   // They're recognised by User-Agent, which anyone can fake, so nothing more
   // sensitive (reporter, severity, description) may appear here.
   if (!userId) {
-    const bug = await prisma.bug.findUnique({
-      where: { id },
+    // A bare number needs the viewer's organisation, so a signed-out preview
+    // can only resolve the internal id (#457).
+    const bug = ref.kind === "id" && await prisma.bug.findUnique({
+      where: { id: ref.id },
       select: {
         title: true,
         status: true,
@@ -208,7 +215,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           </Badge>
         </div>
         <Link
-          href={`/login?callbackUrl=${encodeURIComponent(`/issues/${id}`)}`}
+          href={`/login?callbackUrl=${encodeURIComponent(`/issues/${rawId}`)}`}
           className="inline-flex text-sm font-medium text-teal-700 hover:underline"
         >
           Sign in to view full details
@@ -222,6 +229,16 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   const canTriage = access.admin;
   const canDelete = canDeleteTicket(user.role, access.membershipRole);
   const userTenantId = await currentTenantIdFor(userId);
+  // #457: the address is the readable number. An old internal-id link redirects
+  // to it, keeping comment permalinks and other query parameters.
+  const found = await resolveIssueRef(prisma, ref, bugInTenant(userTenantId));
+  if (found && ref.kind === "id") {
+    // The page streams, so this redirect happens in the browser and can drop
+    // the #fragment; a comment permalink gets its anchor back from the query.
+    const comment = parseCommentTarget(query[COMMENT_PARAM]);
+    permanentRedirect(`${issuePath(found.number)}${queryString(query)}${comment ? `#comment-${comment}` : ""}`);
+  }
+  const id = found?.id ?? (ref.kind === "id" ? ref.id : "");
   // #289: open milestones for the triage panel (admins only). Started here,
   // alongside the issue query, and awaited where the form needs them.
   const milestoneOptionsPromise: Promise<{ id: string; title: string; isClosed: boolean }[]> = canTriage
@@ -681,7 +698,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             {bug.duplicateOf.isDeleted && !canDelete ? (
               <span>{formatIssueNumber(bug.duplicateOf.number)} (since deleted)</span>
             ) : (
-              <Link href={`/issues/${bug.duplicateOf.id}`} className="font-semibold text-teal-800 underline-offset-2 hover:underline">
+              <Link href={issuePath(bug.duplicateOf.number)} className="font-semibold text-teal-800 underline-offset-2 hover:underline">
                 {formatIssueNumber(bug.duplicateOf.number)} {bug.duplicateOf.title}
               </Link>
             )}{" "}
@@ -705,7 +722,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           <ul className="mt-2 space-y-1 text-sm">
             {bug.duplicates.map((d) => (
               <li key={d.id}>
-                <Link href={`/issues/${d.id}`} className="text-teal-800 hover:underline">
+                <Link href={issuePath(d.number)} className="text-teal-800 hover:underline">
                   <span className="text-slate-500 tabular-nums">{formatIssueNumber(d.number)}</span> {d.title}
                 </Link>{" "}
                 <span className="text-xs text-slate-500">· {statusLabels[d.status]}</span>
@@ -892,7 +909,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         users={users}
         createdAt={bug.createdAt}
         lastEditedAt={lastRevision?.editedAt ?? null}
-        historyHref={`/issues/${bug.id}/history`}
+        historyHref={issuePath(bug.number, "/history")}
       >
         <dl className="mt-6 grid grid-cols-1 gap-3 text-sm text-slate-600 sm:grid-cols-2">
           {bug.type ? (
@@ -1072,7 +1089,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         </Suspense>
         <CommentThread
           bugId={bug.id}
-          issueUrl={absoluteUrl(`/issues/${bug.id}`)}
+          issueUrl={absoluteUrl(issuePath(bug.number))}
           reporterId={bug.reporterId}
           comments={commentTree}
           attachmentsByComment={attachmentsByComment}

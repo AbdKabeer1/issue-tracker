@@ -8,7 +8,7 @@ import { withAgentBudgetHeaders, type AgentBudgetQuota } from "@/lib/agents/rate
 import { resolveSessionUserId } from "@/lib/session-user";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { prisma } from "@/lib/prisma";
-import { FeedInputError, feedProject, parseFeedCursor, readFeed } from "@/lib/feed";
+import { FeedInputError, feedProject, parseFeedCursor, parseFeedLimit, readFeed } from "@/lib/feed";
 import { parseProjectAreaFilter } from "@/lib/project-area-filter";
 
 export async function GET(request: NextRequest) {
@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
     }
     if (!tenantId) return withAgentBudgetHeaders(NextResponse.json({ error: "No workspace membership." }, { status: 403 }), quota);
     const cursor = parseFeedCursor(request.nextUrl.searchParams);
+    const limit = parseFeedLimit(request.nextUrl.searchParams);
     const project = await feedProject(tenantId, request.nextUrl.searchParams.get("projectId"));
     if (!project) return withAgentBudgetHeaders(NextResponse.json({ error: "Project not found." }, { status: 404 }), quota);
     if (agent) assertKeyProject(agent, project.id);
@@ -47,7 +48,7 @@ export async function GET(request: NextRequest) {
       throw new FeedInputError(`Unknown area id "${requestedArea.trim()}". Use an id from this project, or "none".`);
     }
     return withAgentBudgetHeaders(
-      NextResponse.json(await readFeed(tenantId, project.id, cursor, area), {
+      NextResponse.json(await readFeed(tenantId, project.id, cursor, area, limit), {
         headers: { "Cache-Control": "private, no-store" },
       }),
       quota,

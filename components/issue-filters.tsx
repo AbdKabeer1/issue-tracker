@@ -36,6 +36,7 @@ import {
   type IssueSuggestion,
 } from "@/lib/issue-suggest";
 import { isTypingTarget } from "@/lib/keyboard-shortcuts";
+import { issuePath } from "@/lib/issue-ref";
 
 type TagType = { id: string; name: string; isActive?: boolean };
 
@@ -331,7 +332,7 @@ export function IssueFilters({
     }
     setOpen(false);
     setActive(-1);
-    router.push(`/issues/${suggestion.id}`);
+    router.push(issuePath(suggestion.number));
   }
 
   function removeTag(name: string) {

@@ -13,6 +13,14 @@ describe("agent API HTTP errors", () => {
     });
   });
 
+  it("keeps HEAD responses bodyless while reporting a 404", () => {
+    const response = apiNotFound(new Request("https://ziki.dev/api/v1/unknown", { method: "HEAD" }));
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(response.body).toBeNull();
+  });
+
   it("returns a JSON 405 and the route's allowed methods", async () => {
     const handler = createMethodNotAllowed(["GET", "HEAD", "OPTIONS"]);
     const response = handler(new Request("https://ziki.dev/api/v1/issues", { method: "PATCH" }));

@@ -299,7 +299,6 @@ export function AppHeader({
   userId,
   workspaces = [],
   activeTenantId = null,
-  canManagePlatforms = false,
   points = 0,
   solvedTasks = 0,
 }: {
@@ -317,8 +316,6 @@ export function AppHeader({
   /** Workspaces this person can open, and the one currently active. */
   workspaces?: WorkspaceChoice[];
   activeTenantId?: string | null;
-  /** Owner or admin of the organization currently open. */
-  canManagePlatforms?: boolean;
   /** This person's points in the open workspace. */
   points?: number;
   solvedTasks?: number;
@@ -350,12 +347,10 @@ export function AppHeader({
   }
 
   const items = headerNavItems(role, {
-    managePlatforms: canManagePlatforms,
     pendingEscalations: pendingEscalationsCount,
   });
   const canSwitchRole = Boolean((isRealSuperAdmin || isRealAdmin) && role);
   const realRole = realRoleOf({ isRealSuperAdmin, isRealAdmin });
-  const viewingAsOther = canSwitchRole && role !== realRole;
   const onNewIssue =
     pathname?.replace(/\/+$/, "") === "/issues/new" ||
     pathname?.replace(/\/+$/, "") === "/bugs/new";
@@ -398,16 +393,6 @@ export function AppHeader({
 
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
           <PointsChip points={points} solvedTasks={solvedTasks} userId={userId} />
-          {viewingAsOther ? (
-            <button
-              type="button"
-              onClick={() => setAccountOpen(true)}
-              className={`hidden items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 lg:inline-flex ${linkFocus}`}
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
-              Viewing as {roleViewLabels[effectiveRole].toLowerCase()}
-            </button>
-          ) : null}
 
           <NotificationsBell
             unreadCount={unreadCount}
@@ -439,12 +424,6 @@ export function AppHeader({
             >
               <span className="sr-only">Account menu for {userName}</span>
               <Avatar name={userName} image={userImage} size="md" />
-              {viewingAsOther ? (
-                <span
-                  className="absolute left-6 top-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-amber-500 lg:hidden"
-                  aria-hidden="true"
-                />
-              ) : null}
               <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path
                   fillRule="evenodd"
@@ -459,7 +438,7 @@ export function AppHeader({
                 id="account-menu"
                 className="absolute right-0 top-full z-50 mt-2 w-64 origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm motion-safe:animate-[header-pop_120ms_ease-out]"
               >
-                <AccountSummary userName={userName} userImage={userImage} role={effectiveRole} realRole={realRole} />
+                <AccountSummary userName={userName} userImage={userImage} realRole={realRole} />
                 {canSwitchRole ? (
                   <div className="border-t border-slate-100 px-2 py-2.5">
                     <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
@@ -503,12 +482,6 @@ export function AppHeader({
             aria-label={menuOpen ? "Close menu" : "Open menu"}
             className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 lg:hidden ${linkFocus}`}
           >
-            {viewingAsOther ? (
-              <span
-                className="absolute right-1 top-1 h-2 w-2 rounded-full bg-amber-500"
-                aria-hidden="true"
-              />
-            ) : null}
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
               {menuOpen ? (
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
@@ -595,7 +568,7 @@ export function AppHeader({
           </nav>
 
           <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50/60">
-            <AccountSummary userName={userName} userImage={userImage} role={effectiveRole} realRole={realRole} />
+            <AccountSummary userName={userName} userImage={userImage} realRole={realRole} />
             {canSwitchRole ? (
               <div className="border-t border-slate-200 px-3 py-3">
                 <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
@@ -615,12 +588,10 @@ export function AppHeader({
 function AccountSummary({
   userName,
   userImage,
-  role,
   realRole,
 }: {
   userName?: string | null;
   userImage?: string | null;
-  role: AppRole;
   realRole: AppRole;
 }) {
   return (
@@ -630,9 +601,6 @@ function AccountSummary({
         <p className="truncate text-sm font-medium text-slate-900">{userName}</p>
         <p className="truncate text-xs text-slate-500">
           {realRole === "user" ? "Member" : roleViewLabels[realRole]}
-          {role !== realRole ? (
-            <span className="text-amber-700"> · viewing as {roleViewLabels[role].toLowerCase()}</span>
-          ) : null}
         </p>
       </div>
     </div>
