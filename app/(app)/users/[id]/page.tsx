@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { pointTotals } from "@/lib/points/leaderboard";
 import { pointBalance } from "@/lib/points/balance";
+import { decodePointCursor, pointEntries, pointEntriesQuerySchema } from "@/lib/points/entries";
+import { PointsLedger } from "@/components/points-ledger";
 import { PointsSummary } from "@/components/points-summary";
 import { requireUser } from "@/lib/auth-helpers";
 import { canViewProfile, canViewWallet } from "@/lib/profile-access";
@@ -15,7 +17,7 @@ import { statusClass, statusLabels } from "@/lib/labels";
 import { teamAgentsForMember } from "@/lib/team-directory";
 import { TeamAgentList } from "@/components/team-agent-list";
 
-type ProfileProps = { params: Promise<{ id: string }> };
+type ProfileProps = { params: Promise<{ id: string }>; searchParams?: Promise<Record<string, string | string[] | undefined>> };
 
 /** How many of each list to show before pointing at the filtered list. */
 const RECENT = 10;
@@ -41,7 +43,7 @@ export async function generateMetadata({
   };
 }
 
-export default async function ProfilePage({ params }: ProfileProps) {
+export default async function ProfilePage({ params, searchParams }: ProfileProps) {
   const viewer = await requireUser();
   const { id } = await params;
   // #503: only people who share a tenant with this person can see them.
@@ -89,6 +91,17 @@ export default async function ProfilePage({ params }: ProfileProps) {
     tenantId ? pointBalance(prisma, { tenantId, userId: person.id }) : Promise.resolve(null),
     canViewWallet(prisma, viewer, person.id, tenantId),
   ]);
+
+  const ledgerParams = await searchParams ?? {};
+  const ledgerQuery = pointEntriesQuerySchema.safeParse({
+    from: ledgerParams.from || undefined, to: ledgerParams.to || undefined, cursor: ledgerParams.cursor || undefined,
+  });
+  let ledgerError = !ledgerQuery.success;
+  if (ledgerQuery.success && ledgerQuery.data.cursor) {
+    try { decodePointCursor(ledgerQuery.data.cursor); } catch { ledgerError = true; }
+  }
+  const ledger = tenantId && viewer.id === person.id && ledgerQuery.success && !ledgerError
+    ? await pointEntries(prisma, { tenantId, userId: person.id }, ledgerQuery.data) : null;
 
   const reportedTotal = counts.reduce((sum, row) => sum + row._count._all, 0);
   const resolved =
@@ -160,6 +173,10 @@ export default async function ProfilePage({ params }: ProfileProps) {
             </p>
           ) : null}
         </section>
+      ) : null}
+
+      {tenantId && viewer.id === person.id ? (
+        <PointsLedger page={ledger} profileId={person.id} from={ledgerQuery.success ? ledgerQuery.data.from : undefined} to={ledgerQuery.success ? ledgerQuery.data.to : undefined} error={ledgerError} />
       ) : null}
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5" aria-labelledby="profile-agents-heading">

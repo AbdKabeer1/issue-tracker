@@ -45,6 +45,11 @@ vi.mock("@/lib/prisma", () => ({
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import ProfilePage, { generateMetadata } from "./page";
+import { pointEntries } from "@/lib/points/entries";
+vi.mock("@/lib/points/entries", async original => ({
+  ...await original<typeof import("@/lib/points/entries")>(),
+  pointEntries: vi.fn(async () => ({ items: [], nextCursor: null })),
+}));
 
 const person = {
   id: "reporter-1",
@@ -133,5 +138,27 @@ describe("profiles outside your tenants (#503)", () => {
     expect(notFound).not.toHaveBeenCalled();
     const meta = await generateMetadata({ params: Promise.resolve({ id: person.id }) });
     expect(meta.title).toBe("Ada");
+  });
+});
+
+
+describe("owner-only points history (#461)", () => {
+  beforeEach(() => {
+    vi.mocked(notFound).mockImplementation(() => { throw new Error("NEXT_NOT_FOUND"); });
+    currentTenantIdFor.mockResolvedValue("tenant-zedu");
+  });
+  it("does not query ledger entries when viewing someone else's profile", async () => {
+    await ProfilePage({ params: Promise.resolve({ id: person.id }) });
+    expect(pointEntries).not.toHaveBeenCalled();
+  });
+  it("loads the authenticated owner's entries with requested date filters", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({ ...person, id: "viewer-1" } as never);
+    await ProfilePage({ params: Promise.resolve({ id: "viewer-1" }), searchParams: Promise.resolve({ from: "2026-10-01", to: "2026-10-22" }) });
+    expect(pointEntries).toHaveBeenCalledWith(prisma, { tenantId: "tenant-zedu", userId: "viewer-1" }, { from: "2026-10-01", to: "2026-10-22", limit: 25 });
+  });
+  it("does not query the ledger with an invalid cursor", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({ ...person, id: "viewer-1" } as never);
+    await ProfilePage({ params: Promise.resolve({ id: "viewer-1" }), searchParams: Promise.resolve({ cursor: "invalid" }) });
+    expect(pointEntries).not.toHaveBeenCalled();
   });
 });
