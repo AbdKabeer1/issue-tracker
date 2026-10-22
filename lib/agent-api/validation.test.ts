@@ -24,7 +24,7 @@ const db = vi.hoisted(() => ({
   bug: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
   bugRevision: { findFirst: vi.fn() },
   membership: { findMany: vi.fn(), findUnique: vi.fn() },
-  issueValidation: { findMany: vi.fn(), create: vi.fn(), count: vi.fn() },
+  issueValidation: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), count: vi.fn() },
   issueClaim: { findFirst: vi.fn(), groupBy: vi.fn(), findMany: vi.fn(), create: vi.fn() },
   redesignProposal: { count: vi.fn() },
   pointEntry: { createMany: vi.fn() },
@@ -129,8 +129,16 @@ beforeEach(() => {
     if (duplicate) {
       throw new Prisma.PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002", clientVersion: "6" });
     }
-    const row = { id: `v${state.validations.length + 1}`, ...data };
+    const row = { id: `v${state.validations.length + 1}`, createdAt: new Date(), ...data };
     state.validations.push(row);
+    return row;
+  });
+  db.issueValidation.findFirst.mockImplementation(async ({ where }: { where: Record<string, string> }) =>
+    state.validations.find((v) => v.bugId === where.bugId && v.agentId === where.agentId && v.kind === where.kind) ?? null,
+  );
+  db.issueValidation.update.mockImplementation(async ({ where, data }: { where: { id: string }; data: Partial<Row> }) => {
+    const row = state.validations.find((v) => v.id === where.id)!;
+    Object.assign(row, data);
     return row;
   });
 });
@@ -596,5 +604,51 @@ describe("confirmation: the triage clearance (triager)", () => {
       bugRow({ claims: [{ status: "active", releasedAt: null, agent: { ownerUserId: "tia" } }] }),
     );
     expect(await isConfirmed("bug1")).toBe(false);
+  });
+});
+
+describe("re-review after an edit (#493)", () => {
+  const tBefore = new Date("2026-10-21T20:00:00Z");
+  const tEdit = new Date("2026-10-21T21:02:00Z");
+
+  it("lets the same reviewers re-accept after an edit, and the issue confirms", async () => {
+    const rob = reviewer("r1", "rob");
+    const sam = reviewer("r2", "sam");
+    const tia = reviewer("t1", "tia", "triager");
+    // Rob and Sam accepted, then the issue was edited, voiding both.
+    state.validations = [
+      { id: "v1", bugId: "bug1", agentId: "r1", kind: "real", verdict: "accept", severity: "high", duplicateOfId: null, onBehalfOfUserId: "rob", createdAt: tBefore },
+      { id: "v2", bugId: "bug1", agentId: "r2", kind: "real", verdict: "accept", severity: "high", duplicateOfId: null, onBehalfOfUserId: "sam", createdAt: tBefore },
+    ];
+    db.bugRevision.findFirst.mockResolvedValue({ editedAt: tEdit });
+    expect(await submitValidation(tia, "bug1", clearTriage)).toMatchObject({ status: 201 });
+    expect(await isConfirmed("bug1")).toBe(false);
+
+    // Before #493 these were 409 already_validated forever.
+    expect(await submitValidation(rob, "bug1", acceptReal)).toMatchObject({ status: 201 });
+    const second = await submitValidation(sam, "bug1", acceptReal);
+    expect(second).toMatchObject({ status: 201, newlyConfirmed: true });
+    expect(await isConfirmed("bug1")).toBe(true);
+
+    // The stale rows were replaced, not duplicated.
+    expect(state.validations.filter((v) => v.kind === "real")).toHaveLength(2);
+    expect(db.issueValidation.update).toHaveBeenCalledTimes(2);
+  });
+
+  it("still refuses a second validation when nothing was edited since", async () => {
+    const rob = reviewer("r1", "rob");
+    db.bugRevision.findFirst.mockResolvedValue({ editedAt: tEdit });
+    expect(await submitValidation(rob, "bug1", acceptReal)).toMatchObject({ status: 201 });
+    expect(await submitValidation(rob, "bug1", acceptReal)).toMatchObject({ status: 409, error: "already_validated" });
+    expect(db.issueValidation.update).not.toHaveBeenCalled();
+  });
+
+  it("lets a triager re-clear an issue after an edit", async () => {
+    const tia = reviewer("t1", "tia", "triager");
+    state.validations = [
+      { id: "vt", bugId: "bug1", agentId: "t1", kind: "duplicate", verdict: "reject", severity: null, duplicateOfId: null, onBehalfOfUserId: "tia", createdAt: tBefore },
+    ];
+    db.bugRevision.findFirst.mockResolvedValue({ editedAt: tEdit });
+    expect(await submitValidation(tia, "bug1", clearTriage)).toMatchObject({ status: 201 });
   });
 });

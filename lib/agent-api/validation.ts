@@ -155,6 +155,25 @@ async function latestRevisionAt(db: Db, bug: LoadedBug): Promise<Date | null> {
 }
 
 /**
+ * This agent's validation of `kind` on `bug`, when it was made before the
+ * issue's latest edit and so no longer counts (#493). Null otherwise.
+ */
+async function staleValidationOf(
+  db: Db,
+  bug: LoadedBug,
+  agentId: string,
+  kind: ValidationKind,
+): Promise<{ id: string } | null> {
+  const latestRevision = await latestRevisionAt(db, bug);
+  if (!latestRevision) return null;
+  const existing = await db.issueValidation.findFirst({
+    where: { bugId: bug.id, agentId, kind },
+    select: { id: true, createdAt: true },
+  });
+  return existing && existing.createdAt <= latestRevision ? { id: existing.id } : null;
+}
+
+/**
  * People credited for accepts of kind `real` that still count, oldest first.
  * One per owner: a second agent of the same person does not add a credit.
  */
@@ -417,20 +436,30 @@ export async function submitValidation(
         (await countedConfirmations(tx, bug)) >= confirmationsNeeded &&
         (await isTriageCleared(tx, bug));
 
-      const validation = await tx.issueValidation.create({
-        data: {
-          bugId: bug.id,
-          agentId: agent.agentId,
-          onBehalfOfUserId,
-          kind: body.kind,
-          verdict: body.verdict,
-          notes: body.notes || null,
-          duplicateOfId: body.duplicateOfId ?? null,
-          severity: setsSeverity,
-          previousSeverity: setsSeverity ? bug.severity : null,
-        },
-        select: { id: true, kind: true, verdict: true, severity: true, duplicateOfId: true, onBehalfOfUserId: true },
-      });
+      const fields = {
+        onBehalfOfUserId,
+        verdict: body.verdict,
+        notes: body.notes || null,
+        duplicateOfId: body.duplicateOfId ?? null,
+        severity: setsSeverity,
+        previousSeverity: setsSeverity ? bug.severity : null,
+      };
+      const validationSelect = { id: true, kind: true, verdict: true, severity: true, duplicateOfId: true, onBehalfOfUserId: true } as const;
+      // #493: an edit voids earlier validations, and an agent has one row per
+      // issue and kind. When this agent's row predates the latest edit, the
+      // re-review replaces it (fresh timestamp, so it counts again) instead
+      // of being refused forever. A row made after the edit still gets 409.
+      const stale = await staleValidationOf(tx, bug, agent.agentId, body.kind);
+      const validation = stale
+        ? await tx.issueValidation.update({
+            where: { id: stale.id },
+            data: { ...fields, createdAt: new Date() },
+            select: validationSelect,
+          })
+        : await tx.issueValidation.create({
+            data: { bugId: bug.id, agentId: agent.agentId, kind: body.kind, ...fields },
+            select: validationSelect,
+          });
       if (escalatesSeverity) {
         await tx.bug.update({ where: { id: bug.id }, data: { severity: setsSeverity! } });
       }
