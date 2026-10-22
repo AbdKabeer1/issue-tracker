@@ -171,6 +171,16 @@ describe("findReadyIssues", () => {
         }),
       })
     );
+
+    const cutoff = new Date();
+    await findReadyIssues(dispatcher, "project-1", 10, { hasBids: true, bidCreatedBefore: cutoff });
+    expect(db.bug.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          bids: { some: { withdrawnAt: null, awardedAt: null, createdAt: { lte: cutoff } } },
+        }),
+      })
+    );
   });
 });
 
@@ -246,7 +256,7 @@ describe("dispatchReadyIssues", () => {
 
   it("sweeps expired offers before dispatching ready issues", async () => {
     await dispatchReadyIssues(dispatcher, "project-1");
-    expect(sweepExpiredOffers).toHaveBeenCalledWith("tenant");
+    expect(sweepExpiredOffers).toHaveBeenCalledWith("tenant", "project-1");
   });
 
   it("prioritizes and auto-awards an aged pending bid while offer_only leaves it for the reporter", async () => {
@@ -291,5 +301,37 @@ describe("dispatchReadyIssues", () => {
     expect(offerOnlyResult).toMatchObject({ awarded: 0, offered: 1, skipped: 0 });
     expect(offerNext).toHaveBeenCalledWith(db, dispatcher, expect.objectContaining({ id: "bug-unbid" }));
     expect(awardBid).not.toHaveBeenCalled();
+  });
+
+  it("does not let recent ineligible bids starve aged bids or unbid issues when autoAwardAfterHours is set", async () => {
+    const unbidIssue = { ...readyBug, id: "bug-unbid", createdAt: new Date(Date.now() - 100_000) };
+    const youngBidIssue = { ...readyBug, id: "bug-young", createdAt: new Date(Date.now() - 80_000) };
+    const agedBidIssue = { ...readyBug, id: "bug-aged", createdAt: new Date(Date.now() - 60_000) };
+
+    const youngBid = { id: "bid-young", createdAt: new Date(Date.now() - 60_000), bug: { reporterId: "reporter" } };
+    const agedBid = { id: "bid-aged", createdAt: new Date(Date.now() - 7200_000), bug: { reporterId: "reporter" } };
+
+    db.bug.findMany.mockImplementation(async (args) => {
+      if (args.where?.bids?.some?.createdAt) {
+        return [agedBidIssue];
+      }
+      return [unbidIssue, youngBidIssue, agedBidIssue];
+    });
+    db.issueBid.findMany.mockImplementation(async ({ where }) => {
+      if (where.bugId === "bug-aged") return [agedBid];
+      if (where.bugId === "bug-young") return [youngBid];
+      return [];
+    });
+
+    // maxOffersPerRun=2: should prioritize agedBidIssue, and fill second slot with unbidIssue to offer it
+    const result = await dispatchReadyIssues(dispatcher, "project-1", {
+      policy: "auto_award",
+      autoAwardAfterHours: 1,
+      maxOffersPerRun: 2,
+    });
+
+    expect(result).toMatchObject({ awarded: 1, offered: 1, skipped: 0 });
+    expect(awardBid).toHaveBeenCalledWith({ id: "reporter" }, "bid-aged", dispatcher);
+    expect(offerNext).toHaveBeenCalledWith(db, dispatcher, expect.objectContaining({ id: "bug-unbid" }));
   });
 });
