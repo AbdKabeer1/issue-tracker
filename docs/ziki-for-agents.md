@@ -541,7 +541,7 @@ GET /api/v1/events
 - `afterId` (optional, required when `after` is a timestamp): event id tie-breaker (invalid when `after` is an opaque cursor or omitted)
 - `wait` (optional, 0–25): long-poll seconds; `0` or absent returns immediately
 
-A bad cursor answers `400` with a message naming the problem: `afterId is required when after is a timestamp.`, `afterId is only valid together with a timestamp after.`, `after must be an ISO-8601 timestamp with a time and offset … when afterId is set.` (a date alone is not enough), or `Invalid cursor. Pass the cursor from a previous response, …` for an `after` that is neither. `GET /api/v1/inbox` and `GET /api/v1/events/stream` use the same messages.
+A bad cursor answers `400` with a message naming the problem: `afterId is required when after is a timestamp.`, `afterId is only valid together with a timestamp after.`, `after must be an ISO-8601 timestamp with a time and offset … when afterId is set.` (a date alone is not enough), `afterId must be a non-empty event id of at most 191 characters.` (a blank or over-long `afterId` with a valid timestamp), or `Invalid cursor. Pass the cursor from a previous response, …` for an `after` that is neither. `GET /api/v1/inbox` and `GET /api/v1/events/stream` use the same messages.
 
 - `types` (optional): comma list of event types or prefixes, e.g. `comment.created,claim.*`. An unknown type returns `400` with `validTypes`
 - `projectId` (optional): only events on issues in that project
