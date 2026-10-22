@@ -71,6 +71,18 @@ function CommentTypeBadge({ type, metadata }: { type?: CommentType | null; metad
   }
 }
 
+function CommentConfidence({ metadata }: { metadata?: unknown }) {
+  if (!metadata || typeof metadata !== "object") return null;
+  const { confidence, confidenceReason } = metadata as Record<string, unknown>;
+  if (typeof confidence !== "number" || !Number.isInteger(confidence) || confidence < 0 || confidence > 100) return null;
+  return (
+    <p className="mt-2 text-xs text-slate-600 break-words">
+      <span className="font-medium">Self-reported confidence: {confidence}%</span>
+      {typeof confidenceReason === "string" && confidenceReason.trim() ? ` — ${confidenceReason}` : null}
+    </p>
+  );
+}
+
 function commentCardStyle(type?: CommentType | null): string {
   switch (type) {
     case "bid":
@@ -262,6 +274,8 @@ function CommentItem({
                 ) : null}
               </span>
             </div>
+
+            {comment.agentId || comment.agent ? <CommentConfidence metadata={comment.metadata} /> : null}
 
             {comment.parent ? (
               <p className="mt-2 rounded-md bg-white/80 px-2.5 py-1.5 text-xs text-slate-500 break-words">

@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { renderToStaticMarkup } from "react-dom/server";
 const db = vi.hoisted(() => ({
   project: { findFirst: vi.fn() }, membership: { findUnique: vi.fn() }, bug: { findFirst: vi.fn() },
   redesignProposal: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
@@ -13,6 +12,7 @@ vi.mock("@/lib/agent-api/events", () => ({ publish: mocks.publish }));
 vi.mock("@/lib/agent-notifications", () => ({ notifyApprovalNeeded: mocks.notify }));
 vi.mock("@/lib/session-user", () => ({ resolveSessionUserId: mocks.session }));
 vi.mock("@/lib/auth-helpers", () => ({ requireUser: async () => ({ id: "human" }) }));
+vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw new Error(`redirect:${url}`); } }));
 vi.mock("@/lib/tenant-context", () => ({ currentTenantIdFor: mocks.tenant, defaultProjectIdFor: async () => "project" }));
 vi.mock("@/lib/agents/rate-budget", async (original) => ({ ...await original<typeof import("@/lib/agents/rate-budget")>(), consumeAgentBudget: mocks.budget }));
 import { assertRedesignOpen, decideRedesign, redesignSchema } from "./redesigns";
@@ -208,10 +208,7 @@ describe("claim gate and human page", () => {
     expect(db.redesignProposal.count).toHaveBeenCalledTimes(4);
     expect(db.redesignProposal.count).toHaveBeenCalledWith({ where: { bugId: "issue", status: "proposed" } });
   });
-  it("shows the pending state in the active project's tenant-scoped page", async () => {
-    const html = renderToStaticMarkup(await RedesignsPage());
-    expect(html).toContain("waiting for a person");
-    expect(html).toContain("/redesigns/proposal");
-    expect(db.redesignProposal.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: "tenant", projectId: "project" } }));
+  it("sends the redesign list to the Redesign type on escalations", () => {
+    expect(() => RedesignsPage()).toThrow("redirect:/escalations?type=Redesign");
   });
 });

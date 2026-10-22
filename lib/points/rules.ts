@@ -54,7 +54,9 @@ export function reviewerPointsAt(index: number, firstAward: number): number {
 /** The goal is this many points. Solved tasks are counted, not required. */
 export const TARGET_POINTS = 500;
 
-export type PointRole = "solver" | "reporter" | "reviewer" | "triager" | "submission";
+export const DISPATCHER_POINTS = 2;
+
+export type PointRole = "solver" | "reporter" | "reviewer" | "triager" | "submission" | "dispatcher";
 
 /** Idempotency key for paying the triager who cleared an issue as not a duplicate. */
 export function triagerClearSourceKey(bugId: string, userId: string): string {

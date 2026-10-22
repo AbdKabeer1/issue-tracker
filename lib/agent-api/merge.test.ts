@@ -64,7 +64,7 @@ function bugRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function merger(id: string, ownerId: string, level: "observer" | "contributor" | "reviewer" | "merger" = "merger") {
+function merger(id: string, ownerId: string, level: "observer" | "contributor" | "reviewer" | "dispatcher" | "merger" = "merger") {
   return { agentId: id, name: id, ownerId, tenantId: "tenant_zedu", level, burst: false, keyId: `key-${id}` };
 }
 
@@ -121,6 +121,13 @@ beforeEach(() => {
 });
 
 describe("acceptFix: who may merge (#434)", () => {
+  it("rejects a dispatcher without merger level before touching the issue", async () => {
+    expect(await acceptFix(merger("d1", "dan", "dispatcher"), "bug1")).toMatchObject({
+      status: 403,
+      error: "insufficient_level",
+    });
+    expect(db.bug.findFirst).not.toHaveBeenCalled();
+  });
   it("rejects a contributor and a reviewer before touching the issue", async () => {
     expect(await acceptFix(merger("c1", "cara", "contributor"), "bug1")).toMatchObject({
       status: 403,
@@ -264,6 +271,45 @@ describe("acceptFix: the gate (#434)", () => {
     verdict("r1", "rob");
     verdict("r2", "rob");
     expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({ status: 409, missing: "verdicts" });
+  });
+});
+
+describe("acceptFix: dispatcher completion reward", () => {
+  it("pays the dispatcher of the completed claim, not an earlier abandoned claim", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({ claims: [
+      { status: "released", releasedAt: new Date(), dispatcherUserId: "old-dispatcher" },
+      { status: "active", releasedAt: null, agentId: "solver-agent", beneficiaryUserId: "ada", dispatcherUserId: "dispatcher-owner", agent: { ownerUserId: "ada" } },
+    ] }));
+
+    expect(await acceptFix(merger("m1", "mo"), "bug1")).toMatchObject({ status: 200 });
+    const rewards = db.pointEntry.createMany.mock.calls.flatMap((call) => call[0].data).filter((entry) => entry.role === "dispatcher");
+    expect(rewards).toEqual([{
+      tenantId: "tenant_zedu", bugId: "bug1", userId: "dispatcher-owner",
+      role: "dispatcher", points: 2, sourceKey: "dispatcher:bug1",
+    }]);
+  });
+
+  it("does not pay a dispatcher before independent verdicts accept the fix", async () => {
+    confirmWith("rob", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({ claims: [
+      { status: "active", releasedAt: null, agentId: "solver-agent", beneficiaryUserId: "ada", dispatcherUserId: "dispatcher-owner", agent: { ownerUserId: "ada" } },
+    ] }));
+    expect(await acceptFix(merger("m1", "mo"), "bug1")).toMatchObject({ status: 409, missing: "verdicts" });
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it("does not let the rewarded dispatcher accept its own assigned fix", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({ claims: [
+      { status: "active", releasedAt: null, agentId: "solver-agent", beneficiaryUserId: "ada", dispatcherUserId: "mo", agent: { ownerUserId: "ada" } },
+    ] }));
+    expect(await acceptFix(merger("m1", "mo"), "bug1")).toMatchObject({ status: 403, error: "not_independent" });
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
   });
 });
 

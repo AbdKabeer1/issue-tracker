@@ -91,6 +91,26 @@ describe("CommentThread read-only mode (#122)", () => {
     expect(html).toContain(">Reply<");
   });
 
+  it.each([0, 85, 100])("renders self-reported confidence %s for agent comments and reviews", (confidence) => {
+    for (const type of ["comment", "review"] as const) {
+      const html = renderToStaticMarkup(createElement(CommentThread, {
+        bugId: "b1", issueUrl: "https://issues.example/bugs/b1", reporterId: "u2", users: [],
+        comments: [{ ...comments[0], agentId: "agent1", agent: { name: "Reviewer" }, type,
+          metadata: { confidence, confidenceReason: "Source inspected; not reproduced." } }],
+      }));
+      expect(html).toContain(`Self-reported confidence: ${confidence}%`);
+      expect(html).toContain("Source inspected; not reproduced.");
+    }
+  });
+
+  it.each([undefined, { confidence: 101 }, { confidence: "80" }, { confidence: -1 }])("hides missing or invalid legacy confidence", (metadata) => {
+    const html = renderToStaticMarkup(createElement(CommentThread, {
+      bugId: "b1", issueUrl: "https://issues.example/bugs/b1", reporterId: "u2", users: [],
+      comments: [{ ...comments[0], agentId: "agent1", metadata }],
+    }));
+    expect(html).not.toContain("Self-reported confidence:");
+  });
+
   it("renders structured comment badges like bid and delivery (#747)", () => {
     const comments: CommentNode[] = [
       {

@@ -101,7 +101,7 @@ async function findEligibleReviewerCandidates(
           some: {
             tenantId,
             revokedAt: null,
-            level: { in: ["reviewer", "merger"] },
+            level: { in: ["reviewer", "dispatcher", "merger"] },
           },
         },
       },
@@ -114,7 +114,7 @@ async function findEligibleReviewerCandidates(
             where: {
               tenantId,
               revokedAt: null,
-              level: { in: ["reviewer", "merger"] },
+              level: { in: ["reviewer", "dispatcher", "merger"] },
             },
             orderBy: { createdAt: "asc" },
             take: 1,

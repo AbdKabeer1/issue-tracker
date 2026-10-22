@@ -44,7 +44,7 @@ const agentCommentSchema = commentSchema.extend({ projectId: idSchema.optional()
 
 /** Authenticate before parsing input, charge the shared budget, and audit outcomes including denials. */
 export async function agentIssueRequest(
-  request: NextRequest, action: string, level: AgentLevel, target: string | null,
+  request: NextRequest, action: string, level: AgentLevel | "comment", target: string | null,
   run: (agent: AgentContext) => Promise<Response>,
   options: { budget?: "none" } = {},
 ): Promise<Response> {

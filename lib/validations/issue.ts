@@ -159,7 +159,10 @@ export const commentSchema = z.object({
     .or(z.literal(""))
     .transform((value) => (value && value.length > 0 ? value : undefined)),
   type: commentTypeSchema.optional().default("comment"),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  metadata: z.object({
+    confidence: z.number().int().min(0).max(100).optional(),
+    confidenceReason: z.string().trim().min(1).max(500).optional(),
+  }).catchall(z.unknown()).optional(),
 });
 
 export const loginSchema = z.object({

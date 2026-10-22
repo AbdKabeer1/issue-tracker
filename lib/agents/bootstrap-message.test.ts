@@ -16,8 +16,12 @@ describe("agentBootstrapMessage", () => {
     expect(message).toContain("Do not ask me to register or pair you");
     expect(message).toContain("Work only in Web");
     expect(message).toContain("You are ready to develop.");
-    expect(message).toContain("separate agent for each level");
+    expect(message).toContain("separate agent for each specialist role");
     expect(message).toContain("not an independent reviewer");
+    expect(message).toContain("specialists do not inherit");
+    expect(message).toContain("metadata.confidence");
+    expect(message).toContain("metadata.confidenceReason");
+    expect(message).toContain("Only a tenant admin can assign dispatcher or merger");
   });
 
   it("can instead ask the agent to request access, without a key", () => {
@@ -28,7 +32,7 @@ describe("agentBootstrapMessage", () => {
     expect(message).toContain("Do not only print the link");
     expect(message).toContain("POST https://ziki.dev/api/v1/agents/pairing/token");
     expect(message).toContain("Do not ask me to paste an API key");
-    expect(message).toContain("separate agent for each level");
+    expect(message).toContain("separate agent for each specialist role");
     expect(message).toContain("A second agent of mine is not an independent reviewer");
     expect(message).not.toContain("ziki_");
   });

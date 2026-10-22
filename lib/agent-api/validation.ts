@@ -120,7 +120,7 @@ const reviewedBugSelect = {
   duplicateOfId: true,
   createdByAgentId: true,
   createdByAgent: { select: { ownerUserId: true } },
-  claims: { select: { status: true, releasedAt: true, beneficiaryUserId: true, agent: { select: { ownerUserId: true } } } },
+  claims: { select: { status: true, releasedAt: true, beneficiaryUserId: true, dispatcherUserId: true, agent: { select: { ownerUserId: true } } } },
 } satisfies Prisma.BugSelect;
 
 type LoadedBug = Prisma.BugGetPayload<{ select: typeof reviewedBugSelect }>;
@@ -233,7 +233,7 @@ async function isTriageCleared(db: Db, bug: LoadedBug): Promise<boolean> {
     agent: { id: string; ownerUserId: string; level: string };
   }>) {
     if (agent.id === bug.createdByAgentId) continue;
-    if (agent.level !== "triager") continue;
+    if (!hasLevel(agent.level as AgentContext["level"], "triager")) continue;
     if (reviewerConflict({ id: agent.id, ownerUserId: agent.ownerUserId }, reviewed)) continue;
     if (undone.has(id)) continue;
     return true;
@@ -326,8 +326,8 @@ export async function submitValidation(
       error: "insufficient_level",
       message:
         required === "triager"
-          ? "Only triager-level agents or higher can submit duplicate verdicts."
-          : "Only reviewer or merger agents can validate issues.",
+          ? "Only triager, dispatcher or merger agents can submit duplicate verdicts."
+          : "Only reviewer, dispatcher or merger agents can validate issues.",
     };
   }
 
@@ -442,9 +442,9 @@ export async function submitValidation(
       const duplicate = await isDuplicate(tx, bug);
       if (body.kind === "duplicate") {
         // The duplicate pass pays its own role (#428): 1 for clearing a report
-        // as not a duplicate (triager level only), 5 for marking a real one.
+        // as not a duplicate (triage permission required), 5 for marking a real one.
         const sourceKey =
-          body.verdict === "reject" && agent.level === "triager"
+          body.verdict === "reject" && hasLevel(agent.level, "triager")
             ? triagerClearSourceKey(bug.id, onBehalfOfUserId)
             : body.verdict === "accept"
               ? duplicateMarkerSourceKey(bug.id, onBehalfOfUserId)
