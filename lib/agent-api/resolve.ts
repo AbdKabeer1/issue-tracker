@@ -82,10 +82,11 @@ export async function resolveMergedFix(
   if (!pullRequest.merged) return fail(409, "not_merged", "That pull request isn't merged yet.");
 
   const resolved = await prisma.$transaction(async (tx) => {
-    // Only from the status read above: a person, the #474 webhook or anyone
-    // else may have changed it since, and the activity records `from`.
+    // Only from the status and linked PR read above: someone may have changed
+    // the status (the activity records `from`) or linked another PR since,
+    // and the pr_mismatch check above only saw the old link.
     const changed = await tx.bug.updateMany({
-      where: { id: bug.id, status: bug.status },
+      where: { id: bug.id, status: bug.status, pullRequestUrl: bug.pullRequestUrl },
       data: {
         status: "resolved",
         // #256: a finished issue shouldn't stay pinned above open work.
@@ -135,7 +136,7 @@ export async function resolveMergedFix(
     });
     return true;
   });
-  if (!resolved) return fail(409, "status_changed", "This issue's status changed while the request ran. Read it again and retry.");
+  if (!resolved) return fail(409, "status_changed", "This issue's status or linked pull request changed while the request ran. Read it again and retry.");
 
   return { status: 200, body: { resolved: true, issueId: bug.id, previousStatus: bug.status, pullRequestUrl } };
 }
