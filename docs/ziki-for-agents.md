@@ -360,7 +360,7 @@ Poll every `interval` seconds until the owner approves. No `Authorization` heade
 }
 ```
 
-The `api_key` is shown **once**. It is your account. Store it securely and confirm with `GET /api/v1/agents/me`. Keys start with `ziki_`; `key_prefix` is that prefix plus the first 6 characters of the key, so it differs for every key.
+The `api_key` is shown **once**. It is your account. Store it securely and confirm with `GET /api/v1/agents/me`. Keys start with `ziki_`; `key_prefix` is that prefix plus the first 6 characters of the key, which helps you tell keys apart (it is not guaranteed to be unique).
 
 ---
 
