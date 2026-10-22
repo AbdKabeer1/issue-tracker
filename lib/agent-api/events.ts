@@ -4,7 +4,7 @@ import { AgentProjectError } from "@/lib/agents/require-agent";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { writeInbox } from "@/lib/agent-api/inbox";
-import { eventStreamBus } from "@/lib/events/stream-bus";
+import { eventStreamBus, type StreamEvent } from "@/lib/events/stream-bus";
 
 /**
  * Agent event feed (#445).
@@ -92,6 +92,63 @@ export type EventPayload = Prisma.InputJsonObject;
  * Export contract: other issues call `publish()` to emit events into the feed.
  * This PR adds `issue.created` and `comment.created`.
  */
+/** How often to look for the committed row, and how long to wait between looks. */
+const COMMIT_WAIT_ATTEMPTS = 20;
+const COMMIT_WAIT_DELAY_MS = 50;
+
+function waitMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function broadcast(event: StreamEvent): void {
+  try {
+    eventStreamBus.broadcast(event);
+  } catch {
+    // Ignore broadcast failures to not block publishing
+  }
+}
+
+/**
+ * Broadcast an event only once its row is committed (#524).
+ *
+ * `publish()` usually runs inside the caller's transaction, and an
+ * uncommitted row is invisible to other connections. Broadcasting straight
+ * away let a subscriber read an `issue.validated` event whose validation row
+ * was not readable yet, and a transaction that rolled back still emitted its
+ * event — the event outliving the change it described. The event and the row
+ * have to land together: wait for the row to become visible, and drop the
+ * event when the transaction rolled back and it never does.
+ *
+ * Returns true when the event was broadcast.
+ */
+export async function broadcastWhenCommitted(
+  event: StreamEvent,
+  options: { attempts?: number; delayMs?: number } = {},
+): Promise<boolean> {
+  const attempts = options.attempts ?? COMMIT_WAIT_ATTEMPTS;
+  const delayMs = options.delayMs ?? COMMIT_WAIT_DELAY_MS;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    let committed: unknown = null;
+    try {
+      committed = await prisma.agentEvent.findUnique({
+        where: { id: event.id },
+        select: { id: true },
+      });
+    } catch {
+      // No event row to check against: broadcast as before.
+      broadcast(event);
+      return true;
+    }
+    if (committed) {
+      broadcast(event);
+      return true;
+    }
+    await waitMs(delayMs);
+  }
+  // The transaction rolled back: the event never happened, so nothing is sent.
+  return false;
+}
+
 export async function publish(
   db: PrismaClient | Prisma.TransactionClient,
   params: {
@@ -125,19 +182,18 @@ export async function publish(
   });
   // #601: what this event addresses to one agent goes to its inbox too.
   await writeInbox(db, { id: event.id, ...params });
-  try {
-    eventStreamBus.broadcast({
-      id: event.id,
-      type: params.type,
-      payload: params.payload as unknown,
-      actorAgentId: params.actorAgentId ?? null,
-      bugId: params.bugId ?? null,
-      tenantId: params.tenantId,
-      createdAt: new Date(),
-    });
-  } catch {
+  // #524: the event reaches subscribers only once its row is committed.
+  void broadcastWhenCommitted({
+    id: event.id,
+    type: params.type,
+    payload: params.payload as unknown,
+    actorAgentId: params.actorAgentId ?? null,
+    bugId: params.bugId ?? null,
+    tenantId: params.tenantId,
+    createdAt: new Date(),
+  }).catch(() => {
     // Ignore broadcast failures to not block publishing
-  }
+  });
   return event;
 }
 
