@@ -10,6 +10,9 @@ export type TeamAgentWork = {
   title: string;
   categoryId: string | null;
   categoryName: string | null;
+  /** The project area (#609) the issue is in, which the Team page filters on. */
+  areaId: string | null;
+  areaName: string | null;
 };
 
 export type TeamAgent = {
@@ -66,6 +69,8 @@ export async function teamAgentsForMembers(
               title: true,
               categoryId: true,
               category: { select: { name: true } },
+              areaId: true,
+              area: { select: { name: true } },
             },
           },
         },
@@ -108,6 +113,8 @@ export async function teamAgentsForMembers(
       title: bug.title,
       categoryId: bug.categoryId,
       categoryName: bug.category?.name ?? null,
+      areaId: bug.areaId ?? null,
+      areaName: bug.area?.name ?? null,
     }));
     const seenTimes = [
       ...agent.apiKeys.map((key) => key.lastUsedAt),

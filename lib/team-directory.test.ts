@@ -29,7 +29,7 @@ describe("team directory metrics", () => {
           {
             claimedAt: new Date(now.getTime() - 5 * 60 * 1000),
             lastHeartbeatAt: null,
-            bug: { id: "issue-current", title: "Current work", categoryId: "area-1", category: { name: "Web" } },
+            bug: { id: "issue-current", title: "Current work", categoryId: "area-1", category: { name: "Web" }, areaId: "pa-checkout", area: { name: "Checkout" } },
           },
         ],
       },
@@ -95,7 +95,7 @@ describe("team directory metrics", () => {
         level: "reviewer",
         online: true,
         acceptedFixes: 1,
-        currentWork: [{ id: "issue-current", title: "Current work", categoryId: "area-1", categoryName: "Web" }],
+        currentWork: [{ id: "issue-current", title: "Current work", categoryId: "area-1", categoryName: "Web", areaId: "pa-checkout", areaName: "Checkout" }],
       },
       {
         id: "agent-2",
