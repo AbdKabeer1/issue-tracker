@@ -3,7 +3,7 @@ import { claimIssue } from "@/lib/agent-api/claim";
 
 describe("direct agent claims", () => {
   it("cannot bypass offer selection and acceptance", async () => {
-    await expect(claimIssue({} as never, "project-a", "issue-a", "person-a"))
+    await expect(claimIssue())
       .rejects.toMatchObject({ status: 410, message: expect.stringContaining("/api/v1/issues/{id}/offer") });
   });
 });
