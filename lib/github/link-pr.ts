@@ -51,6 +51,17 @@ export async function linkPullRequest(params: {
       },
     });
 
+    // #539: verdicts recorded while an older build accepted them without a
+    // linked pull request have an empty attribution and can never satisfy the
+    // merge gate. Before acceptance only one pull request can stand on an
+    // issue, so an orphan verdict could only have meant this one — point it
+    // at the link instead of leaving it permanently uncounted. Verdicts that
+    // already name a pull request are untouched.
+    await tx.testVerdict.updateMany({
+      where: { bugId, OR: [{ pullRequestUrl: null }, { pullRequestUrl: "" }] },
+      data: { pullRequestUrl },
+    });
+
     await publish(tx, {
       tenantId,
       type: "issue.pr_linked",
