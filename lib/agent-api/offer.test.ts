@@ -194,7 +194,9 @@ describe("ticket offers", () => {
         findMany: vi.fn().mockResolvedValue([]),
       },
     };
-    vi.spyOn(prisma, "$transaction").mockImplementation(async (fn) => fn(txMock));
+    vi.spyOn(prisma, "$transaction").mockImplementation(async (fn: unknown) =>
+      (fn as (tx: unknown) => unknown)(txMock),
+    );
 
     const didExpire = await expireOffer("claim-1");
     expect(didExpire).toBe(true);
