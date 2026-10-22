@@ -1,0 +1,18 @@
+Node v22.13.1 / pnpm 10.14.0
+Command: VITEST_MAX_FORKS=2 VITEST_MIN_FORKS=1 pnpm check
+Exit status: 0
+
+> issue-tracker@0.1.0 check /Users/henryuks/Documents/issue-tracker
+> pnpm lint && pnpm typecheck && pnpm test
+> issue-tracker@0.1.0 lint /Users/henryuks/Documents/issue-tracker
+> eslint
+> issue-tracker@0.1.0 typecheck /Users/henryuks/Documents/issue-tracker
+> tsc --noEmit
+> issue-tracker@0.1.0 test /Users/henryuks/Documents/issue-tracker
+> vitest run
+>           <p className="mt-1 text-sm text-slate-800">
+>               <div ref={{current:null}} className={undefined}>
+ Test Files  439 passed (439)
+      Tests  4389 passed (4389)
+   Start at  23:34:23
+   Duration  330.74s (transform 17.76s, setup 0ms, collect 161.82s, tests 88.64s, environment 80.24s, prepare 97.25s)

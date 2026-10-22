@@ -1,0 +1,19 @@
+<!doctype html><meta charset="utf-8"><title>ENDOR-579 regression evidence</title><style>body{margin:30px;background:#f6f7f9;color:#18202c;font:16px system-ui}h1{font-size:28px}p{max-width:1100px}section{background:white;border:1px solid #cbd1da;border-radius:8px;padding:16px;margin:16px 0}pre{font:13px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere}small{color:#465368}</style><h1>ENDOR-579 · Confirmation survives later bid claims</h1><p>Actual Vitest output excerpts, captured 22 October 2026 (Africa/Lagos). Unit tests use mocked Prisma fixtures. This is automated regression evidence, not a live browser award or deployed-fix demonstration.</p><p>Baseline source: <code>06df868</code>. Runtime: Node 22.13.1 (repository-supported runtime), pnpm 10.14.0.</p><section><h2>Before fix (expected failure)</h2><pre> FAIL  validation-before.test.ts &gt; recorded confirmation independence (#579) &gt; preserves reviews and clearance credited to a later claim&#x27;s beneficiaryUserId
+ FAIL  validation-before.test.ts &gt; recorded confirmation independence (#579) &gt; preserves reviews and clearance credited to a later claim&#x27;s dispatcherUserId
+ FAIL  validation-before.test.ts &gt; submitValidation: who may validate (#433) &gt; rejects a raced real accept when the owner or credited person becomes the solver (#579)
+ FAIL  validation-before.test.ts &gt; submitValidation: who may validate (#433) &gt; rejects a raced triage clearance when the owner or credited person becomes the solver (#579)
+ FAIL  validation-before.test.ts &gt; confirmation: the two-reviewer rule (#433) &gt; keeps a reviewer&#x27;s accept after their owner&#x27;s agent later claims the issue (#579)
+ FAIL  validation-before.test.ts &gt; confirmation: the triage clearance (triager) &gt; keeps a triager&#x27;s clear after the clearing owner wins the bid (#579)
+ Test Files  1 failed (1)
+      Tests  6 failed | 42 skipped (48)
+   Start at  23:33:42
+   Duration  6.00s (transform 2.32s, setup 0ms, collect 4.30s, tests 160ms, environment 1ms, prepare 395ms)</pre></section><section><h2>After fix</h2><pre> ✓ lib/agent-api/validation.test.ts &gt; recorded confirmation independence (#579) &gt; preserves reviews and clearance credited to a later claim&#x27;s beneficiaryUserId 26ms
+ ✓ lib/agent-api/validation.test.ts &gt; recorded confirmation independence (#579) &gt; preserves reviews and clearance credited to a later claim&#x27;s dispatcherUserId 18ms
+ ✓ lib/agent-api/validation.test.ts &gt; submitValidation: who may validate (#433) &gt; rejects a raced real accept when the owner or credited person becomes the solver (#579) 9ms
+ ✓ lib/agent-api/validation.test.ts &gt; submitValidation: who may validate (#433) &gt; rejects a raced triage clearance when the owner or credited person becomes the solver (#579) 3ms
+ ✓ lib/agent-api/validation.test.ts &gt; confirmation: the two-reviewer rule (#433) &gt; keeps a reviewer&#x27;s accept after their owner&#x27;s agent later claims the issue (#579) 6ms
+ ✓ lib/agent-api/validation.test.ts &gt; confirmation: the triage clearance (triager) &gt; keeps a triager&#x27;s clear after the clearing owner wins the bid (#579) 2ms
+ Test Files  1 passed (1)
+      Tests  48 passed (48)
+   Start at  23:33:30
+   Duration  9.69s (transform 2.58s, setup 0ms, collect 4.77s, tests 426ms, environment 1ms, prepare 515ms)</pre></section><small>validation.ts SHA-256: c07e1497ff614202bc5817062a95153b2c118c754deae7a5ccb748a48a217422</small>
