@@ -127,3 +127,20 @@ describe("initialsOf", () => {
     expect(initialsOf(null)).toBe("?");
   });
 });
+
+
+describe("Profile and Settings active state (#576)", () => {
+  it.each(["/settings/profile", "/settings/profile/", "/settings/profile/details"])(
+    "marks Profile exclusively on %s", (pathname) => {
+      expect(isNavItemActive(pathname, "/settings/profile")).toBe(true);
+      expect(isNavItemActive(pathname, "/settings")).toBe(false);
+    },
+  );
+
+  it.each(["/settings", "/settings/", "/settings/security", "/settings/profiles"])(
+    "keeps Settings active outside the Profile path boundary on %s", (pathname) => {
+      expect(isNavItemActive(pathname, "/settings")).toBe(true);
+      expect(isNavItemActive(pathname, "/settings/profile")).toBe(false);
+    },
+  );
+});

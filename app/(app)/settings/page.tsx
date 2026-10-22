@@ -4,7 +4,6 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { NotificationSettings } from "@/components/notification-settings";
-import { DisplayNameForm } from "@/components/display-name-form";
 import { WalletAddressForm } from "@/components/wallet-address-form";
 import { KeyboardShortcutSettings } from "@/components/keyboard-shortcut-settings";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
@@ -77,7 +76,14 @@ export default async function SettingsPage() {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Profile
         </h2>
-        <DisplayNameForm initialName={settings?.name ?? user.name ?? ""} />
+        <p className="mt-2 text-sm text-slate-600">
+          Manage your display name and view your account details.
+        </p>
+        <p className="mt-3 text-sm">
+          <Link href="/settings/profile" className="font-medium text-teal-700 hover:underline">
+            Edit profile
+          </Link>
+        </p>
         <p className="mt-3 text-sm">
           <Link href={`/users/${user.id}`} className="text-teal-700 hover:underline">
             See how your profile looks to others
