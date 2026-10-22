@@ -1,7 +1,8 @@
 import { createMethodNotAllowed, createOptions } from "@/lib/agent-api/http-errors";
 import { NextResponse, type NextRequest } from "next/server";
 import { agentIssueRequest } from "@/lib/agent-api/issues";
-import { parseEventCursor, parseEventFilters, pollEvents, encodeEventCursor } from "@/lib/agent-api/events";
+import { parseEventCursor, parseEventFilters, pollEvents, encodeEventCursor, scopeEventFilters } from "@/lib/agent-api/events";
+import { AgentProjectError } from "@/lib/agents/require-agent";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -17,7 +18,11 @@ export const maxDuration = 60;
  * - `wait`     — long-poll seconds (0–25). `0` or absent returns immediately.
  * - `types`    — comma list of event types or prefixes (`claim.*`); an unknown
  *                type returns 400 with `validTypes`.
- * - `projectId`, `bugId` — only events for that project / issue.
+ * - `projectId`, `bugId` — only events for that project / issue. A key scoped
+ *                to one project (#405) may only ever use its own project
+ *                here: a foreign `projectId` answers `403 project_forbidden`,
+ *                a foreign or unknown `bugId` is rejected, and an unfiltered
+ *                poll is narrowed to the key's project.
  *
  * Filters combine (AND). The cursor is global, so a filtered poll can resume
  * from any cursor this endpoint returned (#602).
@@ -55,7 +60,22 @@ export async function GET(request: NextRequest) {
     const filters = parseEventFilters(params);
     if ("error" in filters) return NextResponse.json(filters, { status: 400 });
 
-    const rows = await pollEvents(agent, cursorResult, waitSeconds, filters).catch(() => null);
+    // #405: a project-scoped key never reads another project's events. A
+    // foreign `projectId` throws and the wrapper answers `project_forbidden`;
+    // a foreign/missing `bugId` is rejected here; an unfiltered poll is
+    // narrowed to the key's project. A lookup failure must not crash the
+    // route callback: `AgentProjectError` is rethrown (still `project_forbidden`),
+    // anything unexpected becomes the same structured 503 as a feed failure.
+    let scoped: Awaited<ReturnType<typeof scopeEventFilters>>;
+    try {
+      scoped = await scopeEventFilters(agent, filters);
+    } catch (error) {
+      if (error instanceof AgentProjectError) throw error;
+      return NextResponse.json({ error: "Event feed unavailable." }, { status: 503 });
+    }
+    if ("status" in scoped) return NextResponse.json({ error: scoped.error }, { status: scoped.status });
+
+    const rows = await pollEvents(agent, cursorResult, waitSeconds, scoped.filters).catch(() => null);
     if (!rows) return NextResponse.json({ error: "Event feed unavailable." }, { status: 503 });
     const events = rows.slice(0, 100);
 

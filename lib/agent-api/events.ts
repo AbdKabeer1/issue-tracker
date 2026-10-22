@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { AgentContext } from "@/lib/agents/require-agent";
+import { AgentProjectError } from "@/lib/agents/require-agent";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { writeInbox } from "@/lib/agent-api/inbox";
@@ -284,6 +285,54 @@ export function parseEventFilters(params: URLSearchParams): EventFilters | Event
   }
 
   return filters;
+}
+
+// ---------------------------------------------------------------------------
+// Key project scope (#405)
+// ---------------------------------------------------------------------------
+
+/**
+ * Enforces the key's project on event filters (#405).
+ *
+ * A key issued for one project must never receive another project's events,
+ * the same promise the issue, job and SSE routes already make. For a scoped
+ * key:
+ * - an explicit `projectId` for another project throws `AgentProjectError`
+ *   (the wrapper answers `403 project_forbidden`);
+ * - a `bugId` is looked up only inside the caller's tenant, so an
+ *   unknown id and another tenant's id are indistinguishable (both 404);
+ *   a same-tenant bug outside the key's project throws `AgentProjectError`
+ *   (403); events for a bug are only written for issues in the key's project;
+ * - with no explicit `projectId`, the poll is filtered to the key's project
+ *   so an unfiltered poll cannot sweep the whole tenant.
+ *
+ * A legacy key (no `projectId`) keeps today's tenant-wide behavior.
+ * Body note: `scopeEventFilters` narrows to the key's project exactly, so
+ * tenant-level events that carry no `projectId` at all (`goal.*`, #405
+ * follow-up) are not visible to scoped keys until they persist one.
+ */
+export type ScopedEventFilters = { filters: EventFilters } | { status: number; error: string };
+
+export async function scopeEventFilters(
+  agent: Pick<AgentContext, "tenantId" | "projectId" | "projectSlug">,
+  filters: EventFilters,
+  db: Pick<typeof prisma, "bug"> = prisma,
+): Promise<ScopedEventFilters> {
+  if (!agent.projectId) return { filters };
+  if (filters.projectId && filters.projectId !== agent.projectId) {
+    throw new AgentProjectError(agent.projectSlug);
+  }
+  if (filters.bugId) {
+    // Tenant-bound lookup: an id from another tenant must look exactly like a
+    // missing one, so the lookup never confirms a cross-tenant bug exists.
+    const bug = await db.bug.findFirst({
+      where: { id: filters.bugId, tenantId: agent.tenantId },
+      select: { projectId: true },
+    });
+    if (!bug) return { status: 404, error: "Issue not found." };
+    if (bug.projectId !== agent.projectId) throw new AgentProjectError(agent.projectSlug);
+  }
+  return { filters: { ...filters, projectId: agent.projectId } };
 }
 
 // ---------------------------------------------------------------------------
