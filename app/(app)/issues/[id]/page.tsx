@@ -52,6 +52,7 @@ import { AttachmentList, type AttachmentView } from "@/components/attachment-lis
 import { ChooseRedesignButton } from "@/components/choose-redesign-button";
 import { IssueApprovalBanner } from "@/components/issue-approval-banner";
 import { isTenantAdminRole } from "@/lib/agents/membership";
+import type { OrganizationRole } from "@/lib/organization-role";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getActiveIssueTypesCached, getActivePlatforms } from "@/lib/lookups";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
@@ -619,6 +620,27 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       ? (bug.votes[0].value ?? 1)
       : 0;
   const commentTree = buildCommentTree(comments.comments);
+  // #489: the Admin label follows each person's role in this issue's
+  // organization, not their account-wide role, the same rule as admin powers.
+  const namedUserIds = [
+    ...new Set(
+      [bug.reporterId, bug.assigneeId, ...comments.comments.map((c) => c.authorId)].filter(
+        (id): id is string => Boolean(id),
+      ),
+    ),
+  ];
+  const organizationRoleRows = await loadOptional<{ userId: string; role: OrganizationRole }[]>(
+    "organization roles",
+    [],
+    () =>
+      prisma.membership.findMany({
+        where: { tenantId: bug.tenantId, userId: { in: namedUserIds } },
+        select: { userId: true, role: true },
+      }),
+  );
+  const organizationRoles: Record<string, OrganizationRole> = Object.fromEntries(
+    organizationRoleRows.map((row) => [row.userId, row.role]),
+  );
   const pageQuery = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     if (typeof value === "string") pageQuery.set(key, value);
@@ -939,6 +961,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
               <UserNameWithBadges
                 name={bug.reporter.name}
                 role={bug.reporter.role}
+                organizationRole={organizationRoles[bug.reporterId]}
                 image={bug.reporter.image}
                 avatar="sm"
                 userId={bug.reporterId}
@@ -954,6 +977,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 <UserNameWithBadges
                   name={bug.assignee.name}
                   role={bug.assignee.role}
+                  organizationRole={bug.assigneeId ? organizationRoles[bug.assigneeId] : null}
                   image={bug.assignee.image}
                   avatar="sm"
                   userId={bug.assigneeId}
@@ -1100,6 +1124,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
           reporterId={bug.reporterId}
           comments={commentTree}
           attachmentsByComment={attachmentsByComment}
+          organizationRoles={organizationRoles}
           users={commentMentionUsers}
           currentUserId={user.id}
           currentUserRole={user.role}
