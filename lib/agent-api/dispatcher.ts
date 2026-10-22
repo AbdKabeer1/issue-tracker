@@ -5,10 +5,11 @@ import { requireLevel } from "@/lib/agents/levels";
 import { IssueApiError } from "@/lib/agent-api/issues";
 import { isConfirmed } from "@/lib/agent-api/validation";
 import { publish } from "@/lib/agent-api/events";
-import { offerNext, scheduleOfferExpiry } from "@/lib/agent-api/offer";
+import { offerNext, scheduleOfferExpiry, sweepExpiredOffers } from "@/lib/agent-api/offer";
 import { awardBid } from "@/lib/agent-api/bid";
 import { notifyClaimOffered } from "@/lib/agent-notifications";
 import { WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
+import { workflowFor } from "@/lib/workflow";
 
 const id = z.string().trim().min(1).max(191);
 
@@ -48,9 +49,13 @@ export type ReadyIssue = {
 export async function findReadyIssues(
   agent: AgentContext,
   projectId: string,
-  limit = 50
+  limit = 50,
+  options?: { hasBids?: boolean }
 ): Promise<ReadyIssue[]> {
   requireLevel(agent, "dispatcher");
+
+  const workflow = await workflowFor(projectId);
+  const offerCutoff = new Date(Date.now() - workflow.offerWindowSeconds * 1000);
 
   const ready: ReadyIssue[] = [];
   let cursor: string | undefined;
@@ -65,9 +70,17 @@ export async function findReadyIssues(
         claims: {
           none: {
             releasedAt: null,
-            status: { in: ["active", "offered"] },
+            OR: [
+              { status: "active" },
+              { status: "offered", offeredAt: { gt: offerCutoff } },
+            ],
           },
         },
+        ...(options?.hasBids !== undefined
+          ? options.hasBids
+            ? { bids: { some: { withdrawnAt: null, awardedAt: null } } }
+            : { bids: { none: { withdrawnAt: null, awardedAt: null } } }
+          : {}),
       },
       select: {
         id: true,
@@ -127,7 +140,27 @@ export async function dispatchReadyIssues(
     maxOffersPerRun = 10,
   } = config;
 
-  const readyIssues = await findReadyIssues(agent, projectId, maxOffersPerRun);
+  await sweepExpiredOffers(agent.tenantId);
+
+  let readyIssues: ReadyIssue[] = [];
+  if (policy === "auto_award") {
+    // In auto_award mode, prioritize ready issues that have pending bids so
+    // aged bids can be awarded without being starved by issues without bids.
+    const bidIssues = await findReadyIssues(agent, projectId, maxOffersPerRun, { hasBids: true });
+    readyIssues.push(...bidIssues);
+    if (readyIssues.length < maxOffersPerRun) {
+      const remainingLimit = maxOffersPerRun - readyIssues.length;
+      const seenIds = new Set(readyIssues.map((i) => i.id));
+      const otherIssues = await findReadyIssues(agent, projectId, remainingLimit + readyIssues.length);
+      for (const issue of otherIssues) {
+        if (!seenIds.has(issue.id) && readyIssues.length < maxOffersPerRun) {
+          readyIssues.push(issue);
+        }
+      }
+    }
+  } else {
+    readyIssues = await findReadyIssues(agent, projectId, maxOffersPerRun);
+  }
 
   const result: DispatcherResult = {
     offered: 0,
@@ -284,6 +317,9 @@ export async function getDispatcherMetrics(
 }> {
   requireLevel(agent, "dispatcher");
 
+  const workflow = await workflowFor(projectId);
+  const offerCutoff = new Date(Date.now() - workflow.offerWindowSeconds * 1000);
+
   const [readyCount, activeClaims, pendingOffers, openBids] = await Promise.all([
     findReadyIssues(agent, projectId, Number.POSITIVE_INFINITY).then((issues) => issues.length),
     prisma.issueClaim.count({
@@ -298,7 +334,7 @@ export async function getDispatcherMetrics(
         bug: { tenantId: agent.tenantId, projectId },
         status: "offered",
         releasedAt: null,
-        offeredAt: { gt: new Date(Date.now() - 60_000) },
+        offeredAt: { gt: offerCutoff },
       },
     }),
     prisma.issueBid.count({
