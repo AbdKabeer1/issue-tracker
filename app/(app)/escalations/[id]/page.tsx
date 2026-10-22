@@ -58,7 +58,7 @@ export default async function EscalationDetailPage({
               href={`/issues/${question.bug.id}`}
               className="font-medium text-teal-800 hover:underline"
             >
-              #{question.bug.title}
+              #{question.bug.number} {question.bug.title}
             </Link>
           </div>
         ) : null}
