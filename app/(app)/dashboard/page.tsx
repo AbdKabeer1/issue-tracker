@@ -78,7 +78,7 @@ function SummaryCard({
   linkLabel: string;
 }) {
   return (
-    <section className="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-teal-300">
+    <section className="flex flex-col justify-between rounded-xl border border-slate-200 bg-card p-4 shadow-sm transition hover:border-teal-300">
       <div className="flex items-baseline justify-between border-b border-slate-100 pb-3">
         <h2 className="text-xs font-medium text-slate-600 sm:text-sm">{title}</h2>
         <p className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
@@ -184,7 +184,7 @@ export default async function DashboardPage() {
           <SummaryCard
             title="Resolved"
             value={String(overview.resolvedCount)}
-            href="/issues?project=all&status=resolved"
+            href="/issues?project=all&status=finished"
             linkLabel="resolved issues"
           >
             {resolvedEmpty ? (
@@ -200,7 +200,7 @@ export default async function DashboardPage() {
             )}
           </SummaryCard>
 
-          <section className="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-teal-300">
+          <section className="flex flex-col justify-between rounded-xl border border-slate-200 bg-card p-4 shadow-sm transition hover:border-teal-300">
             <div className="flex items-baseline justify-between border-b border-slate-100 pb-3">
               <h2 className="text-xs font-medium text-slate-600 sm:text-sm">Points</h2>
               <p className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">

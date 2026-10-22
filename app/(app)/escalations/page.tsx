@@ -119,7 +119,7 @@ export default async function EscalationsPage({
       </div>
 
       {/* Filter Tabs */}
-      <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+      <div className="space-y-3 rounded-lg border border-slate-200 bg-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Status</span>
           <div className="flex items-center gap-1">
@@ -185,7 +185,7 @@ export default async function EscalationsPage({
       </div>
 
       {filtered.length > 0 ? (
-        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white shadow-xs">
+        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-card shadow-xs">
           {filtered.map((item) => (
             <li key={`${item.kind}-${item.id}`} className="p-4 sm:p-5 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -251,7 +251,7 @@ export default async function EscalationsPage({
           ))}
         </ul>
       ) : (
-        <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center bg-white">
+        <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center bg-card">
           <p className="text-sm font-medium text-slate-700">No escalations match this filter.</p>
           <p className="mt-1 text-xs text-slate-500">
             Agents ask for blockers, permissions, and guidance here.

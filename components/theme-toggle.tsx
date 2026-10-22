@@ -198,7 +198,7 @@ export function AccountThemeSelector() {
             aria-pressed={theme === opt}
             className={`rounded px-1.5 py-0.5 text-xs font-medium transition-colors ${
               theme === opt
-                ? "bg-white text-slate-900 shadow-xs ring-1 ring-slate-200"
+                ? "bg-card text-slate-900 shadow-xs ring-1 ring-slate-200"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >

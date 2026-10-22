@@ -82,7 +82,7 @@ export function EditableIssueDescription({
   const mentionUsers = users.map((u) => ({ id: u.id, name: u.name }));
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+    <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">

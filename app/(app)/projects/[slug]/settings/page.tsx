@@ -68,7 +68,7 @@ export default async function ProjectSettingsPage({
       {github === "error" ? <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">GitHub setup could not be completed. Start the connection again from this page.</p> : null}
       {github === "connected" ? <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">GitHub App installation connected.</p> : null}
       {github === "unavailable" ? <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">The GitHub App is not configured. Set GITHUB_APP_SLUG before connecting it.</p> : null}
-      <section className="space-y-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="space-y-5 rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <ProjectSettingsForm project={project} />
         <div className="border-t border-slate-200 pt-5">
           <h2 className="text-base font-semibold text-slate-900">GitHub App</h2>
@@ -78,7 +78,7 @@ export default async function ProjectSettingsPage({
           </form>
         </div>
       </section>
-      <section className="space-y-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="workflow-heading">
+      <section className="space-y-5 rounded-xl border border-slate-200 bg-card p-4 sm:p-6" aria-labelledby="workflow-heading">
         <div>
           <h2 id="workflow-heading" className="text-base font-semibold text-slate-900">Workflow</h2>
           <p className="mt-1 text-sm text-slate-600">
@@ -87,7 +87,7 @@ export default async function ProjectSettingsPage({
         </div>
         <WorkflowSettingsForm slug={project.slug} workflow={workflow} />
       </section>
-      <section className="space-y-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="space-y-5 rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <ProjectApprovalRulesSection
           projectId={project.id}
           slug={project.slug}

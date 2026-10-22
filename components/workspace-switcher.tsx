@@ -106,7 +106,7 @@ export function WorkspaceSwitcher({
           className={`inline-flex h-9 max-w-full items-center gap-2 rounded-full border py-0 pl-3 pr-2 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 ${
             chrome
               ? "border-surface-border bg-white/[0.04] text-sm text-porcelain hover:bg-white/[0.08]"
-              : "border-slate-200 bg-white text-xs text-slate-800 hover:bg-slate-50"
+              : "border-slate-200 bg-card text-xs text-slate-800 hover:bg-slate-50"
           } ${fullWidth ? "w-full justify-between" : ""}`}
         >
           <span className="sr-only">Active workspace, </span>
@@ -128,7 +128,7 @@ export function WorkspaceSwitcher({
             role="listbox"
             aria-label="Workspaces"
             className={`absolute left-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border p-1 shadow-sm ${
-              chrome ? "border-surface-border bg-[#142343]" : "border-slate-200 bg-white"
+              chrome ? "border-surface-border bg-[#142343]" : "border-slate-200 bg-card"
             } ${fullWidth ? "w-full" : "w-max min-w-full max-w-56"}`}
           >
             {workspaces.map((workspace) => {

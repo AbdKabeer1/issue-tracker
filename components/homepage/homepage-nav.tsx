@@ -12,7 +12,7 @@ export function HomepageNav({ isSignedIn = false }: HomepageNavProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/95 backdrop-blur-md">
+    <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-card/95 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-8">
           <BrandLockup href="/" size="sm" />
@@ -118,7 +118,7 @@ export function HomepageNav({ isSignedIn = false }: HomepageNavProps) {
 
       {/* Mobile menu dropdown */}
       {mobileMenuOpen ? (
-        <div className="border-b border-slate-200 bg-white px-4 pt-2 pb-6 md:hidden">
+        <div className="border-b border-slate-200 bg-card px-4 pt-2 pb-6 md:hidden">
           <nav className="flex flex-col space-y-3" aria-label="Mobile navigation">
             <a
               href="#issue-resolution"

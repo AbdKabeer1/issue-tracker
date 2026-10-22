@@ -118,7 +118,7 @@ export function VoteButton({
   const mdLabel = `${upvoted ? "Upvoted" : "Upvote"} ${count} ${voteWord}${upvoted ? ", click to remove your vote" : ""}`;
   const tone = upvoted
     ? "border-blue-200 bg-blue-50 text-blue-600 hover:border-blue-300 hover:bg-blue-100"
-    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-blue-600";
+    : "border-slate-200 bg-card text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-blue-600";
 
   const errorLine = error ? (
     <p

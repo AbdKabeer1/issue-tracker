@@ -33,7 +33,7 @@ export default async function EscalationDetailPage({
         ← Back to Escalations
       </Link>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs space-y-4">
+      <div className="rounded-xl border border-slate-200 bg-card p-6 shadow-xs space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-4">
           <div className="flex items-center gap-2">
             <EscalationTypeBadge type={escalationType} />

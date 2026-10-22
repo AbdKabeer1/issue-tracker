@@ -80,7 +80,7 @@ function SidebarLink({
       {typeof count === "number" ? (
         <CountPill value={count} />
       ) : active ? (
-        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-white" />
+        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-card" />
       ) : null}
     </Link>
   );

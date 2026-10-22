@@ -43,7 +43,7 @@ import { databaseErrorReason } from "@/lib/db-error";
 /* Static on purpose: a title built from the slug could name someone else's tenant. */
 export const metadata = { title: "Organization" };
 
-const card = "rounded-xl border border-slate-200 bg-white p-4 sm:p-6";
+const card = "rounded-xl border border-slate-200 bg-card p-4 sm:p-6";
 
 function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -324,7 +324,7 @@ export default async function TenantPage({
         )}
       </section>
 
-      <section aria-labelledby="tenant-members" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <section aria-labelledby="tenant-members" className="overflow-hidden rounded-xl border border-slate-200 bg-card">
         <h2
           id="tenant-members"
           className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6"
@@ -380,7 +380,7 @@ export default async function TenantPage({
             </form>
           </section>
 
-          <section aria-labelledby="join-requests" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <section aria-labelledby="join-requests" className="overflow-hidden rounded-xl border border-slate-200 bg-card">
             <h2 id="join-requests" className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6">Workspace join requests</h2>
             {joinRequests.length === 0 ? (
               <p className="px-4 py-4 text-sm text-slate-600 sm:px-6">No pending requests.</p>
@@ -478,7 +478,7 @@ export default async function TenantPage({
             <InviteForm tenantId={tenant.id} />
           </section>
 
-          <section aria-labelledby="pending-invites" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <section aria-labelledby="pending-invites" className="overflow-hidden rounded-xl border border-slate-200 bg-card">
             <h2
               id="pending-invites"
               className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6"

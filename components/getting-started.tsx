@@ -20,7 +20,7 @@ export function GettingStarted({
   return (
     <section
       aria-labelledby="getting-started-heading"
-      className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 print:hidden"
+      className="rounded-xl border border-slate-200 bg-card p-4 sm:p-5 print:hidden"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>

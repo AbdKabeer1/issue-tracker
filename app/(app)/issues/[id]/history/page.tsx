@@ -100,7 +100,7 @@ export default async function IssueHistoryPage({ params, searchParams }: Props) 
           return (
             <li
               key={version.number}
-              className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6"
+              className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6"
               aria-labelledby={`version-${version.number}`}
             >
               <h2 id={`version-${version.number}`} className="flex flex-wrap items-baseline gap-x-2 text-sm">

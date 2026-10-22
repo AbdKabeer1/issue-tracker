@@ -30,7 +30,7 @@ export function IssueEscalations({
     <section
       id="escalations"
       aria-label="Agent escalations"
-      className="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-4 sm:p-6 space-y-4"
+      className="scroll-mt-24 rounded-xl border border-slate-200 bg-card p-4 sm:p-6 space-y-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
         <div className="flex items-center gap-2">
@@ -99,7 +99,7 @@ export function IssueEscalations({
                   </Link>
                 </div>
               ) : (
-                <div className="rounded bg-white p-3 text-xs text-slate-700 border border-slate-200 space-y-1">
+                <div className="rounded bg-card p-3 text-xs text-slate-700 border border-slate-200 space-y-1">
                   <span className="font-semibold text-slate-600">Resolution:</span>
                   <p className="whitespace-pre-wrap">{esc.answer}</p>
                 </div>

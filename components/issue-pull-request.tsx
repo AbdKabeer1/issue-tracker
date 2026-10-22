@@ -8,7 +8,7 @@ export function IssuePullRequest({ pullRequestUrl }: IssuePullRequestProps) {
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" data-testid="attached-pr-section">
+    <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6" data-testid="attached-pr-section">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">

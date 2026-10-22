@@ -101,7 +101,7 @@ export function MilestoneManager({ milestones }: { milestones: ManagedMilestone[
   return (
     <div className="space-y-4">
       {editing ? (
-        <form onSubmit={save} className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <form onSubmit={save} className="space-y-4 rounded-xl border border-slate-200 bg-card p-4 shadow-sm sm:p-6">
           <h2 className="text-lg font-medium text-slate-900">
             {editing === "new" ? "New milestone" : `Edit "${editing.title}"`}
           </h2>
@@ -166,11 +166,11 @@ export function MilestoneManager({ milestones }: { milestones: ManagedMilestone[
       )}
 
       {milestones.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center text-sm text-slate-600">
+        <p className="rounded-xl border border-dashed border-slate-300 bg-card px-6 py-10 text-center text-sm text-slate-600">
           No milestones yet. Create one, then put issues in it from each issue&apos;s triage panel.
         </p>
       ) : (
-        <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-card">
           {milestones.map((m) => (
             <li key={m.id} className="grid gap-3 p-4 sm:grid-cols-[1fr_14rem_auto] sm:items-center">
               <div className="min-w-0">

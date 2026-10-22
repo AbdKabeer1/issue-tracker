@@ -78,7 +78,7 @@ export async function GoalBudgetSection({ tenantId, projectId, bugId }: GoalBudg
   return (
     <section
       aria-label="Goal budgets"
-      className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 print:hidden"
+      className="rounded-xl border border-slate-200 bg-card p-4 sm:p-5 print:hidden"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-slate-900">Goal budgets</h2>

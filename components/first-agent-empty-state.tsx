@@ -29,7 +29,7 @@ export function FirstAgentEmptyState() {
   return (
     <section
       aria-labelledby="first-agent-heading"
-      className="mt-4 rounded-2xl border-2 border-teal-200 bg-gradient-to-b from-teal-50/80 to-white p-5 sm:p-8 shadow-sm"
+      className="mt-4 rounded-2xl border-2 border-teal-200 bg-gradient-to-b from-teal-50/80 to-card p-5 sm:p-8 shadow-sm"
     >
       <div className="flex items-start gap-3">
         <span
@@ -52,7 +52,7 @@ export function FirstAgentEmptyState() {
         {STEPS.map((step, index) => (
           <li
             key={step.title}
-            className="rounded-xl border border-slate-200 bg-white p-3"
+            className="rounded-xl border border-slate-200 bg-card p-3"
             data-testid={`first-agent-step-${index + 1}`}
           >
             <p className="text-sm font-semibold text-slate-900">
@@ -73,7 +73,7 @@ export function FirstAgentEmptyState() {
         <Link
           href="/settings/agents/pair"
           data-testid="first-agent-approvals"
-          className="inline-flex items-center justify-center rounded-lg border border-teal-300 bg-white px-4 py-2 text-sm font-semibold text-teal-800 transition hover:bg-teal-50"
+          className="inline-flex items-center justify-center rounded-lg border border-teal-300 bg-card px-4 py-2 text-sm font-semibold text-teal-800 transition hover:bg-teal-50"
         >
           Approval page
         </Link>

@@ -45,27 +45,36 @@ export function DashboardAgents({
   // Section-only refresh: the cards above are not re-fetched, so the page
   // never jumps while someone is reading it.
   useEffect(() => {
+    const controller = new AbortController();
+    let inFlight = false;
     const poll = async () => {
-      if (document.visibilityState === "hidden") return;
+      if (inFlight || document.visibilityState === "hidden") return;
+      inFlight = true;
       try {
         const response = await fetch(`${BASE_PATH}/api/dashboard/agents`, {
           cache: "no-store",
+          signal: controller.signal,
         });
-        if (!response.ok) return;
+        if (!response.ok || controller.signal.aborted) return;
         const data = (await response.json()) as { agents?: DashboardAgentView[] };
-        if (Array.isArray(data.agents)) setAgents(data.agents);
+        if (!controller.signal.aborted && Array.isArray(data.agents)) setAgents(data.agents);
       } catch {
-        // A failed poll keeps the last good rows; the next one retries.
+        // A failed or aborted poll keeps the last good rows; the next one retries.
+      } finally {
+        inFlight = false;
       }
     };
     const timer = window.setInterval(poll, AGENTS_POLL_MS);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      controller.abort();
+    };
   }, []);
 
   return (
     <section
       aria-labelledby="agents-heading"
-      className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+      className="overflow-hidden rounded-xl border border-slate-200 bg-card shadow-sm"
     >
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
         <div className="flex items-center gap-2.5">

@@ -24,7 +24,7 @@ export default async function SecuritySettingsPage() {
         </Link>
         <h1 className="text-2xl font-semibold text-slate-900">Security</h1>
       </div>
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Two-factor sign-in
         </h2>

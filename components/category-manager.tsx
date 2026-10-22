@@ -147,7 +147,7 @@ export function CategoryManager({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-xl border border-slate-200 bg-card p-6 shadow-sm">
         <h2 className="text-base font-semibold text-slate-900">
           Add new platform
         </h2>
@@ -207,7 +207,7 @@ export function CategoryManager({
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-card shadow-sm">
         <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
           <h2 className="text-base font-semibold text-slate-900">
             Existing platforms

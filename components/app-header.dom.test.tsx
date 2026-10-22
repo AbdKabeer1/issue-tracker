@@ -78,6 +78,21 @@ describe("account menu role switch", () => {
     expect(switchRole).toHaveBeenCalledWith("user", `${window.location.pathname}${window.location.search}`);
   });
 
+  it("keeps Overview and Issues in the desktop bar", () => {
+    renderHeader();
+    expect(screen.getByRole("link", { name: "Overview" }).getAttribute("href")).toBe("/dashboard");
+    expect(screen.getByRole("link", { name: "Issues" }).getAttribute("href")).toBe("/issues");
+  });
+
+  it("closes the Agents menu when a destination is chosen", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+    await user.click(screen.getByRole("button", { name: "Agents" }));
+    expect(screen.getByRole("button", { name: "Agents" }).getAttribute("aria-expanded")).toBe("true");
+    await user.click(screen.getByRole("link", { name: "Manage agents" }));
+    expect(screen.getByRole("button", { name: "Agents" }).getAttribute("aria-expanded")).toBe("false");
+  });
+
   it("renders Escalations as a link, with the pending count (#763)", () => {
     renderHeader({ pendingEscalationsCount: 5 });
     const link = screen.getByRole("link", { name: /escalations/i });

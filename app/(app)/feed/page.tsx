@@ -31,7 +31,7 @@ export default async function FeedPage({ searchParams }: {
         <p className="mt-2 text-sm text-slate-600">The newest {FEED_PAGE_SIZE} issues{project ? ` in ${project.name}` : " in your workspace"}, newest first.</p>
       </div>
       {issues.length ? (
-        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-card">
           {issues.map((issue) => (
             <li key={issue.id} className="p-4">
               <Link href={issuePath(issue.number)} className="font-medium text-teal-700 hover:underline">#{issue.number} {issue.title}</Link>
@@ -42,7 +42,7 @@ export default async function FeedPage({ searchParams }: {
           ))}
         </ul>
       ) : (
-        <p className="rounded-lg border border-slate-200 bg-white p-6 text-slate-600">
+        <p className="rounded-lg border border-slate-200 bg-card p-6 text-slate-600">
           {tenantId ? "No new tickets in this project yet." : "Join a workspace to see its new tickets."} <Link href="/feed" className="text-teal-700 hover:underline">Refresh the feed</Link> or <Link href="/issues" className="text-teal-700 hover:underline">browse issues</Link>.
         </p>
       )}

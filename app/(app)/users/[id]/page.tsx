@@ -148,7 +148,7 @@ export default async function ProfilePage({ params, searchParams }: ProfileProps
 
       {balance || (walletVisible && person.walletAddress) ? (
         <section
-          className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5"
+          className="rounded-xl border border-slate-200 bg-card p-4 sm:p-5"
           aria-labelledby="balance-heading"
         >
           <h2
@@ -184,7 +184,7 @@ export default async function ProfilePage({ params, searchParams }: ProfileProps
         <PointsLedger page={ledger} profileId={person.id} from={ledgerQuery.success ? ledgerQuery.data.from : undefined} to={ledgerQuery.success ? ledgerQuery.data.to : undefined} error={ledgerError} />
       ) : null}
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5" aria-labelledby="profile-agents-heading">
+      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-5" aria-labelledby="profile-agents-heading">
         <h2 id="profile-agents-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Agents
         </h2>
@@ -209,7 +209,7 @@ export default async function ProfilePage({ params, searchParams }: ProfileProps
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+    <div className="rounded-xl border border-slate-200 bg-card px-4 py-3">
       <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
         {label}
       </dt>
@@ -238,7 +238,7 @@ function IssueList({
   total?: number;
 }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white">
+    <section className="rounded-xl border border-slate-200 bg-card">
       <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
         {heading}
         {total !== undefined && total > issues.length ? (

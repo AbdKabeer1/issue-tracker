@@ -5,6 +5,7 @@ import {
   RESOLVED_STATUSES,
   UNRESOLVED_STATUSES,
   classifyAgentStatus,
+  firstCloseForTenant,
   isResolvedStatus,
   isUnresolvedStatus,
 } from "./dashboard-overview";
@@ -30,6 +31,15 @@ describe("dashboard overview counts (#dashboard)", () => {
     for (const status of ALL_STATUSES) {
       expect(isResolvedStatus(status)).toBe(isDone(status));
     }
+  });
+
+  it("scopes the first-close aggregate to one workspace", () => {
+    const sql = firstCloseForTenant("tenant-acme");
+    const text = sql.strings.join(" ");
+    expect(text).toContain('bug."tenantId"');
+    expect(text).toContain('bug."isDeleted"');
+    expect(text).not.toMatch(/FROM "BugActivity" a\s+WHERE/);
+    expect(sql.values).toContain("tenant-acme");
   });
 
   it("counts open + in progress as unresolved and resolved + closed as resolved", () => {

@@ -25,7 +25,7 @@ export function AttachmentList({ attachments }: { attachments: AttachmentView[] 
                 href={href(a.id)}
                 target="_blank"
                 rel="noopener"
-                className="block overflow-hidden rounded-lg border border-slate-200 bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+                className="block overflow-hidden rounded-lg border border-slate-200 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
                 title={`${a.filename} (${formatBytes(a.size)})`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element -- served by our own auth-checked route */}
@@ -48,7 +48,7 @@ export function AttachmentList({ attachments }: { attachments: AttachmentView[] 
                 href={href(a.id)}
                 target="_blank"
                 rel="noopener"
-                className="inline-flex max-w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+                className="inline-flex max-w-full items-center gap-2 rounded-lg border border-slate-200 bg-card px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
               >
                 <span aria-hidden="true" className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
                   {attachmentKind(a.contentType) === "pdf" ? "PDF" : "TXT"}

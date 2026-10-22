@@ -85,7 +85,7 @@ export function MissionCoverage({
         )}
 
         {canManage ? (
-          <form action={action} className="space-y-3 rounded-md border border-slate-200 bg-white p-3">
+          <form action={action} className="space-y-3 rounded-md border border-slate-200 bg-card p-3">
             <input type="hidden" name="projectId" value={projectId} />
             <h3 className="text-sm font-medium text-slate-900">Add route missions</h3>
             <div className="grid gap-3 sm:grid-cols-2">

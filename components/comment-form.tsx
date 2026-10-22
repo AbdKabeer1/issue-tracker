@@ -166,7 +166,7 @@ export function CommentForm({
             name="type"
             value={commentType}
             onChange={(e) => setCommentType(e.target.value as CommentType)}
-            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+            className="rounded border border-slate-300 bg-card px-2 py-1 text-xs text-slate-800 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
           >
             <option value="comment">💬 Comment</option>
             <option value="bid">🏷️ Bid</option>

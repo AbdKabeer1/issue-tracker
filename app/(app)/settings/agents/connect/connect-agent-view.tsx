@@ -98,7 +98,7 @@ export function ConnectAgentView({
   return (
     <div className="space-y-6">
       {/* Project context header */}
-      <div className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+      <div className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-card p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
         <div>
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             Active Project
@@ -117,7 +117,7 @@ export function ConnectAgentView({
       </div>
 
       {/* Main Tab Navigation */}
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+      <div className="rounded-xl border border-slate-200 bg-card overflow-hidden shadow-xs">
         <div className="border-b border-slate-200 bg-slate-50/70 px-4 pt-3 sm:px-6">
           <div
             role="tablist"
@@ -244,7 +244,7 @@ export function ConnectAgentView({
                     onClick={() => setScriptLang("node")}
                     className={`rounded-md px-2.5 py-1 transition ${
                       scriptLang === "node"
-                        ? "bg-white text-slate-900 shadow-xs"
+                        ? "bg-card text-slate-900 shadow-xs"
                         : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
@@ -255,7 +255,7 @@ export function ConnectAgentView({
                     onClick={() => setScriptLang("python")}
                     className={`rounded-md px-2.5 py-1 transition ${
                       scriptLang === "python"
-                        ? "bg-white text-slate-900 shadow-xs"
+                        ? "bg-card text-slate-900 shadow-xs"
                         : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
@@ -320,7 +320,7 @@ export function ConnectAgentView({
         className={`rounded-xl border p-4 sm:p-6 transition-colors shadow-xs ${
           connectionStatus.connected
             ? "border-emerald-300 bg-emerald-50/40"
-            : "border-slate-200 bg-white"
+            : "border-slate-200 bg-card"
         }`}
         aria-labelledby="test-connection-heading"
       >

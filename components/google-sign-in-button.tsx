@@ -11,7 +11,7 @@ function SubmitButton() {
     <Button
       type="submit"
       variant="secondary"
-      className="relative flex h-11 w-full items-center justify-center gap-3 border-slate-300 bg-white font-medium text-slate-700 shadow-xs hover:bg-slate-50 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 disabled:opacity-60 cursor-pointer"
+      className="relative flex h-11 w-full items-center justify-center gap-3 border-slate-300 bg-card font-medium text-slate-700 shadow-xs hover:bg-slate-50 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 disabled:opacity-60 cursor-pointer"
       disabled={pending}
     >
       <svg

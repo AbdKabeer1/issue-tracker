@@ -67,7 +67,7 @@ export function UserSearch() {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search name or email…"
           disabled={isPending}
-          className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-8 text-sm text-slate-900 placeholder-slate-400 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50"
+          className="w-full rounded-lg border border-slate-300 bg-card py-2 pl-9 pr-8 text-sm text-slate-900 placeholder-slate-400 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50"
         />
         {query ? (
           <button

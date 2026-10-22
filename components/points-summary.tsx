@@ -38,7 +38,7 @@ function ProgressRow({
 export function PointsSummary({ points, solvedTasks }: { points: number; solvedTasks: number }) {
   const progress = pointsProgress(points, solvedTasks);
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5" aria-labelledby="points-heading">
+    <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-5" aria-labelledby="points-heading">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 id="points-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Points

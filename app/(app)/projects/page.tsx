@@ -120,14 +120,14 @@ export default async function ProjectsPage({
         </p>
       ) : null}
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
         <h2 className="text-base font-semibold text-slate-900">
           Create a project
         </h2>
         <CreateProjectForm />
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-card">
         <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 sm:px-6">
           <h2 className="text-base font-semibold text-slate-900">
             Your projects
@@ -253,7 +253,7 @@ export default async function ProjectsPage({
       </section>
 
       {isOwner && archivedProjects.length > 0 ? (
-        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-card">
           <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 sm:px-6">
             <h2 className="text-base font-semibold text-slate-900">Archived projects</h2>
             <p className="mt-0.5 text-xs text-slate-500">

@@ -20,7 +20,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
 
       <main id="main-content">
         {/* 2. Hero Section */}
-        <section className="relative overflow-hidden border-b border-slate-200/80 bg-white pt-16 pb-20 sm:pt-24 sm:pb-28">
+        <section className="relative overflow-hidden border-b border-slate-200/80 bg-card pt-16 pb-20 sm:pt-24 sm:pb-28">
           <div className="absolute inset-0 -z-10 bg-[radial-gradient(45rem_50rem_at_top,theme(colors.teal.50),theme(colors.slate.50))]" />
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="grid gap-12 lg:grid-cols-12 lg:items-center">
@@ -65,7 +65,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
                   )}
                   <Link
                     href="/llms.txt"
-                    className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3.5 text-base font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-600"
+                    className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-card px-6 py-3.5 text-base font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-600"
                   >
                     Read Agent Documentation
                   </Link>
@@ -88,7 +88,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
 
               {/* Hero visual: Simulated real-time issue card with multi-agent activity */}
               <div className="lg:col-span-5">
-                <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xl ring-1 ring-slate-900/5 sm:p-6">
+                <div className="rounded-2xl border border-slate-200/90 bg-card p-5 shadow-xl ring-1 ring-slate-900/5 sm:p-6">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                     <div className="flex items-center gap-2">
                       <span className="rounded bg-teal-50 px-2 py-0.5 text-xs font-mono font-medium text-teal-700">
@@ -155,7 +155,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
         </section>
 
         {/* 3. AI-Powered Issue Resolution */}
-        <section id="issue-resolution" className="scroll-mt-20 border-b border-slate-200 bg-white py-16 sm:py-24">
+        <section id="issue-resolution" className="scroll-mt-20 border-b border-slate-200 bg-card py-16 sm:py-24">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="mx-auto max-w-3xl text-center">
               <span className="text-xs font-semibold uppercase tracking-wider text-teal-600">
@@ -171,7 +171,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
             </div>
 
             <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-6 shadow-2xs transition hover:border-teal-200 hover:bg-white">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-6 shadow-2xs transition hover:border-teal-200 hover:bg-card">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 text-teal-700">
                   <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -184,7 +184,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
                 </p>
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-6 shadow-2xs transition hover:border-teal-200 hover:bg-white">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-6 shadow-2xs transition hover:border-teal-200 hover:bg-card">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 text-teal-700">
                   <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -197,7 +197,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
                 </p>
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-6 shadow-2xs transition hover:border-teal-200 hover:bg-white">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-6 shadow-2xs transition hover:border-teal-200 hover:bg-card">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 text-teal-700">
                   <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -210,7 +210,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
                 </p>
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-6 shadow-2xs transition hover:border-teal-200 hover:bg-white">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-6 shadow-2xs transition hover:border-teal-200 hover:bg-card">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 text-teal-700">
                   <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
@@ -243,7 +243,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
             </div>
 
             <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs">
+              <div className="rounded-xl border border-slate-200 bg-card p-6 shadow-xs">
                 <span className="inline-block rounded-md bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
                   Tier 1
                 </span>
@@ -254,7 +254,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
                 </p>
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs">
+              <div className="rounded-xl border border-slate-200 bg-card p-6 shadow-xs">
                 <span className="inline-block rounded-md bg-teal-100 px-2.5 py-1 text-xs font-semibold text-teal-800">
                   Tier 2
                 </span>
@@ -265,7 +265,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
                 </p>
               </div>
 
-              <div className="rounded-xl border border-indigo-200 bg-white p-6 shadow-xs ring-1 ring-indigo-50">
+              <div className="rounded-xl border border-indigo-200 bg-card p-6 shadow-xs ring-1 ring-indigo-50">
                 <span className="inline-block rounded-md bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-800">
                   Tier 3
                 </span>
@@ -276,7 +276,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
                 </p>
               </div>
 
-              <div className="rounded-xl border border-purple-200 bg-white p-6 shadow-xs">
+              <div className="rounded-xl border border-purple-200 bg-card p-6 shadow-xs">
                 <span className="inline-block rounded-md bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-800">
                   Tier 4
                 </span>
@@ -302,13 +302,13 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="rounded-lg bg-white/80 px-3 py-1.5 text-xs font-mono font-medium text-teal-900 shadow-2xs">
+                  <span className="rounded-lg bg-card/80 px-3 py-1.5 text-xs font-mono font-medium text-teal-900 shadow-2xs">
                     30m Heartbeat Leases
                   </span>
-                  <span className="rounded-lg bg-white/80 px-3 py-1.5 text-xs font-mono font-medium text-teal-900 shadow-2xs">
+                  <span className="rounded-lg bg-card/80 px-3 py-1.5 text-xs font-mono font-medium text-teal-900 shadow-2xs">
                     Zero Self-Review
                   </span>
-                  <span className="rounded-lg bg-white/80 px-3 py-1.5 text-xs font-mono font-medium text-teal-900 shadow-2xs">
+                  <span className="rounded-lg bg-card/80 px-3 py-1.5 text-xs font-mono font-medium text-teal-900 shadow-2xs">
                     Signed Webhooks
                   </span>
                 </div>
@@ -417,7 +417,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
         </section>
 
         {/* 5. How Ziki Works */}
-        <section id="how-it-works" className="scroll-mt-20 border-b border-slate-200 bg-white py-16 sm:py-24">
+        <section id="how-it-works" className="scroll-mt-20 border-b border-slate-200 bg-card py-16 sm:py-24">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="mx-auto max-w-3xl text-center">
               <span className="text-xs font-semibold uppercase tracking-wider text-teal-600">
@@ -493,7 +493,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
               </p>
             </div>
 
-            <div className="mt-12 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
+            <div className="mt-12 overflow-hidden rounded-2xl border border-slate-200 bg-card shadow-xs">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm text-slate-600">
                   <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase text-slate-700">
@@ -534,7 +534,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
               </div>
             </div>
 
-            <div className="mt-8 flex flex-col items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-6 sm:flex-row">
+            <div className="mt-8 flex flex-col items-center justify-between gap-4 rounded-xl border border-slate-200 bg-card p-6 sm:flex-row">
               <div>
                 <h4 className="font-semibold text-slate-900">Points goal</h4>
                 <p className="mt-1 text-sm text-slate-600">
@@ -549,7 +549,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
         </section>
 
         {/* 7. Team & Organization Workflows */}
-        <section id="workflows" className="scroll-mt-20 border-b border-slate-200 bg-white py-16 sm:py-24">
+        <section id="workflows" className="scroll-mt-20 border-b border-slate-200 bg-card py-16 sm:py-24">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="mx-auto max-w-3xl text-center">
               <span className="text-xs font-semibold uppercase tracking-wider text-teal-600">
@@ -583,7 +583,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
                 </ul>
               </div>
 
-              <div className="rounded-2xl border border-teal-200 bg-white p-8 shadow-sm ring-1 ring-teal-100">
+              <div className="rounded-2xl border border-teal-200 bg-card p-8 shadow-sm ring-1 ring-teal-100">
                 <span className="inline-block rounded-md bg-teal-100 px-2.5 py-1 text-xs font-semibold text-teal-800">
                   Popular
                 </span>
@@ -663,7 +663,7 @@ export function ZikiHomepage({ user }: ZikiHomepageProps) {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white py-12 text-slate-500 text-xs">
+      <footer className="border-t border-slate-200 bg-card py-12 text-slate-500 text-xs">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="grid gap-8 sm:grid-cols-2 md:grid-cols-4">
             <div>

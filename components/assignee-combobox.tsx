@@ -162,7 +162,7 @@ export function AssigneeCombobox({
           // Keep the list open while clicking an option in it.
           if (!listRef.current?.contains(event.relatedTarget as Node)) close();
         }}
-        className={`w-full rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-8 text-sm text-slate-900 shadow-xs placeholder:text-slate-400 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 ${inputClassName}`}
+        className={`w-full rounded-lg border border-slate-300 bg-card py-2 pl-3 pr-8 text-sm text-slate-900 shadow-xs placeholder:text-slate-400 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 ${inputClassName}`}
       />
       <svg
         className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
@@ -184,7 +184,7 @@ export function AssigneeCombobox({
           role="listbox"
           aria-label="Assignees"
           tabIndex={-1}
-          className="absolute left-0 z-30 mt-1 max-h-64 w-full min-w-[14rem] overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-sm shadow-lg"
+          className="absolute left-0 z-30 mt-1 max-h-64 w-full min-w-[14rem] overflow-y-auto rounded-lg border border-slate-200 bg-card py-1 text-sm shadow-lg"
         >
           {options.length === 0 ? (
             <li className="px-3 py-2 text-slate-500" role="presentation">

@@ -231,7 +231,7 @@ function NavMenu({
           id={menuId}
           role="menu"
           aria-label={item.label}
-          className="absolute left-0 top-full z-50 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm"
+          className="absolute left-0 top-full z-50 mt-1 w-72 rounded-xl border border-slate-200 bg-card p-1.5 shadow-sm"
         >
           {item.children?.map((sub) => {
             const subActive = isNavItemActive(pathname, sub.href);
@@ -302,6 +302,7 @@ function AgentsMenu({ pathname }: { pathname: string | null }) {
             <Link
               key={link.href}
               href={link.href}
+              onClick={() => setOpen(false)}
               aria-current={current === link.href ? "page" : undefined}
               className={`block px-4 py-2 text-slate-200 transition hover:bg-electric-blue/20 hover:text-white ${chromeLinkFocus}`}
             >
@@ -430,7 +431,13 @@ export function AppHeader({
 
         <nav aria-label="Main" className="hidden h-full min-w-0 items-center lg:flex">
           {items
-            .filter((item) => item.href === "/escalations" || item.href === "/docs")
+            .filter(
+              (item) =>
+                item.href === "/dashboard" ||
+                item.href === "/issues" ||
+                item.href === "/escalations" ||
+                item.href === "/docs",
+            )
             .map((item) =>
               item.children && item.children.length > 0 ? (
                 <NavMenu
@@ -493,7 +500,7 @@ export function AppHeader({
             {accountOpen ? (
               <div
                 id="account-menu"
-                className="absolute right-0 top-full z-50 mt-2 w-64 origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm motion-safe:animate-[header-pop_120ms_ease-out]"
+                className="absolute right-0 top-full z-50 mt-2 w-64 origin-top-right rounded-xl border border-slate-200 bg-card p-1.5 shadow-sm motion-safe:animate-[header-pop_120ms_ease-out]"
               >
                 <AccountSummary userName={userName} userImage={userImage} realRole={realRole} />
                 {canSwitchRole ? (
@@ -555,7 +562,7 @@ export function AppHeader({
         <div
           id="mobile-menu"
           ref={menuPanelRef}
-          className="relative max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-4 pt-2 lg:hidden"
+          className="relative max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-card px-4 pb-4 pt-2 lg:hidden"
         >
           <div className="border-b border-slate-200 pb-3">
             <WorkspaceSwitcher

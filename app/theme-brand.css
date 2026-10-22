@@ -13,7 +13,9 @@
  *   communicate success, warning and danger in both themes.
  * - Surfaces: light canvas becomes the export's #F8F9FF; dark canvas becomes
  *   deep-ocean #0B1733 with card surfaces on blue-slate #263B63 (the export's
- *   page < card < chip stacking). The navy chrome (#0B1733) itself is painted
+ *   page < card < chip stacking). Cards use the `card` token (`bg-card`),
+ *   not `--color-white`: remapping white also recolors `text-white` and drops
+ *   filled-button labels below AA. The navy chrome (#0B1733) itself is painted
  *   by the header/sidebar components, since it is theme-independent in the
  *   exports ("Preserved Deep Blue" in both light and dark).
  *
@@ -73,9 +75,12 @@
   :root:not([data-theme="light"]) {
     --background: #0b1733;
 
-    /* Cards (bg-white) sit one step above the dark canvas; bg-slate-50 page
-       wrappers and slate-100 chips follow the export's stacking. */
-    --color-white: #263b63;
+    /* Cards sit one step above the dark canvas via --card (bg-card).
+       --color-white stays white so text-white, rings, and white/opacity
+       chrome keep their contrast. bg-slate-50 page wrappers and slate-100
+       chips follow the export's stacking. */
+    --color-white: #fff;
+    --card: #263b63;
     --color-slate-50: #0b1733;
     --color-slate-100: #1d2e52;
 
@@ -121,7 +126,8 @@
   :root[data-theme="dark"] {
     --background: #0b1733;
 
-    --color-white: #263b63;
+    --color-white: #fff;
+    --card: #263b63;
     --color-slate-50: #0b1733;
     --color-slate-100: #1d2e52;
 

@@ -24,7 +24,7 @@ function SingleAvatar({
   // The group's own label gives the count; each face is decorative, with the
   // name on hover for sighted users (#290).
   return (
-    <span title={voter.name} className="inline-flex rounded-full ring-white ring-2">
+    <span title={voter.name} className="inline-flex rounded-full ring-card ring-2">
       <Avatar name={voter.name} image={voter.image} size={size === "sm" ? "xs" : "sm"} />
     </span>
   );

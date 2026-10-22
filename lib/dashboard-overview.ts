@@ -70,16 +70,22 @@ export const EMPTY_OVERVIEW: WorkspaceOverview = {
 /**
  * The moment each issue first reached resolved/closed, from the activity log.
  * There is no resolvedAt column, and updatedAt moves on every later edit, so
- * it cannot stand in for one — same FIRST_CLOSE derivation the admin
- * dashboard uses (lib/dashboard-queries.ts).
+ * it cannot stand in for one — same derivation the admin dashboard uses
+ * (lib/dashboard-queries.ts). The join is inside the aggregate so Postgres
+ * does not scan every workspace's activity before applying the tenant.
  */
-const FIRST_CLOSE = Prisma.sql`
-  SELECT a."bugId" AS bug_id, MIN(a."createdAt") AS closed_at
-  FROM "BugActivity" a
-  WHERE a.type = 'status_changed'
-    AND a.metadata ->> 'to' IN ('resolved', 'closed')
-  GROUP BY a."bugId"
-`;
+export function firstCloseForTenant(tenantId: string): Prisma.Sql {
+  return Prisma.sql`
+    SELECT a."bugId" AS bug_id, MIN(a."createdAt") AS closed_at
+    FROM "BugActivity" a
+    INNER JOIN "Bug" bug ON bug."id" = a."bugId"
+    WHERE a.type = 'status_changed'
+      AND a.metadata ->> 'to' IN ('resolved', 'closed')
+      AND bug."tenantId" = ${tenantId}
+      AND bug."isDeleted" = false
+    GROUP BY a."bugId"
+  `;
+}
 
 export async function loadWorkspaceOverview({
   userId,
@@ -115,7 +121,7 @@ export async function loadWorkspaceOverview({
       >`
         SELECT b."id", b."number", b."title", b."status"::text AS status,
                b."severity"::text AS severity, fc.closed_at AS resolved_at
-        FROM (${FIRST_CLOSE}) fc
+        FROM (${firstCloseForTenant(tenantId)}) fc
         JOIN "Bug" b ON b."id" = fc.bug_id
         WHERE b."tenantId" = ${tenantId}
           AND b."isDeleted" = false

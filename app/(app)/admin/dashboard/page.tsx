@@ -123,7 +123,7 @@ function RangePicker({ range }: { range: ReturnType<typeof parseDateRange> }) {
             className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
               active
                 ? "border-teal-700 bg-teal-700 text-white"
-                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                : "border-slate-300 bg-card text-slate-700 hover:bg-slate-50"
             }`}
           >
             {preset.label}
@@ -154,7 +154,7 @@ function RangePicker({ range }: { range: ReturnType<typeof parseDateRange> }) {
         </label>
         <button
           type="submit"
-          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          className="rounded-lg border border-slate-300 bg-card px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
         >
           Apply
         </button>
@@ -173,7 +173,7 @@ function Stat({
   hint?: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+    <div className="rounded-xl border border-slate-200 bg-card px-4 py-3">
       <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
         {label}
       </dt>
@@ -198,7 +198,7 @@ function WeeklyChart({ points }: { points: WeekPoint[] }) {
   const height = 140;
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+    <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
         Opened vs closed, by week
       </h2>
@@ -316,7 +316,7 @@ function BreakdownCard({
   wide?: boolean;
 }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+    <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
         {title}
       </h2>
