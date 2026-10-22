@@ -137,6 +137,7 @@ export default async function DashboardPage() {
   return (
     <div className="flex items-start gap-6">
       <DashboardSidebar
+        active="overview"
         counts={{
           unresolved: overview.unresolvedCount,
           assigned: overview.assignedToMe,

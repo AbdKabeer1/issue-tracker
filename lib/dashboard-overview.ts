@@ -152,6 +152,35 @@ export async function loadWorkspaceOverview({
   };
 }
 
+/**
+ * The three live badges in the persistent sidebar. Kept separate from
+ * `loadWorkspaceOverview` so pages that only need the sidebar (the issue list)
+ * do not pay for previews, points or the rank query.
+ */
+export type SidebarCounts = {
+  unresolved: number;
+  assigned: number;
+  reported: number;
+};
+
+export async function loadSidebarCounts({
+  userId,
+  tenantId,
+}: {
+  userId: string;
+  tenantId: string | null;
+}): Promise<SidebarCounts> {
+  if (!tenantId) return { unresolved: 0, assigned: 0, reported: 0 };
+
+  const base: Prisma.BugWhereInput = { ...bugInTenant(tenantId), isDeleted: false };
+  const [unresolved, assigned, reported] = await Promise.all([
+    prisma.bug.count({ where: { ...base, status: { in: [...UNRESOLVED_STATUSES] } } }),
+    prisma.bug.count({ where: { ...base, assigneeId: userId } }),
+    prisma.bug.count({ where: { ...base, reporterId: userId } }),
+  ]);
+  return { unresolved, assigned, reported };
+}
+
 /* ------------------------------------------------------------------ */
 /* Your agents                                                         */
 /* ------------------------------------------------------------------ */

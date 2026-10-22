@@ -24,18 +24,27 @@ export function Avatar({
   name,
   image,
   size = "sm",
+  variant = "tone",
   className = "",
 }: {
   name?: string | null;
   image?: string | null;
   size?: AvatarSize;
+  /**
+   * "tone" is the shared pastel colour derived from the name. "solid" is the
+   * saturated green used on the navy chrome (the header and sidebar account
+   * cards), where the pastel tints do not read against the dark background.
+   */
+  variant?: "tone" | "solid";
   className?: string;
 }) {
   const src = safeAvatarUrl(image);
   return (
     <span
       aria-hidden="true"
-      className={`relative inline-flex shrink-0 select-none items-center justify-center overflow-hidden rounded-full font-semibold ${AVATAR_SIZES[size]} ${avatarTone(name)} ${className}`}
+      className={`relative inline-flex shrink-0 select-none items-center justify-center overflow-hidden rounded-full font-semibold ${AVATAR_SIZES[size]} ${
+        variant === "solid" ? "bg-emerald-700 text-white" : avatarTone(name)
+      } ${className}`}
     >
       {initialsOf(name)}
       {src ? (

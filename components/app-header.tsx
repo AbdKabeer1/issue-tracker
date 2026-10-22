@@ -145,10 +145,8 @@ function NotificationsBell({ unreadCount, active }: { unreadCount: number; activ
       {unreadCount > 0 ? (
         <span
           aria-hidden="true"
-          className="absolute -right-0.5 -top-0.5 inline-flex min-w-[1.125rem] items-center justify-center rounded-full bg-electric-blue px-1 text-[10px] font-semibold leading-[1.125rem] text-white ring-2 ring-deep-ocean"
-        >
-          {unreadCount > 99 ? "99+" : unreadCount}
-        </span>
+          className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-electric-blue ring-2 ring-deep-ocean"
+        />
       ) : null}
     </Link>
   );
@@ -337,8 +335,8 @@ function PointsChip({
       <span className="text-sm font-semibold tabular-nums text-white">{points}</span>
       <span className="text-xs text-sky-tint">pts</span>
       <span className="sr-only"> of {TARGET_POINTS}, {solvedTasks} solved</span>
-      <span className="hidden h-1.5 w-10 overflow-hidden rounded-full bg-white/15 md:block" aria-hidden="true">
-        <span className="block h-full rounded-full bg-sky-tint" style={{ width: `${progress.pointsPercent}%` }} />
+      <span className="hidden h-1.5 w-12 overflow-hidden rounded-full bg-white/15 md:block" aria-hidden="true">
+        <span className="block h-full rounded-full bg-electric-blue" style={{ width: `${progress.pointsPercent}%` }} />
       </span>
     </Link>
   );
@@ -422,29 +420,31 @@ export function AppHeader({
       />
       <div className={`relative flex h-14 items-center gap-4 sm:gap-6 ${PAGE_CONTAINER_CLASS}`}>
         <div className="shrink-0">
-          <BrandLockup href="/dashboard" size="sm" tone="chrome" />
+          <BrandLockup href="/dashboard" size="sm" tone="chrome" showWordmark={false} />
         </div>
 
         {/* Active workspace. Below lg it moves into the menu. */}
         <div className="hidden shrink-0 lg:block">
-          <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} />
+          <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} tone="chrome" />
         </div>
 
         <nav aria-label="Main" className="hidden h-full min-w-0 items-center lg:flex">
-          {items.map((item) =>
-            item.children && item.children.length > 0 ? (
-              <NavMenu
-                key={item.label}
-                item={item}
-                pathname={pathname}
-                open={openMenu === item.label}
-                onToggle={() => setOpenMenu((current) => (current === item.label ? null : item.label))}
-                onClose={() => setOpenMenu(null)}
-              />
-            ) : (
-              <NavTab key={item.href} item={item} pathname={pathname} />
-            ),
-          )}
+          {items
+            .filter((item) => item.href === "/escalations" || item.href === "/docs")
+            .map((item) =>
+              item.children && item.children.length > 0 ? (
+                <NavMenu
+                  key={item.label}
+                  item={item}
+                  pathname={pathname}
+                  open={openMenu === item.label}
+                  onToggle={() => setOpenMenu((current) => (current === item.label ? null : item.label))}
+                  onClose={() => setOpenMenu(null)}
+                />
+              ) : (
+                <NavTab key={item.href} item={item} pathname={pathname} />
+              ),
+            )}
           <AgentsMenu pathname={pathname} />
         </nav>
 
@@ -480,7 +480,7 @@ export function AppHeader({
               className={`relative flex items-center gap-1 rounded-full p-0.5 pr-1.5 text-slate-300 transition-colors hover:bg-white/5 hover:text-porcelain ${chromeLinkFocus}`}
             >
               <span className="sr-only">Account menu for {userName}</span>
-              <Avatar name={userName} image={userImage} size="md" />
+              <Avatar name={userName} image={userImage} size="md" variant="solid" />
               <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path
                   fillRule="evenodd"
