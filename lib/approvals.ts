@@ -432,7 +432,11 @@ export async function decideApproval(
   };
 
   if ("$transaction" in db && typeof (db as PrismaClient).$transaction === "function") {
-    return (db as PrismaClient).$transaction((tx) => run(tx as Db), { isolationLevel: "Serializable" });
+    // Default isolation is deliberate: the conditional update above is the
+    // gate. Serializable raises P2034 before updateMany can return count 0,
+    // turning a lost race into a 503 instead of the 409, and retrying would
+    // repeat the non-transactional notification/merge effects.
+    return (db as PrismaClient).$transaction((tx) => run(tx as Db));
   }
   return run(db);
 }
