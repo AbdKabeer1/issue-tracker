@@ -262,6 +262,8 @@ describe("listEvents", () => {
 describe("publish", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    // #524: the broadcast waits for the committed row; the row is visible here.
+    db.agentEvent.findUnique.mockResolvedValue({ id: "new-event" });
   });
 
   it("only queues deliveries for subscriptions whose event filter matches (#512)", async () => {

@@ -85,6 +85,7 @@ describe("team directory page", () => {
     }));
     expect(html).toContain("Grace");
     expect(html).toContain("No active agents.");
+    expect(html).not.toContain("Role for");
     expect(prisma.agent.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { tenantId: "tenant-1", ownerUserId: { in: ["viewer-1", "member-2"] }, revokedAt: null },
     }));
@@ -182,5 +183,28 @@ describe("team directory page", () => {
     // An area from an old link is ignored rather than filtering everyone out.
     expect(html).toContain("Ada");
     expect(html).toContain("Grace");
+  });
+
+  it("lets a super admin change another person's agent role", async () => {
+    requireUser.mockResolvedValue({ id: "viewer-1", role: "super_admin" });
+    vi.mocked(prisma.agent.findMany).mockResolvedValue([
+      {
+        id: "agent-2",
+        ownerUserId: "member-2",
+        name: "Grace's agent",
+        model: "Claude",
+        level: "triager",
+        apiKeys: [{ lastUsedAt: null }],
+        claims: [],
+      },
+    ] as never);
+
+    const html = renderToStaticMarkup(await TeamPage({ searchParams: Promise.resolve({}) }));
+
+    expect(html).toContain("change anyone&#x27;s agent role");
+    expect(html).toContain('aria-label="Role for Grace&#x27;s agent"');
+    expect(html).toContain(">Merger</option>");
+    expect(html).toContain(">Dispatcher</option>");
+    expect(html).not.toContain("Reputation:");
   });
 });

@@ -32,7 +32,7 @@ function keyRow(overrides: {
       level: "contributor",
       burst: false,
       revokedAt: null,
-      owner: { memberships: [{ tenantId: "tenant_zedu" }] },
+      owner: { role: "user", memberships: [{ tenantId: "tenant_zedu" }] },
       ...overrides.agent,
     },
   };
@@ -83,6 +83,7 @@ describe("requireAgent (#427)", () => {
       ownerId: "ada",
       tenantId: "tenant_zedu",
       level: "contributor",
+      ownerRole: "user",
       burst: false,
       burstUntil: null,
       keyId: "key1",

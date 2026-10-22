@@ -16,6 +16,8 @@ import { LocalTime } from "@/components/local-time";
 import { statusClass, statusLabels } from "@/lib/labels";
 import { teamAgentsForMember } from "@/lib/team-directory";
 import { TeamAgentList } from "@/components/team-agent-list";
+import { isTenantAdmin } from "@/lib/agents/membership";
+import { settableLevels } from "@/lib/agents/levels";
 
 type ProfileProps = { params: Promise<{ id: string }>; searchParams?: Promise<Record<string, string | string[] | undefined>> };
 
@@ -115,6 +117,9 @@ export default async function ProfilePage({ params, searchParams }: ProfileProps
   const agents = tenantId && tenantMembership
     ? await teamAgentsForMember(prisma, tenantId, person.id)
     : [];
+  const manageLevels = tenantId && viewer.id !== person.id && (await isTenantAdmin(viewer, tenantId))
+    ? settableLevels({ isOwner: false, isTenantAdmin: true })
+    : null;
 
   return (
     <div className="space-y-6">
@@ -183,7 +188,7 @@ export default async function ProfilePage({ params, searchParams }: ProfileProps
         <h2 id="profile-agents-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Agents
         </h2>
-        <TeamAgentList agents={agents} />
+        <TeamAgentList agents={agents} manageLevels={manageLevels} />
       </section>
 
       <IssueList

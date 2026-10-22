@@ -6,6 +6,7 @@ import { AgentLevelError } from "@/lib/agents/levels";
 import { AgentPlatformDisabledError, agentPlatformDisabledResponse } from "@/lib/agents/platform-gate";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 import { logger } from "@/lib/logger";
+import type { AppRole } from "@/lib/roles";
 
 export { AgentPlatformDisabledError, agentPlatformDisabledResponse };
 
@@ -23,6 +24,11 @@ export type AgentContext = {
   ownerId: string;
   tenantId: string;
   level: AgentLevel;
+  /**
+   * The owner's site-wide role, read from the agent's owner row. Routes that
+   * mirror the web app's admin gate need it (#512).
+   */
+  ownerRole?: AppRole | null;
   /** For the rate budget (#440). */
   burst: boolean;
   /** When the higher budget lapses; null means no expiry (#596). */
@@ -111,7 +117,7 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
           burst: true,
           burstUntil: true,
           revokedAt: true,
-          owner: { select: { memberships: { select: { tenantId: true } } } },
+          owner: { select: { role: true, memberships: { select: { tenantId: true } } } },
         },
       },
     },
@@ -147,6 +153,7 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
     ownerId: agent.ownerUserId,
     tenantId: agent.tenantId,
     level: agent.level,
+    ownerRole: agent.owner.role ?? null,
     burst: agent.burst,
     burstUntil: agent.burstUntil ?? null,
     keyId: key.id,

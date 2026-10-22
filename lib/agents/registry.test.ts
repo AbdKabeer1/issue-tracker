@@ -145,6 +145,14 @@ describe("revokeAgent and setAgentLevel (#427)", () => {
     expect(await setAgentLevel(ada, "agent1", "dispatcher")).toMatchObject({ ok: false });
     expect(db.agent.update).toHaveBeenCalledTimes(1);
   });
+
+  it("lets a site super admin set merger on someone else's agent", async () => {
+    db.agent.findUnique.mockResolvedValue(agentRow);
+    db.agent.findUniqueOrThrow.mockResolvedValue({ level: "contributor" });
+    expect(await setAgentLevel({ id: "root", role: "super_admin" }, "agent1", "merger")).toEqual({ ok: true });
+    expect(db.agent.update.mock.calls[0][0].data).toEqual({ level: "merger" });
+    expect(db.membership.findUnique).not.toHaveBeenCalled();
+  });
 });
 
 describe("setAgentBurst (#440)", () => {
