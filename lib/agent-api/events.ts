@@ -85,13 +85,6 @@ export type AgentEventType = (typeof AGENT_EVENT_TYPES)[number];
 
 export type EventPayload = Prisma.InputJsonObject;
 
-/**
- * Writes one `AgentEvent` row. Call this inside the same transaction that
- * performs the domain change so the event commits atomically with it.
- *
- * Export contract: other issues call `publish()` to emit events into the feed.
- * This PR adds `issue.created` and `comment.created`.
- */
 /** How often to look for the committed row, and how long to wait between looks. */
 const COMMIT_WAIT_ATTEMPTS = 20;
 const COMMIT_WAIT_DELAY_MS = 50;
@@ -149,6 +142,13 @@ export async function broadcastWhenCommitted(
   return false;
 }
 
+/**
+ * Writes one `AgentEvent` row. Call this inside the same transaction that
+ * performs the domain change so the event commits atomically with it.
+ *
+ * Export contract: other issues call `publish()` to emit events into the feed.
+ * This PR adds `issue.created` and `comment.created`.
+ */
 export async function publish(
   db: PrismaClient | Prisma.TransactionClient,
   params: {
