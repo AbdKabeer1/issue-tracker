@@ -6,6 +6,18 @@ import { requireUser } from "@/lib/auth-helpers";
 import { expireTag, TAGS } from "@/lib/lookups";
 import { currentTenantIdFor, notificationInTenant } from "@/lib/tenant-context";
 
+/** A bounded preview, scoped exactly like the current workspace's feed (#615). */
+export async function recentNotificationsAction() {
+  const user = await requireUser();
+  const tenantId = await currentTenantIdFor(user.id);
+  return prisma.notification.findMany({
+    where: { userId: user.id, ...notificationInTenant(tenantId) },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 8,
+    select: { id: true, title: true, readAt: true, createdAt: true },
+  });
+}
+
 /** Marks all of the current user's notifications as read (#216). */
 export async function markAllNotificationsReadAction(allWorkspaces = false): Promise<{ ok: boolean }> {
   const user = await requireUser();
