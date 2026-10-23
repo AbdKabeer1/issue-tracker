@@ -75,7 +75,10 @@ export async function standingValidations(agentId: string, db: Db = prisma): Pro
   const dbWithAudit = db as DbWithAudit;
   const [rows, undone] = await Promise.all([
     db.issueValidation.findMany({
-      where: { agentId },
+      // #590: only a judgement of whether an issue is real, or a duplicate, earns
+      // standing. A `format` row is written for an agent that merely structured
+      // an issue, so it must not count towards the promotion to reviewer.
+      where: { agentId, kind: { in: ["real", "duplicate", "fix"] } },
       select: validationSelect,
     }) as Promise<LoadedValidation[]>,
     typeof dbWithAudit.agentAuditEvent?.findMany === "function"
