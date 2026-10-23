@@ -67,7 +67,7 @@ describe("undoAuditEventAction (#450)", () => {
     expect(mockRevalidatePath).toHaveBeenCalledWith("/settings/audit");
   });
 
-  it("propagates a not-found error from the undo", async () => {
+  it("surfaces the undo's human-readable error", async () => {
     mockUndoAuditEvent.mockResolvedValue({
       ok: false,
       error: "not_found",
@@ -75,7 +75,7 @@ describe("undoAuditEventAction (#450)", () => {
     } as never);
     const result = await undoAuditEventAction(undefined, form({ auditEventId: "event-1" }));
 
-    expect(result).toEqual({ ok: false, error: "not_found" });
+    expect(result).toEqual({ ok: false, error: "No such audit event." });
     expect(mockRevalidatePath).not.toHaveBeenCalled();
   });
 });

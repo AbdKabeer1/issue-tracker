@@ -22,7 +22,6 @@ export default async function LoginPage({
     callbackUrl?: string;
     expired?: string;
     error?: string;
-    reason?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -64,11 +63,6 @@ export default async function LoginPage({
                   ? "Unable to complete Google sign-in. Please try again."
                   : "Authentication failed. Please try again."}
             </p>
-            {params.reason ? (
-              <p className="mt-1.5 font-mono text-xs break-words text-zk-bad-fg/90">
-                Diagnostic: {params.reason}
-              </p>
-            ) : null}
           </div>
         ) : null}
 

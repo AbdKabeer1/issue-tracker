@@ -749,7 +749,7 @@ export default async function BugsPage({
             </div>
           </div>
         ) : (
-          <section className="flex flex-col gap-3.5 rounded-[20px] border border-zk-border bg-zk-surface p-5">
+          <section className="flex flex-col gap-3.5 rounded-[20px] border border-zk-border bg-zk-surface p-3 sm:p-5">
             <div className="flex flex-wrap items-baseline justify-between gap-2.5">
               <div className="flex flex-wrap items-baseline gap-2.5">
                 <h2 className="text-lg font-bold text-zk-text">All issues</h2>
@@ -776,9 +776,9 @@ export default async function BugsPage({
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <div className="min-w-[860px]">
-                <div className="flex items-center gap-4 rounded-full bg-zk-tint px-4 py-3.5 text-xs font-bold uppercase tracking-[0.05em] text-zk-accent">
+            <div className="relative lg:overflow-x-auto">
+              <div className="lg:min-w-[860px]">
+                <div className="hidden items-center gap-4 rounded-full bg-zk-tint px-4 py-3.5 text-xs font-bold uppercase tracking-[0.05em] text-zk-accent lg:flex">
                   <span className="w-[52px]">Votes</span>
                   <span className="min-w-0 flex-1">Issue</span>
                   <span className="w-[92px]">Type</span>
@@ -803,7 +803,7 @@ export default async function BugsPage({
                     return (
                       <li
                         key={bug.id}
-                        className={`flex items-center gap-4 px-4 py-3.5 ${
+                        className={`flex items-center gap-2 px-2 py-3.5 lg:gap-4 lg:px-4 ${
                           index < bugs.length - 1 ? "border-b border-zk-divider" : ""
                         }`}
                       >
@@ -825,7 +825,7 @@ export default async function BugsPage({
                         <Link
                           href={issuePath(bug.number)}
                           data-issue-link=""
-                          className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-electric-blue"
+                          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md text-left [touch-action:manipulation] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-electric-blue"
                         >
                           <span
                             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
@@ -847,6 +847,10 @@ export default async function BugsPage({
                                 bug.title
                               )}
                             </span>
+                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-bold lg:hidden ${statusPillClass(bug.status)}`}>
+                              <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
+                              {statusLabels[bug.status]}
+                            </span>
                             <span className="flex items-center gap-2 text-xs text-zk-muted">
                               <span className="font-mono tabular-nums">{formatIssueNumber(bug.number)}</span>
                               {(bug._count?.comments ?? 0) > 0 ? (
@@ -866,19 +870,19 @@ export default async function BugsPage({
                             {snippets.has(bug.id) ? <SearchSnippet snippet={snippets.get(bug.id)!} /> : null}
                           </span>
                         </Link>
-                        <span className="w-[92px] shrink-0 text-[13px] text-zk-text2">{typeName}</span>
-                        <span className="w-24 shrink-0">
+                        <span className="hidden w-[92px] shrink-0 text-[13px] text-zk-text2 lg:block">{typeName}</span>
+                        <span className="hidden w-24 shrink-0 lg:block">
                           <span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-bold ${severityPillClass(bug.severity)}`}>
                             {severityLabels[bug.severity]}
                           </span>
                         </span>
-                        <span className="w-[76px] shrink-0">
+                        <span className="hidden w-[76px] shrink-0 lg:block">
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold ${statusPillClass(bug.status)}`}>
                             <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
                             {statusLabels[bug.status]}
                           </span>
                         </span>
-                        <span className="w-[104px] shrink-0">
+                        <span className="hidden w-[104px] shrink-0 lg:block">
                           {stage ? (
                             <span
                               title={intakeDetail(stage, bug.voteCount)}
@@ -891,15 +895,21 @@ export default async function BugsPage({
                             <span className="text-[13px] text-zk-muted">—</span>
                           )}
                         </span>
-                        <span className="w-[84px] shrink-0 text-[13px] text-zk-text2">
+                        <span className="hidden w-[84px] shrink-0 text-[13px] text-zk-text2 lg:block">
                           <RowAge
                             date={currentSort === "newest" ? bug.createdAt : bug.updatedAt}
                             sort={currentSort === "newest" ? "newest" : "updated"}
                           />
                         </span>
-                        <span className="flex w-10 shrink-0 items-center justify-end gap-2">
+                        <span
+                          className={`w-10 shrink-0 items-center justify-end gap-2 ${
+                            isWatchingView && !bug.isDeleted ? "flex" : "hidden lg:flex"
+                          }`}
+                        >
                           {bug.assignee ? (
-                            <RowAssignee name={bug.assignee.name} image={bug.assignee.image} />
+                            <span className="hidden lg:inline-flex">
+                              <RowAssignee name={bug.assignee.name} image={bug.assignee.image} />
+                            </span>
                           ) : null}
                           {isWatchingView && !bug.isDeleted ? (
                             <UnwatchButton bugId={bug.id} label={`${formatIssueNumber(bug.number)} ${bug.title}`} />

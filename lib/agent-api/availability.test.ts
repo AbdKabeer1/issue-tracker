@@ -71,8 +71,8 @@ describe("project heartbeat window (#595)", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           OR: [
-            { lastHeartbeatAt: { lt: minuteCutoff } },
-            { lastHeartbeatAt: null, claimedAt: { lt: minuteCutoff } },
+            { lastHeartbeatAt: { lt: minuteCutoff }, bug: { pullRequestUrl: null } },
+            { lastHeartbeatAt: null, claimedAt: { lt: minuteCutoff }, bug: { pullRequestUrl: null } },
             { deliverBy: { lt: now }, bug: { pullRequestUrl: null } },
           ],
         }),
@@ -114,7 +114,7 @@ describe("claim heartbeats", () => {
     mocks.budget.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 7 });
     const response = await POST(request(), context);
     expect(response.status).toBe(429); expect(response.headers.get("retry-after")).toBe("7");
-    expect(mocks.budget).toHaveBeenCalledWith({ id: "agent", burst: false, burstUntil: null }, "write");
+    expect(mocks.budget).toHaveBeenCalledWith({ id: "agent", burst: false, burstUntil: null }, "heartbeat");
     expect(db.issueClaim.update).not.toHaveBeenCalled();
   });
   it("hides out-of-scope issues and reports storage failures", async () => {
@@ -137,6 +137,13 @@ describe("stale claim release", () => {
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: "claim.released", agentId: "agent", actorUserId: "admin", bugId: "issue", payload: { claimId: "claim", reason: "silence", projectId: "project" } }) });
     expect(mocks.demote).toHaveBeenCalledWith("agent", db, now);
     expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(db.issueClaim.findFirst.mock.invocationCallOrder[0]);
+  });
+  it("does not release a silent claim whose fix is already linked (#551)", async () => {
+    db.issueClaim.findFirst.mockResolvedValueOnce({ ...claim, bug: { pullRequestUrl: "https://github.com/o/r/pull/1", project: { ownerWaitCapMinutes: null } } });
+    expect(await releaseStaleClaims("project")).toEqual({ released: 0 });
+    expect(db.issueClaim.update).not.toHaveBeenCalled();
+    expect(db.bug.updateMany).not.toHaveBeenCalled();
+    expect(db.agentEvent.create).not.toHaveBeenCalled();
   });
   it.each([cutoff, new Date(cutoff.getTime() + 1), now])("keeps a heartbeat at or after the 15-minute boundary (%s)", async (lastHeartbeatAt) => {
     db.issueClaim.findFirst.mockResolvedValueOnce({ ...claim, lastHeartbeatAt });
@@ -216,7 +223,7 @@ describe("stale claim release", () => {
 
   it("limits candidates to stale active claims in the project, excluding offers", async () => {
     await releaseStaleClaims("project");
-    expect(db.issueClaim.findMany).toHaveBeenCalledWith({ where: { status: "active", releasedAt: null, waitingOnOwnerSince: null, bug: { projectId: "project", tenantId: "tenant", isDeleted: false, status: "in_progress" }, OR: [{ lastHeartbeatAt: { lt: cutoff } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff } }, { deliverBy: { lt: now }, bug: { pullRequestUrl: null } }] }, select: { id: true, bugId: true } });
+    expect(db.issueClaim.findMany).toHaveBeenCalledWith({ where: { status: "active", releasedAt: null, waitingOnOwnerSince: null, bug: { projectId: "project", tenantId: "tenant", isDeleted: false, status: "in_progress" }, OR: [{ lastHeartbeatAt: { lt: cutoff }, bug: { pullRequestUrl: null } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff }, bug: { pullRequestUrl: null } }, { deliverBy: { lt: now }, bug: { pullRequestUrl: null } }] }, select: { id: true, bugId: true } });
     expect(db.issueClaim.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         bug: { projectId: "project", tenantId: "tenant", isDeleted: false, status: "in_progress" },
@@ -268,7 +275,7 @@ describe("scheduled stale-claim sweep (#524)", () => {
     for (const [call] of sweeps) expect(call.data.actorUserId).toBeNull();
     expect(db.issueClaim.findMany).toHaveBeenCalledWith({ where: { status: "active", releasedAt: null, waitingOnOwnerSince: null,
       bug: { isDeleted: false, status: "in_progress" },
-      OR: [{ lastHeartbeatAt: { lt: cutoff } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff } }, { deliverBy: { lt: now }, bug: { pullRequestUrl: null } }] },
+      OR: [{ lastHeartbeatAt: { lt: cutoff }, bug: { pullRequestUrl: null } }, { lastHeartbeatAt: null, claimedAt: { lt: cutoff }, bug: { pullRequestUrl: null } }, { deliverBy: { lt: now }, bug: { pullRequestUrl: null } }] },
       orderBy: { createdAt: "asc" }, take: 50,
       select: { id: true, bugId: true, bug: { select: { tenantId: true, projectId: true } } } });
   });

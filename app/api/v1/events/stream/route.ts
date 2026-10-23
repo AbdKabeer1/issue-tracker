@@ -1,8 +1,8 @@
 import { createMethodNotAllowed, createOptions } from "@/lib/agent-api/http-errors";
 import { NextResponse, type NextRequest } from "next/server";
-import { parseEventFilters, parseEventCursor, eventCursorError } from "@/lib/agent-api/events";
+import { parseEventFilters, parseEventCursor, eventCursorError, scopeEventFilters, type EventFilters } from "@/lib/agent-api/events";
 import { eventStreamBus, type StreamEvent } from "@/lib/events/stream-bus";
-import { agentErrorResponse, requireAgent, type AgentContext } from "@/lib/agents/require-agent";
+import { AgentProjectError, agentErrorResponse, requireAgent, type AgentContext } from "@/lib/agents/require-agent";
 import { requireLevel } from "@/lib/agents/levels";
 import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/rate-budget";
 import { withAgentBudgetHeaders } from "@/lib/agents/rate-budget-headers";
@@ -54,9 +54,28 @@ export async function GET(request: NextRequest) {
 
   const params = request.nextUrl.searchParams;
 
-  const filters = parseEventFilters(params);
-  if ("error" in filters) {
-    return NextResponse.json(filters, { status: 400 });
+  const parsedFilters = parseEventFilters(params);
+  if ("error" in parsedFilters) {
+    return NextResponse.json(parsedFilters, { status: 400 });
+  }
+
+  // #607: a project-scoped key must not replay or stream another project's
+  // events. Apply the same scope rules as GET /api/v1/events.
+  let filters: EventFilters;
+  try {
+    const scoped = await scopeEventFilters(agent, parsedFilters);
+    if ("status" in scoped) {
+      return NextResponse.json({ error: scoped.error }, { status: scoped.status });
+    }
+    filters = scoped.filters;
+  } catch (error) {
+    if (error instanceof AgentProjectError) return agentErrorResponse(error);
+    logger.error("[agent-api] event stream scope failed", {
+      tenantId: agent.tenantId,
+      agentId: agent.agentId,
+      error,
+    });
+    return NextResponse.json({ error: "Event feed unavailable." }, { status: 503 });
   }
 
   const cursorResult = parseEventCursor(params);

@@ -67,7 +67,7 @@ describe("SettingsPage resilience", () => {
       keyboardShortcuts: true,
     } as unknown as Awaited<ReturnType<typeof prisma.user.findUnique>>);
 
-    const element = await SettingsPage();
+    const element = await SettingsPage({});
     expect(element).toBeDefined();
     expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
   });
@@ -80,7 +80,7 @@ describe("SettingsPage resilience", () => {
         email: "ada@example.com",
       } as unknown as Awaited<ReturnType<typeof prisma.user.findUnique>>);
 
-    const element = await SettingsPage();
+    const element = await SettingsPage({});
     expect(element).toBeDefined();
     expect(prisma.user.findUnique).toHaveBeenCalledTimes(2);
   });

@@ -31,7 +31,7 @@ function renderVoteButton(
 
 function likeButton() {
   return screen.getByRole("button", {
-    name: /^(Upvote this issue|Upvoted)/,
+    name: /^(?:\d+ votes?|Upvote|Upvoted)/,
   }) as HTMLButtonElement;
 }
 
@@ -160,5 +160,20 @@ describe("VoteButton large size accessible name", () => {
     unmount();
     render(<VoteButton bugId="b1" voteCount={3} userVote={1} size="md" />);
     expect(screen.getByRole("button", { name: /^Upvoted 3 votes, click to remove your vote$/ })).toBeTruthy();
+  });
+});
+
+describe("VoteButton compact accessible name", () => {
+  it.each([
+    { voteCount: 0, name: "0 votes, click to upvote" },
+    { voteCount: 1, name: "1 vote, click to upvote" },
+    { voteCount: 2, name: "2 votes, click to upvote" },
+    { voteCount: 3, userVote: 1, name: "3 votes, upvoted, click to remove" },
+  ])("includes its visible count in '$name'", ({ voteCount, userVote, name }) => {
+    render(<VoteButton bugId="b1" voteCount={voteCount} userVote={userVote} size="sm" />);
+
+    const button = screen.getByRole("button", { name });
+    expect(within(button).getByText(String(voteCount))).toBeTruthy();
+    expect(button.getAttribute("aria-pressed")).toBe(userVote === 1 ? "true" : "false");
   });
 });

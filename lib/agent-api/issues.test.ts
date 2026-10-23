@@ -842,6 +842,26 @@ describe("issue read confirmation", () => {
     expect(db.bug.findFirst.mock.calls.at(-1)?.[0]?.select.voteCount).toBe(true);
   });
 
+  it("shows the linked fix and the commit a verdict would test (#544)", async () => {
+    const pullRequestUrl = "https://github.com/Zedu-Endor/issue-tracker/pull/1235";
+    const pullRequestHeadSha = "77e781e7c6d32b1fb25493e4250092d0bf76cb3c";
+    db.bug.findFirst.mockResolvedValue({ ...issue, status: "open", pullRequestUrl, pullRequestHeadSha });
+    db.issueValidation.findMany.mockResolvedValue([]);
+    const body = (await readIssue()) as unknown as { pullRequestUrl: string | null; pullRequestHeadSha: string | null };
+    expect(body.pullRequestUrl).toBe(pullRequestUrl);
+    expect(body.pullRequestHeadSha).toBe(pullRequestHeadSha);
+    expect(db.bug.findFirst.mock.calls.at(-1)?.[0]?.select.pullRequestUrl).toBe(true);
+    expect(db.bug.findFirst.mock.calls.at(-1)?.[0]?.select.pullRequestHeadSha).toBe(true);
+  });
+
+  it("reports an unlinked fix as null rather than omitting it (#544)", async () => {
+    db.bug.findFirst.mockResolvedValue({ ...issue, status: "open", pullRequestUrl: null, pullRequestHeadSha: null });
+    db.issueValidation.findMany.mockResolvedValue([]);
+    const body = (await readIssue()) as unknown as Record<string, unknown>;
+    expect(body).toHaveProperty("pullRequestUrl", null);
+    expect(body).toHaveProperty("pullRequestHeadSha", null);
+  });
+
   it("does not confirm when both accepts belong to the same owner", async () => {
     db.issueValidation.findMany.mockResolvedValue([
       accept("v1", "r1", "rob"),

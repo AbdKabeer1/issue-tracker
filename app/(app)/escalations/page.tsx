@@ -36,7 +36,7 @@ export default async function EscalationsPage({
           body: true,
           status: true,
           createdAt: true,
-          bug: { select: { id: true, title: true } },
+          bug: { select: { id: true, number: true, title: true } },
           authorAgent: { select: { name: true } },
         },
       })
@@ -197,7 +197,7 @@ export default async function EscalationsPage({
                     href={`/issues/${item.bug.id}`}
                     className="font-semibold text-zk-accent hover:underline"
                   >
-                    #{item.bug.title}
+                    #{item.bug.number} {item.bug.title}
                   </Link>
                 </div>
               ) : null}
