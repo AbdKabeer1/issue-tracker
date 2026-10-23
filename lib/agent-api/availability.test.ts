@@ -114,7 +114,7 @@ describe("claim heartbeats", () => {
     mocks.budget.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 7 });
     const response = await POST(request(), context);
     expect(response.status).toBe(429); expect(response.headers.get("retry-after")).toBe("7");
-    expect(mocks.budget).toHaveBeenCalledWith({ id: "agent", burst: false, burstUntil: null }, "write");
+    expect(mocks.budget).toHaveBeenCalledWith({ id: "agent", burst: false, burstUntil: null }, "heartbeat");
     expect(db.issueClaim.update).not.toHaveBeenCalled();
   });
   it("hides out-of-scope issues and reports storage failures", async () => {
