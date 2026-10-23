@@ -76,11 +76,9 @@ function LinkRow({ href, label, external }: { href: string; label: string; exter
 }
 
 /** The settings index: themed appearance, sign-in security, and links into the nested settings surfaces. */
-export default async function SettingsPage(
-  props: {
-    searchParams?: Promise<{ section?: string | string[] }>;
-  },
-) {
+export default async function SettingsPage(props: {
+  searchParams?: Promise<{ section?: string | string[] }>;
+}) {
   const user = await requireUser();
   const params = props.searchParams ? await props.searchParams : {};
   const section = parseSection(params.section);

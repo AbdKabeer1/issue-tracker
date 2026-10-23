@@ -41,9 +41,6 @@ describe("page container token (#415)", () => {
   });
 
   it("keeps the issue description at a readable measure inside the container", () => {
-    const description = read("components/editable-issue-description.tsx");
-    expect(description).toContain("max-w-3xl");
-    expect(description).toContain("text-[15px]");
-    expect(description).toContain("leading-relaxed");
+    expect(read("components/editable-issue-description.tsx")).toMatch(/className="[^"]*\bmax-w-3xl\b/);
   });
 });

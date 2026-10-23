@@ -309,7 +309,9 @@ export function AppHeader({
   const activeWorkspace = workspaces.find((workspace) => workspace.id === activeTenantId) ?? workspaces[0];
 
   return (
-    <header className="z-40 border-b border-zk-border bg-zk-surface lg:sticky lg:top-0">
+    // Sticky only from lg: on phones and tablets the toolbar wraps onto rows,
+    // and a header that tall pinned to the top covers the page under it.
+    <header className="relative z-40 border-b border-zk-border bg-zk-surface lg:sticky lg:top-0">
       <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
         <Link
           href="/issues/new"
@@ -320,7 +322,11 @@ export function AppHeader({
           New issue
         </Link>
 
-        <div className="ml-auto flex w-full min-w-0 max-w-full flex-wrap items-center justify-end gap-2 lg:w-auto sm:gap-3">
+        {/* Phones and tablets: min-w-0 lets the group narrow so its flex-wrap
+            breaks the chips onto rows (no sideways scroll at 360px or 768px).
+            From lg up it keeps shrink-0 so the account controls are never
+            squeezed. */}
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-3 lg:shrink-0">
           <PointsChip
             points={points}
             solvedTasks={solvedTasks}
