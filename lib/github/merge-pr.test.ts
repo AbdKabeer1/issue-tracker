@@ -449,6 +449,36 @@ describe("checksGreen against the GitHub API (#491)", () => {
     await expect(createInstallationClient("123", env).checksGreen(ref, "sha1")).resolves.toBe(false);
   });
 
+  it("fails closed when the check-runs request is refused, even with no statuses (#531)", async () => {
+    // A 403 (no checks:read) used to fall through to "no statuses: green".
+    stubFetch((url) =>
+      tokenRoute(url) ??
+      (url.includes("/check-runs")
+        ? jsonResponse({ message: "Resource not accessible by integration" }, false)
+        : url.endsWith("/status")
+          ? jsonResponse({ state: "pending", statuses: [] })
+          : jsonResponse({}, false)),
+    );
+
+    await expect(createInstallationClient("123", env).checksGreen(ref, "sha1")).resolves.toBe(false);
+  });
+
+  it("fails closed when a later check-runs page fails, instead of judging the pages it got (#531)", async () => {
+    stubFetch((url) => {
+      const token = tokenRoute(url);
+      if (token) return token;
+      if (url.includes("/check-runs")) {
+        const page = Number(new URL(url).searchParams.get("page"));
+        return page === 1
+          ? jsonResponse({ check_runs: Array.from({ length: 100 }, () => checkRun()), total_count: 150 })
+          : jsonResponse({}, false);
+      }
+      return jsonResponse({}, false);
+    });
+
+    await expect(createInstallationClient("123", env).checksGreen(ref, "sha1")).resolves.toBe(false);
+  });
+
   it("reads past the first 30 check runs: a failure on page two blocks the merge", async () => {
     const fetchMock = stubFetch((url) => {
       const token = tokenRoute(url);
