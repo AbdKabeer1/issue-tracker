@@ -8,6 +8,7 @@ import {
   type CommentNode,
 } from "@/lib/comments";
 import { canDeleteComment, canEditComment } from "@/lib/comment-permissions";
+import type { AppRole } from "@/lib/roles";
 import type { OrganizationRole } from "@/lib/organization-role";
 import type { CommentType } from "@/lib/validations/issue";
 import { deleteCommentAction, updateCommentAction } from "@/app/actions/comments";
