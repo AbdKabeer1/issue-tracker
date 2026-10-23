@@ -320,7 +320,9 @@ export function AppHeader({
           New issue
         </Link>
 
-        <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+        {/* min-w-0, not shrink-0: the group must be able to narrow so its own
+            flex-wrap can break the chips onto rows at 360px (no sideways scroll). */}
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
           <PointsChip
             points={points}
             solvedTasks={solvedTasks}
