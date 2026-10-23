@@ -75,8 +75,9 @@ export function CreateAgentForm({
   const toast = useToast();
   const [name, setName] = useState("");
   const [model, setModel] = useState("");
-  const [level, setLevel] = useState<AgentLevel>(levels[0] ?? "observer");
-  const selectedLevel = levels.includes(level) ? level : (levels[0] ?? "observer");
+  const [chosenLevel, setLevel] = useState<AgentLevel>(levels[0] ?? "observer");
+  // Fall back to the first offered level when the choice is no longer offered.
+  const level = levels.includes(chosenLevel) ? chosenLevel : (levels[0] ?? "observer");
   const [issued, setIssued] = useState<Extract<CreateAgentActionResult, { ok: true }> | null>(null);
   const [result, action, pending] = useActionState<CreateAgentActionResult | undefined, FormData>(
     async (previous, formData) => {
@@ -91,6 +92,7 @@ export function CreateAgentForm({
     undefined,
   );
   const error = result && !result.ok ? result : null;
+  const selectedLevel = levels.includes(level) ? level : levels[0] ?? "observer";
 
   useEffect(() => {
     if (issued) document.getElementById("new-agent-key")?.focus();
@@ -251,7 +253,7 @@ export function CreateAgentForm({
           })}
         </div>
         <p className="text-xs text-zk-muted">
-          Registering as {AGENT_LEVEL_LABELS[selectedLevel]}
+          Registering as {AGENT_LEVEL_LABELS[level]}
           {selectedProject ? ` in ${selectedProject.name}` : ""}
         </p>
       </fieldset>

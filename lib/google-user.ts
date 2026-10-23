@@ -3,6 +3,28 @@ import type { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdminEmail } from "@/lib/super-admin";
 import { logger } from "@/lib/logger";
+import { clearTwoFactorAfterPasswordRemoved } from "@/lib/two-factor";
+
+type Db = typeof prisma;
+
+/**
+ * Runs a user upsert. When it removes an unproven password, any two-factor
+ * set up for that password is cleared in the same transaction (#388): both
+ * happen or neither does, so a failure leaves the account with its password
+ * and factor (still usable, retried at the next sign-in), never with a factor
+ * that can no longer be turned off.
+ */
+async function upsertUser<T extends { id: string }>(
+  neutralizePassword: boolean,
+  run: (db: Db) => Promise<T>,
+): Promise<T> {
+  if (!neutralizePassword) return run(prisma);
+  return prisma.$transaction(async (tx) => {
+    const user = await run(tx as unknown as Db);
+    await clearTwoFactorAfterPasswordRemoved(user.id, tx);
+    return user;
+  });
+}
 
 export type GoogleAccount = {
   id: string;
@@ -54,7 +76,7 @@ export async function upsertGoogleUser(input: {
   }
 
   try {
-    const user = await prisma.user.upsert({
+    const user = await upsertUser(neutralizePassword, (db) => db.user.upsert({
       where: { email },
       create: {
         email,
@@ -73,24 +95,33 @@ export async function upsertGoogleUser(input: {
         ...(neutralizePassword ? { passwordHash: null } : {}),
       },
       select: { id: true, name: true, role: true, sessionVersion: true },
-    });
+    }));
     return { id: user.id, name: user.name, role: user.role, sessionVersion: user.sessionVersion };
   } catch (error) {
     logger.error("[auth] Google user upsert failed:", error);
   }
 
   try {
-    const user = await prisma.user.upsert({
+    const user = await upsertUser(neutralizePassword, (db) => db.user.upsert({
       where: { email },
       create: { email, name },
       update: {
         ...(neutralizePassword ? { passwordHash: null } : {}),
       },
       select: { id: true, name: true, sessionVersion: true },
-    });
+    }));
     return { id: user.id, name: user.name, role, sessionVersion: user.sessionVersion ?? 0 };
   } catch (error) {
     logger.error("[auth] Minimal Google user upsert failed:", error);
+  }
+
+  // #388: the raw insert below only creates a new row (ON CONFLICT DO
+  // NOTHING), so for an existing account it would return the user with the
+  // unproven password still in place. Refuse instead of signing in.
+  if (neutralizePassword) {
+    throw new Error(
+      "Google sign-in could not remove the unproven password on this account; refusing to sign in",
+    );
   }
 
   const id = randomUUID();
