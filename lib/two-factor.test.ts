@@ -25,6 +25,7 @@ vi.mock("@/lib/rate-limit", () => ({ consumeRateLimit: limits.attempt, consumeAu
 import { openSecret, sealSecret } from "@/lib/secret-box";
 import { totpCode, totpStep } from "@/lib/totp";
 import {
+  clearTwoFactorAfterPasswordRemoved,
   BACKUP_CODE_COUNT,
   confirmEnrolment,
   confirmIdentity,
@@ -260,5 +261,34 @@ describe("disable, regenerate and status", () => {
     expect(db.totpBackupCode.count).toHaveBeenCalledWith({ where: { userId: "u1", usedAt: null } });
     db.totpCredential.findUnique.mockResolvedValue({ enabledAt: null });
     expect(await twoFactorStatus("u1")).toEqual({ enabled: false, backupCodesLeft: 0 });
+  });
+});
+
+describe("clearTwoFactorAfterPasswordRemoved (#388)", () => {
+  it("removes the factor and backup codes and records totp.disabled", async () => {
+    db.totpBackupCode.deleteMany.mockResolvedValueOnce({ count: 10 });
+    db.totpCredential.deleteMany.mockResolvedValueOnce({ count: 1 });
+    expect(await clearTwoFactorAfterPasswordRemoved("u1")).toBe(true);
+    expect(db.totpBackupCode.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1" } });
+    expect(db.totpCredential.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1" } });
+    expect(db.securityAuditEvent.create).toHaveBeenCalledWith({ data: { userId: "u1", type: "totp.disabled" } });
+  });
+
+  it("joins the caller's transaction instead of opening its own", async () => {
+    const tx = {
+      totpBackupCode: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      totpCredential: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      securityAuditEvent: { create: vi.fn() },
+    };
+    expect(await clearTwoFactorAfterPasswordRemoved("u3", tx as never)).toBe(true);
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(tx.securityAuditEvent.create).toHaveBeenCalledWith({ data: { userId: "u3", type: "totp.disabled" } });
+  });
+
+  it("records nothing when there was no factor to remove", async () => {
+    db.totpBackupCode.deleteMany.mockResolvedValueOnce({ count: 0 });
+    db.totpCredential.deleteMany.mockResolvedValueOnce({ count: 0 });
+    expect(await clearTwoFactorAfterPasswordRemoved("u2")).toBe(false);
+    expect(db.securityAuditEvent.create).not.toHaveBeenCalled();
   });
 });
