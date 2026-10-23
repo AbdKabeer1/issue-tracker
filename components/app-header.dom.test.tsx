@@ -71,7 +71,11 @@ describe("account menu role switch", () => {
     expect(header?.className).toContain("bg-zk-surface");
     expect(document.querySelector("aside")?.className).toContain("bg-deep-ocean");
     const account = screen.getByRole("button", { name: /account menu/i });
-    expect(account.parentElement?.parentElement?.className).toContain("shrink-0");
+    const toolbarClass = account.parentElement?.parentElement?.className ?? "";
+    expect(toolbarClass).toContain("min-w-0");
+    expect(toolbarClass).toContain("max-w-full");
+    expect(toolbarClass).toContain("lg:w-auto");
+    expect(document.querySelector("header")?.className).toContain("lg:sticky");
   });
 
   it("opens the account menu and asks to switch the active role", async () => {

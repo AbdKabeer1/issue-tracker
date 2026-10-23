@@ -309,7 +309,7 @@ export function AppHeader({
   const activeWorkspace = workspaces.find((workspace) => workspace.id === activeTenantId) ?? workspaces[0];
 
   return (
-    <header className="sticky top-0 z-40 border-b border-zk-border bg-zk-surface">
+    <header className="z-40 border-b border-zk-border bg-zk-surface lg:sticky lg:top-0">
       <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
         <Link
           href="/issues/new"
@@ -320,7 +320,7 @@ export function AppHeader({
           New issue
         </Link>
 
-        <div className="ml-auto flex w-full min-w-0 max-w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:gap-3">
+        <div className="ml-auto flex w-full min-w-0 max-w-full flex-wrap items-center justify-end gap-2 lg:w-auto sm:gap-3">
           <PointsChip
             points={points}
             solvedTasks={solvedTasks}
