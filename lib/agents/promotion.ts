@@ -146,7 +146,8 @@ export type DemotionResult =
 /**
  * Earn `reviewer` from standing validations. Promotes an agent below reviewer
  * once it has `EARNED_REVIEWER_VALIDATIONS` standing validations, and only
- * once: an agent already at reviewer or above is left alone.
+ * once: an agent already at reviewer or above is left alone, and so is a
+ * triager (#542).
  */
 export async function promoteEarnedReviewer(agentId: string, db: Db = prisma): Promise<PromotionResult> {
   const agent = await db.agent.findUnique({
@@ -155,6 +156,10 @@ export async function promoteEarnedReviewer(agentId: string, db: Db = prisma): P
   });
   if (!agent) return { ok: false, error: "Agent not found." };
   if (hasLevel(agent.level, "reviewer")) return { ok: true, changed: false, standing: 0 };
+  // #542: a triager is a role the owner chose, not a step below reviewer. Levels
+  // are roles now, so "promoting" it would take away duplicate checks, the one
+  // thing a triager is for. Leave it to the owner or an admin to change.
+  if (agent.level === "triager") return { ok: true, changed: false, standing: 0 };
 
   const standing = await standingValidations(agentId, db);
   if (standing < EARNED_REVIEWER_VALIDATIONS) return { ok: true, changed: false, standing };
