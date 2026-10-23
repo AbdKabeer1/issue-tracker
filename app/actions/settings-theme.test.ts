@@ -27,4 +27,20 @@ describe("setThemeAction (#277)", () => {
     expect(prisma.user.update).not.toHaveBeenCalled();
     expect(cookieSet).not.toHaveBeenCalled();
   });
+
+  it("reports a failed account save instead of claiming success (#646)", async () => {
+    vi.clearAllMocks();
+    requireUser.mockResolvedValue({ id: "u1", role: "user" });
+    vi.mocked(prisma.user.update).mockRejectedValueOnce(new Error("database unavailable"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(setThemeAction("dark")).resolves.toEqual({
+      error: "Could not save theme to your account.",
+    });
+    // The caller reverts the optimistic switch, so this device keeps the saved
+    // preference too: don't leave a cookie that disagrees with the account.
+    expect(cookieSet).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
 });
