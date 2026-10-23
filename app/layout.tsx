@@ -76,7 +76,7 @@ export default async function RootLayout({
         <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Integration Documentation" />
       </head>
       <body
-        className={`${manrope.variable} ${geistMono.variable} min-h-screen antialiased`}
+        className={`${manrope.variable} ${geistMono.variable} min-h-screen overflow-x-clip antialiased`}
       >
         {/*
           Both live at the root rather than in (app) so every route — including
