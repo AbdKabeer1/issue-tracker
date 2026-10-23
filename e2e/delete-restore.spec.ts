@@ -16,7 +16,12 @@ test("deletes an issue, finds it among deleted ones, and restores it", async ({ 
   await expect(page.getByRole("link", { name: new RegExp(title) })).toHaveCount(0);
 
   await page.goto(`/issues?deleted=true&q=${encodeURIComponent(title)}`);
-  await page.getByRole("link", { name: new RegExp(title) }).click();
+  // The issue table is horizontally scrollable on phones, so the link can be
+  // wider than the viewport. Click its visible leading edge instead of the
+  // off-screen center Playwright would choose by default.
+  await page.getByRole("link", { name: new RegExp(title) }).click({
+    position: { x: 20, y: 20 },
+  });
   await expect(page).toHaveURL(url);
   await page.getByRole("button", { name: /^Restore/ }).first().click();
   await page.getByRole("dialog").getByRole("button", { name: "Restore issue" }).click();
