@@ -425,7 +425,8 @@ export type SubmitValidationResult =
   | { status: 400; error: "invalid_request"; message: string; field?: string }
   | { status: 403; error: "insufficient_level" | "creator_cannot_validate" | "not_independent"; message: string }
   | { status: 404; error: "not_found"; message: string }
-  | { status: 409; error: "already_validated"; message: string };
+  | { status: 409; error: "already_validated"; message: string }
+  | { status: 429; error: "rate_limited" };
 
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
@@ -435,6 +436,7 @@ export async function submitValidation(
   agent: AgentContext,
   bugId: string,
   rawBody: unknown,
+  beforeWrite?: (tx: Prisma.TransactionClient) => Promise<boolean>,
 ): Promise<SubmitValidationResult> {
   const parsed = validationBodySchema.safeParse(rawBody ?? {});
   if (!parsed.success) {
@@ -562,6 +564,15 @@ export async function submitValidation(
       ) {
         return {
           submission: { status: 403 as const, error: "not_independent" as const, message: "The reviewer and credited person must be independent when the validation is recorded." },
+          automaticOffer: null,
+        };
+      }
+      // Rate limiting is part of this transaction, so expected permission and
+      // independence refusals do not spend a write. A rejected budget gate
+      // also commits no validation or rate-limit hit.
+      if (beforeWrite && !(await beforeWrite(tx))) {
+        return {
+          submission: { status: 429 as const, error: "rate_limited" as const },
           automaticOffer: null,
         };
       }
