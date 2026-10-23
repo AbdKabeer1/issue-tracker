@@ -109,14 +109,39 @@ describe("project-scoped keys on questions and escalations (#412)", () => {
 });
 
 describe("readAgentQuestion (#446)", () => {
-  it("returns the answer to the asking agent", async () => {
-    const row = { id: "q1", body: "?", answer: "Yes", answeredAt: new Date(), bugId: null, createdAt: new Date() };
+  it("returns the parsed answer to the asking agent", async () => {
+    const row = { id: "q1", body: "[blocker] Is X allowed?", answer: "Yes", answeredAt: new Date(), bugId: null, createdAt: new Date() };
     db.agentQuestion.findFirst.mockResolvedValue(row);
 
-    await expect(readAgentQuestion(agent, "q1")).resolves.toEqual(row);
+    await expect(readAgentQuestion(agent, "q1")).resolves.toEqual({
+      id: "q1",
+      bugId: null,
+      body: "Is X allowed?",
+      type: "blocker",
+      status: "resolved",
+      resolution: "Yes",
+      resolvedAt: row.answeredAt,
+      createdAt: row.createdAt,
+    });
     expect(db.agentQuestion.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "q1", agentId: "a1" } }),
     );
+  });
+
+  it("returns the parsed answer to the asking agent without type prefix", async () => {
+    const row = { id: "q2", body: "Plain question?", answer: null, answeredAt: null, bugId: null, createdAt: new Date() };
+    db.agentQuestion.findFirst.mockResolvedValue(row);
+
+    await expect(readAgentQuestion(agent, "q2")).resolves.toEqual({
+      id: "q2",
+      bugId: null,
+      body: "Plain question?",
+      type: "question",
+      status: "open",
+      resolution: null,
+      resolvedAt: null,
+      createdAt: row.createdAt,
+    });
   });
 
   it("hides a question that belongs to another agent", async () => {
