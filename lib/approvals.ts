@@ -333,14 +333,29 @@ export async function decideApproval(
       throw new IssueApiError(409, `This approval has already been ${approval.status}.`);
     }
 
-    const updated = await tx.issueApproval.update({
-      where: { id: approvalId },
+    // #537: claim the pending row atomically. A plain update let two admins
+    // both pass the status check above; the conditional write lets only one
+    // of them win, and the loser gets a 409 instead of acting on a stale read.
+    const decidedAt = new Date();
+    const claimed = await tx.issueApproval.updateMany({
+      where: { id: approvalId, status: "pending" },
       data: {
         status: decision,
         decidedByUserId: userId,
-        decidedAt: new Date(),
+        decidedAt,
       },
     });
+    if (claimed.count === 0) {
+      throw new IssueApiError(409, "This approval has already been decided.");
+    }
+    const { bug: _approvalBug, ...approvalFields } = approval;
+    void _approvalBug;
+    const updated = {
+      ...approvalFields,
+      status: decision,
+      decidedByUserId: userId,
+      decidedAt,
+    };
 
     await tx.projectAuditEvent.create({
       data: {
@@ -417,6 +432,10 @@ export async function decideApproval(
   };
 
   if ("$transaction" in db && typeof (db as PrismaClient).$transaction === "function") {
+    // Default isolation is deliberate: the conditional update above is the
+    // gate. Serializable raises P2034 before updateMany can return count 0,
+    // turning a lost race into a 503 instead of the 409, and retrying would
+    // repeat the non-transactional notification/merge effects.
     return (db as PrismaClient).$transaction((tx) => run(tx as Db));
   }
   return run(db);
