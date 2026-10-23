@@ -232,6 +232,20 @@ describe("mergeAcceptedFix gates (#452)", () => {
     expect(client.mergePullRequest).not.toHaveBeenCalled();
   });
 
+  it("does not merge when the pull request is closed without being merged (#642)", async () => {
+    const client = fakeClient({
+      getPullRequest: vi.fn(async () => ({ state: "closed", merged: false, mergeable: false, headSha: "head-sha" })),
+    });
+
+    const result = await mergeAcceptedFix(agent, "bug1", { client });
+
+    expect(result).toMatchObject({ status: 409, reason: "merge_failed", message: "The pull request is closed without being merged." });
+    expect(client.mergePullRequest).not.toHaveBeenCalled();
+    expect(db.agentEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: "github.merge_failed" }) }),
+    );
+  });
+
   it("does not merge when the checks are red, and tells the claim's person", async () => {
     const client = fakeClient({ checksGreen: vi.fn(async () => false) });
 

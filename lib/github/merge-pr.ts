@@ -78,7 +78,7 @@ export function sameRepo(a: RepoRef, b: RepoRef): boolean {
 // The GitHub client (real one, and the seam tests fake)
 // ---------------------------------------------------------------------------
 
-export type PullRequest = { merged: boolean; mergeable: boolean; headSha: string };
+export type PullRequest = { merged: boolean; mergeable: boolean; headSha: string; state?: string };
 
 /** What GitHub answered the merge request (#492). */
 export type MergePullResult = {
@@ -172,11 +172,17 @@ export function createInstallationClient(
       const response = await request(`/repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`);
       if (!response.ok) throw new GitHubError("Could not read the pull request.");
       const body = (await response.json()) as {
+        state?: string;
         merged?: boolean;
         mergeable?: boolean;
         head?: { sha?: string };
       };
-      return { merged: !!body.merged, mergeable: body.mergeable !== false, headSha: body.head?.sha ?? "" };
+      return {
+        state: body.state,
+        merged: !!body.merged,
+        mergeable: body.mergeable !== false,
+        headSha: body.head?.sha ?? "",
+      };
     },
     async checksGreen(ref, headSha) {
       // Every check run on the head commit has to be read (#491). GitHub
@@ -261,6 +267,24 @@ export function clientForInstallation(installationId: string | null | undefined,
     return createInstallationClient(installationId, env);
   } catch {
     return null;
+  }
+}
+
+/** True when `pullRequestUrl` names a PR on GitHub that was closed without merging (#642). */
+export async function isPullRequestClosedUnmerged(
+  pullRequestUrl: string | null | undefined,
+  githubInstallationId?: string | null,
+  client?: GitHubClient | null,
+): Promise<boolean> {
+  const ref = parsePullRequestUrl(pullRequestUrl);
+  if (!ref) return false;
+  const gh = client ?? clientForInstallation(githubInstallationId);
+  if (!gh) return false;
+  try {
+    const pr = await gh.getPullRequest(ref);
+    return pr.state === "closed" && !pr.merged;
+  } catch {
+    return false;
   }
 }
 
@@ -488,6 +512,12 @@ export async function mergeAcceptedFix(
   } catch {
     await recordMergeFailure(agent, bug, "GitHub could not be reached.", db);
     return fail(409, "merge_failed", "GitHub could not be reached.");
+  }
+
+  // Gate 2a (#642): a pull request closed without merging cannot be merged.
+  if (pullRequest.state === "closed" && !pullRequest.merged) {
+    await recordMergeFailure(agent, bug, "The pull request is closed without being merged.", db);
+    return fail(409, "merge_failed", "The pull request is closed without being merged.");
   }
 
   // Gate 2b (#489): the head commit GitHub reports must be the one that was
