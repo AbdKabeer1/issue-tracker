@@ -25,13 +25,15 @@ export async function GET(
       size: true,
       data: true,
       bug: { select: { isDeleted: true, tenantId: true } },
+      comment: { select: { bug: { select: { tenantId: true, isDeleted: true } } } },
       redesignProposal: { select: { tenantId: true } },
     },
   });
 
   const notFound = () => NextResponse.json({ error: "File not found" }, { status: 404 });
   if (!attachment) return notFound();
-  if (!attachment.bug && !attachment.redesignProposal && attachment.uploaderId !== user.id) return notFound();
+  const bug = attachment.bug ?? attachment.comment?.bug;
+  if (!bug && !attachment.redesignProposal && attachment.uploaderId !== user.id) return notFound();
   if (attachment.redesignProposal) {
     const membership = await prisma.membership.findUnique({
       where: { tenantId_userId: { tenantId: attachment.redesignProposal.tenantId, userId: user.id } },
@@ -39,15 +41,15 @@ export async function GET(
     });
     if (!membership) return notFound();
   }
-  if (attachment.bug) {
+  if (bug) {
     const membership = await prisma.membership.findUnique({
-      where: { tenantId_userId: { tenantId: attachment.bug.tenantId, userId: user.id } },
+      where: { tenantId_userId: { tenantId: bug.tenantId, userId: user.id } },
       select: { userId: true },
     });
     if (!membership) return notFound();
   }
-  if (attachment.bug?.isDeleted) {
-    const access = await tenantAccessFor(user.id, attachment.bug.tenantId, user.role);
+  if (bug?.isDeleted) {
+    const access = await tenantAccessFor(user.id, bug.tenantId, user.role);
     if (!access.admin) return notFound();
   }
 
@@ -104,10 +106,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  await prisma.attachment.delete({
-    where: { id },
-  });
+  await prisma.attachment.delete({ where: { id } });
 
-  return NextResponse.json({ success: true }, { status: 200 });
+  return NextResponse.json({ success: true });
 }
-
