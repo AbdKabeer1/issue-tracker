@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockSweepOffers = vi.hoisted(() => vi.fn());
+const mockSweepJobReviewOffers = vi.hoisted(() => vi.fn());
 const mockSweepClaims = vi.hoisted(() => vi.fn());
 const mockSweepPromotions = vi.hoisted(() => vi.fn());
 const mockDispatch = vi.hoisted(() => vi.fn());
@@ -15,6 +16,7 @@ const mockLogger = vi.hoisted(() => ({
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 vi.mock("@/lib/logger", () => ({ logger: mockLogger }));
 vi.mock("@/lib/agent-api/offer", () => ({ sweepExpiredOffers: mockSweepOffers }));
+vi.mock("@/lib/jobs/review", () => ({ sweepJobReviewOffers: mockSweepJobReviewOffers }));
 vi.mock("@/lib/agent-api/availability", () => ({ sweepStaleClaims: mockSweepClaims }));
 vi.mock("@/lib/agents/promotion", () => ({ sweepLevelPromotions: mockSweepPromotions }));
 vi.mock("@/lib/webhooks/deliver", () => ({ dispatchDueDeliveries: mockDispatch }));
@@ -36,6 +38,7 @@ describe("runPlatformSweeps (#647)", () => {
     resetConsecutiveFailures();
 
     mockSweepOffers.mockResolvedValue({ expired: 2 });
+    mockSweepJobReviewOffers.mockResolvedValue({ expired: 1, offered: 3 });
     mockSweepClaims.mockResolvedValue({ released: 1, offered: 1 });
     mockSweepPromotions.mockResolvedValue({ promoted: 1, demoted: 0 });
     mockDispatch.mockResolvedValue(4);
@@ -59,6 +62,7 @@ describe("runPlatformSweeps (#647)", () => {
     expect("skipped" in result).toBe(false);
     if (!("skipped" in result)) {
       expect(result.sweeps.offers).toEqual({ status: "ok", expired: 2 });
+      expect(result.sweeps.jobReviewOffers).toEqual({ status: "ok", expired: 1, offered: 3 });
       expect(result.sweeps.claims).toEqual({ status: "ok", released: 1, offered: 1 });
       expect(result.sweeps.promotions).toEqual({ status: "ok", promoted: 1, demoted: 0 });
       expect(result.sweeps.deliveries).toEqual({ status: "ok", processed: 4 });
@@ -91,6 +95,7 @@ describe("runPlatformSweeps (#647)", () => {
     expect("skipped" in result).toBe(false);
     if (!("skipped" in result)) {
       expect(result.sweeps.offers).toEqual({ status: "ok", expired: 2 });
+      expect(result.sweeps.jobReviewOffers).toEqual({ status: "ok", expired: 1, offered: 3 });
       expect(result.sweeps.claims).toEqual({ status: "ok", released: 1, offered: 1 });
       expect(result.sweeps.promotions).toEqual({ status: "ok", promoted: 1, demoted: 0 });
       expect(result.sweeps.deliveries).toEqual({
