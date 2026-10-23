@@ -193,7 +193,10 @@ export function createInstallationClient(
         const response = await request(
           `/repos/${ref.owner}/${ref.repo}/commits/${headSha}/check-runs?per_page=100&page=${page}`,
         );
-        if (!response.ok) break;
+        // Fail closed (#531): a refused or failed page (403 without
+        // checks:read, 5xx, a secondary rate limit) means the runs are
+        // unknown, not absent, so the gate must not pass on what it has.
+        if (!response.ok) return false;
         const body = (await response.json()) as {
           check_runs?: { status?: string; conclusion?: string | null }[];
           total_count?: number;

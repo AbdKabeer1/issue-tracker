@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useId, useState } from "react";
 import type { UndoAuditActionResult } from "@/app/actions/audit";
 import { LocalTime } from "@/components/local-time";
+import { useToast } from "@/components/ui/toast";
 
 /** One agent audit event, already filtered for the viewer on the server (#447). */
 export type AuditLogRow = {
@@ -27,6 +28,7 @@ type UndoAction = (
   formData: FormData,
 ) => Promise<UndoAuditActionResult>;
 
+/** Renders an audit payload as JSON, falling back to its string form if it can't be serialized. */
 function formatPayload(payload: unknown): string {
   if (payload === null || payload === undefined) return "(no payload)";
   try {
@@ -36,6 +38,7 @@ function formatPayload(payload: unknown): string {
   }
 }
 
+/** One audit event: its summary, expandable payload, and the admin-only Undo action. */
 function AuditLogEntry({
   row,
   isTenantAdmin,
@@ -48,12 +51,15 @@ function AuditLogEntry({
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const detailsId = useId();
+  const toast = useToast();
 
+  /** Sends the undo and shows the server's message when it is refused. */
   const handleUndo = async () => {
     const formData = new FormData();
     formData.append("auditEventId", row.id);
     startTransition(async () => {
-      await onUndo?.(undefined, formData);
+      const result = await onUndo?.(undefined, formData);
+      if (result && !result.ok) toast(result.error, "error");
     });
   };
 

@@ -15,7 +15,8 @@ export type UndoAuditActionResult =
  * Reverse an audited agent action from the audit page (#450).
  *
  * Only a workspace admin may undo, and only within their own tenant. The undo
- * itself is audited, so nothing is ever silently erased.
+ * itself is audited, so nothing is ever silently erased. Failures carry the
+ * human-readable message from `undoAuditEvent` so callers can show it directly.
  */
 export async function undoAuditEventAction(
   _previous: UndoAuditActionResult | undefined,
@@ -42,7 +43,7 @@ export async function undoAuditEventAction(
     tenantId,
   });
   if (!result.ok) {
-    return { ok: false, error: result.error };
+    return { ok: false, error: result.message };
   }
 
   revalidatePath("/settings/audit");

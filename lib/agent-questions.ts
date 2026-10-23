@@ -245,7 +245,7 @@ export async function listOwnerQuestions(userId: string, tenantId: string) {
       bugId: true,
       createdAt: true,
       agent: { select: { id: true, name: true } },
-      bug: { select: { id: true, title: true } },
+      bug: { select: { id: true, number: true, title: true } },
     },
   });
 }
@@ -386,7 +386,7 @@ export async function ownerQuestion(userId: string, tenantId: string, questionId
       answeredAt: true,
       createdAt: true,
       agent: { select: { name: true } },
-      bug: { select: { id: true, title: true } },
+      bug: { select: { id: true, number: true, title: true } },
     },
   });
 }

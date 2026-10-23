@@ -15,6 +15,7 @@ import { assertRedesignOpen } from "@/lib/redesigns";
 import { assertApprovalOpen } from "@/lib/approvals";
 import { deliveryDeadline, deliveryWindowMinutes } from "@/lib/claim-deadline";
 import { hasLevel } from "@/lib/agents/levels";
+import { parseIssueRef, resolveIssueRef } from "@/lib/issue-ref";
 
 /** Pure helper/tests default; requests use the project's offerWindowSeconds. */
 export const OFFER_TTL_MS = DEFAULT_PROJECT_WORKFLOW.offerWindowSeconds * 1000;
@@ -205,7 +206,15 @@ export async function expireOffer(claimId: string): Promise<boolean> {
     await tx.issueClaim.update({ where: { id: claimId }, data: { status: "released", releasedAt: now, releaseReason: "expired" } });
     await publish(tx, { tenantId: fresh.bug.tenantId, type: "claim.released", actorAgentId: fresh.agentId, bugId: fresh.bugId,
       payload: { claimId, issueId: fresh.bugId, beneficiaryUserId: fresh.beneficiaryUserId, reason: "expired" } });
-    const next = await offerNext(tx, { tenantId: fresh.bug.tenantId }, fresh.bug);
+    const hasPendingBids = await (tx.issueBid?.findFirst
+      ? tx.issueBid.findFirst({
+          where: { bugId: fresh.bugId, withdrawnAt: null, awardedAt: null },
+          select: { id: true },
+        })
+      : null);
+    const next = hasPendingBids
+      ? null
+      : await offerNext(tx, { tenantId: fresh.bug.tenantId }, fresh.bug);
     return { released: true, next };
   });
   if (result) {
@@ -222,14 +231,21 @@ export async function expireOffer(claimId: string): Promise<boolean> {
  * Sweeps and expires all pending offers whose TTL has elapsed (#681).
  * Durable across process restarts; safe to run from a cron or interval.
  */
-export async function sweepExpiredOffers(tenantId?: string): Promise<{ expired: number }> {
+export async function sweepExpiredOffers(tenantId?: string, projectId?: string): Promise<{ expired: number }> {
   // Offers in different projects can have different windows, so the decision
   // is made per candidate instead of with one global cutoff.
   const candidates = await prisma.issueClaim.findMany({
     where: {
       status: "offered",
       releasedAt: null,
-      ...(tenantId ? { bug: { tenantId } } : {}),
+      ...(tenantId || projectId
+        ? {
+            bug: {
+              ...(tenantId ? { tenantId } : {}),
+              ...(projectId ? { projectId } : {}),
+            },
+          }
+        : {}),
     },
     select: { id: true, offeredAt: true, bug: { select: { projectId: true } } },
   });
@@ -347,8 +363,12 @@ export const releaseSchema = z.object({
  * - The issue is then offered to someone else (never straight back to the
  *   same person), if it is still open and confirmed.
  */
-export async function releaseClaim(agent: AgentContext, projectId: string, bugId: string, reason?: string) {
+export async function releaseClaim(agent: AgentContext, projectId: string, issueRef: string, reason?: string) {
   const result = await prisma.$transaction(async (tx) => {
+    // #605: the path may be the readable number (`123`, `ZE-123`) or the id, as on reads.
+    const ref = parseIssueRef(issueRef);
+    const bugId = ref.kind === "id" ? ref.id : (await resolveIssueRef(tx, ref, { tenantId: agent.tenantId }))?.id;
+    if (!bugId) throw new IssueApiError(404, "Issue not found in this project.");
     const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${bugId} AND "tenantId" = ${agent.tenantId} AND "projectId" = ${projectId} AND "isDeleted" = false FOR NO KEY UPDATE`;
     if (!locked.length) throw new IssueApiError(404, "Issue not found in this project.");
     const claim = await tx.issueClaim.findFirst({
@@ -389,7 +409,7 @@ export async function releaseClaim(agent: AgentContext, projectId: string, bugId
     };
   }, { maxWait: 10000, timeout: 15000 });
   if (result.next) {
-    notifyClaimOffered({ id: result.next.claim.id, bugId, bugTitle: result.next.bugTitle, beneficiaryUserId: result.next.beneficiaryUserId });
+    notifyClaimOffered({ id: result.next.claim.id, bugId: result.released.issueId, bugTitle: result.next.bugTitle, beneficiaryUserId: result.next.beneficiaryUserId });
     scheduleOfferExpiry(result.next.claim.id);
   }
   return { ...result.released, reofferedTo: result.next?.beneficiaryUserId ?? null };

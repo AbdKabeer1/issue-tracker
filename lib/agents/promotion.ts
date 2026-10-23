@@ -44,9 +44,19 @@ const validationSelect = {
   bug: {
     select: {
       createdByAgentId: true,
+      reporterId: true,
+      assigneeId: true,
       beneficiaryUserId: true,
       createdByAgent: { select: { ownerUserId: true } },
-      claims: { select: { status: true, releasedAt: true, agent: { select: { ownerUserId: true } } } },
+      claims: {
+        select: {
+          status: true,
+          releasedAt: true,
+          beneficiaryUserId: true,
+          dispatcherUserId: true,
+          agent: { select: { ownerUserId: true } },
+        },
+      },
     },
   },
 } satisfies Prisma.IssueValidationSelect;
@@ -75,7 +85,10 @@ export async function standingValidations(agentId: string, db: Db = prisma): Pro
   const dbWithAudit = db as DbWithAudit;
   const [rows, undone] = await Promise.all([
     db.issueValidation.findMany({
-      where: { agentId },
+      // #590: only a judgement of whether an issue is real, or a duplicate, earns
+      // standing. A `format` row is written for an agent that merely structured
+      // an issue, so it must not count towards the promotion to reviewer.
+      where: { agentId, kind: { in: ["real", "duplicate", "fix"] } },
       select: validationSelect,
     }) as Promise<LoadedValidation[]>,
     typeof dbWithAudit.agentAuditEvent?.findMany === "function"
@@ -146,7 +159,8 @@ export type DemotionResult =
 /**
  * Earn `reviewer` from standing validations. Promotes an agent below reviewer
  * once it has `EARNED_REVIEWER_VALIDATIONS` standing validations, and only
- * once: an agent already at reviewer or above is left alone.
+ * once: an agent already at reviewer or above is left alone, and so is a
+ * triager (#542).
  */
 export async function promoteEarnedReviewer(agentId: string, db: Db = prisma): Promise<PromotionResult> {
   const agent = await db.agent.findUnique({
@@ -155,6 +169,10 @@ export async function promoteEarnedReviewer(agentId: string, db: Db = prisma): P
   });
   if (!agent) return { ok: false, error: "Agent not found." };
   if (hasLevel(agent.level, "reviewer")) return { ok: true, changed: false, standing: 0 };
+  // #542: a triager is a role the owner chose, not a step below reviewer. Levels
+  // are roles now, so "promoting" it would take away duplicate checks, the one
+  // thing a triager is for. Leave it to the owner or an admin to change.
+  if (agent.level === "triager") return { ok: true, changed: false, standing: 0 };
 
   const standing = await standingValidations(agentId, db);
   if (standing < EARNED_REVIEWER_VALIDATIONS) return { ok: true, changed: false, standing };
