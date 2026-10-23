@@ -127,11 +127,11 @@ export async function broadcastWhenCommitted(
   const attempts = options.attempts ?? COMMIT_WAIT_ATTEMPTS;
   const delayMs = options.delayMs ?? COMMIT_WAIT_DELAY_MS;
   for (let attempt = 0; attempt < attempts; attempt++) {
-    let committed: unknown = null;
+    let committed: { id: string; projectId: string | null } | null = null;
     try {
       committed = await prisma.agentEvent.findUnique({
         where: { id: event.id },
-        select: { id: true },
+        select: { id: true, projectId: true },
       });
     } catch (error) {
       // The row cannot be read, so its visibility is unknown. Treat it as
@@ -144,7 +144,9 @@ export async function broadcastWhenCommitted(
       });
     }
     if (committed) {
-      broadcast(event);
+      // #607: the row carries the project the trigger derived from `bugId`.
+      // Without it the bus cannot enforce a project-scoped key's boundary.
+      broadcast({ ...event, projectId: committed.projectId ?? event.projectId ?? null });
       return true;
     }
     await waitMs(delayMs);
