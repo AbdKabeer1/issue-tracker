@@ -252,6 +252,46 @@ describe("submitValidation: who may validate (#433)", () => {
     expect(db.bug.findFirst).not.toHaveBeenCalled();
   });
 
+  it("does not run the write-budget gate for permission refusals", async () => {
+    const budgetGate = vi.fn(async () => true);
+
+    expect(await submitValidation(reviewer("c1", "cara", "contributor"), "bug1", acceptReal, budgetGate))
+      .toMatchObject({ status: 403, error: "insufficient_level" });
+
+    db.bug.findFirst.mockResolvedValue(bugRow({ createdByAgentId: "r1" }));
+    expect(await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal, budgetGate))
+      .toMatchObject({ status: 403, error: "creator_cannot_validate" });
+
+    db.bug.findFirst.mockResolvedValue(bugRow());
+    expect(await submitValidation(reviewer("r2", "ada"), "bug1", acceptReal, budgetGate))
+      .toMatchObject({ status: 403, error: "not_independent" });
+    expect(budgetGate).not.toHaveBeenCalled();
+  });
+
+  it("charges only after the locked independence checks and stops before writing when over budget", async () => {
+    const overBudget = vi.fn(async () => false);
+    expect(await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal, overBudget))
+      .toMatchObject({ status: 429, error: "rate_limited" });
+    expect(overBudget).toHaveBeenCalledOnce();
+    expect(db.issueValidation.create).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+
+    const allowed = vi.fn(async () => true);
+    expect(await submitValidation(reviewer("r2", "sam"), "bug1", acceptReal, allowed))
+      .toMatchObject({ status: 201 });
+    expect(allowed).toHaveBeenCalledOnce();
+  });
+
+  it("does not charge when independence changes before the issue lock is acquired", async () => {
+    db.bug.findUnique.mockResolvedValueOnce(bugRow({ assigneeId: "rob" }));
+    const budgetGate = vi.fn(async () => true);
+
+    expect(await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal, budgetGate))
+      .toMatchObject({ status: 403, error: "not_independent" });
+    expect(budgetGate).not.toHaveBeenCalled();
+    expect(db.issueValidation.create).not.toHaveBeenCalled();
+  });
+
   it("rejects the agent that filed the issue", async () => {
     db.bug.findFirst.mockResolvedValue(bugRow({ createdByAgentId: "r1", createdByAgent: { ownerUserId: "rob" } }));
     expect(await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal)).toMatchObject({

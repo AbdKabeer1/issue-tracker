@@ -96,11 +96,12 @@ export async function consumeAgentBudget(
   agent: BudgetedAgent,
   kind: AgentBudgetKind,
   now = Date.now(),
+  transaction?: unknown,
 ): Promise<AgentBudgetResult> {
   // Expiry is evaluated from the same clock as the charge, so a grant that
   // lapsed between authentication and this line cannot be used.
   const config = agentBudget(agent, kind, now);
-  const result = await consumeRateLimit(agentBudgetKey(agent.id, kind), config, now);
+  const result = await consumeRateLimit(agentBudgetKey(agent.id, kind), config, now, transaction);
   const quota: AgentBudgetQuota = {
     kind,
     limit: config.max,
