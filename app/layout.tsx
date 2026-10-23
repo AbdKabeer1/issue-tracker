@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Geist_Mono } from "next/font/google";
+import { Manrope, Geist_Mono } from "next/font/google";
 import { getSiteUrl } from "@/lib/site-url";
 import { SHARE_IMAGE } from "@/lib/share-image";
 import { ConfirmProvider } from "@/components/ui/confirm-dialog";
@@ -11,10 +11,11 @@ import { ThemePreference } from "@/components/theme-toggle";
 import { THEME_COOKIE, parseTheme, themeAttribute, type Theme } from "@/lib/theme";
 import "./globals.css";
 
-// Platform-wide typeface: Inter, per the Ziki brand spec. Mono stays Geist.
-const inter = Inter({
-  variable: "--font-inter",
+// Platform typeface from the redesign handoff. Mono stays Geist.
+const manrope = Manrope({
+  variable: "--font-manrope",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
 const geistMono = Geist_Mono({
@@ -70,12 +71,12 @@ export default async function RootLayout({
 }>) {
   const theme = await currentTheme();
   return (
-    <html lang="en" data-theme={themeAttribute(theme)} suppressHydrationWarning>
+    <html lang="en" data-theme={themeAttribute(theme)} className="overflow-x-clip" suppressHydrationWarning>
       <head>
         <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Integration Documentation" />
       </head>
       <body
-        className={`${inter.variable} ${geistMono.variable} min-h-screen antialiased`}
+        className={`${manrope.variable} ${geistMono.variable} min-h-screen overflow-x-clip antialiased`}
       >
         {/*
           Both live at the root rather than in (app) so every route — including

@@ -7,6 +7,13 @@ import { projectContextFor } from "@/lib/project-context";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { PairForm } from "./pair-form";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
+import {
+  agentsChipClass,
+  agentsLink,
+  agentsMutedClass,
+  agentsSurface,
+  formatPairingCode,
+} from "../agents-ui";
 
 export const metadata = { title: "Approve an agent" };
 
@@ -18,12 +25,11 @@ export default async function PairAgentPage({
 }) {
   const user = await requireUser();
   if (!isAgentPlatformEnabled()) {
-    // #505: nothing to approve while the platform is off.
     return (
       <div className="mx-auto max-w-2xl space-y-6">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold text-slate-900">Approve an agent</h1>
-          <p className="text-sm text-slate-600">The agent platform feature is not enabled in this environment.</p>
+          <h1 className="text-3xl font-extrabold text-zk-text">Approve an agent</h1>
+          <p className={agentsMutedClass}>The agent platform feature is not enabled in this environment.</p>
         </div>
       </div>
     );
@@ -31,26 +37,32 @@ export default async function PairAgentPage({
   const tenantId = await currentTenantIdFor(user.id);
   const context = await projectContextFor(prisma, tenantId);
   const { code } = await searchParams;
-  const initialCode = typeof code === "string" ? code.slice(0, 20) : "";
+  const rawCode = typeof code === "string" ? code.slice(0, 20) : "";
+  const initialCode = formatPairingCode(rawCode);
   const pending = initialCode ? await findPendingPairing(initialCode) : null;
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <div className="space-y-1">
-        <Link href="/settings/agents" className="text-sm text-teal-700 hover:underline">
+      <div className="space-y-3">
+        <Link href="/settings/agents" className={`text-sm ${agentsLink}`}>
           ← Back to agents
         </Link>
-        <h1 className="text-2xl font-semibold text-slate-900">Approve an agent</h1>
-      </div>
-      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
-        <p className="text-sm text-slate-600">
-          Your agent asked to join this account. Check its name and approve it. You have to be signed
-          in. The request lasts 15 minutes and works once. The key goes back to the agent, not to this page.
+        <h1 className="text-3xl font-extrabold tracking-tight text-zk-text">Approve an agent</h1>
+        <p className="text-sm text-zk-text2">Your agent asked to join this account. Check its name and approve it.</p>
+        <div className="flex flex-wrap gap-2">
+          <span className={agentsChipClass}>Lasts 15 minutes</span>
+          <span className={agentsChipClass}>Works once</span>
+          <span className={agentsChipClass}>Key goes to the agent, not this page</span>
+        </div>
+        <p className="text-xs text-zk-muted">
+          Signed in as <span className="font-semibold text-zk-text">{user.name}</span>
         </p>
+      </div>
+      <section className={`${agentsSurface} p-4 sm:p-6`}>
         {!tenantId ? (
-          <p className="mt-4 text-sm text-slate-700">
+          <p className="text-sm text-zk-text2">
             Join or create a workspace before you can approve an agent.{" "}
-            <Link href="/tenants" className="font-medium text-teal-700 hover:underline">
+            <Link href="/tenants" className={`font-semibold ${agentsLink}`}>
               Workspaces
             </Link>
           </p>

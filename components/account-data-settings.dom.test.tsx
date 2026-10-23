@@ -15,14 +15,12 @@ const mockedDeleteAccount = vi.mocked(deleteAccountAction);
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-  vi.unstubAllGlobals();
 });
 
 describe("AccountDataSettings (#571)", () => {
   beforeEach(() => {
     mockedDeleteAccount.mockReset();
     mockedDeleteAccount.mockResolvedValue({ ok: true });
-    vi.stubGlobal("confirm", vi.fn(() => true));
   });
 
   it("renders download link and delete account button", () => {
@@ -37,24 +35,30 @@ describe("AccountDataSettings (#571)", () => {
     expect(deleteButton).toBeDefined();
   });
 
-  it("confirms before deleting account and calls deleteAccountAction", async () => {
-    const confirm = vi.mocked(window.confirm);
-
+  it("requires typing DELETE before permanently deleting", async () => {
     render(<AccountDataSettings />);
-    const deleteButton = screen.getByRole("button", { name: /Delete account/i });
-    fireEvent.click(deleteButton);
+    fireEvent.click(screen.getByRole("button", { name: /Delete account/i }));
 
-    expect(confirm).toHaveBeenCalled();
+    const confirmInput = screen.getByLabelText(/Type DELETE to confirm/i);
+    const permanent = screen.getByRole("button", { name: /Permanently delete/i });
+    expect(permanent).toHaveProperty("disabled", true);
+
+    fireEvent.click(permanent);
+    expect(mockedDeleteAccount).not.toHaveBeenCalled();
+
+    fireEvent.change(confirmInput, { target: { value: "DELETE" } });
+    expect(permanent).toHaveProperty("disabled", false);
+
+    fireEvent.click(permanent);
     await waitFor(() => expect(mockedDeleteAccount).toHaveBeenCalled());
   });
 
-  it("does not delete account when user cancels confirmation", async () => {
-    vi.stubGlobal("confirm", vi.fn(() => false));
-
+  it("cancels the delete confirmation without calling the action", async () => {
     render(<AccountDataSettings />);
-    const deleteButton = screen.getByRole("button", { name: /Delete account/i });
-    fireEvent.click(deleteButton);
+    fireEvent.click(screen.getByRole("button", { name: /Delete account/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Cancel/i }));
 
+    expect(screen.getByRole("button", { name: /Delete account/i })).toBeDefined();
     expect(mockedDeleteAccount).not.toHaveBeenCalled();
   });
 
@@ -65,8 +69,11 @@ describe("AccountDataSettings (#571)", () => {
     });
 
     render(<AccountDataSettings />);
-    const deleteButton = screen.getByRole("button", { name: /Delete account/i });
-    fireEvent.click(deleteButton);
+    fireEvent.click(screen.getByRole("button", { name: /Delete account/i }));
+    fireEvent.change(screen.getByLabelText(/Type DELETE to confirm/i), {
+      target: { value: "DELETE" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Permanently delete/i }));
 
     await waitFor(() => {
       const alert = screen.getByRole("alert");

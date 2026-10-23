@@ -46,10 +46,10 @@ export function CreateTenantForm({ nameMax }: { nameMax: number }) {
   return (
     <form ref={formRef} action={action} className="mt-4 space-y-4" noValidate>
       <div className="space-y-1">
-        <label htmlFor="tenant-name" className="block text-sm font-medium text-slate-800">
+        <label htmlFor="tenant-name" className="block text-sm font-medium text-zk-text">
           Workspace name
         </label>
-        <p id="tenant-name-hint" className="text-xs text-slate-500">
+        <p id="tenant-name-hint" className="text-xs text-zk-muted">
           Usually your company or team, such as Acme.
         </p>
         <Input
@@ -68,10 +68,10 @@ export function CreateTenantForm({ nameMax }: { nameMax: number }) {
         <FieldError formId={FORM_ID} field="name" errors={fieldErrors} />
       </div>
       <div className="space-y-1">
-        <label htmlFor="tenant-project" className="block text-sm font-medium text-slate-800">
-          First project <span className="font-normal text-slate-500">(optional)</span>
+        <label htmlFor="tenant-project" className="block text-sm font-medium text-zk-text">
+          First project <span className="font-normal text-zk-muted">(optional)</span>
         </label>
-        <p id="tenant-project-hint" className="text-xs text-slate-500">
+        <p id="tenant-project-hint" className="text-xs text-zk-muted">
           One product in this workspace, such as Acme Web. A platform such as Web or Mobile
           is a label on an issue, not a project. Left blank, the project is named after the workspace.
         </p>
@@ -89,7 +89,7 @@ export function CreateTenantForm({ nameMax }: { nameMax: number }) {
         <FieldError formId={FORM_ID} field="projectName" errors={fieldErrors} />
       </div>
       {formError ? (
-        <p role="alert" className="text-sm text-red-700">
+        <p role="alert" className="text-sm text-zk-bad-fg">
           {formError}
         </p>
       ) : null}
@@ -98,7 +98,7 @@ export function CreateTenantForm({ nameMax }: { nameMax: number }) {
         <Button type="submit" disabled={pending}>
           {pending ? "Creating…" : confirmingDuplicate ? "Create anyway" : "Create workspace"}
         </Button>
-        <p className="text-xs text-slate-500">You&apos;ll be its owner.</p>
+        <p className="text-xs text-zk-muted">You&apos;ll be its owner.</p>
       </div>
     </form>
   );

@@ -1,108 +1,151 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import type { Severity } from "@prisma/client";
 import { requireUser } from "@/lib/auth-helpers";
-import { currentTenantIdFor } from "@/lib/tenant-context";
+import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import {
   EMPTY_OVERVIEW,
   loadOwnAgents,
   loadWorkspaceOverview,
-  type OverviewIssue,
+  RESOLVED_STATUSES,
   type WorkspaceOverview,
 } from "@/lib/dashboard-overview";
-import { DashboardSidebar } from "@/components/dashboard-sidebar";
 import {
   DashboardAgents,
   type DashboardAgentView,
 } from "@/components/dashboard-agents";
-import { RelativeTime } from "@/components/relative-time";
-import { formatIssueNumber } from "@/lib/issue-number";
-import { Badge } from "@/components/ui/badge";
-import { severityClass, severityLabel, statusClass, statusLabels } from "@/lib/labels";
+import { OverviewStatCards, type OverviewStat } from "@/components/overview/stat-cards";
+import {
+  AssignedIssuesTable,
+  type OverviewAssignedIssue,
+} from "@/components/overview/assigned-issues-table";
+import { PointsChart } from "@/components/overview/points-chart";
+import {
+  loadPointHistory,
+  pointsThisWeek,
+  type PointHistoryEntry,
+} from "@/lib/points/history";
+import { TARGET_POINTS } from "@/lib/points/rules";
+import { prisma } from "@/lib/prisma";
+import { openIssueStages } from "@/lib/issue-stage";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
-const severityOf = (value: string | null): Severity | null => {
-  if (!value) return null;
-  return value in severityLabel ? (value as Severity) : null;
-};
-
-/** One preview row under a summary card. */
-function PreviewRow({
-  issue,
-  showResolvedAt = false,
-}: {
-  issue: OverviewIssue;
-  showResolvedAt?: boolean;
-}) {
-  const severity = severityOf(issue.severity);
-  return (
-    <li>
-      <Link
-        href={`/issues/${issue.id}`}
-        className="flex flex-col gap-1 rounded-lg border border-slate-100 bg-slate-50/60 p-2 transition hover:border-slate-200 hover:bg-slate-100/70"
-      >
-        <span className="line-clamp-1 text-xs font-medium leading-snug text-slate-900">
-          <span className="mr-1.5 font-mono font-semibold text-teal-700">
-            {formatIssueNumber(issue.number)}
-          </span>
-          {issue.title}
-        </span>
-        <span className="flex flex-wrap items-center gap-1.5 text-[10px]">
-          <Badge className={statusClass[issue.status]}>{statusLabels[issue.status]}</Badge>
-          {severity ? (
-            <Badge className={severityClass[severity]}>{severityLabel[severity]}</Badge>
-          ) : null}
-          {showResolvedAt && issue.resolvedAt ? (
-            <span className="ml-auto text-slate-500">
-              <RelativeTime date={issue.resolvedAt} />
-            </span>
-          ) : null}
-        </span>
-      </Link>
-    </li>
-  );
+function firstName(name: string | null | undefined, email: string | null | undefined): string {
+  const trimmed = name?.trim();
+  if (trimmed) return trimmed.split(/\s+/)[0] ?? trimmed;
+  const local = email?.split("@")[0]?.trim();
+  return local || "there";
 }
 
-function SummaryCard({
-  title,
-  value,
-  children,
-  href,
-  linkLabel,
-}: {
-  title: string;
-  value: string;
-  children: React.ReactNode;
-  href: string;
-  linkLabel: string;
-}) {
-  return (
-    <section className="flex flex-col justify-between rounded-xl border border-slate-200 bg-card p-4 shadow-sm transition hover:border-teal-300">
-      <div className="flex items-baseline justify-between border-b border-slate-100 pb-3">
-        <h2 className="text-xs font-medium text-slate-600 sm:text-sm">{title}</h2>
-        <p className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
-          {value}
-        </p>
-      </div>
-      <div className="mt-3 flex-1 space-y-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-          Recent {linkLabel.toLowerCase()}
-        </p>
-        {children}
-      </div>
-      <Link
-        href={href}
-        className="mt-3 text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline"
-      >
-        View all {linkLabel.toLowerCase()} →
-      </Link>
-    </section>
-  );
+function buildStats(input: {
+  overview: WorkspaceOverview;
+  weekPoints: number;
+  createdLast30: number;
+  highPriorityAssigned: number;
+  resolvedAssigned: number;
+}): OverviewStat[] {
+  const { overview, weekPoints, createdLast30, highPriorityAssigned, resolvedAssigned } = input;
+  const toGo = Math.max(0, TARGET_POINTS - weekPoints);
+  const assigned = overview.assignedToMe;
+  const resolvedPct =
+    assigned === 0 ? 0 : Math.min(100, Math.round((resolvedAssigned / assigned) * 100));
+
+  return [
+    {
+      label: "Points",
+      value: String(overview.points.points),
+      href: "/leaderboard",
+      chip: weekPoints >= TARGET_POINTS ? "Goal met" : `${toGo} to go`,
+      chipTone: weekPoints >= TARGET_POINTS ? "ok" : "tint",
+      note: "500 required this week",
+    },
+    {
+      label: "Created by me",
+      value: String(overview.reportedByMe),
+      href: "/issues?mine=created",
+      chip: createdLast30 > 0 ? `+${createdLast30}` : "0",
+      chipTone: createdLast30 > 0 ? "ok" : "chip",
+      note: "in the last 30 days",
+    },
+    {
+      label: "Assigned to me",
+      value: String(assigned),
+      href: "/issues?mine=assigned",
+      chip: String(highPriorityAssigned),
+      chipTone: highPriorityAssigned > 0 ? "bad" : "chip",
+      note: "high priority",
+    },
+    {
+      label: "Resolved issues",
+      value: String(resolvedAssigned),
+      href: "/issues?mine=assigned&status=finished",
+      chip: `${resolvedPct}%`,
+      chipTone: "chip",
+      note: "of issues assigned to me",
+    },
+  ];
+}
+
+async function loadAssignedIssues(
+  userId: string,
+  tenantId: string,
+): Promise<OverviewAssignedIssue[]> {
+  const where = {
+    ...bugInTenant(tenantId),
+    isDeleted: false,
+    assigneeId: userId,
+  };
+  const bugs = await prisma.bug.findMany({
+    where,
+    orderBy: [{ voteCount: "desc" }, { createdAt: "desc" }],
+    take: 25,
+    select: {
+      id: true,
+      number: true,
+      title: true,
+      severity: true,
+      status: true,
+      voteCount: true,
+      createdAt: true,
+      type: { select: { name: true } },
+      _count: { select: { comments: true } },
+      votes: {
+        where: { userId },
+        select: { value: true },
+        take: 1,
+      },
+    },
+  });
+  if (bugs.length === 0) return [];
+
+  let stages = new Map<string, "reported" | "confirmed" | "ready">();
+  try {
+    stages = await openIssueStages(prisma, {
+      id: { in: bugs.map((b) => b.id) },
+      ...bugInTenant(tenantId),
+    });
+  } catch (error) {
+    console.error("[dashboard] assigned issue stages failed", error);
+  }
+
+  return bugs.map((bug) => ({
+    id: bug.id,
+    number: bug.number,
+    title: bug.title,
+    severity: bug.severity,
+    status: bug.status,
+    voteCount: bug.voteCount,
+    userVoted: (bug.votes[0]?.value ?? 0) === 1,
+    typeName: bug.type?.name ?? null,
+    commentCount: bug._count.comments,
+    createdAt: bug.createdAt.toISOString(),
+    stage: stages.get(bug.id) ?? null,
+  }));
 }
 
 export default async function DashboardPage() {
   const user = await requireUser();
+  const now = new Date();
 
   let tenantId: string | null = null;
   try {
@@ -125,112 +168,109 @@ export default async function DashboardPage() {
     console.error("[dashboard] agents query failed", error);
   }
 
+  let historyEntries: PointHistoryEntry[] = [];
+  let createdLast30 = 0;
+  let highPriorityAssigned = 0;
+  let resolvedAssigned = 0;
+  let assignedIssues: OverviewAssignedIssue[] = [];
+
+  if (tenantId) {
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const base = { ...bugInTenant(tenantId), isDeleted: false as const };
+
+    try {
+      const [history, createdCount, highCount, resolvedCount, assigned] = await Promise.all([
+        loadPointHistory(prisma, { tenantId, userId: user.id }),
+        prisma.bug.count({
+          where: { ...base, reporterId: user.id, createdAt: { gte: thirtyDaysAgo } },
+        }),
+        prisma.bug.count({
+          where: {
+            ...base,
+            assigneeId: user.id,
+            severity: { in: ["high", "critical"] },
+            status: { in: ["open", "in_progress"] },
+          },
+        }),
+        prisma.bug.count({
+          where: {
+            ...base,
+            assigneeId: user.id,
+            status: { in: [...RESOLVED_STATUSES] },
+          },
+        }),
+        loadAssignedIssues(user.id, tenantId),
+      ]);
+      historyEntries = history;
+      createdLast30 = createdCount;
+      highPriorityAssigned = highCount;
+      resolvedAssigned = resolvedCount;
+      assignedIssues = assigned;
+    } catch (error) {
+      console.error("[dashboard] overview extras failed", error);
+    }
+  }
+
   const agents: DashboardAgentView[] = agentRows.map((agent) => ({
     ...agent,
     lastSeenAt: agent.lastSeenAt ? agent.lastSeenAt.toISOString() : null,
   }));
 
-  const pointsLabel = `${overview.points.points}`;
-  const unresolvedEmpty = overview.recentUnresolved.length === 0;
-  const resolvedEmpty = overview.recentResolved.length === 0;
+  const weekPoints = pointsThisWeek(historyEntries, now);
+  const stats = buildStats({
+    overview,
+    weekPoints,
+    createdLast30,
+    highPriorityAssigned,
+    resolvedAssigned,
+  });
+
+  const chartEntries = historyEntries.map((e) => ({
+    createdAt: e.createdAt.toISOString(),
+    points: e.points,
+  }));
+
+  const name = firstName(user.name, user.email);
 
   return (
-    <div className="flex items-start gap-6">
-      <DashboardSidebar
-        active="overview"
-        counts={{
-          unresolved: overview.unresolvedCount,
-          assigned: overview.assignedToMe,
-          reported: overview.reportedByMe,
-        }}
-        userName={user.name ?? user.email}
-        userImage={user.image}
-        userEmail={user.email}
-      />
-
-      <div className="min-w-0 flex-1 space-y-6">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
-            Dashboard
+    <div className="min-w-0 space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-zk-text">
+            Welcome back, {name}
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Your workspace at a glance — issues, resolutions, and your agents.
+          <p className="text-sm text-zk-muted">
+            Issues, votes and your points for Ziki at a glance.
           </p>
         </div>
-
-        <section
-          aria-label="Workspace summary"
-          className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3"
+        <Link
+          href="/issues/new"
+          className="inline-flex h-[42px] items-center gap-2 rounded-full bg-electric-blue-strong px-5 text-sm font-bold text-white shadow-[0_8px_20px_rgba(46,111,239,0.35)] transition hover:bg-[#255fe0]"
         >
-          <SummaryCard
-            title="Issues"
-            value={String(overview.unresolvedCount)}
-            href="/issues?project=all"
-            linkLabel="issues"
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
           >
-            {unresolvedEmpty ? (
-              <p className="rounded-lg border border-dashed border-slate-200 p-3 text-xs text-slate-500">
-                No unresolved issues in this workspace.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {overview.recentUnresolved.map((issue) => (
-                  <PreviewRow key={issue.id} issue={issue} />
-                ))}
-              </ul>
-            )}
-          </SummaryCard>
-
-          <SummaryCard
-            title="Resolved"
-            value={String(overview.resolvedCount)}
-            href="/issues?project=all&status=finished"
-            linkLabel="resolved issues"
-          >
-            {resolvedEmpty ? (
-              <p className="rounded-lg border border-dashed border-slate-200 p-3 text-xs text-slate-500">
-                Nothing resolved yet — finished work will show up here.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {overview.recentResolved.map((issue) => (
-                  <PreviewRow key={issue.id} issue={issue} showResolvedAt />
-                ))}
-              </ul>
-            )}
-          </SummaryCard>
-
-          <section className="flex flex-col justify-between rounded-xl border border-slate-200 bg-card p-4 shadow-sm transition hover:border-teal-300">
-            <div className="flex items-baseline justify-between border-b border-slate-100 pb-3">
-              <h2 className="text-xs font-medium text-slate-600 sm:text-sm">Points</h2>
-              <p className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
-                {pointsLabel}
-                <span className="ml-1 text-sm font-semibold text-slate-500">pts</span>
-              </p>
-            </div>
-            <dl className="mt-3 space-y-2 text-sm">
-              <div className="flex items-center justify-between">
-                <dt className="text-slate-600">Rank</dt>
-                <dd className="font-semibold text-slate-900">
-                  {overview.rank ? `#${overview.rank.rank} of ${overview.rank.total}` : "—"}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between">
-                <dt className="text-slate-600">Solved tasks</dt>
-                <dd className="font-semibold text-slate-900">{overview.points.solvedTasks}</dd>
-              </div>
-            </dl>
-            <Link
-              href="/leaderboard"
-              className="mt-3 text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline"
-            >
-              View leaderboard →
-            </Link>
-          </section>
-        </section>
-
-        <DashboardAgents initial={agents} />
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          New issue
+        </Link>
       </div>
+
+      <OverviewStatCards stats={stats} />
+
+      <AssignedIssuesTable issues={assignedIssues} />
+
+      <PointsChart entries={chartEntries} nowIso={now.toISOString()} />
+
+      <DashboardAgents initial={agents} />
     </div>
   );
 }

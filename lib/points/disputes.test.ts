@@ -140,6 +140,17 @@ describe("missingAwardEntry", () => {
     expect(entry?.sourceKey).toBe("reporter:bug-1:user-me");
   });
 
+  it("uses platform/project reward amounts when provided", () => {
+    const config = {
+      solver: { low: 7, medium: 10, high: 20, critical: 40 },
+      reporter: 7,
+      reviewer: 12,
+      guidelines: null,
+    };
+    expect(missingAwardEntry(bugOn, "reporter", config)?.points).toBe(7);
+    expect(missingAwardEntry(bugOn, "solver", config)?.points).toBe(20);
+  });
+
   it("returns null for a solver award when nobody is assigned", () => {
     expect(missingAwardEntry({ ...bugOn, assigneeId: null }, "solver")).toBeNull();
   });

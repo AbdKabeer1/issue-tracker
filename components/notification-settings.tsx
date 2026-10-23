@@ -16,6 +16,38 @@ import {
 
 export type NotificationPrefs = Record<PrefField, boolean>;
 
+function Switch({
+  checked,
+  disabled,
+  label,
+  onToggle,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onToggle}
+      className={`relative h-7 w-[46px] shrink-0 rounded-full border-0 p-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue focus-visible:ring-offset-2 ${
+        checked ? "bg-electric-blue-strong" : "bg-zk-chip"
+      } ${disabled ? "cursor-not-allowed opacity-45" : ""}`}
+    >
+      <span
+        className={`pointer-events-none absolute top-[3px] h-[22px] w-[22px] rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.25)] transition-[left] motion-reduce:transition-none ${
+          checked ? "left-[21px]" : "left-[3px]"
+        }`}
+      />
+    </button>
+  );
+}
+
 export function NotificationSettings({
   initialEnabled,
   initialPrefs,
@@ -38,26 +70,24 @@ export function NotificationSettings({
         setPrefs((current) => ({ ...current, [field]: !next }));
         setMessage(result.error);
       } else {
-        setMessage(
-          `${notificationLabels[kind]} ${next ? "turned on" : "turned off"}.`,
-        );
+        setMessage(`${notificationLabels[kind]} ${next ? "turned on" : "turned off"}.`);
       }
     });
   }
 
   return (
-    <div className="mt-4 space-y-4">
-      <label
-        htmlFor="email-notifications"
-        className="flex cursor-pointer items-center gap-3 text-sm font-medium text-slate-800"
-      >
-        <input
-          id="email-notifications"
-          type="checkbox"
+    <div className="space-y-3.5">
+      <div className="flex items-center justify-between gap-4 rounded-[14px] bg-zk-tint px-4 py-3.5">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-sm font-bold text-zk-text">Email me about activity on my issues</span>
+          <span className="text-[13px] text-zk-muted">Turn off to stop all issue emails.</span>
+        </div>
+        <Switch
           checked={enabled}
           disabled={pending}
-          onChange={(event) => {
-            const next = event.target.checked;
+          label="Email me about activity on my issues"
+          onToggle={() => {
+            const next = !enabled;
             setEnabled(next);
             setMessage(null);
             startTransition(async () => {
@@ -67,53 +97,46 @@ export function NotificationSettings({
                 setMessage(result.error);
               } else {
                 setMessage(
-                  next
-                    ? "Email notifications are on."
-                    : "Email notifications are off.",
+                  next ? "Email notifications are on." : "Email notifications are off.",
                 );
               }
             });
           }}
-          className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
         />
-        Email me about activity on my issues
-      </label>
+      </div>
 
       {/*
         The per-kind choices stay in the DOM while the master switch is off,
         disabled rather than removed, so turning it back on shows what is
         still selected instead of looking like a fresh opt-in to everything.
       */}
-      <fieldset
-        disabled={!enabled || pending}
-        className="space-y-3 border-l-2 border-slate-100 pl-4 disabled:opacity-50"
-      >
-        <legend className="sr-only">Which emails to send</legend>
-        {NOTIFICATION_KINDS.map((kind) => {
-          const id = `notify-${kind}`;
-          return (
-            <div key={kind} className="flex items-start gap-3">
-              <input
-                id={id}
-                type="checkbox"
-                checked={prefs[PREF_FIELD[kind]]}
-                onChange={(event) => toggleKind(kind, event.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-              />
-              <label htmlFor={id} className="cursor-pointer text-sm">
-                <span className="font-medium text-slate-800">
-                  {notificationLabels[kind]}
-                </span>
-                <span className="block text-slate-600">
-                  {notificationDescriptions[kind]}
-                </span>
-              </label>
+      {NOTIFICATION_KINDS.map((kind) => {
+        const field = PREF_FIELD[kind];
+        const childDisabled = !enabled || pending;
+        const on = prefs[field] && enabled;
+        return (
+          <div
+            key={kind}
+            className="ml-5 flex items-center justify-between gap-4 rounded-[14px] bg-zk-chip px-4 py-3.5"
+          >
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-sm font-bold text-zk-text">{notificationLabels[kind]}</span>
+              <span className="text-[13px] text-zk-muted">{notificationDescriptions[kind]}</span>
             </div>
-          );
-        })}
-      </fieldset>
+            <Switch
+              checked={on}
+              disabled={childDisabled}
+              label={notificationLabels[kind]}
+              onToggle={() => {
+                if (childDisabled) return;
+                toggleKind(kind, !prefs[field]);
+              }}
+            />
+          </div>
+        );
+      })}
 
-      <p className="text-sm text-slate-600 empty:hidden" role="status" aria-live="polite">
+      <p className="text-sm text-zk-muted empty:hidden" role="status" aria-live="polite">
         {message}
       </p>
     </div>

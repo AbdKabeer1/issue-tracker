@@ -9,13 +9,13 @@ export default function DashboardLoading() {
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {Array.from({ length: 4 }, (_, i) => (
-          <div key={i} className="space-y-2 rounded-xl border border-slate-200 bg-card px-4 py-3">
+          <div key={i} className="space-y-2 rounded-[20px] border border-zk-border bg-zk-surface px-4 py-3">
             <Bar className="h-3 w-24" />
             <Bar className="h-7 w-16" />
           </div>
         ))}
       </div>
-      <div className="h-48 rounded-xl border border-slate-200 bg-card p-4">
+      <div className="h-48 rounded-[20px] border border-zk-border bg-zk-surface p-4">
         <Bar className="h-full w-full" />
       </div>
       <div className="grid gap-4 lg:grid-cols-3">

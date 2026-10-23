@@ -29,10 +29,15 @@ export function AutoJoin({
   return (
     <form ref={formRef} action={acceptShareLinkAction} className="space-y-3">
       <input type="hidden" name="token" value={token} />
-      <p role="status" className="text-sm text-slate-700">
-        {auto ? `Adding ${tenantName} to your account…` : `You're signed in. Join ${tenantName} to add it to your account.`}
+      <p role="status" className="text-sm text-zk-text2">
+        {auto
+          ? `Adding ${tenantName} to your account…`
+          : `You're signed in. Join ${tenantName} to add it to your account.`}
       </p>
-      <Button type="submit" className="w-full">
+      <Button
+        type="submit"
+        className="h-12 w-full bg-electric-blue-strong text-base font-bold text-white hover:bg-electric-blue focus-visible:ring-electric-blue"
+      >
         Join {tenantName}
       </Button>
     </form>

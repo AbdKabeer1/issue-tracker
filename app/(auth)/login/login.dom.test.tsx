@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
+import { createElement } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import LoginPage from "./page";
@@ -15,6 +16,21 @@ vi.mock("@/lib/google-oauth", () => ({
 vi.mock("@/app/actions/auth", () => ({
   googleSignInAction: vi.fn(),
   loginAction: vi.fn(),
+}));
+
+// Auth split frame mounts ThemeToggle; keep the page unit test free of
+// settings/auth action side effects and next/image in jsdom.
+vi.mock("@/components/theme-toggle", () => ({
+  ThemeToggle: () =>
+    createElement("button", {
+      type: "button",
+      "aria-label": "Switch to dark mode",
+      "data-testid": "theme-toggle",
+    }),
+}));
+
+vi.mock("next/image", () => ({
+  default: (props: { alt?: string }) => createElement("img", { alt: props.alt ?? "" }),
 }));
 
 afterEach(() => {

@@ -207,7 +207,7 @@ describe("IssueFilters unified Filter button popover (#762)", () => {
     render(<IssueFilters tagTypes={tagTypes} />);
     const filterBtn = screen.getByRole("button", { name: /^filter/i });
     expect(filterBtn).toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "Filter issues" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Filters" })).not.toBeInTheDocument();
   });
 
   it("displays active filter count on the Filter button when filters are active", () => {
@@ -224,7 +224,7 @@ describe("IssueFilters unified Filter button popover (#762)", () => {
 
     // Open popover
     fireEvent.click(filterBtn);
-    const dialog = screen.getByRole("dialog", { name: "Filter issues" });
+    const dialog = screen.getByRole("dialog", { name: "Filters" });
     expect(dialog).toBeInTheDocument();
 
     // Select Status in popover
@@ -238,10 +238,10 @@ describe("IssueFilters unified Filter button popover (#762)", () => {
     const filterBtn = screen.getByRole("button", { name: /^filter/i });
 
     fireEvent.click(filterBtn);
-    expect(screen.getByRole("dialog", { name: "Filter issues" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Filters" })).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("dialog", { name: "Filter issues" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Filters" })).not.toBeInTheDocument();
   });
 });
 
@@ -412,7 +412,7 @@ describe("IssueFilters stage filter (#1054)", () => {
   it("offers Ideas and Issues, with their counts, in the Filter popover", () => {
     render(<IssueFilters stageCounts={{ reported: 7, confirmed: 2, ready: 4 }} />);
     fireEvent.click(screen.getByRole("button", { name: /^filter/i }));
-    const stage = within(screen.getByRole("dialog", { name: "Filter issues" })).getByLabelText("Kind");
+    const stage = within(screen.getByRole("dialog", { name: "Filters" })).getByLabelText("Kind");
     expect(within(stage).getByRole("option", { name: "Ideas (7)" })).toBeInTheDocument();
     expect(within(stage).getByRole("option", { name: "Ideas awaiting upvotes (2)" })).toBeInTheDocument();
     expect(within(stage).getByRole("option", { name: "Issues (4)" })).toBeInTheDocument();
@@ -446,7 +446,7 @@ describe("IssueFilters without a platform select (#1055)", () => {
     expect(screen.getByRole("button", { name: /^filter$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove platform filter" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^filter/i }));
-    expect(within(screen.getByRole("dialog", { name: "Filter issues" })).queryByLabelText("Platform")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("dialog", { name: "Filters" })).queryByLabelText("Platform")).not.toBeInTheDocument();
   });
 
   it("allows filtering by untagged platform when platforms are provided (#473)", () => {

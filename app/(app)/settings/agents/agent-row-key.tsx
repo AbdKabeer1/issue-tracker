@@ -19,7 +19,6 @@ export function AgentRowKey({
 }) {
   const toast = useToast();
   const [copied, setCopied] = useState(false);
-  const where = projectName ? ` · ${projectName}` : projectId ? "" : " · every project";
 
   async function copy() {
     if (!apiKey) return;
@@ -39,22 +38,31 @@ export function AgentRowKey({
 
   if (!apiKey) {
     return (
-      <p className="text-xs text-slate-500">
-        Key {prefix}…{where}. This one was issued before it could be copied again. Regenerate it and the new key stays on this row.
-      </p>
+      <div className="flex flex-wrap items-center gap-2 rounded-full border border-zk-warn-bd bg-zk-warn-bg/40 px-3 py-1.5">
+        <span className="font-mono text-[11px] font-semibold text-zk-text2">{prefix}…</span>
+        <span className="text-xs font-semibold text-zk-warn-fg">Not copyable</span>
+        <span className="text-xs text-zk-muted">
+          Issued before it could be copied again. Regenerate it — the new key stays on this row.
+        </span>
+      </div>
     );
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="font-mono text-[11px] text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">{prefix}…</span>
-      <span className="text-xs text-slate-500">{projectName ?? (projectId ? "This project" : "Every project")}</span>
+    <div className="inline-flex max-w-full flex-wrap items-center gap-2 rounded-full border border-zk-border bg-zk-chip px-1.5 py-1">
+      <span className="rounded-full bg-zk-surface px-2.5 py-1 font-mono text-[11px] font-semibold text-zk-text ring-1 ring-zk-border">
+        {prefix}…
+      </span>
+      <span className="text-xs text-zk-muted">
+        {projectName ?? (projectId ? "This project" : "Every project")}
+      </span>
       <button
         type="button"
         onClick={copy}
-        className="text-xs font-medium text-teal-700 hover:text-teal-900 hover:underline"
+        aria-label="Copy key"
+        className="inline-flex min-h-9 items-center rounded-full bg-electric-blue-strong px-3 text-xs font-bold text-white transition hover:bg-[#2552af] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue focus-visible:ring-offset-2"
       >
-        {copied ? "Copied" : "Copy key"}
+        {copied ? "Copied" : "Copy"}
       </button>
     </div>
   );

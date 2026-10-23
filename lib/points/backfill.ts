@@ -1,6 +1,12 @@
 import type { Prisma, PrismaClient, Severity, Status } from "@prisma/client";
 import { award, type PointAward } from "./award";
-import { pointSourceKey, REPORTER_POINTS, solverPoints } from "./rules";
+import { getProjectRewardConfig } from "./platform-rewards";
+import {
+  calculateReporterPoints,
+  calculateSolverPoints,
+  type ProjectRewardConfig,
+} from "./project-rewards";
+import { pointSourceKey } from "./rules";
 import { isConfirmed, standingValidationAwards } from "@/lib/agent-api/validation";
 
 /**
@@ -30,6 +36,7 @@ export type HistoricalBug = {
   createdByAgentId?: string | null;
   createdAt?: Date;
   isConfirmed?: boolean;
+  projectId?: string | null;
 };
 
 const FINISHED: ReadonlySet<Status> = new Set<Status>(["resolved", "closed"]);
@@ -45,10 +52,11 @@ export function isModernBug(bug: HistoricalBug, cutoffDate?: Date): boolean {
  */
 export function backfillEntries(
   bug: HistoricalBug,
-  options?: { cutoffDate?: Date },
+  options?: { cutoffDate?: Date; rewardConfig?: ProjectRewardConfig | null },
 ): PointAward[] {
   // A deleted ticket was taken back; it earns nothing.
   if (bug.isDeleted) return [];
+  const rewardConfig = options?.rewardConfig;
   const entries: PointAward[] = [];
   if (FINISHED.has(bug.status) && bug.assigneeId) {
     entries.push({
@@ -56,7 +64,7 @@ export function backfillEntries(
       userId: bug.assigneeId,
       bugId: bug.id,
       role: "solver",
-      points: solverPoints(bug.severity),
+      points: calculateSolverPoints(bug.severity, rewardConfig),
       sourceKey: pointSourceKey("solver", bug.id, bug.assigneeId),
     });
   }
@@ -70,7 +78,7 @@ export function backfillEntries(
         userId: recipientId,
         bugId: bug.id,
         role: "reporter",
-        points: REPORTER_POINTS,
+        points: calculateReporterPoints(rewardConfig),
         sourceKey: pointSourceKey("reporter", bug.id, recipientId),
       });
     }
@@ -133,6 +141,7 @@ export async function backfillPoints(db: Db, options: BackfillOptions = {}): Pro
         isDeleted: true,
         createdByAgentId: true,
         createdAt: true,
+        projectId: true,
       },
     });
     if (bugs.length === 0) break;
@@ -145,15 +154,24 @@ export async function backfillPoints(db: Db, options: BackfillOptions = {}): Pro
       }
     }
 
+    const rewardByProject = new Map<string | null, ProjectRewardConfig>();
     // #539: validations pay at submit time only, so any that landed before
     // the award code are missed unless the backfill recomputes them. The
     // sourceKey makes re-running safe.
     const entries = (
       await Promise.all(
-        bugs.map(async (b) => [
-          ...backfillEntries(b, { cutoffDate }),
-          ...(b.isDeleted ? [] : await standingValidationAwards(db, b.id)),
-        ]),
+        bugs.map(async (b) => {
+          const projectKey = b.projectId ?? null;
+          let rewardConfig = rewardByProject.get(projectKey);
+          if (!rewardConfig) {
+            rewardConfig = await getProjectRewardConfig(db, projectKey);
+            rewardByProject.set(projectKey, rewardConfig);
+          }
+          return [
+            ...backfillEntries(b, { cutoffDate, rewardConfig }),
+            ...(b.isDeleted ? [] : await standingValidationAwards(db, b.id)),
+          ];
+        }),
       )
     ).flat();
     if (entries.length > 0) {

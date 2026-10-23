@@ -98,12 +98,12 @@ export function MarkDuplicateButton({
           id={panelId}
           role="group"
           aria-label="Mark as duplicate"
-          className="absolute right-0 z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-card p-3 shadow-lg"
+          className="absolute right-0 z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-zk-border bg-zk-surface p-3 shadow-lg"
           onKeyDown={(event) => {
             if (event.key === "Escape") close();
           }}
         >
-          <label htmlFor={`${panelId}-q`} className="block text-xs font-medium text-slate-700">
+          <label htmlFor={`${panelId}-q`} className="block text-xs font-medium text-zk-text2">
             Duplicate of which issue?
           </label>
           <Input
@@ -129,7 +129,7 @@ export function MarkDuplicateButton({
             }}
           />
           {error ? (
-            <p className="mt-2 text-xs text-red-700" role="alert">
+            <p className="mt-2 text-xs text-zk-bad-fg" role="alert">
               {error}
             </p>
           ) : null}
@@ -140,21 +140,21 @@ export function MarkDuplicateButton({
                   type="button"
                   disabled={pending}
                   onClick={() => choose(issue.id)}
-                  className="w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 disabled:opacity-50"
+                  className="w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-zk-chip focus-visible:bg-zk-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue-strong disabled:opacity-50"
                 >
-                  <span className="text-slate-500 tabular-nums">{formatIssueNumber(issue.number)}</span>{" "}
-                  <span className="text-slate-900">{issue.title}</span>
-                  <span className="ml-1 text-xs text-slate-500">· {statusLabels[issue.status]}</span>
+                  <span className="text-zk-muted tabular-nums">{formatIssueNumber(issue.number)}</span>{" "}
+                  <span className="text-zk-text">{issue.title}</span>
+                  <span className="ml-1 text-xs text-zk-muted">· {statusLabels[issue.status]}</span>
                 </button>
               </li>
             ))}
           </ul>
           {query.trim() && shown.length === 0 && !error ? (
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-xs text-zk-muted">
               No match yet. Issues that are already duplicates aren&apos;t offered.
             </p>
           ) : null}
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-zk-muted">
             Votes stay on each issue; they aren&apos;t merged.
           </p>
         </div>

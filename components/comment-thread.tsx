@@ -25,53 +25,79 @@ import { useToast } from "@/components/ui/toast";
 type AttachmentsByComment = Record<string, AttachmentView[]>;
 /** Each author's role in the issue's organization, by user id (#489). */
 type OrganizationRoles = Record<string, OrganizationRole>;
+type ViewerProps = {
+  currentUserId?: string;
+  currentUserRole?: AppRole | null;
+  tenantAdmin?: boolean;
+  readOnly?: boolean;
+};
 
 type UserOption = { id: string; name: string };
 
-function CommentTypeBadge({ type, metadata }: { type?: CommentType | null; metadata?: unknown }) {
-  if (!type || type === "comment") return null;
+const commentTypeVisual: Record<
+  CommentType,
+  { label: string; chip: string; accent: string; filterOn: string }
+> = {
+  comment: {
+    label: "Comment",
+    chip: "bg-zk-chip text-zk-text2",
+    accent: "border-l-zk-border",
+    filterOn: "border-transparent bg-zk-chip text-zk-text2",
+  },
+  bid: {
+    label: "Bid",
+    chip: "bg-zk-warn-bg text-zk-warn-fg",
+    accent: "border-l-zk-warn-fg",
+    filterOn: "border-transparent bg-zk-warn-bg text-zk-warn-fg",
+  },
+  review: {
+    label: "Review",
+    chip: "bg-zk-info-bg text-zk-info-fg",
+    accent: "border-l-zk-info-fg",
+    filterOn: "border-transparent bg-zk-info-bg text-zk-info-fg",
+  },
+  delivery: {
+    label: "Delivery",
+    chip: "bg-zk-ok-bg text-zk-ok-fg",
+    accent: "border-l-zk-ok-fg",
+    filterOn: "border-transparent bg-zk-ok-bg text-zk-ok-fg",
+  },
+  request_to_merge: {
+    label: "Merge request",
+    chip: "bg-[var(--issue-sec-bg,#FDECEF)] text-[var(--issue-sec-fg,#B4233F)]",
+    accent: "border-l-[var(--issue-sec-fg,#B4233F)]",
+    filterOn: "border-transparent bg-[var(--issue-sec-bg,#FDECEF)] text-[var(--issue-sec-fg,#B4233F)]",
+  },
+};
 
+function CommentTypeBadge({ type, metadata }: { type?: CommentType | null; metadata?: unknown }) {
+  const resolved: CommentType = type && type in commentTypeVisual ? type : "comment";
+  const visual = commentTypeVisual[resolved];
   const meta = typeof metadata === "object" && metadata !== null ? (metadata as Record<string, unknown>) : null;
 
-  switch (type) {
-    case "bid":
-      return (
-        <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 border border-amber-200">
-          <span>🏷️</span>
-          <span>Bid</span>
-          {typeof meta?.eta === "string" ? <span className="text-amber-700">· ETA: {meta.eta}</span> : null}
-        </span>
-      );
-    case "review":
-      return (
-        <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-800 border border-purple-200">
-          <span>🔍</span>
-          <span>Review</span>
-          {typeof meta?.verdict === "string" ? <span className="text-purple-700">· {meta.verdict}</span> : null}
-        </span>
-      );
-    case "delivery":
-      return (
-        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 border border-emerald-200">
-          <span>📦</span>
-          <span>Delivery</span>
-          {typeof meta?.prUrl === "string" ? (
-            <a href={meta.prUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-emerald-900">
-              PR
-            </a>
-          ) : null}
-        </span>
-      );
-    case "request_to_merge":
-      return (
-        <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-800 border border-rose-200">
-          <span>🔀</span>
-          <span>Request to Merge</span>
-        </span>
-      );
-    default:
-      return null;
-  }
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold ${visual.chip}`}
+    >
+      <span>{visual.label}</span>
+      {resolved === "bid" && typeof meta?.eta === "string" ? (
+        <span>· ETA: {meta.eta}</span>
+      ) : null}
+      {resolved === "review" && typeof meta?.verdict === "string" ? (
+        <span>· {meta.verdict}</span>
+      ) : null}
+      {resolved === "delivery" && typeof meta?.prUrl === "string" ? (
+        <a
+          href={meta.prUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline hover:opacity-80"
+        >
+          PR
+        </a>
+      ) : null}
+    </span>
+  );
 }
 
 function CommentConfidence({ metadata }: { metadata?: unknown }) {
@@ -79,36 +105,17 @@ function CommentConfidence({ metadata }: { metadata?: unknown }) {
   const { confidence, confidenceReason } = metadata as Record<string, unknown>;
   if (typeof confidence !== "number" || !Number.isInteger(confidence) || confidence < 0 || confidence > 100) return null;
   return (
-    <p className="mt-2 text-xs text-slate-600 break-words">
-      <span className="font-medium">Self-reported confidence: {confidence}%</span>
+    <div className="mt-2 rounded-[10px] bg-zk-chip px-3 py-2 text-[13px] text-zk-text2 break-words">
+      <strong className="font-semibold text-zk-text">Self-reported confidence: {confidence}%</strong>
       {typeof confidenceReason === "string" && confidenceReason.trim() ? ` — ${confidenceReason}` : null}
-    </p>
+    </div>
   );
 }
 
 function commentCardStyle(type?: CommentType | null): string {
-  switch (type) {
-    case "bid":
-      return "border-amber-200 bg-amber-50/30";
-    case "review":
-      return "border-purple-200 bg-purple-50/30";
-    case "delivery":
-      return "border-emerald-200 bg-emerald-50/30";
-    case "request_to_merge":
-      return "border-rose-200 bg-rose-50/30 ring-1 ring-rose-200";
-    default:
-      return "border-slate-100 bg-slate-50";
-  }
+  const resolved: CommentType = type && type in commentTypeVisual ? type : "comment";
+  return `border-zk-border bg-zk-surface border-l-4 ${commentTypeVisual[resolved].accent}`;
 }
-
-type ViewerProps = {
-  currentUserId?: string;
-  currentUserRole?: AppRole | null;
-  /** Owner, admin, or site super admin of this issue's organization. */
-  tenantAdmin?: boolean;
-  /** Deleted issues: show comments but no reply, edit, delete or new comment. */
-  readOnly?: boolean;
-};
 
 function CommentEditForm({
   comment,
@@ -157,7 +164,7 @@ function CommentEditForm({
         aria-label="Edit comment"
       />
       {error ? (
-        <p className="text-sm text-red-600" role="alert">
+        <p className="text-sm text-zk-bad-fg" role="alert">
           {error}
         </p>
       ) : null}
@@ -240,15 +247,13 @@ function CommentItem({
       className="group/comment scroll-mt-24 space-y-3 break-inside-avoid"
     >
       <article
-        className={`rounded-lg border px-4 py-3 group-target/comment:border-teal-400 group-target/comment:bg-teal-50 group-target/comment:ring-2 group-target/comment:ring-teal-500/40 motion-safe:transition-colors ${commentCardStyle(comment.type)} ${
-          comment.depth > 0 ? "border-l-2 border-l-teal-600" : ""
-        }`}
+        className={`flex flex-col gap-3 rounded-2xl border px-4 py-[18px] sm:px-5 group-target/comment:border-zk-accent group-target/comment:bg-zk-tint group-target/comment:ring-2 group-target/comment:ring-electric-blue/40 motion-safe:transition-colors ${commentCardStyle(comment.type)}`}
       >
         {isDeleted ? (
-          <p className="text-sm italic text-slate-500">This comment was deleted.</p>
+          <p className="text-sm italic text-zk-muted">This comment was deleted.</p>
         ) : (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs text-slate-500">
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs text-zk-muted">
               <div className="flex flex-wrap items-center gap-2">
                 <UserNameWithBadges
                   name={comment.author.name}
@@ -259,14 +264,14 @@ function CommentItem({
                   userId={comment.authorId}
                   showAuthor={comment.authorId === reporterId}
                   agentName={comment.agent?.name}
-                  className="font-medium text-slate-700"
+                  className="font-bold text-zk-text"
                 />
                 <CommentTypeBadge type={comment.type} metadata={comment.metadata} />
               </div>
               <span className="inline-flex items-center gap-1.5">
                 <a
                   href={`#comment-${comment.id}`}
-                  className="hover:text-slate-700 hover:underline"
+                  className="hover:text-zk-text hover:underline"
                 >
                   <LocalTime date={comment.createdAt} />
                 </a>
@@ -284,13 +289,13 @@ function CommentItem({
             {comment.agentId || comment.agent ? <CommentConfidence metadata={comment.metadata} /> : null}
 
             {comment.parent ? (
-              <p className="mt-2 rounded-md bg-card/80 px-2.5 py-1.5 text-xs text-slate-500 break-words">
+              <p className="mt-2 rounded-md bg-card/80 px-2.5 py-1.5 text-xs text-zk-muted break-words">
                 Replying to{" "}
-                <span className="font-medium text-slate-700">
+                <span className="font-bold text-zk-text">
                   {comment.parent.author.name}
                 </span>
                 {": "}
-                <span className="italic text-slate-600">
+                <span className="italic text-zk-text2">
                   {comment.parent.deletedAt
                     ? "deleted comment"
                     : truncateCommentBody(comment.parent.body)}
@@ -331,7 +336,7 @@ function CommentItem({
                   <Button
                     type="button"
                     variant="ghost"
-                    className="px-2 py-1 text-xs text-teal-700 hover:text-teal-800"
+                    className="min-h-8 px-2 py-1 text-[13px] font-bold text-zk-accent hover:text-zk-accent"
                     onClick={() => setReplying(true)}
                   >
                     Reply
@@ -341,7 +346,7 @@ function CommentItem({
                   <Button
                     type="button"
                     variant="ghost"
-                    className="px-2 py-1 text-xs text-slate-600 hover:text-slate-900"
+                    className="min-h-8 px-2 py-1 text-[13px] font-semibold text-zk-muted hover:text-zk-text"
                     onClick={() => setEditing(true)}
                   >
                     Edit
@@ -352,7 +357,7 @@ function CommentItem({
                     type="button"
                     variant="ghost"
                     disabled={pending}
-                    className="px-2 py-1 text-xs text-slate-600 hover:text-red-700"
+                    className="min-h-8 px-2 py-1 text-[13px] font-semibold text-zk-muted hover:text-zk-bad-fg"
                     onClick={handleDelete}
                   >
                     {pending ? "Deleting…" : "Delete"}
@@ -361,7 +366,7 @@ function CommentItem({
               </div>
             )}
             {error ? (
-              <p className="mt-1 text-xs text-red-600" role="alert">
+              <p className="mt-1 text-xs text-zk-bad-fg" role="alert">
                 {error}
               </p>
             ) : null}
@@ -370,7 +375,7 @@ function CommentItem({
       </article>
 
       {comment.children.length > 0 ? (
-        <ul className="ml-2.5 space-y-3 border-l border-slate-200 pl-2.5 sm:ml-6 sm:pl-4">
+        <ul className="ml-2.5 space-y-3 border-l border-zk-divider pl-2.5 sm:ml-6 sm:pl-4">
           {comment.children.map((child) => (
             <CommentItem
               key={child.id}
@@ -423,51 +428,57 @@ export function CommentThread({
     return cType === typeFilter;
   });
 
+  const filters: { id: string; label: string; type?: CommentType }[] = [
+    { id: "all", label: "All" },
+    { id: "comment", label: "Comments", type: "comment" },
+    { id: "bid", label: "Bids", type: "bid" },
+    { id: "review", label: "Reviews", type: "review" },
+    { id: "delivery", label: "Deliveries", type: "delivery" },
+    { id: "request_to_merge", label: "Merge requests", type: "request_to_merge" },
+  ];
+
   return (
-    <div className="mt-4 space-y-6">
+    <div className="issue-detail-scope mt-0 space-y-4">
       {comments.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 pb-3">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 mr-2">Filter:</span>
-          {[
-            { id: "all", label: "All" },
-            { id: "comment", label: "Comments" },
-            { id: "bid", label: "Bids" },
-            { id: "review", label: "Reviews" },
-            { id: "delivery", label: "Deliveries" },
-            { id: "request_to_merge", label: "Merge Requests" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setTypeFilter(tab.id)}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                typeFilter === tab.id
-                  ? "bg-teal-700 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          {filters.map((tab) => {
+            const on = typeFilter === tab.id;
+            const typeStyle = tab.type ? commentTypeVisual[tab.type].filterOn : null;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                aria-pressed={on}
+                onClick={() => setTypeFilter(tab.id)}
+                className={`inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue-strong ${
+                  on
+                    ? typeStyle ?? "border-electric-blue-strong bg-electric-blue-strong text-white"
+                    : "border-zk-border bg-zk-surface text-zk-text2 hover:text-zk-text"
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
       ) : null}
 
       {comments.length === 0 && !readOnly ? (
-        <div role="status" className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-          <p className="text-sm font-medium text-slate-700">No comments yet.</p>
-          <p className="mt-1 text-sm text-slate-500">
+        <div role="status" className="rounded-2xl border border-dashed border-zk-border bg-zk-chip/40 px-4 py-8 text-center">
+          <p className="text-sm font-medium text-zk-text">No comments yet.</p>
+          <p className="mt-1 text-sm text-zk-muted">
             Agents and reviewers haven’t posted any updates here yet.
           </p>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-2 text-sm text-zk-text2">
             Start the conversation below with a question, helpful context, or a proposed solution.
           </p>
         </div>
       ) : filteredComments.length === 0 ? (
-        <p className="text-sm text-slate-500">
+        <div className="rounded-2xl border border-dashed border-zk-border px-4 py-8 text-center text-sm text-zk-muted">
           {comments.length > 0
             ? "No timeline entries match this filter."
             : "No conversation."}
-        </p>
+        </div>
       ) : (
         <ul className="space-y-4">
           {filteredComments.map((comment) => (

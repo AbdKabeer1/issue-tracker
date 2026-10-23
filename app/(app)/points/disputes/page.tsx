@@ -20,9 +20,9 @@ import { CreditAwardsForm } from "./credit-awards-form";
 export const metadata = { title: "Points disputes" };
 
 const statusClass: Record<DisputeView["status"], string> = {
-  open: "bg-amber-100 text-amber-900",
-  granted: "bg-teal-100 text-teal-900",
-  rejected: "bg-slate-200 text-slate-700",
+  open: "bg-zk-warn-bg text-zk-warn-fg",
+  granted: "bg-zk-tint text-zk-info-fg",
+  rejected: "bg-zk-chip text-zk-text2",
 };
 
 const statusLabel: Record<DisputeView["status"], string> = {
@@ -36,33 +36,33 @@ function DisputeCard({ dispute, children }: { dispute: DisputeView; children?: R
     <li className="space-y-3 px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <Badge className={statusClass[dispute.status]}>{statusLabel[dispute.status]}</Badge>
-        <Badge className="bg-slate-100 text-slate-700">
+        <Badge className="rounded-full bg-zk-chip text-zk-text2">
           {dispute.kind === "wrong" ? "Wrong entry" : "Missing award"}
         </Badge>
         {dispute.kind === "missing" && dispute.requestedRole ? (
-          <Badge className="bg-slate-100 text-slate-700">
+          <Badge className="rounded-full bg-zk-chip text-zk-text2">
             Requested: {dispute.requestedRole === "solver" ? "Solver" : "Reporter"}
           </Badge>
         ) : null}
         <Link
           href={`/issues/${dispute.bugId}`}
-          className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 hover:underline"
+          className="min-w-0 flex-1 truncate text-sm font-medium text-zk-text hover:underline"
         >
           #{dispute.bugNumber} {dispute.bugTitle}
         </Link>
-        <span className="text-xs text-slate-500">
+        <span className="text-xs text-zk-muted">
           by {dispute.openerName} · <LocalTime date={dispute.createdAt} />
         </span>
       </div>
       {dispute.entry ? (
-        <p className="text-xs text-slate-600">
+        <p className="text-xs text-zk-text2">
           Entry: {dispute.entry.points > 0 ? "+" : ""}
           {dispute.entry.points} pts ({dispute.entry.role}) · {dispute.entry.id}
         </p>
       ) : null}
-      <p className="text-sm text-slate-700">{dispute.reason}</p>
+      <p className="text-sm text-zk-text2">{dispute.reason}</p>
       {dispute.resolution ? (
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-zk-text2">
           Resolution: {dispute.resolution}
           {dispute.resolvedAt ? (
             <>
@@ -84,8 +84,8 @@ export default async function PointsDisputesPage() {
   if (!tenantId) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-semibold text-slate-900">Points disputes</h1>
-        <p className="rounded-xl border border-slate-200 bg-card p-6 text-sm text-slate-600">
+        <h1 className="text-2xl font-extrabold tracking-tight text-zk-text">Points disputes</h1>
+        <p className="rounded-[20px] border border-zk-border bg-zk-surface p-6 text-sm text-zk-text2">
           You&apos;re not a member of a workspace yet, so there are no points to dispute.
         </p>
       </div>
@@ -103,8 +103,8 @@ export default async function PointsDisputesPage() {
     <div className="space-y-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Points disputes</h1>
-          <p className="text-sm text-slate-600">
+          <h1 className="text-2xl font-extrabold tracking-tight text-zk-text">Points disputes</h1>
+          <p className="text-sm text-zk-text2">
             Say an award is missing or wrong; a workspace admin resolves it. Points are never
             deleted — a correction is a reversing entry.
           </p>
@@ -117,9 +117,9 @@ export default async function PointsDisputesPage() {
       </div>
 
       {admin ? (
-        <section className="space-y-3 rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
-          <h2 className="text-lg font-semibold text-slate-900">Credit missing awards</h2>
-          <p className="text-sm text-slate-600">
+        <section className="space-y-3 rounded-[20px] border border-zk-border bg-zk-surface p-4 sm:p-6">
+          <h2 className="text-lg font-semibold text-zk-text">Credit missing awards</h2>
+          <p className="text-sm text-zk-text2">
             Solver points are written when an assigned issue is marked resolved. Reporter points
             are written when two independent reviewers accept the issue as real. Use this when
             that award is missing.
@@ -130,15 +130,15 @@ export default async function PointsDisputesPage() {
 
       {admin ? (
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold text-slate-900">
-            Open queue <span className="text-sm font-normal text-slate-500">({queue.length})</span>
+          <h2 className="text-lg font-semibold text-zk-text">
+            Open queue <span className="text-sm font-normal text-zk-muted">({queue.length})</span>
           </h2>
           {queue.length === 0 ? (
-            <p className="rounded-xl border border-slate-200 bg-card p-6 text-sm text-slate-600">
+            <p className="rounded-[20px] border border-zk-border bg-zk-surface p-6 text-sm text-zk-text2">
               No open disputes.
             </p>
           ) : (
-            <ol className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-card">
+            <ol className="divide-y divide-zk-divider rounded-[20px] border border-zk-border bg-zk-surface">
               {queue.map((dispute) => (
                 <DisputeCard key={dispute.id} dispute={dispute}>
                   <DisputeControls dispute={dispute} />
@@ -150,13 +150,13 @@ export default async function PointsDisputesPage() {
       ) : null}
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-slate-900">Your disputes</h2>
+        <h2 className="text-lg font-semibold text-zk-text">Your disputes</h2>
         {mine.length === 0 ? (
-          <p className="rounded-xl border border-slate-200 bg-card p-6 text-sm text-slate-600">
+          <p className="rounded-[20px] border border-zk-border bg-zk-surface p-6 text-sm text-zk-text2">
             You haven&apos;t disputed anything yet.
           </p>
         ) : (
-          <ol className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-card">
+          <ol className="divide-y divide-zk-divider rounded-[20px] border border-zk-border bg-zk-surface">
             {mine.map((dispute) => (
               <DisputeCard key={dispute.id} dispute={dispute} />
             ))}
@@ -165,29 +165,29 @@ export default async function PointsDisputesPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-slate-900">Your points entries</h2>
+        <h2 className="text-lg font-semibold text-zk-text">Your points entries</h2>
         {entries.length === 0 ? (
-          <p className="rounded-xl border border-slate-200 bg-card p-6 text-sm text-slate-600">
+          <p className="rounded-[20px] border border-zk-border bg-zk-surface p-6 text-sm text-zk-text2">
             No points yet. Resolve an assigned issue to earn the first ones.
           </p>
         ) : (
-          <ol className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-card">
+          <ol className="divide-y divide-zk-divider rounded-[20px] border border-zk-border bg-zk-surface">
             {entries.map((entry) => (
               <li key={entry.id} className="flex flex-wrap items-center gap-2 px-4 py-3">
-                <span className="w-16 text-right text-sm font-semibold tabular-nums text-slate-900">
+                <span className="w-16 text-right text-sm font-semibold tabular-nums text-zk-text">
                   {entry.points > 0 ? "+" : ""}
                   {entry.points}
                 </span>
-                <Badge className="bg-slate-100 text-slate-700">{entry.role}</Badge>
+                <Badge className="rounded-full bg-zk-chip text-zk-text2">{entry.role}</Badge>
                 {entry.bugNumber !== null ? (
-                  <span className="min-w-0 flex-1 truncate text-sm text-slate-700">
+                  <span className="min-w-0 flex-1 truncate text-sm text-zk-text2">
                     #{entry.bugNumber}
                   </span>
                 ) : (
-                  <span className="min-w-0 flex-1 text-sm text-slate-500">No issue linked</span>
+                  <span className="min-w-0 flex-1 text-sm text-zk-muted">No issue linked</span>
                 )}
                 {entry.correctedAt ? (
-                  <Badge className="bg-amber-100 text-amber-900">Corrected</Badge>
+                  <Badge className="rounded-full bg-zk-warn-bg text-zk-warn-fg">Corrected</Badge>
                 ) : (
                   <Link href={`/points/disputes/new?entry=${entry.id}${entry.bugNumber !== null ? `&bug=${entry.bugNumber}` : ""}`}>
                     <Button type="button" variant="secondary" className="px-3 py-1.5 text-xs">

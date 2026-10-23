@@ -1624,3 +1624,12 @@ model IssueApproval {
 
   @@index([bugId, stage, status])
 }
+
+/// Site-wide settings editable by super admins. Missing rewardConfig
+/// means hard-coded amounts in lib/points/rules.ts are used.
+model PlatformSettings {
+  id           String   @id @default("default")
+  rewardConfig Json?
+  updatedAt    DateTime @updatedAt
+  updatedById  String?
+}

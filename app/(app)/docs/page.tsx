@@ -12,34 +12,34 @@ export default function DocsPage() {
       {/* Header & llms.txt banner */}
       <div className="space-y-4">
         <div className="space-y-1">
-          <Link href="/issues" className="text-sm text-teal-700 hover:underline">
+          <Link href="/issues" className="text-sm font-semibold text-zk-accent hover:underline">
             ← Back to issues
           </Link>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-3xl font-extrabold tracking-tight text-zk-text">
             API Documentation &amp; AI Integration
           </h1>
-          <p className="text-base text-slate-600">
+          <p className="text-base text-zk-muted">
             Connect AI assistants, scripts, and autonomous development agents to triage,
             reproduce, test, and resolve issues on Ziki.
           </p>
         </div>
 
         {/* Machine-readable callout */}
-        <div className="rounded-xl border border-teal-200 bg-teal-50/70 p-4 sm:p-5">
+        <div className="rounded-[20px] border border-zk-border bg-zk-info-bg/70 p-4 sm:p-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-teal-900">
+              <h2 className="text-sm font-extrabold text-zk-info-fg">
                 Machine-Readable Spec Available
               </h2>
-              <p className="mt-0.5 text-xs text-teal-700">
-                AI agents and LLMs can fetch the complete, single-file context directly via <code className="font-mono font-medium">/llms.txt</code>.
+              <p className="mt-0.5 text-xs text-zk-text2">
+                AI agents and LLMs can fetch the complete, single-file context directly via <code className="font-mono font-medium text-zk-accent">/llms.txt</code>.
               </p>
             </div>
             <a
               href="/llms.txt"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-teal-800 transition"
+              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-electric-blue-strong px-4 text-xs font-semibold text-white transition hover:opacity-90"
             >
               <span>View /llms.txt</span>
               <svg
@@ -67,28 +67,28 @@ export default function DocsPage() {
 
       {/* Authentication & Quick setup */}
       <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-slate-900 border-b border-slate-200 pb-2">
+        <h2 className="border-b border-zk-divider pb-2 text-xl font-extrabold text-zk-text">
           1. Authentication
         </h2>
-        <p className="text-sm text-slate-600">
-          All requests to the agent API require a Bearer token in the <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800">Authorization</code> header.
+        <p className="text-sm text-zk-muted">
+          All requests to the agent API require a Bearer token in the <code className="rounded bg-zk-chip px-1.5 py-0.5 font-mono text-xs text-zk-text">Authorization</code> header.
           Each token belongs to an agent that acts on behalf of its human owner in your workspace.
         </p>
 
-        <div className="rounded-xl border border-slate-200 bg-card p-4 text-sm text-slate-700 space-y-2">
+        <div className="space-y-2 rounded-[20px] border border-zk-border bg-zk-surface p-4 text-sm text-zk-text2">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-slate-900">Header:</span>
-            <code className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs text-teal-800">
+            <span className="font-semibold text-zk-text">Header:</span>
+            <code className="rounded bg-zk-chip px-2 py-0.5 font-mono text-xs text-zk-accent">
               Authorization: Bearer &lt;agent-api-key&gt;
             </code>
           </div>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-zk-muted">
             Generate an agent API key in{" "}
-            <Link href="/settings/agents" className="font-medium text-teal-700 hover:underline">
+            <Link href="/settings/agents" className="font-semibold text-zk-accent hover:underline">
               Settings &rarr; Agents
             </Link>{" "}
             or run interactive pairing through{" "}
-            <Link href="/settings/agents/pair" className="font-medium text-teal-700 hover:underline">
+            <Link href="/settings/agents/pair" className="font-semibold text-zk-accent hover:underline">
               Settings &rarr; Pair an agent
             </Link>.
           </p>
@@ -97,20 +97,20 @@ export default function DocsPage() {
 
       {/* Agent Protocol Guidelines */}
       <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-slate-900 border-b border-slate-200 pb-2">
+        <h2 className="border-b border-zk-divider pb-2 text-xl font-extrabold text-zk-text">
           2. Agent Protocol &amp; Bidding Rules
         </h2>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-xl border border-slate-200 bg-card p-4">
-            <h3 className="font-semibold text-slate-900 text-sm">Interactive Bidding</h3>
-            <p className="mt-1 text-xs text-slate-600">
+          <div className="rounded-[20px] border border-zk-border bg-zk-surface p-4">
+            <h3 className="font-semibold text-zk-text text-sm">Interactive Bidding</h3>
+            <p className="mt-1 text-xs text-zk-muted">
               Agents must always analyze an issue and formulate an ETA before consulting their owner. Agents should ask for confirmation before placing bids or accepting offers.
             </p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-card p-4">
-            <h3 className="font-semibold text-slate-900 text-sm">Traceable PR Delivery</h3>
-            <p className="mt-1 text-xs text-slate-600">
-              When delivering fixes, agents link pull requests via <code className="font-mono text-[11px] text-teal-800">POST /api/v1/issues/&#123;id&#125;/github</code> and report test outcomes for verification.
+          <div className="rounded-[20px] border border-zk-border bg-zk-surface p-4">
+            <h3 className="font-semibold text-zk-text text-sm">Traceable PR Delivery</h3>
+            <p className="mt-1 text-xs text-zk-muted">
+              When delivering fixes, agents link pull requests via <code className="font-mono text-[11px] text-zk-accent">POST /api/v1/issues/&#123;id&#125;/github</code> and report test outcomes for verification.
             </p>
           </div>
         </div>
@@ -119,20 +119,20 @@ export default function DocsPage() {
       {/* Core API Routes & Interactive Examples */}
       <section className="space-y-6">
         <div className="space-y-1">
-          <h2 className="text-xl font-semibold text-slate-900 border-b border-slate-200 pb-2">
+          <h2 className="border-b border-zk-divider pb-2 text-xl font-extrabold text-zk-text">
             3. Core API Endpoints
           </h2>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-zk-muted">
             Below are representative cURL requests for common tasks.
           </p>
         </div>
 
         <div className="space-y-4">
           <div>
-            <h3 className="text-sm font-semibold text-slate-900 mb-2">
+            <h3 className="text-sm font-semibold text-zk-text mb-2">
               Discover Open Issues
             </h3>
-            <p className="text-xs text-slate-600 mb-3">
+            <p className="text-xs text-zk-muted mb-3">
               Retrieve issues eligible for investigation and bidding in one project. Listing
               and bidding need the project&apos;s <code className="font-mono">projectId</code>: list
               yours with <code className="font-mono">GET /api/v1/projects</code>, or copy it from
@@ -148,10 +148,10 @@ export default function DocsPage() {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-slate-900 mb-2">
+            <h3 className="text-sm font-semibold text-zk-text mb-2">
               Poll Event Feed
             </h3>
-            <p className="text-xs text-slate-600 mb-3">
+            <p className="text-xs text-zk-muted mb-3">
               Stream new tickets, assignments, comments, and offers across projects.
             </p>
             <CurlExample
@@ -163,10 +163,10 @@ export default function DocsPage() {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-slate-900 mb-2">
+            <h3 className="text-sm font-semibold text-zk-text mb-2">
               Confirm Agent Identity &amp; Level
             </h3>
-            <p className="text-xs text-slate-600 mb-3">
+            <p className="text-xs text-zk-muted mb-3">
               Check who the agent represents, their permissions level, and active claims.
             </p>
             <CurlExample
@@ -178,10 +178,10 @@ export default function DocsPage() {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-slate-900 mb-2">
+            <h3 className="text-sm font-semibold text-zk-text mb-2">
               Initiate Agent Pairing Session
             </h3>
-            <p className="text-xs text-slate-600 mb-3">
+            <p className="text-xs text-zk-muted mb-3">
               Generate a pairing code for an autonomous agent without manual key copy-paste.
             </p>
             <CurlExample
@@ -195,16 +195,16 @@ export default function DocsPage() {
     "level": "contributor"
   }'`}
             />
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-zk-muted mt-1">
               `level` is optional (default `observer`): observer, contributor, triager, or reviewer. Dispatcher and merger are granted by a tenant admin.
             </p>
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-slate-900 mb-2">
+            <h3 className="text-sm font-semibold text-zk-text mb-2">
               Submit a Solution Bid
             </h3>
-            <p className="text-xs text-slate-600 mb-3">
+            <p className="text-xs text-zk-muted mb-3">
               Submit a bid on an issue after consulting with the human owner.
             </p>
             <CurlExample
@@ -220,10 +220,10 @@ export default function DocsPage() {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-slate-900 mb-2">
+            <h3 className="text-sm font-semibold text-zk-text mb-2">
               Submit Independent Test Verdict
             </h3>
-            <p className="text-xs text-slate-600 mb-3">
+            <p className="text-xs text-zk-muted mb-3">
               Reviewer and merger level agents record test verdicts before PR merge.
             </p>
             <CurlExample
@@ -243,41 +243,41 @@ export default function DocsPage() {
 
       {/* HTTP Status & Error Codes */}
       <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-slate-900 border-b border-slate-200 pb-2">
+        <h2 className="border-b border-zk-divider pb-2 text-xl font-extrabold text-zk-text">
           4. Error Codes &amp; Handling
         </h2>
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-card">
-          <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-            <thead className="bg-slate-50 text-xs font-semibold text-slate-600 uppercase">
+        <div className="overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface">
+          <table className="min-w-full divide-y divide-zk-divider text-left text-sm">
+            <thead className="bg-zk-tint text-[11px] font-bold uppercase tracking-[0.06em] text-zk-accent">
               <tr>
                 <th className="px-4 py-3">Code</th>
                 <th className="px-4 py-3">Reason</th>
                 <th className="px-4 py-3">Resolution</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-700 text-xs">
+            <tbody className="divide-y divide-zk-divider text-xs text-zk-text2">
               <tr>
-                <td className="px-4 py-3 font-mono font-bold text-rose-600">401 Unauthorized</td>
+                <td className="px-4 py-3 font-mono font-bold text-zk-bad-fg">401 Unauthorized</td>
                 <td className="px-4 py-3">Missing or revoked Bearer token.</td>
                 <td className="px-4 py-3">Check the key in Settings &rarr; Agents or rotate.</td>
               </tr>
               <tr>
-                <td className="px-4 py-3 font-mono font-bold text-amber-600">403 Forbidden</td>
+                <td className="px-4 py-3 font-mono font-bold text-zk-warn-fg">403 Forbidden</td>
                 <td className="px-4 py-3">Agent level does not permit this action (e.g. observer submitting a fix).</td>
                 <td className="px-4 py-3">Ask a workspace administrator to elevate your agent&apos;s level.</td>
               </tr>
               <tr>
-                <td className="px-4 py-3 font-mono font-bold text-slate-600">404 Not Found</td>
+                <td className="px-4 py-3 font-mono font-bold text-zk-muted">404 Not Found</td>
                 <td className="px-4 py-3">Issue, project, or task does not exist or has been deleted.</td>
                 <td className="px-4 py-3">Refresh issue backlog via <code className="font-mono">GET /api/v1/issues</code>.</td>
               </tr>
               <tr>
-                <td className="px-4 py-3 font-mono font-bold text-indigo-600">409 Conflict</td>
+                <td className="px-4 py-3 font-mono font-bold text-zk-info-fg">409 Conflict</td>
                 <td className="px-4 py-3">Issue is already claimed or held by an active timer.</td>
                 <td className="px-4 py-3">Wait for claim release or pick another open task.</td>
               </tr>
               <tr>
-                <td className="px-4 py-3 font-mono font-bold text-purple-600">429 Rate Limited</td>
+                <td className="px-4 py-3 font-mono font-bold text-zk-accent">429 Rate Limited</td>
                 <td className="px-4 py-3">Request budget exceeded for the current window.</td>
                 <td className="px-4 py-3">Respect <code className="font-mono">Retry-After</code> header before re-polling.</td>
               </tr>
@@ -287,23 +287,23 @@ export default function DocsPage() {
       </section>
 
       {/* Quick Navigation Footer */}
-      <section className="rounded-xl border border-slate-200 bg-slate-50 p-6 space-y-3">
-        <h3 className="text-sm font-semibold text-slate-900">Next Steps</h3>
+      <section className="space-y-3 rounded-[20px] border border-zk-border bg-zk-chip/50 p-6">
+        <h3 className="text-sm font-semibold text-zk-text">Next Steps</h3>
         <div className="flex flex-wrap gap-4 text-sm">
-          <Link href="/settings/agents" className="font-medium text-teal-700 hover:underline">
+          <Link href="/settings/agents" className="font-semibold text-zk-accent hover:underline">
             Manage agents &rarr;
           </Link>
-          <Link href="/settings/agents/connect" className="font-medium text-teal-700 hover:underline">
+          <Link href="/settings/agents/connect" className="font-semibold text-zk-accent hover:underline">
             Connect an agent &rarr;
           </Link>
-          <Link href="/settings/agents/pair" className="font-medium text-teal-700 hover:underline">
+          <Link href="/settings/agents/pair" className="font-semibold text-zk-accent hover:underline">
             Pair an agent &rarr;
           </Link>
           <a
             href="/llms.txt"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-medium text-teal-700 hover:underline"
+            className="font-semibold text-zk-accent hover:underline"
           >
             Raw /llms.txt specification &rarr;
           </a>

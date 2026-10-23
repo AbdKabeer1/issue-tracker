@@ -4,6 +4,7 @@ const db = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
   $transaction: vi.fn(),
   issueClaim: { findFirst: vi.fn(), update: vi.fn() },
+  bug: { findFirst: vi.fn() },
   project: { findUnique: vi.fn() },
   projectWorkflow: { findUnique: vi.fn() },
 }));
@@ -118,5 +119,37 @@ describe("claim extension (#593)", () => {
     db.issueClaim.findFirst.mockResolvedValue({ ...claim, bug: { ...claim.bug, pullRequestUrl: "https://github.com/o/r/pull/1" } });
     await expect(extendClaim(agent, "project", "issue", "already done")).rejects.toMatchObject({ status: 409 });
     expect(db.issueClaim.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("extension accepts the readable issue number (#604)", () => {
+  it.each(["42", "ZE-42"])("resolves %s inside the agent's tenant and extends that claim", async (ref) => {
+    db.bug.findFirst.mockResolvedValue({ id: "issue", number: 42 });
+
+    const result = await extendClaim(agent, "project", ref, "waiting on CI");
+
+    expect(db.bug.findFirst.mock.calls[0][0].where).toEqual({ number: 42, tenantId: "tenant" });
+    expect(db.issueClaim.findFirst.mock.calls[0][0].where).toMatchObject({ bugId: "issue", agentId: "agent-ada" });
+    expect(result).toMatchObject({ claimId: "claim", issueId: "issue" });
+    expect(db.issueClaim.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("is 404 when no issue in the tenant has that number", async () => {
+    db.bug.findFirst.mockResolvedValue(null);
+    await expect(extendClaim(agent, "project", "999", "waiting on CI")).rejects.toMatchObject({ status: 404 });
+    expect(db.$queryRaw).not.toHaveBeenCalled();
+    expect(db.issueClaim.update).not.toHaveBeenCalled();
+  });
+
+  it("still checks the project for a number from another project in the tenant", async () => {
+    db.bug.findFirst.mockResolvedValue({ id: "other", number: 7 });
+    db.$queryRaw.mockResolvedValue([]);
+    await expect(extendClaim(agent, "project", "7", "waiting on CI")).rejects.toMatchObject({ status: 404 });
+    expect(db.issueClaim.update).not.toHaveBeenCalled();
+  });
+
+  it("keeps the id lookup unchanged for an internal id", async () => {
+    await extendClaim(agent, "project", "issue", "waiting on CI");
+    expect(db.bug.findFirst).not.toHaveBeenCalled();
   });
 });

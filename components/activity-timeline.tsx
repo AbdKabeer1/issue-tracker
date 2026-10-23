@@ -49,57 +49,57 @@ export function ActivityTimeline({
   // entry inside it. Issues without activity keep the empty state visible.
   if (activities.length === 0) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+      <section className="rounded-[20px] border border-zk-border bg-zk-surface p-5">
+        <h2 className="text-xs font-bold uppercase tracking-[0.08em] text-zk-muted">
           Activity ({total})
         </h2>
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-zk-muted">
           Read-only history of changes on this issue.
         </p>
-        <p className="mt-4 text-sm text-slate-500">No activity recorded yet.</p>
+        <p className="mt-4 text-sm text-zk-muted">No activity recorded yet.</p>
       </section>
     );
   }
   return (
-    <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
+    <section className="rounded-[20px] border border-zk-border bg-zk-surface p-5">
       <details className="group">
-        <summary className="cursor-pointer list-none select-none -m-1 rounded-md p-1 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">
+        <summary className="cursor-pointer list-none select-none -m-1 rounded-md p-1 hover:bg-zk-chip/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue-strong">
           <span className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            <h2 className="text-xs font-bold uppercase tracking-[0.08em] text-zk-muted">
               Activity ({total})
             </h2>
             <span
               aria-hidden="true"
-              className="shrink-0 text-slate-400 transition-transform duration-150 group-open:rotate-90"
+              className="shrink-0 text-zk-muted transition-transform duration-150 group-open:rotate-90"
             >
               ▸
             </span>
           </span>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-zk-muted">
             Read-only history of changes on this issue.
             {trimmed
               ? ` Showing the ${activities.length} most recent of ${total}.`
               : ""}
           </p>
         </summary>
-        <ol className="relative mt-5 space-y-0 border-l border-slate-200 pl-4 sm:pl-5">
+        <ol className="relative mt-5 space-y-0 border-l border-zk-divider pl-4 sm:pl-5">
           {activities.map((entry) => (
             <li key={entry.id} className="relative pb-5 last:pb-0">
               <span
                 aria-hidden
-                className="absolute -left-[1.2rem] sm:-left-[1.45rem] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-card bg-teal-600"
+                className="absolute -left-[1.2rem] sm:-left-[1.45rem] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-zk-surface bg-electric-blue-strong"
               />
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                 <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
                   {typeLabel[entry.type]}
                 </span>
                 <LocalTime
-                  className="text-xs text-slate-500"
+                  className="text-xs text-zk-muted"
                   date={entry.createdAt}
                 />
               </div>
-              <p className="mt-1 text-sm text-slate-800">
-                <span className="font-medium text-slate-900">
+              <p className="mt-1 text-sm text-zk-text2">
+                <span className="font-bold text-zk-text">
                   {entry.actor.name}
                 </span>{" "}
                 <ExpandableText maxLines={2} expandText="View more" collapseText="View less">
@@ -108,7 +108,7 @@ export function ActivityTimeline({
               </p>
               {entry.type === "status_changed" && activityNote(entry.metadata) ? (
                 <ExpandableText maxLines={3} expandText="View more" collapseText="View less">
-                  <blockquote className="mt-1 whitespace-pre-wrap break-words border-l-2 border-emerald-300 pl-3 text-sm text-slate-700">
+                  <blockquote className="mt-1 whitespace-pre-wrap break-words border-l-[3px] border-zk-ok-fg/40 bg-zk-chip pl-3 text-sm text-zk-text2">
                     {activityNote(entry.metadata)}
                   </blockquote>
                 </ExpandableText>

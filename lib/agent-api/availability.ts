@@ -42,8 +42,9 @@ function claimSweepWhere(
       ...(scope.tenantId ? { tenantId: scope.tenantId } : {}),
     },
     OR: [
-      { lastHeartbeatAt: { lt: cutoff } },
-      { lastHeartbeatAt: null, claimedAt: { lt: cutoff } },
+      // #551: a claim whose fix is linked is waiting on review, not silent.
+      { lastHeartbeatAt: { lt: cutoff }, bug: { pullRequestUrl: null } },
+      { lastHeartbeatAt: null, claimedAt: { lt: cutoff }, bug: { pullRequestUrl: null } },
       { deliverBy: { lt: now }, bug: { pullRequestUrl: null } },
     ],
   };
@@ -109,7 +110,9 @@ async function releaseClaimIfStale(
       reason = "owner_unresponsive";
     } else {
       const lastSeen = fresh.lastHeartbeatAt ?? fresh.claimedAt;
-      const silent = lastSeen != null && lastSeen.getTime() < cutoff.getTime();
+      // #551: once the fix is linked the agent has delivered; waiting for testers
+      // and a merger must not read as silence, or the assignee is cleared.
+      const silent = lastSeen != null && lastSeen.getTime() < cutoff.getTime() && !fresh.bug?.pullRequestUrl;
       // #593: an undelivered claim past its deadline goes back even while the
       // agent keeps heartbeating.
       const overdue = isDeliveryOverdue(fresh.deliverBy, now) && !fresh.bug?.pullRequestUrl;

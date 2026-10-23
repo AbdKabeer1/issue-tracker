@@ -12,8 +12,8 @@ import { pointSourceKey, reviewerPointsAt } from "@/lib/points/rules";
 import {
   calculateReviewerPoints,
   calculateSolverPoints,
-  getProjectRewardConfig,
 } from "@/lib/points/project-rewards";
+import { getProjectRewardConfig } from "@/lib/points/platform-rewards";
 import { assertRedesignOpen } from "@/lib/redesigns";
 import { statusChangedSummary, commentedSummary, commentPreview } from "@/lib/activity-log";
 import { workflowFor } from "@/lib/workflow";

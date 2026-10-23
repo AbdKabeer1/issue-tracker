@@ -103,12 +103,17 @@ function percent(value: number, target: number): number {
   return Math.min(100, Math.max(0, Math.floor((value / target) * 100)));
 }
 
-/** Progress toward 500 points. */
-export function pointsProgress(points: number, solvedTasks: number): PointsProgress {
+/** Progress toward the points goal (hard-coded TARGET_POINTS unless overridden). */
+export function pointsProgress(
+  points: number,
+  solvedTasks: number,
+  target: number = TARGET_POINTS,
+): PointsProgress {
+  const goal = target > 0 ? target : TARGET_POINTS;
   return {
     points,
     solvedTasks,
-    pointsPercent: percent(points, TARGET_POINTS),
-    targetMet: points >= TARGET_POINTS,
+    pointsPercent: percent(points, goal),
+    targetMet: points >= goal,
   };
 }

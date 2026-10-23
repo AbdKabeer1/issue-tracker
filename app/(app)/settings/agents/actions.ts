@@ -83,6 +83,7 @@ export async function setAgentLevelAction(agentId: unknown, level: unknown): Pro
     revalidatePath("/settings/agents");
     revalidatePath("/settings/team");
     revalidatePath("/team");
+    revalidatePath("/admin/users");
     revalidatePath("/users/[id]", "page");
   }
   return result;

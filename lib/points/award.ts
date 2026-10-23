@@ -1,10 +1,7 @@
 import type { Prisma, PrismaClient, Severity } from "@prisma/client";
-import { DISPATCHER_POINTS, pointSourceKey, solverPoints, type PointRole } from "./rules";
-import {
-  calculateSolverPoints,
-  getProjectRewardConfig,
-  type ProjectRewardConfig,
-} from "./project-rewards";
+import { pointSourceKey, solverPoints, type PointRole } from "./rules";
+import { calculateSolverPoints, type ProjectRewardConfig } from "./project-rewards";
+import { getPlatformRewardConfig, getProjectRewardConfig } from "./platform-rewards";
 
 /**
  * Writes points to the ledger (#428). The backfill (#435), the merge gate
@@ -38,12 +35,13 @@ export async function awardDispatcher(
   dispatcherUserId: string | null | undefined,
 ): Promise<boolean> {
   if (!dispatcherUserId) return false;
+  const platform = await getPlatformRewardConfig(db);
   return award(db, {
     tenantId: issue.tenantId,
     bugId: issue.id,
     userId: dispatcherUserId,
     role: "dispatcher",
-    points: DISPATCHER_POINTS,
+    points: platform.dispatcher,
     sourceKey: `dispatcher:${issue.id}`,
   });
 }
@@ -91,9 +89,8 @@ export async function awardSolver(db: Db, issue: ResolvedIssue): Promise<boolean
       });
       projectId = bug?.projectId;
     }
-    if (projectId && "project" in db) {
-      rewardConfig = await getProjectRewardConfig(db, projectId);
-    }
+    // Always resolve through platform → hard-coded when projectId is missing.
+    rewardConfig = await getProjectRewardConfig(db, projectId);
   }
 
   const entry = solverAward({ ...issue, rewardConfig });

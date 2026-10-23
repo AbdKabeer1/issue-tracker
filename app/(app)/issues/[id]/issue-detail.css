@@ -1,0 +1,19 @@
+/* Issue-lane only: security / merge-request rose tokens (not in shell globals). */
+.issue-detail-scope {
+  --issue-sec-bg: #fdecef;
+  --issue-sec-fg: #b4233f;
+}
+
+@media screen and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .issue-detail-scope {
+    --issue-sec-bg: #3a1424;
+    --issue-sec-fg: #f9a8c0;
+  }
+}
+
+@media screen {
+  :root[data-theme="dark"] .issue-detail-scope {
+    --issue-sec-bg: #3a1424;
+    --issue-sec-fg: #f9a8c0;
+  }
+}

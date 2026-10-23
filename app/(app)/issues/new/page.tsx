@@ -65,38 +65,36 @@ export default async function NewBugPage() {
   const user = await requireUser();
   const admin = (await currentTenantAccess(user.id, user.role)).admin;
   const tenantId = await currentTenantIdFor(user.id);
-  // The tenant's members are needed for @mentions (#502); admins additionally
-  // get the assignee picker. Each lookup fails on its own: the list page
-  // already does this, and a throw here is the error page instead of the form.
   const [users, assigneeUsers, categories, types] = await Promise.all([
     loadMentionUsers(tenantId),
     loadAssigneeUsers(tenantId),
-    // Cached (#297). getActivePlatforms also seeds the default platforms,
-    // but only when they're actually missing — it used to upsert all three
-    // on every render of this form.
     loadOrEmpty("platforms", async () => getActivePlatforms(tenantId), []),
     loadOrEmpty("issue types", () => getActiveIssueTypesCached(tenantId), []),
   ]);
-  // The active project scopes the create-issue draft (#729): switching
-  // projects must not surface this form's text in another project.
   const projectId = await loadOrEmpty("active project", async () => {
     if (!tenantId) return null;
     return activeProjectIdFor(prisma, tenantId);
   }, null);
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div className="space-y-1">
-        <Link href="/issues" className="text-sm text-teal-700 hover:underline">
-          ← Back to issues
+    <div className="mx-auto max-w-2xl space-y-6 pb-10">
+      <div className="space-y-2">
+        <Link
+          href="/issues"
+          className="inline-flex min-h-8 items-center gap-1.5 text-sm font-semibold text-zk-accent hover:underline"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M19 12H5M12 19l-7-7 7-7" />
+          </svg>
+          Back to issues
         </Link>
-        <h1 className="text-2xl font-semibold text-slate-900">Report an issue</h1>
-        <p className="text-sm text-slate-600">
+        <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-zk-text">Report an issue</h1>
+        <p className="text-sm text-zk-text2">
           Include a type, clear description, and optional GitHub PR so the team
           can triage quickly.
         </p>
       </div>
-      <div className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
+      <div className="rounded-[20px] border border-zk-border bg-zk-surface p-5 sm:p-6">
         <CreateIssueForm
           users={users}
           assigneeUsers={assigneeUsers}

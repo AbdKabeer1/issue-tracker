@@ -23,6 +23,7 @@ const db = vi.hoisted(() => ({
     findFirst: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   membership: { findUnique: vi.fn(), findMany: vi.fn() },
   project: { findFirst: vi.fn() },
@@ -265,11 +266,7 @@ describe("Human approval rules and gates (#598)", () => {
           pullRequestUrl: null,
         },
       });
-      db.issueApproval.update.mockResolvedValue({
-        id: "appr-offer",
-        status: "approved",
-        decidedByUserId: "admin-1",
-      });
+      db.issueApproval.updateMany.mockResolvedValue({ count: 1 });
 
       vi.mocked(offerNext).mockResolvedValue({
         claim: { id: "claim-new" } as never,
@@ -327,11 +324,7 @@ describe("Human approval rules and gates (#598)", () => {
           pullRequestUrl: "https://github.com/zedu/web/pull/42",
         },
       });
-      db.issueApproval.update.mockResolvedValue({
-        id: "appr-merge",
-        status: "approved",
-        decidedByUserId: "admin-1",
-      });
+      db.issueApproval.updateMany.mockResolvedValue({ count: 1 });
 
       db.agentAuditEvent.findFirst.mockResolvedValue({
         agent: {
@@ -350,6 +343,34 @@ describe("Human approval rules and gates (#598)", () => {
         "bug-200",
         expect.anything(),
       );
+    });
+
+    it("lets only one of two simultaneous decisions win (#537)", async () => {
+      db.membership.findUnique.mockResolvedValue({ userId: "admin-1", role: "admin" });
+      db.issueApproval.findFirst.mockResolvedValue({
+        id: "appr-race",
+        stage: "before_offer",
+        status: "pending",
+        bugId: "bug-race",
+        bug: {
+          id: "bug-race",
+          title: "Race",
+          tenantId: "tenant-1",
+          projectId: "proj-1",
+          status: "open",
+          assigneeId: null,
+          pullRequestUrl: null,
+        },
+      });
+      // Another admin's decision committed first; the conditional write loses.
+      db.issueApproval.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        decideApproval("admin-1", "tenant-1", "appr-race", "approved", { db: db as never }),
+      ).rejects.toThrowError(new IssueApiError(409, "This approval has already been decided."));
+
+      expect(db.projectAuditEvent.create).not.toHaveBeenCalled();
+      expect(offerNext).not.toHaveBeenCalled();
     });
   });
 

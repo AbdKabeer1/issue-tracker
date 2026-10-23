@@ -25,9 +25,9 @@ export function DisputeForm({
 
   if (result?.ok) {
     return (
-      <div className="space-y-3 rounded-xl border border-teal-200 bg-teal-50 p-4" role="status">
-        <p className="text-sm font-medium text-slate-900">{result.message}</p>
-        <Link href="/points/disputes" className="text-sm font-medium text-teal-800 hover:underline">
+      <div className="space-y-3 rounded-xl border border-zk-border bg-zk-tint p-4" role="status">
+        <p className="text-sm font-medium text-zk-text">{result.message}</p>
+        <Link href="/points/disputes" className="text-sm font-medium text-zk-accent hover:underline">
           See your disputes →
         </Link>
       </div>
@@ -37,7 +37,7 @@ export function DisputeForm({
   return (
     <form action={action} className="space-y-4" noValidate>
       <div className="space-y-1">
-        <label htmlFor="bugNumber" className="block text-sm font-medium text-slate-800">
+        <label htmlFor="bugNumber" className="block text-sm font-medium text-zk-text">
           Issue number
         </label>
         <Input
@@ -54,9 +54,9 @@ export function DisputeForm({
       </div>
 
       <fieldset className="space-y-1">
-        <legend className="text-sm font-medium text-slate-800">What&apos;s wrong?</legend>
+        <legend className="text-sm font-medium text-zk-text">What&apos;s wrong?</legend>
         <div className="flex flex-col gap-2 pt-1">
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-sm text-zk-text2">
             <input
               type="radio"
               name="kind"
@@ -66,7 +66,7 @@ export function DisputeForm({
             />
             An award is missing (I solved or reported it, but got no points)
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-sm text-zk-text2">
             <input
               type="radio"
               name="kind"
@@ -81,7 +81,7 @@ export function DisputeForm({
 
       {kind === "missing" ? (
         <div className="space-y-1">
-          <label htmlFor="role" className="block text-sm font-medium text-slate-800">
+          <label htmlFor="role" className="block text-sm font-medium text-zk-text">
             Which award is missing?
           </label>
           <Select id="role" name="role" defaultValue="solver">
@@ -91,7 +91,7 @@ export function DisputeForm({
         </div>
       ) : (
         <div className="space-y-1">
-          <label htmlFor="pointEntryId" className="block text-sm font-medium text-slate-800">
+          <label htmlFor="pointEntryId" className="block text-sm font-medium text-zk-text">
             Points entry id
           </label>
           <Input
@@ -102,14 +102,14 @@ export function DisputeForm({
             required
             aria-invalid={error?.field === "pointEntryId" || undefined}
           />
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-zk-muted">
             Find it under “Your points entries” on the disputes page, then press Dispute.
           </p>
         </div>
       )}
 
       <div className="space-y-1">
-        <label htmlFor="reason" className="block text-sm font-medium text-slate-800">
+        <label htmlFor="reason" className="block text-sm font-medium text-zk-text">
           Why?
         </label>
         <Textarea
@@ -125,7 +125,7 @@ export function DisputeForm({
       </div>
 
       {error ? (
-        <p id="dispute-form-error" className="text-sm text-red-700" role="alert">
+        <p id="dispute-form-error" className="text-sm text-zk-bad-fg" role="alert">
           {error.error}
         </p>
       ) : null}

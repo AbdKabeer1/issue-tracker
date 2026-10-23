@@ -121,8 +121,8 @@ describe("ConnectAgentView (#610)", () => {
     );
 
     await vi.waitFor(() => {
-      expect(btn.textContent).toContain("Connected");
-      expect(screen.getByText(/My Claude Agent/)).toBeTruthy();
+      expect(btn.textContent).toContain("Test again");
+      expect(screen.getByText(/Connected — My Claude Agent/)).toBeTruthy();
     });
   });
 });

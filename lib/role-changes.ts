@@ -8,6 +8,8 @@ export type RoleChangeRefusal =
   | "super-admin"
   | "already-admin"
   | "already-user"
+  | "already-super-admin"
+  | "actor-not-super-admin"
   | null;
 
 /**
@@ -22,10 +24,16 @@ export function refuseRoleChange(
   actorId: string,
   target: { id: string; role: Role } | null,
   nextRole: Role,
+  actorRole?: Role | null,
 ): RoleChangeRefusal {
+  if (actorRole !== undefined && actorRole !== null && actorRole !== "super_admin") {
+    return "actor-not-super-admin";
+  }
   if (!target) return "not-found";
   if (target.id === actorId) return "self";
-  if (target.role === "super_admin") return "super-admin";
+  if (target.role === "super_admin") {
+    return nextRole === "super_admin" ? "already-super-admin" : "super-admin";
+  }
   if (nextRole === "admin" && target.role === "admin") return "already-admin";
   if (nextRole === "user" && target.role === "user") return "already-user";
   return null;
@@ -40,6 +48,8 @@ export const ROLE_CHANGE_ERRORS: Record<
   "super-admin": "Cannot change a super admin's role",
   "already-admin": "User is already an admin",
   "already-user": "User is already a regular user",
+  "already-super-admin": "User is already a super admin",
+  "actor-not-super-admin": "Only a super admin can change site-wide roles",
 };
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -61,7 +71,7 @@ export async function changeUserRole(
     where: { id: input.targetUserId },
     select: { id: true, role: true, email: true, sessionVersion: true },
   });
-  const refusal = refuseRoleChange(actor.id, target, input.nextRole);
+  const refusal = refuseRoleChange(actor.id, target, input.nextRole, actor.role);
   if (refusal) {
     return { ok: false, error: ROLE_CHANGE_ERRORS[refusal] };
   }

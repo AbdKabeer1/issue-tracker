@@ -11,16 +11,16 @@ import type { GoalStatus } from "@prisma/client";
  */
 
 const GOAL_STATUS_BADGE: Record<GoalStatus, string> = {
-  active: "border border-teal-200 bg-teal-50 text-teal-900",
-  completed: "border border-emerald-200 bg-emerald-50 text-emerald-900",
-  cancelled: "border border-slate-200 bg-slate-100 text-slate-600",
+  active: "rounded-full border border-zk-border bg-zk-info-bg text-zk-info-fg",
+  completed: "rounded-full border border-zk-border bg-zk-ok-bg text-zk-ok-fg",
+  cancelled: "rounded-full border border-zk-border bg-zk-chip text-zk-muted",
 };
 
 const SPLIT_STATUS_BADGE: Record<GoalSplitStatus, string> = {
-  "no-budget": "border border-slate-200 bg-slate-100 text-slate-600",
-  unfunded: "border border-amber-200 bg-amber-50 text-amber-900",
-  "partially-split": "border border-sky-200 bg-sky-50 text-sky-900",
-  "fully-split": "border border-emerald-200 bg-emerald-50 text-emerald-900",
+  "no-budget": "rounded-full border border-zk-border bg-zk-chip text-zk-muted",
+  unfunded: "rounded-full border border-zk-warn-bd bg-zk-warn-bg text-zk-warn-fg",
+  "partially-split": "rounded-full border border-zk-border bg-zk-info-bg text-zk-info-fg",
+  "fully-split": "rounded-full border border-zk-border bg-zk-ok-bg text-zk-ok-fg",
 };
 
 const SPLIT_STATUS_LABEL: Record<GoalSplitStatus, string> = {
@@ -31,10 +31,10 @@ const SPLIT_STATUS_LABEL: Record<GoalSplitStatus, string> = {
 };
 
 const PROGRESS_BAR: Record<GoalSplitStatus, string> = {
-  "no-budget": "bg-slate-300",
-  unfunded: "bg-amber-400",
-  "partially-split": "bg-sky-500",
-  "fully-split": "bg-emerald-500",
+  "no-budget": "bg-zk-muted",
+  unfunded: "bg-zk-warn-fg",
+  "partially-split": "bg-electric-blue",
+  "fully-split": "bg-zk-ok-fg",
 };
 
 type GoalBudgetSectionProps = {
@@ -78,11 +78,11 @@ export async function GoalBudgetSection({ tenantId, projectId, bugId }: GoalBudg
   return (
     <section
       aria-label="Goal budgets"
-      className="rounded-xl border border-slate-200 bg-card p-4 sm:p-5 print:hidden"
+      className="rounded-[20px] border border-zk-border bg-zk-surface p-4 sm:p-5 print:hidden"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-900">Goal budgets</h2>
-        <span className="text-xs text-slate-500">
+        <h2 className="text-sm font-extrabold text-zk-text">Goal budgets</h2>
+        <span className="text-xs text-zk-muted">
           {goals.length} {goals.length === 1 ? "goal" : "goals"} in this project
         </span>
       </div>
@@ -93,13 +93,13 @@ export async function GoalBudgetSection({ tenantId, projectId, bugId }: GoalBudg
           return (
             <li
               key={goal.id}
-              className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"
+              className="rounded-[12px] border border-zk-border bg-zk-chip/40 p-3"
               data-testid="goal-budget-row"
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-900">{goal.title}</p>
-                  <p className="mt-0.5 text-xs tabular-nums text-slate-500">
+                  <p className="truncate text-sm font-semibold text-zk-text">{goal.title}</p>
+                  <p className="mt-0.5 text-xs tabular-nums text-zk-muted">
                     {budget.allocated} of {budget.budgetPool} credits split · {budget.remaining} left ·{" "}
                     {budget.utilizationPercent}%
                   </p>
@@ -113,7 +113,7 @@ export async function GoalBudgetSection({ tenantId, projectId, bugId }: GoalBudg
               </div>
               <div
                 aria-hidden="true"
-                className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200"
+                className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zk-seg"
               >
                 <div
                   className={`h-full rounded-full ${PROGRESS_BAR[budget.splitStatus]}`}
@@ -121,7 +121,7 @@ export async function GoalBudgetSection({ tenantId, projectId, bugId }: GoalBudg
                 />
               </div>
               {contribution > 0 ? (
-                <p className="mt-1.5 text-xs font-medium tabular-nums text-teal-700">
+                <p className="mt-1.5 text-xs font-semibold tabular-nums text-zk-accent">
                   {contribution} credit{contribution === 1 ? "" : "s"} reserved for this issue
                 </p>
               ) : null}

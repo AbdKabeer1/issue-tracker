@@ -42,8 +42,8 @@ export function ShareLinkForm({ tenantId }: { tenantId: string }) {
   return (
     <div className="mt-4 space-y-4">
       {createdUrl ? (
-        <div role="status" className="space-y-3 rounded-lg border border-teal-200 bg-teal-50 p-4">
-          <p className="text-sm font-medium text-slate-900">
+        <div role="status" className="space-y-3 rounded-xl border border-zk-border bg-zk-tint p-4">
+          <p className="text-sm font-medium text-zk-text">
             Invite link ready. Send it to anyone who should join — you can also copy it from the list below.
           </p>
           <label htmlFor="new-share-link" className="sr-only">
@@ -68,7 +68,7 @@ export function ShareLinkForm({ tenantId }: { tenantId: string }) {
         <input type="hidden" name="tenantId" value={tenantId} />
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
-            <label htmlFor="share-expires" className="block text-sm font-medium text-slate-800">
+            <label htmlFor="share-expires" className="block text-sm font-medium text-zk-text">
               Stops working after
             </label>
             <Select id="share-expires" name="expiresDays" defaultValue="7" disabled={pending}>
@@ -78,7 +78,7 @@ export function ShareLinkForm({ tenantId }: { tenantId: string }) {
             </Select>
           </div>
           <div className="space-y-1">
-            <label htmlFor="share-uses" className="block text-sm font-medium text-slate-800">
+            <label htmlFor="share-uses" className="block text-sm font-medium text-zk-text">
               How many people
             </label>
             <Select id="share-uses" name="maxUses" defaultValue="unlimited" disabled={pending}>
@@ -90,8 +90,8 @@ export function ShareLinkForm({ tenantId }: { tenantId: string }) {
           </div>
         </div>
         <div className="space-y-1">
-          <label htmlFor="share-label" className="block text-sm font-medium text-slate-800">
-            Note <span className="font-normal text-slate-500">(optional)</span>
+          <label htmlFor="share-label" className="block text-sm font-medium text-zk-text">
+            Note <span className="font-normal text-zk-muted">(optional)</span>
           </label>
           <Input
             id="share-label"
@@ -105,7 +105,7 @@ export function ShareLinkForm({ tenantId }: { tenantId: string }) {
           />
         </div>
         {formError ? (
-          <p role="alert" className="text-sm text-red-700">
+          <p role="alert" className="text-sm text-zk-bad-fg">
             {formError}
           </p>
         ) : null}

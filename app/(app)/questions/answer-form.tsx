@@ -24,7 +24,7 @@ export function AnswerForm({
       <input type="hidden" name="questionId" value={questionId} />
       <div className="space-y-1">
         {!labelledBy ? (
-          <label htmlFor="answer" className="block text-sm font-medium text-slate-800">
+          <label htmlFor="answer" className="block text-sm font-semibold text-zk-text">
             Your answer
           </label>
         ) : null}
@@ -40,14 +40,18 @@ export function AnswerForm({
         />
       </div>
       {error ? (
-        <p id="answer-error" role="alert" className="text-sm text-red-700">
+        <p id="answer-error" role="alert" className="text-sm text-zk-bad-fg">
           {error}
         </p>
       ) : null}
-      <Button type="submit" disabled={pending}>
+      <Button
+        type="submit"
+        disabled={pending}
+        className="rounded-full bg-electric-blue-strong px-4 py-2 font-semibold text-white hover:opacity-90 focus-visible:ring-electric-blue"
+      >
         {pending ? "Sending…" : "Send answer"}
       </Button>
-      <p className="text-xs text-slate-500">The answer can&apos;t be changed once it&apos;s sent.</p>
+      <p className="text-xs text-zk-muted">The answer can&apos;t be changed once it&apos;s sent.</p>
     </form>
   );
 }

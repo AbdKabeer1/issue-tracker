@@ -4,7 +4,7 @@ import { ACCEPT_INVITE_ERRORS, type InviteView } from "@/lib/invites";
 import { AcceptInviteForm } from "./accept-invite-form";
 import { selectTenantAction } from "./actions";
 
-const notice = "rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900";
+const notice = "rounded-xl border border-zk-warn-bd bg-zk-warn-bg p-4 text-sm text-zk-warn-fg";
 
 /**
  * One invite, as the signed-in person may see it (#444). Who sent it and
@@ -51,9 +51,9 @@ export function InviteCard({
 
   if (alreadyMember) {
     return (
-      <section className="space-y-3 rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
-        <p className="text-sm text-slate-700">
-          You&apos;re already a member of <strong className="text-slate-900">{tenant.name}</strong>.
+      <section className="space-y-3 rounded-[20px] border border-zk-border bg-zk-surface p-4 sm:p-6">
+        <p className="text-sm text-zk-text2">
+          You&apos;re already a member of <strong className="text-zk-text">{tenant.name}</strong>.
         </p>
         <form action={selectTenantAction}>
           <input type="hidden" name="tenantId" value={tenant.id} />
@@ -76,13 +76,13 @@ export function InviteCard({
   return (
     <section
       aria-labelledby="invite-heading"
-      className="space-y-4 rounded-xl border border-teal-200 bg-teal-50/60 p-4 sm:p-6"
+      className="space-y-4 rounded-xl border border-zk-border bg-zk-tint p-4 sm:p-6"
     >
       <div className="space-y-1">
-        <h2 id="invite-heading" className="text-base font-semibold text-slate-900">
+        <h2 id="invite-heading" className="text-base font-semibold text-zk-text">
           {invitedByName} invited you to join {tenant.name}
         </h2>
-        <p className="text-sm text-slate-700">
+        <p className="text-sm text-zk-text2">
           You&apos;ll join as a member and can see and file its issues. The invite expires{" "}
           <LocalTime date={invite.expiresAt} />.
         </p>

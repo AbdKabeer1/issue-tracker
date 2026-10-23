@@ -125,26 +125,26 @@ export default async function AuditLogPage({ searchParams }: Props) {
   const filtered = Boolean(agentId || issueInput || includeRequests);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto flex max-w-4xl flex-col gap-5 pb-10">
       <div>
-        <Link href="/settings/agents" className="text-sm text-teal-700 hover:underline">
-          ← Agents
+        <Link href="/settings?section=agents" className="inline-flex min-h-8 items-center gap-1.5 self-start text-sm font-semibold text-zk-accent hover:underline">
+          Back to settings
         </Link>
-        <h1 className="mt-1 text-2xl font-semibold text-slate-900">Agent audit log</h1>
-        <p className="text-sm text-slate-600">
+        <h1 className="m-0 text-[28px] font-extrabold tracking-[-0.02em] text-zk-text">Agent audit log</h1>
+        <p className="text-sm text-zk-muted">
           {access.kind === "all"
             ? "Every agent action in this workspace, newest first."
             : "Your agents' actions, newest first."}
         </p>
       </div>
 
-      <form method="get" className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-card p-4">
+      <form method="get" className="flex flex-wrap items-end gap-3 rounded-[20px] border border-zk-border bg-zk-surface p-5">
         <label className="text-sm">
-          <span className="block font-medium text-slate-700">Agent</span>
+          <span className="block font-bold text-zk-text">Agent</span>
           <select
             name="agent"
             defaultValue={agentId ?? ""}
-            className="mt-1 rounded-lg border border-slate-300 bg-card px-3 py-2 text-sm"
+            className="mt-1 min-h-11 rounded-xl border border-zk-border bg-zk-surface px-3 py-2 text-sm text-zk-text"
           >
             <option value="">All agents</option>
             {agents.map((agent) => (
@@ -154,39 +154,39 @@ export default async function AuditLogPage({ searchParams }: Props) {
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
+        <label className="flex min-h-11 items-center gap-2 pb-1 text-sm text-zk-text2">
           <input
             type="checkbox"
             name="show"
             value="requests"
             defaultChecked={includeRequests}
-            className="h-4 w-4 rounded border-slate-300"
+            className="h-4 w-4 rounded border-zk-border accent-electric-blue-strong"
           />
           Show request rows
         </label>
         <label className="text-sm">
-          <span className="block font-medium text-slate-700">Issue</span>
+          <span className="block font-bold text-zk-text">Issue</span>
           <input
             name="issue"
             defaultValue={issueInput ?? ""}
             placeholder="#123 or any issue"
-            className="mt-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="mt-1 min-h-11 rounded-xl border border-zk-border bg-zk-surface px-3 py-2 text-sm text-zk-text"
           />
         </label>
         <button
           type="submit"
-          className="rounded-lg bg-teal-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-teal-800"
+          className="min-h-11 rounded-full bg-electric-blue-strong px-4 text-sm font-bold text-white hover:brightness-105"
         >
           Filter
         </button>
         {filtered ? (
-          <Link href="/settings/audit" className="py-2 text-sm text-teal-700 hover:underline">
+          <Link href="/settings/audit" className="py-2 text-sm font-bold text-zk-accent hover:underline">
             Clear
           </Link>
         ) : null}
       </form>
 
-      <section className="rounded-xl border border-slate-200 bg-card px-4">
+      <section className="rounded-[20px] border border-zk-border bg-zk-surface px-5">
         <AuditLog
           rows={rows}
           isTenantAdmin={access.kind === "all"}
@@ -194,7 +194,7 @@ export default async function AuditLogPage({ searchParams }: Props) {
         />
       </section>
       {noSuchIssue ? (
-        <p className="text-sm text-slate-600">No issue matches “{issueInput}” in this workspace.</p>
+        <p className="text-sm text-zk-muted">No issue matches “{issueInput}” in this workspace.</p>
       ) : null}
       {before || olderCursor ? (
         <nav aria-label="Audit log pages" className="flex items-center justify-between text-sm">
@@ -205,7 +205,7 @@ export default async function AuditLogPage({ searchParams }: Props) {
                 issue: issueInput,
                 show: includeRequests ? "requests" : undefined,
               })}
-              className="text-teal-700 hover:underline"
+              className="font-semibold text-zk-accent hover:underline"
             >
               ← Newest
             </Link>
@@ -220,7 +220,7 @@ export default async function AuditLogPage({ searchParams }: Props) {
                 before: olderCursor,
                 show: includeRequests ? "requests" : undefined,
               })}
-              className="font-medium text-teal-700 hover:underline"
+              className="font-medium font-semibold text-zk-accent hover:underline"
             >
               Older →
             </Link>
