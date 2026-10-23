@@ -23,6 +23,8 @@ type VoteButtonProps = {
   showReadinessGate?: boolean;
   /** Deleted issues: show the count, but it can't be changed. */
   readOnly?: boolean;
+  /** Reference-style compact vote control, used only by the Issues list. */
+  chevron?: boolean;
 };
 
 function ThumbsUp({ filled, className = "h-4 w-4" }: { filled: boolean; className?: string }) {
@@ -69,6 +71,7 @@ export function VoteButton({
   showAvatars = false,
   showReadinessGate = true,
   readOnly = false,
+  chevron = false,
 }: VoteButtonProps) {
   const initialVote = typeof userVote === "number" ? userVote : voted ? 1 : 0;
   const [upvoted, setUpvoted] = useState(initialVote === 1);
@@ -188,7 +191,9 @@ export function VoteButton({
         onClick={handleVote}
         className={`group inline-flex min-w-[2.75rem] flex-col items-center justify-center rounded-lg border px-2 py-1 text-xs font-semibold shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50 ${tone}`}
       >
-        <ThumbsUp filled={upvoted} className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
+        {chevron ? (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6" /></svg>
+        ) : <ThumbsUp filled={upvoted} className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />}
         <span className="mt-0.5 tabular-nums leading-tight">{count}</span>
       </button>
       {errorLine}

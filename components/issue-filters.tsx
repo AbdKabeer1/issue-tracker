@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useTransition } from "react";
+import { Children, isValidElement, useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { severities, statuses } from "@/lib/validations/issue";
 import { severityLabel, statusLabel } from "@/lib/labels";
@@ -46,6 +47,93 @@ type Suggestion =
 
 /** Long enough not to query on every keystroke, short enough to feel live. */
 const SEARCH_DEBOUNCE_MS = 300;
+
+/** Native radios keep the existing single-choice filters keyboard accessible. */
+function FilterSelect({ compact, id, value, onValueChange, onChoose, children, className, "aria-label": label }: {
+  compact: boolean; id: string; value: string; onValueChange: (value: string) => void;
+  children: ReactNode; className?: string; "aria-label": string;
+  onChoose?: () => void;
+}) {
+  if (!compact) return <select id={id} value={value} onChange={(event) => onValueChange(event.target.value)} className={className} aria-label={label}>{children}</select>;
+  return (
+    <div id={id} role="radiogroup" aria-label={label} className="issues-filter-options">
+      {Children.toArray(children).map((child) => {
+        if (!isValidElement<{ value: string; children: ReactNode }>(child)) return null;
+        const option = child.props;
+        return (
+          <label key={option.value} className="issues-filter-option">
+            <input type="radio" name={`issues-filter-${id}`} value={option.value} checked={value === option.value} onChange={() => onValueChange(option.value)} onClick={onChoose}
+              onKeyDown={(event) => { if (event.key === "Enter" && onChoose) { event.preventDefault(); onChoose(); } }} />
+            <span className="issues-filter-check" aria-hidden="true" />
+            <span>{option.children}</span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+function IssuesSort({ value, onChange }: { value: ReturnType<typeof parseBugSort>; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
+  const close = () => { setOpen(false); buttonRef.current?.focus(); };
+
+  useEffect(() => {
+    if (!open) return;
+    const positionPanel = () => {
+      const root = rootRef.current;
+      const panel = root?.querySelector<HTMLElement>('[role="dialog"]');
+      if (!root || !panel) return;
+      const anchor = root.getBoundingClientRect();
+      const bounds = panel.getBoundingClientRect();
+      const left = Math.max(16, Math.min(anchor.right - bounds.width, window.innerWidth - bounds.width - 16));
+      const top = Math.max(16, Math.min(anchor.bottom + 8, window.innerHeight - bounds.height - 16));
+      root.style.setProperty("--issues-sort-left", `${left}px`);
+      root.style.setProperty("--issues-sort-top", `${top}px`);
+    };
+    positionPanel();
+    window.addEventListener("resize", positionPanel);
+    document.addEventListener("scroll", positionPanel, true);
+    const frame = requestAnimationFrame(() => rootRef.current?.querySelector<HTMLInputElement>('input:checked')?.focus());
+    const outside = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setOpen(false); buttonRef.current?.focus(); }
+    };
+    const focusOut = (event: FocusEvent) => {
+      if (!rootRef.current?.contains(event.relatedTarget as Node)) setOpen(false);
+    };
+    const root = rootRef.current;
+    root?.addEventListener("focusout", focusOut);
+    document.addEventListener("keydown", escape);
+    document.addEventListener("pointerdown", outside);
+    return () => {
+      cancelAnimationFrame(frame); document.removeEventListener("pointerdown", outside);
+      window.removeEventListener("resize", positionPanel); document.removeEventListener("scroll", positionPanel, true);
+      root?.removeEventListener("focusout", focusOut); document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="issues-sort">
+      <button ref={buttonRef} type="button" className="issues-sort-trigger" aria-label="Sort issues" title={`Sort: ${bugSortLabels[value]}`} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? panelId : undefined}
+        onClick={() => setOpen((current) => !current)}>
+        <Image src="/icons/issues-sort.svg" width={16} height={16} alt="" />
+      </button>
+      {open ? (
+        <div id={panelId} className="issues-sort-popover" role="dialog" aria-label="Sort options">
+          <p className="issues-sort-heading">Sort by</p>
+          <FilterSelect compact id="issues-sort-order" aria-label="Sort order" value={value} onValueChange={onChange} onChoose={close}>
+            {BUG_SORT_OPTIONS.map((option) => <option key={option} value={option}>{bugSortLabels[option]}</option>)}
+          </FilterSelect>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * #1054: the intake stage used to be a sidebar beside the list. It is a
@@ -95,6 +183,7 @@ export function IssueFilters({
   areas = [],
   shortcutsEnabled = true,
   stageCounts,
+  compact = false,
 }: {
   tagTypes?: TagType[];
   platforms?: PlatformOption[];
@@ -104,6 +193,8 @@ export function IssueFilters({
   shortcutsEnabled?: boolean;
   /** Open issues in each intake stage, shown beside the Stage choices (#1054). */
   stageCounts?: { reported: number; confirmed: number; ready: number };
+  /** Issues-page toolbar; other consumers retain the expanded search field. */
+  compact?: boolean;
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -113,9 +204,11 @@ export function IssueFilters({
   const listId = useId();
   const filterPanelId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const filterButtonRef = useRef<HTMLButtonElement>(null);
   const filterPanelRef = useRef<HTMLDivElement>(null);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [searchExpanded, setSearchExpanded] = useState(false);
 
   useEffect(() => {
     if (!filterOpen) return;
@@ -179,13 +272,19 @@ export function IssueFilters({
       if (isCmdOrCtrlK && isEditable) return;
 
       event.preventDefault();
-      inputRef.current?.focus();
-      inputRef.current?.select();
+      const focusSearch = () => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      };
+      if (compact) {
+        setSearchExpanded(true);
+        requestAnimationFrame(focusSearch);
+      } else focusSearch();
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [shortcutsEnabled]);
+  }, [shortcutsEnabled, compact]);
 
   function updateMany(changes: Record<string, string>, replace = false) {
     // Nothing changed: don't navigate (and don't reset the page, #132).
@@ -402,15 +501,31 @@ export function IssueFilters({
   const fieldLabelClass = "mb-1.5 block text-[13px] font-semibold text-zk-text2";
 
   return (
-    <div className="space-y-3 print:hidden">
+    <div className={`space-y-3 print:hidden ${compact ? "issues-filters" : ""}`}>
       <div className="flex flex-wrap items-center gap-2.5">
-        <div className="min-w-0 flex-1 basis-[240px] max-w-xs">
+        <div className={`min-w-0 flex-1 basis-[240px] max-w-xs ${compact ? `issues-search ${searchExpanded ? "issues-search-expanded" : ""}` : ""}`}>
           <label htmlFor="q" className="sr-only">Search</label>
           <div className="relative" aria-busy={isSearching} data-testid="search-box">
             <div className="flex h-[42px] items-center gap-2 rounded-full border border-zk-border bg-zk-surface px-4">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-zk-muted" aria-hidden="true">
                 <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
               </svg>
+              {compact ? (
+                <button ref={searchTriggerRef} type="button" className="issues-search-trigger"
+                  aria-label={searchExpanded ? "Close search" : "Search issues"} title={searchExpanded ? "Close search" : "Search issues"} aria-expanded={searchExpanded} aria-controls="q"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    if (searchExpanded) {
+                      setSearchExpanded(false); setOpen(false); setActive(-1);
+                      requestAnimationFrame(() => searchTriggerRef.current?.focus());
+                    } else {
+                      setSearchExpanded(true);
+                      requestAnimationFrame(() => inputRef.current?.focus());
+                    }
+                  }}>
+                  {searchExpanded ? <Image src="/icons/issues-close.svg" width={18} height={18} alt="" /> : null}
+                </button>
+              ) : null}
               <input
                 ref={inputRef}
                 id="q"
@@ -423,14 +538,17 @@ export function IssueFilters({
                 aria-activedescendant={active >= 0 && suggestions[active] ? `${listId}-${active}` : undefined}
                 autoComplete="off"
                 value={text}
-                placeholder="Search, or type a tag like Design"
+                placeholder={compact ? "Search issues…" : "Search, or type a tag like Design"}
                 className="min-w-0 flex-1 border-0 bg-transparent text-sm text-zk-text outline-none placeholder:text-zk-muted"
                 onChange={(event) => { setText(event.target.value); setOpen(true); setActive(-1); }}
                 onFocus={() => { queryBeforeEditingRef.current = currentQuery; livePushedRef.current = false; setOpen(true); }}
                 onKeyDown={(event) => {
                   if (event.key === "ArrowDown" && suggestions.length > 0) { event.preventDefault(); setActive((i) => (i + 1) % suggestions.length); }
                   else if (event.key === "ArrowUp" && suggestions.length > 0) { event.preventDefault(); setActive((i) => (i <= 0 ? suggestions.length - 1 : i - 1)); }
-                  else if (event.key === "Escape") { setOpen(false); setActive(-1); }
+                  else if (event.key === "Escape") {
+                    setOpen(false); setActive(-1); setSearchExpanded(false);
+                    if (compact) requestAnimationFrame(() => searchTriggerRef.current?.focus());
+                  }
                   else if (event.key === "Enter") {
                     event.preventDefault();
                     const picked = active >= 0 ? suggestions[active] : undefined;
@@ -471,7 +589,7 @@ export function IssueFilters({
           </div>
         </div>
 
-        <button type="button" onClick={applyQueryNow} disabled={isSearching} className="inline-flex h-[42px] shrink-0 items-center gap-1.5 rounded-full border-0 bg-electric-blue-strong px-4 text-sm font-bold text-white shadow-[0_8px_20px_rgba(46,111,239,0.30)] transition-colors hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue focus-visible:ring-offset-2 disabled:cursor-default disabled:opacity-70">
+        <button type="button" onClick={applyQueryNow} disabled={isSearching} className={`inline-flex h-[42px] shrink-0 items-center gap-1.5 rounded-full border-0 bg-electric-blue-strong px-4 text-sm font-bold text-white shadow-[0_8px_20px_rgba(46,111,239,0.30)] transition-colors hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue focus-visible:ring-offset-2 disabled:cursor-default disabled:opacity-70 ${compact ? "issues-search-submit" : ""}`}>
           {isSearching ? (
             <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>
           ) : (
@@ -490,7 +608,7 @@ export function IssueFilters({
               aria-controls={filterPanelId}
               aria-label={activeFilterCount > 0 ? `Filter (${activeFilterCount} active)` : "Filter"}
               onClick={() => setFilterOpen((prev) => !prev)}
-              className={`inline-flex h-[42px] items-center gap-2 rounded-full border px-4 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue focus-visible:ring-offset-2 ${
+              className={`issues-filter-trigger inline-flex h-[42px] items-center gap-2 rounded-full border px-4 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue focus-visible:ring-offset-2 ${
                 activeFilterCount > 0 || filterOpen
                   ? "border-electric-blue-strong bg-zk-tint text-zk-accent"
                   : "border-zk-border bg-zk-surface text-zk-text hover:bg-zk-chip"
@@ -505,7 +623,7 @@ export function IssueFilters({
             </button>
 
             {filterOpen ? (
-              <div ref={filterPanelRef} id={filterPanelId} role="dialog" aria-label="Filters" className="absolute right-0 z-30 mt-2.5 flex w-[340px] max-w-[calc(100vw-3rem)] flex-col gap-3.5 rounded-[20px] border border-zk-border bg-zk-surface p-5 shadow-[0_20px_48px_rgba(11,23,51,0.16)]">
+              <div ref={filterPanelRef} id={filterPanelId} role="dialog" aria-label="Filters" className="issues-filter-dialog absolute right-0 z-30 mt-2.5 flex w-[340px] max-w-[calc(100vw-3rem)] flex-col gap-3.5 rounded-[20px] border border-zk-border bg-zk-surface p-5 shadow-[0_20px_48px_rgba(11,23,51,0.16)]">
                 <div className="flex items-center justify-between border-b border-zk-divider pb-3">
                   <div className="flex items-center gap-2">
                     <span className="text-base font-extrabold text-zk-text">Filters</span>
@@ -514,99 +632,103 @@ export function IssueFilters({
                   {hasActiveFilters ? (
                     <button type="button" onClick={clearAllFilters} className="h-8 rounded-full px-2.5 text-[13px] font-bold text-zk-accent hover:bg-zk-tint">Reset</button>
                   ) : null}
+                  {compact ? <button type="button" aria-label="Close filters" title="Close filters" className="issues-filter-close" onClick={() => { setFilterOpen(false); filterButtonRef.current?.focus(); }}><Image src="/icons/issues-close.svg" width={18} height={18} alt="" /></button> : null}
                 </div>
 
                 <div className="max-h-[70vh] space-y-3.5 overflow-y-auto pr-1">
                   <div>
                     <label htmlFor="mine" className={fieldLabelClass}>Show</label>
-                    <select id="mine" className={selectClass} value={currentMine === "reported" ? "created" : currentMine} onChange={(event) => update("mine", event.target.value)}>
+                    <FilterSelect compact={compact} aria-label="Show" id="mine" className={selectClass} value={currentMine === "reported" ? "created" : currentMine} onValueChange={(value) => update("mine", value)}>
                       <option value="">All issues</option>
                       {MINE_FILTER_OPTIONS.map((option) => (<option key={option} value={option}>{mineFilterLabels[option]}</option>))}
-                    </select>
+                    </FilterSelect>
                   </div>
                   <div>
                     <label htmlFor="stage" className={fieldLabelClass}>Kind</label>
-                    <select id="stage" className={selectClass} value={currentStage} onChange={(event) => update(STAGE_PARAM, event.target.value)}>
+                    <FilterSelect compact={compact} aria-label="Kind" id="stage" className={selectClass} value={currentStage} onValueChange={(value) => update(STAGE_PARAM, value)}>
                       <option value="">Ideas and issues</option>
                       {STAGE_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>{stageCounts ? `${option.label} (${stageCounts[option.value]})` : option.label}</option>
                       ))}
-                    </select>
+                    </FilterSelect>
                   </div>
-                  <div>
+                  {!compact ? <div>
                     <label htmlFor="status" className={fieldLabelClass}>Status</label>
-                    <select id="status" className={selectClass} value={params.get("status") ?? ""} onChange={(event) => update("status", event.target.value)}>
+                    <FilterSelect compact={compact} aria-label="Status" id="status" className={selectClass} value={params.get("status") ?? ""} onValueChange={(value) => update("status", value)}>
                       <option value="">All</option>
                       {statuses.map((status) => (<option key={status} value={status}>{statusLabel[status]}</option>))}
                       <option value={FINISHED_STATUS_FILTER}>Closed (incl. resolved)</option>
-                    </select>
-                  </div>
+                    </FilterSelect>
+                  </div> : null}
                   <div>
                     <label htmlFor="severity" className={fieldLabelClass}>Severity</label>
-                    <select id="severity" className={selectClass} value={params.get("severity") ?? ""} onChange={(event) => update("severity", event.target.value)}>
+                    <FilterSelect compact={compact} aria-label="Severity" id="severity" className={selectClass} value={params.get("severity") ?? ""} onValueChange={(value) => update("severity", value)}>
                       <option value="">All</option>
                       {severities.map((severity) => (<option key={severity} value={severity}>{severityLabel[severity]}</option>))}
-                    </select>
+                    </FilterSelect>
                   </div>
                   <div>
                     <label htmlFor="category" className={fieldLabelClass}>Category</label>
-                    <select id="category" className={selectClass} value={selectedNames[0] ?? ""} onChange={(event) => update(TAGS_PARAM, serializeTags([event.target.value]))}>
+                    <FilterSelect compact={compact} aria-label="Category" id="category" className={selectClass} value={selectedNames[0] ?? ""} onValueChange={(value) => update(TAGS_PARAM, serializeTags([value]))}>
                       <option value="">All</option>
                       {Array.from(new Set(["Features", "Fixes", "Design", "Marketing", "Documentation", "Other", ...tagTypes.filter((t) => t.isActive !== false).map((t) => t.name)])).map((name) => (
                         <option key={name} value={name}>{name}</option>
                       ))}
-                    </select>
+                    </FilterSelect>
                   </div>
                   {platformOptions.length > 0 ? (
                     <div>
                       <label htmlFor="platform" className={fieldLabelClass}>Platform</label>
-                      <select id="platform" className={selectClass} value={currentPlatform} onChange={(event) => update(PLATFORM_PARAM, event.target.value)}>
+                      <FilterSelect compact={compact} aria-label="Platform" id="platform" className={selectClass} value={currentPlatform} onValueChange={(value) => update(PLATFORM_PARAM, value)}>
                         <option value="">All</option>
                         {platformOptions.map((platform) => (<option key={platform.id} value={platform.id}>{platform.name}</option>))}
                         <option value={PLATFORM_NONE}>No platform</option>
-                      </select>
+                      </FilterSelect>
                     </div>
                   ) : null}
                   {areas.length > 0 ? (
                     <div>
                       <label htmlFor="area" className={fieldLabelClass}>Area</label>
-                      <select id="area" className={selectClass} value={currentArea} onChange={(event) => update(AREA_PARAM, event.target.value)}>
+                      <FilterSelect compact={compact} aria-label="Area" id="area" className={selectClass} value={currentArea} onValueChange={(value) => update(AREA_PARAM, value)}>
                         <option value="">All</option>
                         {areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
                         <option value={AREA_NONE}>No area</option>
-                      </select>
+                      </FilterSelect>
                     </div>
                   ) : null}
                   {milestones.length > 0 ? (
                     <div>
                       <label htmlFor="milestone" className={fieldLabelClass}>Milestone</label>
-                      <select id="milestone" className={selectClass} value={milestoneValue} onChange={(event) => update(MILESTONE_PARAM, event.target.value)}>
+                      <FilterSelect compact={compact} aria-label="Milestone" id="milestone" className={selectClass} value={milestoneValue} onValueChange={(value) => update(MILESTONE_PARAM, value)}>
                         <option value="">All</option>
                         {milestones.map((m) => (<option key={m.id} value={m.id}>{m.title}{m.isClosed ? " (closed)" : ""}</option>))}
                         <option value={MILESTONE_NONE}>No milestone</option>
-                      </select>
+                      </FilterSelect>
                     </div>
                   ) : null}
                   <div>
                     <label htmlFor="sort" className={fieldLabelClass}>Sort By</label>
-                    <select id="sort" className={selectClass} value={currentSort} onChange={(event) => update("sort", event.target.value)}>
+                    <FilterSelect compact={compact} aria-label="Sort By" id="sort" className={selectClass} value={currentSort} onValueChange={(value) => update("sort", value)}>
                       {BUG_SORT_OPTIONS.map((option) => (<option key={option} value={option}>{bugSortLabels[option]}</option>))}
-                    </select>
+                    </FilterSelect>
                   </div>
                 </div>
 
                 <div className="flex gap-2 pt-1">
-                  <button type="button" onClick={() => setFilterOpen(false)} className="h-[42px] flex-1 rounded-full border border-zk-border bg-zk-surface font-bold text-zk-text hover:bg-zk-chip">Cancel</button>
-                  <button type="button" onClick={() => setFilterOpen(false)} className="h-[42px] flex-1 rounded-full border-0 bg-electric-blue-strong font-bold text-white shadow-[0_8px_20px_rgba(46,111,239,0.30)] hover:brightness-105">Apply filters</button>
+                  <button type="button" onClick={() => setFilterOpen(false)} className="h-[42px] flex-1 rounded-full border border-zk-border bg-zk-surface font-bold text-zk-text hover:bg-zk-chip">{compact ? "Close" : "Cancel"}</button>
+                  <button type="button" onClick={() => setFilterOpen(false)} className="h-[42px] flex-1 rounded-full border-0 bg-electric-blue-strong font-bold text-white shadow-[0_8px_20px_rgba(46,111,239,0.30)] hover:brightness-105">{compact ? "Done" : "Apply filters"}</button>
                 </div>
               </div>
             ) : null}
           </div>
         </div>
+        {compact ? (
+          <IssuesSort value={currentSort} onChange={(value) => update("sort", value)} />
+        ) : null}
       </div>
 
       {selectedTags.length > 0 ? (
-        <ul className="flex flex-wrap items-center gap-1.5" aria-label="Tag filters">
+        <ul className="issues-selected-tags flex flex-wrap items-center gap-1.5" aria-label="Tag filters">
           {selectedTags.map((type) => (
             <li key={type.id}>
               <a href={tagHref(type.name)} onClick={(event) => { event.preventDefault(); removeTag(type.name); }} aria-label={`Remove tag ${type.name}`} className="inline-flex items-center gap-1 rounded-full border border-zk-border bg-zk-tint py-0.5 pl-2.5 pr-1.5 text-xs font-bold text-zk-accent hover:bg-zk-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue">
@@ -620,8 +742,8 @@ export function IssueFilters({
         </ul>
       ) : null}
 
-      {hasActiveFilters ? (
-        <div className="flex w-full flex-wrap items-center gap-2 border-t border-zk-divider pt-2">
+      {hasActiveFilters && (!compact || FILTER_PARAMS.some((param) => param !== "status" && Boolean(params.get(param)))) ? (
+        <div className="issues-active-filters flex w-full flex-wrap items-center gap-2 border-t border-zk-divider pt-2">
           <span className="text-xs font-semibold text-zk-muted">Active filters:</span>
           {currentQuery ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-zk-border bg-zk-tint py-0.5 pl-2.5 pr-1.5 text-xs font-bold text-zk-accent">
