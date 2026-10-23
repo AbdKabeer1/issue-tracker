@@ -70,13 +70,6 @@ const commentTypeVisual: Record<
   },
 };
 
-type ViewerProps = {
-  currentUserId?: string;
-  currentUserRole?: AppRole | null;
-  tenantAdmin?: boolean;
-  readOnly?: boolean;
-};
-
 function CommentTypeBadge({ type, metadata }: { type?: CommentType | null; metadata?: unknown }) {
   const resolved: CommentType = type && type in commentTypeVisual ? type : "comment";
   const visual = commentTypeVisual[resolved];
