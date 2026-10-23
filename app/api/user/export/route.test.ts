@@ -39,6 +39,16 @@ describe("GET /api/user/export (#571)", () => {
     expect(exportUserData).toHaveBeenCalledWith(expect.anything(), "user-test");
   });
 
+  it("lets requireUser's redirect through instead of reporting a 500 (#563)", async () => {
+    // Next signals a redirect by throwing; requireUser does this for a
+    // signed-out or stale session. It must not be caught and relabelled.
+    const redirect = Object.assign(new Error("NEXT_REDIRECT"), { digest: "NEXT_REDIRECT;replace;/login;307;" });
+    requireUser.mockRejectedValue(redirect);
+
+    await expect(GET()).rejects.toBe(redirect);
+    expect(exportUserData).not.toHaveBeenCalled();
+  });
+
   it("returns 500 if export throws", async () => {
     requireUser.mockResolvedValue({ id: "user-error" });
     exportUserData.mockRejectedValue(new Error("Database error"));

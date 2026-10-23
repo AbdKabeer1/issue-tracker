@@ -8,8 +8,12 @@ import { exportUserData } from "@/lib/user-data-export";
  * Returns JSON of issues, comments, votes, and points.
  */
 export async function GET() {
+  // #563: requireUser() signals "not signed in" by throwing a redirect. Resolve
+  // it outside the try so that redirect reaches Next instead of being caught
+  // and reported as a 500 for what is an ordinary signed-out request.
+  const user = await requireUser();
+
   try {
-    const user = await requireUser();
     const data = await exportUserData(prisma, user.id);
 
     return new NextResponse(JSON.stringify(data, null, 2), {
