@@ -4,15 +4,22 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
+import { unstable_rethrow } from "next/navigation";
 import { createBugAction } from "@/app/actions/issues";
 import { serializeDraft } from "@/lib/form-drafts";
 import { CreateBugForm } from "./create-issue-form";
+
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  unstable_rethrow: vi.fn(),
+}));
 
 vi.mock("@/app/actions/issues", () => ({
   createBugAction: vi.fn(),
 }));
 
 const mockedCreateBug = vi.mocked(createBugAction);
+const mockedRethrow = vi.mocked(unstable_rethrow);
 
 // Set by tests that defer the mocked action's resolution; always released in
 // afterEach so a failed assertion cannot leak a pending transition.
@@ -74,6 +81,7 @@ describe("CreateBugForm optimistic submission", () => {
     capturedFormData = null;
     mockedCreateBug.mockReset();
     mockedCreateBug.mockResolvedValue({ ok: true });
+    mockedRethrow.mockClear();
     user = userEvent.setup();
   });
 
@@ -351,6 +359,59 @@ describe("CreateBugForm project-scoped drafts (#729)", () => {
       expect(parsed?.values?.title).toBe("Scoped draft");
     });
     expect(mockStorage["draft:u1:bug:new"]).toBeUndefined();
+  });
+
+  it("clears the project draft after creation redirects to the new issue (#583)", async () => {
+    const redirectError = {
+      digest: "NEXT_REDIRECT;push;/issues/583;303;",
+    };
+    mockedCreateBug.mockRejectedValueOnce(redirectError);
+    renderForm({ ...defaultProps, currentUserId: "u1", projectId: "project-a" });
+
+    await fillValidForm(user);
+    await waitFor(() => {
+      expect(mockStorage["draft:u1:bug:new:project-a"]).toBeDefined();
+    });
+
+    await user.click(submitButton());
+    await waitFor(() => expect(mockedCreateBug).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(mockStorage["draft:u1:bug:new:project-a"]).toBeUndefined();
+    });
+    expect(mockedRethrow).toHaveBeenCalledWith(redirectError);
+  });
+
+  it("preserves the project draft after an unrelated redirect", async () => {
+    const redirectError = {
+      digest: "NEXT_REDIRECT;push;/login;303;",
+    };
+    mockedCreateBug.mockRejectedValueOnce(redirectError);
+    renderForm({ ...defaultProps, currentUserId: "u1", projectId: "project-a" });
+
+    await fillValidForm(user);
+    await waitFor(() => {
+      expect(mockStorage["draft:u1:bug:new:project-a"]).toBeDefined();
+    });
+
+    await user.click(submitButton());
+    await waitFor(() => expect(mockedRethrow).toHaveBeenCalledWith(redirectError));
+
+    expect(mockStorage["draft:u1:bug:new:project-a"]).toBeDefined();
+  });
+
+  it("preserves the project draft when creation fails", async () => {
+    mockedCreateBug.mockResolvedValueOnce({ error: "Could not create issue." });
+    renderForm({ ...defaultProps, currentUserId: "u1", projectId: "project-a" });
+
+    await fillValidForm(user);
+    await waitFor(() => {
+      expect(mockStorage["draft:u1:bug:new:project-a"]).toBeDefined();
+    });
+
+    await user.click(submitButton());
+    await waitFor(() => expect(screen.getByRole("alert")).toBeDefined());
+
+    expect(mockStorage["draft:u1:bug:new:project-a"]).toBeDefined();
   });
 });
 

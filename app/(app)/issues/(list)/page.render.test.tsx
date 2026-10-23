@@ -275,4 +275,11 @@ describe("issue list layout", () => {
     const html = await renderList({ sort: "newest" });
     expect(html).toMatch(/<time dateTime="2026-10-01T10:00:00.000Z" title="Opened /);
   });
+
+  it("keeps the row unwatch action visible in the compact mobile layout", async () => {
+    const html = await renderList({ mine: "watching" });
+
+    expect(html).toContain('class="w-10 shrink-0 items-center justify-end gap-2 flex"');
+    expect(html).toMatch(/aria-label="Unwatch [^"]*Login button does nothing"/);
+  });
 });
