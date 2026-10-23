@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
-  agent: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn() },
+  agent: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   issueValidation: { findMany: vi.fn() },
   issueClaim: { count: vi.fn() },
   agentAuditEvent: { create: vi.fn(), findMany: vi.fn() },
@@ -54,6 +54,7 @@ beforeEach(() => {
   db.agent.findUnique.mockResolvedValue(agentRow());
   db.agent.findMany.mockResolvedValue([]);
   db.agent.update.mockResolvedValue({});
+  db.agent.updateMany.mockResolvedValue({ count: 1 });
   db.issueValidation.findMany.mockResolvedValue([]);
   db.issueClaim.count.mockResolvedValue(0);
   db.agentAuditEvent.create.mockResolvedValue({});
@@ -121,7 +122,7 @@ describe("promoteEarnedReviewer (#451)", () => {
     const result = await promoteEarnedReviewer("a1");
 
     expect(result).toEqual({ ok: true, changed: true, standing: 10 });
-    expect(db.agent.update).toHaveBeenCalledWith({ where: { id: "a1" }, data: { level: "reviewer", levelChangedAt: expect.any(Date) } });
+    expect(db.agent.updateMany).toHaveBeenCalledWith({ where: { id: "a1", level: "contributor" }, data: { level: "reviewer", levelChangedAt: expect.any(Date) } });
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -196,7 +197,10 @@ describe("promoteEarnedReviewer (#451)", () => {
     const result = await promoteEarnedReviewer("a1");
 
     expect(result).toEqual({ ok: true, changed: true, standing: 10 });
-    expect(db.agent.update).toHaveBeenCalledWith({ where: { id: "a1" }, data: { level: "reviewer", levelChangedAt: expect.any(Date) } });
+    expect(db.agent.updateMany).toHaveBeenCalledWith({
+      where: { id: "a1", level: "observer" },
+      data: { level: "reviewer", levelChangedAt: expect.any(Date) },
+    });
     expect(db.agentAuditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -205,6 +209,21 @@ describe("promoteEarnedReviewer (#451)", () => {
         }),
       }),
     );
+  });
+
+  it("does not overwrite a level assigned concurrently during promotion (compare-and-update)", async () => {
+    // The sweep read `contributor`, but an owner assigned `triager` before the
+    // write: updateMany matches 0 rows and the manual level wins, silently.
+    db.agent.findUnique.mockResolvedValue(agentRow({ level: "contributor" }));
+    db.issueValidation.findMany.mockResolvedValue(
+      Array.from({ length: EARNED_REVIEWER_VALIDATIONS }, () => validation()),
+    );
+    db.agent.updateMany.mockResolvedValue({ count: 0 });
+
+    const result = await promoteEarnedReviewer("a1");
+
+    expect(result).toEqual({ ok: true, changed: false, standing: 10 });
+    expect(db.agentAuditEvent.create).not.toHaveBeenCalled();
   });
 });
 

@@ -166,10 +166,16 @@ export async function promoteEarnedReviewer(agentId: string, db: Db = prisma): P
     const standing = await standingValidations(agentId, db);
     if (standing < EARNED_REVIEWER_VALIDATIONS) return { ok: true, changed: false, standing };
 
-    await db.agent.update({
-      where: { id: agentId },
+    // Compare-and-update (#645 review note): only write `reviewer` while the
+    // agent's level is still the one we just read. An owner/admin assigning a
+    // specialized level in between wins, and no audit is emitted.
+    const moved = await db.agent.updateMany({
+      where: { id: agentId, level: agent.level },
       data: { level: "reviewer", levelChangedAt: new Date() },
     });
+    if (moved.count === 0) {
+      return { ok: true, changed: false, standing };
+    }
     await audit(
       { agentId, tenantId: agent.tenantId },
       "agent.promoted",
