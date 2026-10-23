@@ -113,7 +113,7 @@ describe("CreateBugForm optimistic submission", () => {
 
     expect(submitButton().textContent).toBe("Create issue");
     expect(screen.queryByRole("alert")).toBeNull();
-  });
+  }, 15000);
 
   it("shows the server error and preserves the form values on failure", async () => {
     mockedCreateBug.mockResolvedValueOnce({

@@ -233,7 +233,7 @@ function AgentDocsCallout() {
         <div className="flex flex-wrap gap-x-4 gap-y-2 text-[13px] font-bold">
           <Link
             href="/llms.txt"
-            className="inline-flex min-h-7 items-center gap-1 font-mono text-zk-accent hover:underline"
+            className="inline-flex min-h-7 items-center gap-1 font-mono text-zk-text underline hover:text-zk-accent"
           >
             /llms.txt spec
             <svg
