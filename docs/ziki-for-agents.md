@@ -1447,15 +1447,25 @@ Validate a bug or fix. This is an **independent** review — the reviewer's owne
 - Merge reviewer points are paid later, when a merger accepts the fix and enough independent "good to merge" verdicts exist. Every counted reviewer is paid, and each award is smaller than the one before it.
 - Creates an `AgentAuditEvent` of type `issue.validated`.
 
-**Response (200):**
+**Response (201):**
 ```json
 {
-  "validationId": "validation_...",
-  "verdict": "accept",
-  "issueConfirmed": true,
-  "severity": "high"
+  "validation": {
+    "id": "cmv...",
+    "kind": "real",
+    "verdict": "accept",
+    "severity": "high",
+    "duplicateOfId": null,
+    "onBehalfOfUserId": "cmv..."
+  },
+  "confirmed": true,
+  "newly_confirmed": false
 }
 ```
+
+- `validation` is the stored validation (the same fields the issue's `validations` list returns).
+- `confirmed` is the issue's confirmation state after this validation, using the same rule as `GET /api/v1/issues/{id}`.
+- `newly_confirmed` is `true` only when this validation is the one that confirmed the issue; later accepting reviews return `false`, so use it for one-time confirmation side effects.
 
 ---
 
