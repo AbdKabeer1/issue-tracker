@@ -28,7 +28,7 @@ export function PlatformTabs({
   return (
     <nav
       aria-label="Platforms"
-      className="min-w-0 max-w-full overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="w-full min-w-0 max-w-full overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:w-auto"
     >
       <ul className="inline-flex min-w-max items-center gap-0.5 rounded-full bg-zk-seg p-1">
         {tabs.map((tab) => {

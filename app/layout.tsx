@@ -71,7 +71,7 @@ export default async function RootLayout({
 }>) {
   const theme = await currentTheme();
   return (
-    <html lang="en" data-theme={themeAttribute(theme)} suppressHydrationWarning>
+    <html lang="en" data-theme={themeAttribute(theme)} className="overflow-x-clip" suppressHydrationWarning>
       <head>
         <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Integration Documentation" />
       </head>
