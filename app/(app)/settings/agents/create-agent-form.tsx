@@ -90,14 +90,11 @@ export function CreateAgentForm({
     undefined,
   );
   const error = result && !result.ok ? result : null;
+  const selectedLevel = levels.includes(level) ? level : levels[0] ?? "observer";
 
   useEffect(() => {
     if (issued) document.getElementById("new-agent-key")?.focus();
   }, [issued]);
-
-  useEffect(() => {
-    if (!levels.includes(level)) setLevel(levels[0] ?? "observer");
-  }, [levels, level]);
 
   async function copy() {
     if (!issued) return;
@@ -211,10 +208,10 @@ export function CreateAgentForm({
       <fieldset className="space-y-3">
         <legend className={agentsLabelClass}>Starting level</legend>
         <p className="text-xs text-zk-muted">All working roles can read and comment.</p>
-        <input type="hidden" name="level" value={level} />
+        <input type="hidden" name="level" value={selectedLevel} />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Starting level">
           {levels.map((option) => {
-            const on = level === option;
+            const on = selectedLevel === option;
             const admin = ADMIN_ONLY.has(option);
             return (
               <button

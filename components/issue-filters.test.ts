@@ -25,15 +25,16 @@ describe("IssueFilters (#132, #361)", () => {
     expect(html).toContain('value="crash"');
   });
 
-  it("displays keyboard shortcut hint in placeholder and kbd badge", async () => {
+  it("displays the keyboard shortcut in a kbd badge beside the search placeholder", async () => {
     search.params = new URLSearchParams("");
     const { IssueFilters } = await import("./issue-filters");
     const { createElement } = await import("react");
     const { renderToStaticMarkup } = await import("react-dom/server");
 
     const html = renderToStaticMarkup(createElement(IssueFilters));
-    expect(html).toContain('placeholder="Search, or type a tag like Design (/)"');
+    expect(html).toContain('placeholder="Search, or type a tag like Design"');
     expect(html).toContain("<kbd");
+    expect(html).toContain(">/</kbd>");
   });
 
   it("omits keyboard shortcut hint and badge when shortcutsEnabled is false (#727)", async () => {
