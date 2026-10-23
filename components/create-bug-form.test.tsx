@@ -8,6 +8,11 @@ import { createBugAction } from "@/app/actions/issues";
 import { serializeDraft } from "@/lib/form-drafts";
 import { CreateBugForm } from "./create-issue-form";
 
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  unstable_rethrow: vi.fn(),
+}));
+
 vi.mock("@/app/actions/issues", () => ({
   createBugAction: vi.fn(),
 }));
