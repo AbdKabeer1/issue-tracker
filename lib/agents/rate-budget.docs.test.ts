@@ -10,10 +10,10 @@ import { AGENT_RATE_BUDGETS, agentBudgetExceededResponse } from "./rate-budget";
  */
 const doc = readFileSync(path.resolve(__dirname, "../../docs/ziki-for-agents.md"), "utf8");
 
-function budgetRow(label: string): { writes: number; reads: number } {
-  const row = new RegExp(`^\\|\\s*${label}\\s*\\|\\s*(\\d+)\\s*\\|\\s*(\\d+)\\s*\\|`, "m").exec(doc);
+function budgetRow(label: string): { writes: number; reads: number; heartbeats: number } {
+  const row = new RegExp(`^\\|\\s*${label}\\s*\\|\\s*(\\d+)\\s*\\|\\s*(\\d+)\\s*\\|\\s*(\\d+)\\s*\\|`, "m").exec(doc);
   if (!row) throw new Error(`No "${label}" row in the Rate Budgets table`);
-  return { writes: Number(row[1]), reads: Number(row[2]) };
+  return { writes: Number(row[1]), reads: Number(row[2]), heartbeats: Number(row[3]) };
 }
 
 describe("llms.txt rate budgets match the code (#551)", () => {
@@ -21,6 +21,7 @@ describe("llms.txt rate budgets match the code (#551)", () => {
     expect(budgetRow("Standard")).toEqual({
       writes: AGENT_RATE_BUDGETS.standard.write.max,
       reads: AGENT_RATE_BUDGETS.standard.read.max,
+      heartbeats: AGENT_RATE_BUDGETS.standard.heartbeat.max,
     });
   });
 
@@ -28,6 +29,7 @@ describe("llms.txt rate budgets match the code (#551)", () => {
     expect(budgetRow("Burst")).toEqual({
       writes: AGENT_RATE_BUDGETS.burst.write.max,
       reads: AGENT_RATE_BUDGETS.burst.read.max,
+      heartbeats: AGENT_RATE_BUDGETS.burst.heartbeat.max,
     });
   });
 
@@ -35,8 +37,14 @@ describe("llms.txt rate budgets match the code (#551)", () => {
     for (const budget of [AGENT_RATE_BUDGETS.standard, AGENT_RATE_BUDGETS.burst]) {
       expect(budget.write.windowMs).toBe(60 * 60 * 1000);
       expect(budget.read.windowMs).toBe(60 * 60 * 1000);
+      expect(budget.heartbeat.windowMs).toBe(60 * 60 * 1000);
     }
-    expect(doc).toMatch(/\| Budget \| Writes per hour \| Reads per hour \|/);
+    expect(doc).toMatch(/\| Budget \| Writes per hour \| Reads per hour \| Heartbeats per hour \|/);
+  });
+
+  it("documents that heartbeats have their own budget (#556)", () => {
+    expect(doc).toContain("#556");
+    expect(doc).toMatch(/Heartbeats.*own small budget, separate from writes/);
   });
 
   it("shows the 429 body the code sends (#646)", async () => {

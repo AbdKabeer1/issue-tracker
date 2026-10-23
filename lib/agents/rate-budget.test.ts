@@ -14,7 +14,7 @@ const HOUR = 60 * 60 * 1000;
 const standard = { id: "agent-standard", burst: false };
 const burst = { id: "agent-burst", burst: true };
 
-async function spend(agent: { id: string; burst: boolean }, kind: "read" | "write", times: number, now: number) {
+async function spend(agent: { id: string; burst: boolean }, kind: "read" | "write" | "heartbeat", times: number, now: number) {
   for (let i = 0; i < times; i++) {
     const result = await consumeAgentBudget(agent, kind, now + i);
     if (!result.allowed) throw new Error(`rejected at request ${i + 1}`);
@@ -26,16 +26,31 @@ describe("agent rate budgets (#440)", () => {
     resetRateLimits();
   });
 
-  it("uses agent:{id}:read and agent:{id}:write keys", () => {
+  it("uses agent:{id}:read, agent:{id}:write and agent:{id}:heartbeat keys", () => {
     expect(agentBudgetKey("a1", "read")).toBe("agent:a1:read");
     expect(agentBudgetKey("a1", "write")).toBe("agent:a1:write");
+    expect(agentBudgetKey("a1", "heartbeat")).toBe("agent:a1:heartbeat");
   });
 
   it("matches the budgets in the issue", () => {
     expect(AGENT_RATE_BUDGETS.standard.write).toEqual({ max: 30, windowMs: HOUR });
     expect(AGENT_RATE_BUDGETS.standard.read).toEqual({ max: 600, windowMs: HOUR });
+    expect(AGENT_RATE_BUDGETS.standard.heartbeat).toEqual({ max: 120, windowMs: HOUR });
     expect(AGENT_RATE_BUDGETS.burst.write).toEqual({ max: 400, windowMs: HOUR });
     expect(AGENT_RATE_BUDGETS.burst.read).toEqual({ max: 4000, windowMs: HOUR });
+    expect(AGENT_RATE_BUDGETS.burst.heartbeat).toEqual({ max: 120, windowMs: HOUR });
+  });
+
+  it("heartbeat (#556) has its own counter: exhausting writes doesn't block it, and it has its own cap", async () => {
+    await spend(standard, "write", 30, 0);
+    expect((await consumeAgentBudget(standard, "write", 100)).allowed).toBe(false);
+    // A write-exhausted agent can still heartbeat its active claims.
+    expect((await consumeAgentBudget(standard, "heartbeat", 100)).allowed).toBe(true);
+    // That was the 1st of 120; 119 more exactly exhausts the heartbeat cap.
+    await spend(standard, "heartbeat", 119, 101);
+    expect((await consumeAgentBudget(standard, "heartbeat", 200)).allowed).toBe(false);
+    // Spending the heartbeat budget doesn't touch write or read either.
+    expect((await consumeAgentBudget(standard, "read", 202)).allowed).toBe(true);
   });
 
   it("rejects a standard key at the 31st write in an hour", async () => {

@@ -206,7 +206,15 @@ export async function expireOffer(claimId: string): Promise<boolean> {
     await tx.issueClaim.update({ where: { id: claimId }, data: { status: "released", releasedAt: now, releaseReason: "expired" } });
     await publish(tx, { tenantId: fresh.bug.tenantId, type: "claim.released", actorAgentId: fresh.agentId, bugId: fresh.bugId,
       payload: { claimId, issueId: fresh.bugId, beneficiaryUserId: fresh.beneficiaryUserId, reason: "expired" } });
-    const next = await offerNext(tx, { tenantId: fresh.bug.tenantId }, fresh.bug);
+    const hasPendingBids = await (tx.issueBid?.findFirst
+      ? tx.issueBid.findFirst({
+          where: { bugId: fresh.bugId, withdrawnAt: null, awardedAt: null },
+          select: { id: true },
+        })
+      : null);
+    const next = hasPendingBids
+      ? null
+      : await offerNext(tx, { tenantId: fresh.bug.tenantId }, fresh.bug);
     return { released: true, next };
   });
   if (result) {
@@ -223,14 +231,21 @@ export async function expireOffer(claimId: string): Promise<boolean> {
  * Sweeps and expires all pending offers whose TTL has elapsed (#681).
  * Durable across process restarts; safe to run from a cron or interval.
  */
-export async function sweepExpiredOffers(tenantId?: string): Promise<{ expired: number }> {
+export async function sweepExpiredOffers(tenantId?: string, projectId?: string): Promise<{ expired: number }> {
   // Offers in different projects can have different windows, so the decision
   // is made per candidate instead of with one global cutoff.
   const candidates = await prisma.issueClaim.findMany({
     where: {
       status: "offered",
       releasedAt: null,
-      ...(tenantId ? { bug: { tenantId } } : {}),
+      ...(tenantId || projectId
+        ? {
+            bug: {
+              ...(tenantId ? { tenantId } : {}),
+              ...(projectId ? { projectId } : {}),
+            },
+          }
+        : {}),
     },
     select: { id: true, offeredAt: true, bug: { select: { projectId: true } } },
   });
