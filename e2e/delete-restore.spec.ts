@@ -1,4 +1,4 @@
-import { test, expect, reportIssue } from "./fixtures";
+import { test, expect, reportIssue, expectNoHorizontalScroll } from "./fixtures";
 
 test.use({ as: "admin" });
 
@@ -18,10 +18,8 @@ test("deletes an issue, finds it among deleted ones, and restores it", async ({ 
   await page.goto(`/issues?deleted=true&q=${encodeURIComponent(title)}`);
   const deletedIssue = page.getByRole("link", { name: new RegExp(title) });
   await expect(deletedIssue).toHaveAttribute("href", new URL(url).pathname);
-  // The wide, horizontally scrollable table can put the link's hit target
-  // beneath the mobile shell while Playwright scrolls it into view. Verify its
-  // destination, then open that route directly to exercise restore behavior.
-  await page.goto(url);
+  await expectNoHorizontalScroll(page);
+  await deletedIssue.click();
   await expect(page).toHaveURL(url);
   await page.getByRole("button", { name: /^Restore/ }).first().click();
   await page.getByRole("dialog").getByRole("button", { name: "Restore issue" }).click();
