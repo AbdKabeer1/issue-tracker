@@ -222,13 +222,15 @@ function PointsChip({
   points,
   solvedTasks,
   userId,
+  targetPoints = TARGET_POINTS,
 }: {
   points: number;
   solvedTasks: number;
   userId?: string | null;
+  targetPoints?: number;
 }) {
   if (!userId) return null;
-  const progress = pointsProgress(points, solvedTasks);
+  const progress = pointsProgress(points, solvedTasks, targetPoints);
   return (
     <Link
       href={`/users/${userId}`}
@@ -241,7 +243,7 @@ function PointsChip({
       <span className="text-zk-muted">pts</span>
       <span className="sr-only">
         {" "}
-        of {TARGET_POINTS}, {solvedTasks} solved
+        of {targetPoints}, {solvedTasks} solved
       </span>
       <span className="sr-only">{progress.pointsPercent}%</span>
     </Link>
@@ -261,6 +263,7 @@ export function AppHeader({
   activeTenantId = null,
   points = 0,
   solvedTasks = 0,
+  targetPoints = TARGET_POINTS,
   rank = null,
   agents = [],
   reportFormUrl,
@@ -277,6 +280,8 @@ export function AppHeader({
   activeTenantId?: string | null;
   points?: number;
   solvedTasks?: number;
+  /** Platform points goal (hard-coded fallback when unset). */
+  targetPoints?: number;
   rank?: number | null;
   agents?: ShellAgent[];
   reportFormUrl?: string;
@@ -316,7 +321,12 @@ export function AppHeader({
         </Link>
 
         <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
-          <PointsChip points={points} solvedTasks={solvedTasks} userId={userId} />
+          <PointsChip
+            points={points}
+            solvedTasks={solvedTasks}
+            userId={userId}
+            targetPoints={targetPoints}
+          />
 
           {showEscalations ? (
             <Link

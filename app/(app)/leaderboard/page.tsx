@@ -10,7 +10,7 @@ import {
   DEFAULT_LEADERBOARD_LIMIT,
   type LeaderboardEntry,
 } from "@/lib/points/leaderboard";
-import { TARGET_POINTS } from "@/lib/points/rules";
+import { getPlatformRewardConfig } from "@/lib/points/platform-rewards";
 import { Avatar } from "@/components/avatar";
 
 export const metadata = { title: "Leaderboard" };
@@ -38,8 +38,9 @@ function leaderboardHref(opts: {
   return `/leaderboard?${params.toString()}`;
 }
 
-function progressPct(points: number): number {
-  return Math.min(100, Math.max(0, Math.round((points / TARGET_POINTS) * 100)));
+function progressPct(points: number, target: number): number {
+  const goal = target > 0 ? target : 1;
+  return Math.min(100, Math.max(0, Math.round((points / goal) * 100)));
 }
 
 function parseSort(raw: string | undefined): SortKey {
@@ -90,6 +91,8 @@ export default async function LeaderboardPage({
 
   const user = await requireUser();
   const tenantId = await currentTenantIdFor(user.id);
+  const targetPoints = (await getPlatformRewardConfig(prisma)).target;
+
 
   let rows: LeaderboardEntry[] = [];
   let total = 0;
@@ -137,8 +140,8 @@ export default async function LeaderboardPage({
   const startIdx = total === 0 ? 0 : (page - 1) * limit + 1;
   const endIdx = Math.min(page * limit, total);
   const emptyBoard = total === 0 && !q;
-  const goalMet = myTotals.points >= TARGET_POINTS;
-  const myPct = progressPct(myTotals.points);
+  const goalMet = myTotals.points >= targetPoints;
+  const myPct = progressPct(myTotals.points, targetPoints);
 
   const standingDetail =
     myStanding?.rank === 1 && secondPlacePoints != null
@@ -151,7 +154,7 @@ export default async function LeaderboardPage({
         <div className="flex max-w-xl flex-col gap-1.5">
           <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-zk-text">Leaderboard</h1>
           <p className="text-sm leading-relaxed text-zk-muted">
-            Points for solving, reporting and reviewing issues. The goal is {TARGET_POINTS} points.
+            Points for solving, reporting and reviewing issues. The goal is {targetPoints} points.
           </p>
         </div>
         <Link
@@ -175,8 +178,8 @@ export default async function LeaderboardPage({
             <div className="grid min-w-0 flex-[999_1_640px] grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
               {podium.map((entry, i) => {
                 const medal = PODIUM_MEDALS[i] ?? PODIUM_MEDALS[2];
-                const pct = progressPct(entry.points);
-                const met = entry.points >= TARGET_POINTS;
+                const pct = progressPct(entry.points, targetPoints);
+                const met = entry.points >= targetPoints;
                 return (
                   <div
                     key={entry.userId}
@@ -236,8 +239,8 @@ export default async function LeaderboardPage({
                       </div>
                       <span className={`text-xs font-bold ${met ? "text-zk-ok-fg" : "text-zk-muted"}`}>
                         {met
-                          ? `Goal reached · +${entry.points - TARGET_POINTS}`
-                          : `${TARGET_POINTS - entry.points} pts to goal`}
+                          ? `Goal reached · +${entry.points - targetPoints}`
+                          : `${targetPoints - entry.points} pts to goal`}
                       </span>
                     </div>
                   </div>
@@ -268,15 +271,15 @@ export default async function LeaderboardPage({
               <div className="relative flex flex-col gap-2">
                 <div className="flex justify-between text-[13px]">
                   <span className="text-[#C9D6EF]">
-                    {myTotals.points} / {TARGET_POINTS} pts
+                    {myTotals.points} / {targetPoints} pts
                   </span>
                   {goalMet ? (
                     <span className="rounded-full bg-[#0F3326] px-2 py-px font-bold text-[#6EE7A8]">
-                      Goal reached · +{myTotals.points - TARGET_POINTS}
+                      Goal reached · +{myTotals.points - targetPoints}
                     </span>
                   ) : (
                     <span className="rounded-full bg-blue-slate px-2 py-px font-bold text-[#C9D6EF]">
-                      {TARGET_POINTS - myTotals.points} to goal
+                      {targetPoints - myTotals.points} to goal
                     </span>
                   )}
                 </div>
@@ -370,14 +373,14 @@ export default async function LeaderboardPage({
                   <div className="flex items-center gap-4 rounded-full bg-zk-tint px-4 py-3.5 text-xs font-bold uppercase tracking-[0.05em] text-zk-accent">
                     <span className="w-10">#</span>
                     <span className="min-w-0 flex-1">Person</span>
-                    <span className="w-[260px]">Progress to {TARGET_POINTS}</span>
+                    <span className="w-[260px]">Progress to {targetPoints}</span>
                     <span className="w-[90px] text-right">Solved</span>
                     <span className="w-[100px] text-right">Points</span>
                   </div>
                   <ul>
                     {rows.map((row, i) => {
-                      const pct = progressPct(row.points);
-                      const met = row.points >= TARGET_POINTS;
+                      const pct = progressPct(row.points, targetPoints);
+                      const met = row.points >= targetPoints;
                       const isYou = row.userId === user.id;
                       const top = row.rank <= 3;
                       const medal = top ? PODIUM_MEDALS[row.rank - 1]?.fg : undefined;

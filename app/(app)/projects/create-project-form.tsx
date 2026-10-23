@@ -6,8 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PROJECT_NAME_MAX } from "./validation";
 import { ProjectRewardRulesSection } from "@/components/project-reward-rules-section";
+import type { ProjectRewardConfig } from "@/lib/points/project-rewards";
 
-export function CreateProjectForm() {
+export function CreateProjectForm({
+  defaults = null,
+}: {
+  defaults?: ProjectRewardConfig | null;
+}) {
   const [result, action, pending] = useActionState<
     ProjectActionResult | undefined,
     FormData
@@ -44,7 +49,7 @@ export function CreateProjectForm() {
         </div>
       </div>
 
-      <ProjectRewardRulesSection disabled={pending} />
+      <ProjectRewardRulesSection disabled={pending} defaults={defaults} />
 
       {error ? (
         <p id="project-name-error" role="alert" className="text-sm text-zk-bad-fg">

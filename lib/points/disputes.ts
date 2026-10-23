@@ -1,7 +1,13 @@
 import type { Prisma, PrismaClient, DisputeStatus, Severity } from "@prisma/client";
 import { z } from "zod";
 import { award, type PointAward } from "./award";
-import { pointSourceKey, REPORTER_POINTS, solverPoints, type PointRole } from "./rules";
+import { getProjectRewardConfig } from "./platform-rewards";
+import {
+  calculateReporterPoints,
+  calculateSolverPoints,
+  type ProjectRewardConfig,
+} from "./project-rewards";
+import { pointSourceKey, type PointRole } from "./rules";
 
 /**
  * Dispute logic (#436). A member says an award is missing or wrong; a
@@ -57,6 +63,7 @@ export type DisputableBug = {
   reporterId: string;
   assigneeId: string | null;
   severity: Severity;
+  projectId?: string | null;
 };
 
 export type DisputeRow = {
@@ -75,6 +82,7 @@ export type GrantResult = { ok: true; awarded: boolean } | { ok: false; error: s
 export function missingAwardEntry(
   bug: Pick<DisputableBug, "id" | "tenantId" | "reporterId" | "assigneeId" | "severity">,
   role: DisputeRole,
+  rewardConfig?: ProjectRewardConfig | null,
 ): PointAward | null {
   if (role === "reporter") {
     return {
@@ -82,7 +90,7 @@ export function missingAwardEntry(
       userId: bug.reporterId,
       bugId: bug.id,
       role: "reporter",
-      points: REPORTER_POINTS,
+      points: calculateReporterPoints(rewardConfig),
       sourceKey: pointSourceKey("reporter", bug.id, bug.reporterId),
     };
   }
@@ -92,7 +100,7 @@ export function missingAwardEntry(
     userId: bug.assigneeId,
     bugId: bug.id,
     role: "solver",
-    points: solverPoints(bug.severity),
+    points: calculateSolverPoints(bug.severity, rewardConfig),
     sourceKey: pointSourceKey("solver", bug.id, bug.assigneeId),
   };
 }
@@ -155,7 +163,7 @@ export async function grantMissingAward(
   db: Db,
   args: {
     dispute: DisputeRow;
-    bug: Pick<DisputableBug, "id" | "tenantId" | "reporterId" | "assigneeId" | "severity">;
+    bug: Pick<DisputableBug, "id" | "tenantId" | "reporterId" | "assigneeId" | "severity" | "projectId">;
     role: DisputeRole;
     resolvedById: string;
   },
@@ -166,7 +174,8 @@ export async function grantMissingAward(
     return { ok: false, error: NOT_IN_WORKSPACE };
   }
 
-  const entry = missingAwardEntry(bug, role);
+  const rewardConfig = await getProjectRewardConfig(db, bug.projectId);
+  const entry = missingAwardEntry(bug, role, rewardConfig);
   if (!entry) return { ok: false, error: NOBODY_TO_AWARD };
 
   const awarded = await award(db, entry);
@@ -440,9 +449,11 @@ export async function creditMissingAwards(
       status: true,
       isDeleted: true,
       duplicateOfId: true,
+      projectId: true,
     },
   })) as CreditBug[];
   const byNumber = new Map(bugs.map((bug) => [bug.number, bug]));
+  const rewardByProject = new Map<string | null, ProjectRewardConfig>();
 
   for (const number of numbers) {
     const bug = byNumber.get(number);
@@ -468,7 +479,13 @@ export async function creditMissingAwards(
       continue;
     }
 
-    const entry = missingAwardEntry(bug, args.role);
+    const projectKey = bug.projectId ?? null;
+    let rewardConfig = rewardByProject.get(projectKey);
+    if (!rewardConfig) {
+      rewardConfig = await getProjectRewardConfig(db, projectKey);
+      rewardByProject.set(projectKey, rewardConfig);
+    }
+    const entry = missingAwardEntry(bug, args.role, rewardConfig);
     if (!entry) {
       skipped.push({ number, reason: "no assignee" });
       continue;

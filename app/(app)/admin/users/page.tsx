@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import type { AgentLevel } from "@prisma/client";
 import { requireSuperAdmin } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { tenantMemberWhere } from "@/lib/membership-admin";
@@ -10,9 +11,12 @@ import { LocalTime } from "@/components/local-time";
 import { Avatar } from "@/components/avatar";
 import { Badge } from "@/components/ui/badge";
 import { MemberRoleActions } from "@/components/member-role-actions";
+import { SiteRoleActions } from "@/components/site-role-actions";
+import { TeamAgentLevelControl } from "@/components/team-agent-level";
 import { UserSearch } from "@/components/user-search";
 import { PaginationControls } from "@/components/pagination-controls";
 import { calculatePagination } from "@/lib/pagination";
+import { settableLevels } from "@/lib/agents/levels";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Admins" };
@@ -90,6 +94,22 @@ export default async function AdminUsersPage({
     prisma.membership.count({ where: { tenantId, role: "owner" } }),
   ]);
 
+  const memberIds = members.map((member) => member.user.id);
+  const agents = memberIds.length
+    ? await prisma.agent.findMany({
+        where: { tenantId, ownerUserId: { in: memberIds }, revokedAt: null },
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        select: { id: true, name: true, level: true, ownerUserId: true },
+      })
+    : [];
+  const agentsByOwner = new Map<string, typeof agents>();
+  for (const agent of agents) {
+    const list = agentsByOwner.get(agent.ownerUserId) ?? [];
+    list.push(agent);
+    agentsByOwner.set(agent.ownerUserId, list);
+  }
+  const agentLevels = settableLevels({ isOwner: false, isTenantAdmin: true });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -97,9 +117,9 @@ export default async function AdminUsersPage({
           <h1 className="text-xl font-semibold text-zk-text sm:text-2xl">Admin management</h1>
           <p className="mt-1 max-w-2xl text-sm text-zk-text2">
             People in <span className="font-medium text-zk-text">{tenantName}</span>.
-            Promoting someone makes them an admin of this organization only. Accounts from
-            another organization are not listed here, and a site-wide admin title does not
-            make someone an admin of {tenantName}.
+            Organization role is for this workspace only. Site role (including super admin)
+            applies across the platform. You can also set each person’s agents to contributor,
+            merger, or any other level.
           </p>
           <p className="mt-2 text-sm">
             <Link
@@ -112,11 +132,15 @@ export default async function AdminUsersPage({
             <Link href="/tenants" className="font-medium text-zk-accent hover:underline">
               Switch organization
             </Link>
+            <span className="text-zk-muted"> · </span>
+            <Link href="/admin/rewards" className="font-medium text-zk-accent hover:underline">
+              Platform points
+            </Link>
           </p>
         </div>
         <div className="w-full sm:w-auto">
           <Suspense
-            fallback={<div className="h-9 w-full animate-pulse rounded-lg bg-zk-chip sm:w-64" />}
+            fallback={<div className="h-9 w-full animate-pulse rounded-lg bg-slate-100 sm:w-64" />}
           >
             <UserSearch />
           </Suspense>
@@ -126,17 +150,18 @@ export default async function AdminUsersPage({
       <div className="overflow-x-auto rounded-[20px] border border-zk-border bg-zk-surface">
         {members.length > 0 ? (
           <table className="min-w-full divide-y divide-zk-border text-sm">
-            <thead className="bg-zk-tint text-left text-xs font-semibold uppercase tracking-wide text-zk-accent">
+            <thead className="bg-zk-tint text-left text-xs font-semibold uppercase tracking-wide text-zk-muted">
               <tr>
                 <th className="whitespace-nowrap px-4 py-3">User</th>
-                <th className="whitespace-nowrap px-4 py-3">Role</th>
+                <th className="whitespace-nowrap px-4 py-3">Org role</th>
+                <th className="whitespace-nowrap px-4 py-3">Site role &amp; agents</th>
                 <th className="whitespace-nowrap px-4 py-3">Joined</th>
-                <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right">Org actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zk-divider">
               {members.map((member) => (
-                <tr key={member.user.id} className="hover:bg-zk-chip/80">
+                <tr key={member.user.id} className="hover:bg-zk-tint/80">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <Avatar name={member.user.name} image={member.user.image} size="md" />
@@ -147,13 +172,35 @@ export default async function AdminUsersPage({
                     </div>
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge className={roleBadgeClass[member.role]}>
-                        {MEMBERSHIP_ROLE_LABELS[member.role]}
-                      </Badge>
-                      {member.user.role === "super_admin" ? (
-                        <Badge className="rounded-full bg-zk-warn-bg text-zk-warn-fg">Site super admin</Badge>
-                      ) : null}
+                    <Badge className={roleBadgeClass[member.role]}>
+                      {MEMBERSHIP_ROLE_LABELS[member.role]}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col items-start gap-2">
+                      <SiteRoleActions
+                        userId={member.user.id}
+                        userName={member.user.name}
+                        siteRole={member.user.role}
+                        disabled={member.user.id === actor.id || member.user.role === "super_admin"}
+                      />
+                      {(agentsByOwner.get(member.user.id) ?? []).length > 0 ? (
+                        <ul className="space-y-1.5 text-left">
+                          {(agentsByOwner.get(member.user.id) ?? []).map((agent) => (
+                            <li key={agent.id} className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs font-medium text-zk-text2">{agent.name}</span>
+                              <TeamAgentLevelControl
+                                agentId={agent.id}
+                                agentName={agent.name}
+                                level={agent.level as AgentLevel}
+                                levels={agentLevels}
+                              />
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-zk-muted">No agents</p>
+                      )}
                     </div>
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-zk-text2">

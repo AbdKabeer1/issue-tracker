@@ -35,8 +35,16 @@ function ProgressRow({
 }
 
 /** Points balance, solved tasks and progress toward the goal (#428). */
-export function PointsSummary({ points, solvedTasks }: { points: number; solvedTasks: number }) {
-  const progress = pointsProgress(points, solvedTasks);
+export function PointsSummary({
+  points,
+  solvedTasks,
+  targetPoints = TARGET_POINTS,
+}: {
+  points: number;
+  solvedTasks: number;
+  targetPoints?: number;
+}) {
+  const progress = pointsProgress(points, solvedTasks, targetPoints);
   return (
     <section className="rounded-[20px] border border-zk-border bg-zk-surface p-4 sm:p-5" aria-labelledby="points-heading">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -53,7 +61,7 @@ export function PointsSummary({ points, solvedTasks }: { points: number; solvedT
         {progress.targetMet ? " · Goal reached" : ""}
       </p>
       <div className="mt-4">
-        <ProgressRow label="Points" value={points} target={TARGET_POINTS} percent={progress.pointsPercent} />
+        <ProgressRow label="Points" value={points} target={targetPoints} percent={progress.pointsPercent} />
       </div>
     </section>
   );

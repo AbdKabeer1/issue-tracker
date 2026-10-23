@@ -8,14 +8,23 @@ import type { ProjectRewardConfig } from "@/lib/points/project-rewards";
 
 interface ProjectRewardRulesSectionProps {
   initialConfig?: ProjectRewardConfig | null;
+  /** Platform (or hard-coded) defaults shown when the project has no override. */
+  defaults?: ProjectRewardConfig | null;
   disabled?: boolean;
 }
 
 export function ProjectRewardRulesSection({
   initialConfig,
+  defaults = null,
   disabled = false,
 }: ProjectRewardRulesSectionProps) {
   const [open, setOpen] = useState(false);
+  const fallback = defaults ?? {
+    solver: { ...SOLVER_POINTS },
+    reporter: REPORTER_POINTS,
+    reviewer: REVIEWER_POINTS,
+    guidelines: null,
+  };
 
   return (
     <div className="rounded-xl border border-zk-border bg-zk-tint/70 p-4">
@@ -48,7 +57,7 @@ export function ProjectRewardRulesSection({
                   id="solverPointsLow"
                   type="number"
                   name="solverPointsLow"
-                  defaultValue={initialConfig?.solver?.low ?? SOLVER_POINTS.low}
+                  defaultValue={initialConfig?.solver?.low ?? fallback.solver.low}
                   min={0}
                   max={10000}
                   disabled={disabled}
@@ -61,7 +70,7 @@ export function ProjectRewardRulesSection({
                   id="solverPointsMedium"
                   type="number"
                   name="solverPointsMedium"
-                  defaultValue={initialConfig?.solver?.medium ?? SOLVER_POINTS.medium}
+                  defaultValue={initialConfig?.solver?.medium ?? fallback.solver.medium}
                   min={0}
                   max={10000}
                   disabled={disabled}
@@ -74,7 +83,7 @@ export function ProjectRewardRulesSection({
                   id="solverPointsHigh"
                   type="number"
                   name="solverPointsHigh"
-                  defaultValue={initialConfig?.solver?.high ?? SOLVER_POINTS.high}
+                  defaultValue={initialConfig?.solver?.high ?? fallback.solver.high}
                   min={0}
                   max={10000}
                   disabled={disabled}
@@ -87,7 +96,7 @@ export function ProjectRewardRulesSection({
                   id="solverPointsCritical"
                   type="number"
                   name="solverPointsCritical"
-                  defaultValue={initialConfig?.solver?.critical ?? SOLVER_POINTS.critical}
+                  defaultValue={initialConfig?.solver?.critical ?? fallback.solver.critical}
                   min={0}
                   max={10000}
                   disabled={disabled}
@@ -107,7 +116,7 @@ export function ProjectRewardRulesSection({
                 id="reporterPoints"
                 type="number"
                 name="reporterPoints"
-                defaultValue={initialConfig?.reporter ?? REPORTER_POINTS}
+                defaultValue={initialConfig?.reporter ?? fallback.reporter}
                 min={0}
                 max={10000}
                 disabled={disabled}
@@ -123,7 +132,7 @@ export function ProjectRewardRulesSection({
                 id="reviewerPoints"
                 type="number"
                 name="reviewerPoints"
-                defaultValue={initialConfig?.reviewer ?? REVIEWER_POINTS}
+                defaultValue={initialConfig?.reviewer ?? fallback.reviewer}
                 min={0}
                 max={10000}
                 disabled={disabled}

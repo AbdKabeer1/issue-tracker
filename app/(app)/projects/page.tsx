@@ -15,6 +15,10 @@ import {
 import { isTenantAdmin, isTenantAdminRole } from "@/lib/agents/membership";
 import { MissionCoverage } from "./mission-coverage";
 import { ProjectRewardRulesDisplay } from "@/components/project-reward-rules-display";
+import {
+  getPlatformRewardConfig,
+  projectDefaultsFromPlatform,
+} from "@/lib/points/platform-rewards";
 import { parseProjectRewardConfig } from "@/lib/points/project-rewards";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki". */
@@ -54,7 +58,7 @@ export default async function ProjectsPage({
   }
   const canManageProjects = await isTenantAdmin(user, tenantId);
 
-  const [tenant, projects, activeProjectId, membership] = await Promise.all([
+  const [tenant, projects, activeProjectId, membership, platformRewards] = await Promise.all([
     prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { name: true },
@@ -89,7 +93,9 @@ export default async function ProjectsPage({
       where: { tenantId_userId: { tenantId, userId: user.id } },
       select: { role: true },
     }),
+    getPlatformRewardConfig(prisma),
   ]);
+  const platformDefaults = projectDefaultsFromPlatform(platformRewards);
   const isOwner = membership?.role === "owner";
   const canManageMissions = isTenantAdminRole(membership?.role, user.role);
   const activeProjects = projects.filter((project) => !project.archivedAt);
@@ -124,7 +130,7 @@ export default async function ProjectsPage({
         <h2 className="text-base font-semibold text-zk-text">
           Create a project
         </h2>
-        <CreateProjectForm />
+        <CreateProjectForm defaults={platformDefaults} />
       </section>
 
       <section className="overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface">
@@ -189,7 +195,11 @@ export default async function ProjectsPage({
                       ) : null}
                     </div>
                     <div className="mt-3">
-                      <ProjectRewardRulesDisplay rewardConfig={parseProjectRewardConfig(project.rewardConfig)} />
+                      <ProjectRewardRulesDisplay
+                        rewardConfig={parseProjectRewardConfig(project.rewardConfig, platformDefaults)}
+                        defaults={platformDefaults}
+                        customized={Boolean(project.rewardConfig)}
+                      />
                     </div>
                     <MissionCoverage
                       projectId={project.id}

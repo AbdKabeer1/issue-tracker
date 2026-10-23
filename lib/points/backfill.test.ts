@@ -65,6 +65,19 @@ describe("backfill points (#435)", () => {
       ]);
     });
 
+    it("uses platform/project reward amounts when provided", () => {
+      const rewardConfig = {
+        solver: { low: 7, medium: 10, high: 20, critical: 40 },
+        reporter: 7,
+        reviewer: 12,
+        guidelines: null,
+      };
+      expect(backfillEntries(bug({}), { rewardConfig })).toMatchObject([
+        { role: "solver", points: 10 },
+        { role: "reporter", points: 7 },
+      ]);
+    });
+
     it("counts closed like resolved, by the issue's severity", () => {
       expect(backfillEntries(bug({ status: "closed", severity: "critical" }))[0]).toMatchObject({
         role: "solver",

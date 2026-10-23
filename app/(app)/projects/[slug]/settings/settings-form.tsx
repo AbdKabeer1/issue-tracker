@@ -18,7 +18,13 @@ type Project = {
   rewardConfig?: unknown;
 };
 
-export function ProjectSettingsForm({ project }: { project: Project }) {
+export function ProjectSettingsForm({
+  project,
+  defaults = null,
+}: {
+  project: Project;
+  defaults?: ProjectRewardConfig | null;
+}) {
   const [result, action, pending] = useActionState<ProjectActionResult | undefined, FormData>(updateProjectAction, undefined);
   return (
     <form action={action} className="space-y-4">
@@ -43,6 +49,7 @@ export function ProjectSettingsForm({ project }: { project: Project }) {
 
       <ProjectRewardRulesSection
         initialConfig={project.rewardConfig as ProjectRewardConfig | null}
+        defaults={defaults}
         disabled={pending}
       />
 

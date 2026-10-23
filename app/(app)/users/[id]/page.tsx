@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { pointTotals } from "@/lib/points/leaderboard";
+import { getPlatformRewardConfig } from "@/lib/points/platform-rewards";
 import { pointBalance } from "@/lib/points/balance";
 import { decodePointCursor, pointEntries, pointEntriesQuerySchema } from "@/lib/points/entries";
 import { PointsLedger } from "@/components/points-ledger";
@@ -84,12 +85,9 @@ export default async function ProfilePage({ params, searchParams }: ProfileProps
 
   if (!person) notFound();
 
-  const points = tenantId
-    ? await pointTotals(prisma, tenantId, person.id)
-    : { points: 0, solvedTasks: 0 };
-  // #618: the ledger balance behind those points, and the wallet address that
-  // only they and workspace admins may see.
-  const [balance, walletVisible] = await Promise.all([
+  const [points, platformRewards, balance, walletVisible] = await Promise.all([
+    tenantId ? pointTotals(prisma, tenantId, person.id) : Promise.resolve({ points: 0, solvedTasks: 0 }),
+    getPlatformRewardConfig(prisma),
     tenantId ? pointBalance(prisma, { tenantId, userId: person.id }) : Promise.resolve(null),
     canViewWallet(prisma, viewer, person.id, tenantId),
   ]);
@@ -144,7 +142,11 @@ export default async function ProfilePage({ params, searchParams }: ProfileProps
         <Stat label="Currently assigned" value={assignedTotal} />
       </dl>
 
-      <PointsSummary points={points.points} solvedTasks={points.solvedTasks} />
+      <PointsSummary
+        points={points.points}
+        solvedTasks={points.solvedTasks}
+        targetPoints={platformRewards.target}
+      />
 
       {balance || (walletVisible && person.walletAddress) ? (
         <section
