@@ -27,8 +27,8 @@ export const metadata = { title: "Connect your agent" };
 export default async function ConnectAgentPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ code?: string | string[] }>;
-} = {}) {
+  searchParams: Promise<{ code?: string | string[] }>;
+}) {
   const user = await requireUser();
 
   if (!isAgentPlatformEnabled()) {
@@ -44,7 +44,7 @@ export default async function ConnectAgentPage({
 
   const tenantId = await currentTenantIdFor(user.id);
   const context = await projectContextFor(prisma, tenantId);
-  const { code } = searchParams ? await searchParams : {};
+  const { code } = await searchParams;
   const rawCode = typeof code === "string" ? code.slice(0, 20) : "";
   const initialCode = formatPairingCode(rawCode);
   const pendingPairing = initialCode ? await findPendingPairing(initialCode) : null;

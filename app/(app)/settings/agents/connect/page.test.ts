@@ -56,18 +56,18 @@ describe("ConnectAgentPage Server Component (#610)", () => {
 
   it("shows disabled message when agent platform is switched off", async () => {
     isAgentPlatformEnabled.mockReturnValue(false);
-    const element = await ConnectAgentPage();
+    const element = await ConnectAgentPage({ searchParams: Promise.resolve({}) });
     expect(element).toBeTruthy();
   });
 
   it("prompts to join workspace if user has no current tenant", async () => {
     currentTenantIdFor.mockResolvedValue(null);
-    const element = await ConnectAgentPage();
+    const element = await ConnectAgentPage({ searchParams: Promise.resolve({}) });
     expect(element).toBeTruthy();
   });
 
   it("renders page with templates for active project", async () => {
-    const element = await ConnectAgentPage();
+    const element = await ConnectAgentPage({ searchParams: Promise.resolve({}) });
     expect(element).toBeTruthy();
     expect(findElement(element, PairForm)).toMatchObject({
       props: { initialCode: "", unknownCode: false, activeProjectId: "proj_1" },
