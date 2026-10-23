@@ -44,9 +44,19 @@ const validationSelect = {
   bug: {
     select: {
       createdByAgentId: true,
+      reporterId: true,
+      assigneeId: true,
       beneficiaryUserId: true,
       createdByAgent: { select: { ownerUserId: true } },
-      claims: { select: { status: true, releasedAt: true, agent: { select: { ownerUserId: true } } } },
+      claims: {
+        select: {
+          status: true,
+          releasedAt: true,
+          beneficiaryUserId: true,
+          dispatcherUserId: true,
+          agent: { select: { ownerUserId: true } },
+        },
+      },
     },
   },
 } satisfies Prisma.IssueValidationSelect;

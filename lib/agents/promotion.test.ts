@@ -74,6 +74,40 @@ describe("standingValidations (#451)", () => {
     expect(await standingValidations("a1")).toBe(1);
   });
 
+  it("re-checks every independence conflict that review time checks (#598)", async () => {
+    db.issueValidation.findMany.mockResolvedValue([
+      validation(),
+      // The reviewer's owner filed the report.
+      validation({
+        bug: { createdByAgentId: null, reporterId: "owner-1", beneficiaryUserId: "x", createdByAgent: null, claims: [] },
+      }),
+      // The reviewer's owner is the assigned solver.
+      validation({
+        bug: { createdByAgentId: null, assigneeId: "owner-1", beneficiaryUserId: "x", createdByAgent: null, claims: [] },
+      }),
+      // The reviewer's owner is the active claim's beneficiary.
+      validation({
+        bug: {
+          createdByAgentId: null,
+          beneficiaryUserId: "x",
+          createdByAgent: null,
+          claims: [{ status: "active", releasedAt: null, beneficiaryUserId: "owner-1", dispatcherUserId: null, agent: { ownerUserId: "someone-else" } }],
+        },
+      }),
+      // The reviewer's owner is the active claim's dispatcher.
+      validation({
+        bug: {
+          createdByAgentId: null,
+          beneficiaryUserId: "x",
+          createdByAgent: null,
+          claims: [{ status: "active", releasedAt: null, beneficiaryUserId: "someone-else", dispatcherUserId: "owner-1", agent: { ownerUserId: "someone-else" } }],
+        },
+      }),
+    ]);
+
+    expect(await standingValidations("a1")).toBe(1);
+  });
+
   it("only reads validations that judge an issue, never `format` rows (#590)", async () => {
     await standingValidations("a1");
 
