@@ -127,6 +127,7 @@ export async function setThemeAction(theme: unknown): Promise<SettingsResult> {
     await prisma.user.update({ where: { id: user.id }, data: { theme } });
   } catch (err) {
     console.error("[settings] setThemeAction user update failed:", err);
+    return { error: "Could not save theme to your account." };
   }
   (await cookies()).set(THEME_COOKIE, theme, appCookieOptions(THEME_COOKIE_MAX_AGE));
   revalidatePath("/", "layout");
