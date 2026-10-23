@@ -897,9 +897,15 @@ export default async function BugsPage({
                             sort={currentSort === "newest" ? "newest" : "updated"}
                           />
                         </span>
-                        <span className="hidden w-10 shrink-0 items-center justify-end gap-2 sm:flex">
+                        <span
+                          className={`w-10 shrink-0 items-center justify-end gap-2 ${
+                            isWatchingView && !bug.isDeleted ? "flex" : "hidden sm:flex"
+                          }`}
+                        >
                           {bug.assignee ? (
-                            <RowAssignee name={bug.assignee.name} image={bug.assignee.image} />
+                            <span className="hidden sm:inline-flex">
+                              <RowAssignee name={bug.assignee.name} image={bug.assignee.image} />
+                            </span>
                           ) : null}
                           {isWatchingView && !bug.isDeleted ? (
                             <UnwatchButton bugId={bug.id} label={`${formatIssueNumber(bug.number)} ${bug.title}`} />
