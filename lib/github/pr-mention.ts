@@ -10,13 +10,20 @@ export function firstPullRequestUrl(text: string | null | undefined): string | n
   return match[0];
 }
 
-/** A comment's structured `prUrl`, or the first pull request URL in its body. */
-export function pullRequestUrlFromComment(body: string, metadata?: unknown): string | null {
+/** A comment's structured `prUrl`, or the first pull request URL in its body when it is a delivery (#636). */
+export function pullRequestUrlFromComment(
+  body: string,
+  metadata?: unknown,
+  type?: string | null,
+): string | null {
   if (metadata && typeof metadata === "object" && "prUrl" in metadata) {
     const prUrl = (metadata as { prUrl?: unknown }).prUrl;
     if (typeof prUrl === "string" && parsePullRequestUrl(prUrl.trim())) return prUrl.trim();
   }
-  return firstPullRequestUrl(body);
+  if (type === "delivery") {
+    return firstPullRequestUrl(body);
+  }
+  return null;
 }
 
 /** The first saved link that is a pull request, or null. */
@@ -28,8 +35,9 @@ export function firstPullRequestLink(links: readonly string[]): string | null {
 }
 
 /**
- * When the assignee mentions a pull request and the issue has none yet,
- * the fields to write. Anyone else, or a second link, leaves the issue alone.
+ * When the assignee deliberately delivers a pull request (#636) and the issue
+ * has none yet, the fields to write. A casual mention in prose, someone else,
+ * or a second link leaves the issue alone.
  */
 export function pullRequestAttachment(input: {
   authorId: string;
@@ -37,10 +45,11 @@ export function pullRequestAttachment(input: {
   pullRequestUrl: string | null;
   proofLinks: readonly string[];
   body: string;
+  type?: string | null;
   metadata?: unknown;
 }): { pullRequestUrl: string; proofLinks?: string[] } | null {
   if (input.authorId !== input.assigneeId || input.pullRequestUrl) return null;
-  const pullRequestUrl = pullRequestUrlFromComment(input.body, input.metadata);
+  const pullRequestUrl = pullRequestUrlFromComment(input.body, input.metadata, input.type);
   if (!pullRequestUrl) return null;
   if (input.proofLinks.includes(pullRequestUrl)) return { pullRequestUrl };
   return { pullRequestUrl, proofLinks: [...input.proofLinks, pullRequestUrl] };
