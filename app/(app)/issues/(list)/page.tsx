@@ -776,7 +776,7 @@ export default async function BugsPage({
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <div className="sm:min-w-[860px]">
                 <div className="hidden items-center gap-4 rounded-full bg-zk-tint px-4 py-3.5 text-xs font-bold uppercase tracking-[0.05em] text-zk-accent sm:flex">
                   <span className="w-[52px]">Votes</span>

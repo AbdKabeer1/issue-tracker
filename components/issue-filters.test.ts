@@ -32,8 +32,9 @@ describe("IssueFilters (#132, #361)", () => {
     const { renderToStaticMarkup } = await import("react-dom/server");
 
     const html = renderToStaticMarkup(createElement(IssueFilters));
+    // Since the #1299 reskin the hint is the "/" key badge, not placeholder text.
     expect(html).toContain('placeholder="Search, or type a tag like Design"');
-    expect(html).toContain("<kbd");
+    expect(html).toMatch(/<kbd[^>]*>\/<\/kbd>/);
   });
 
   it("omits keyboard shortcut hint and badge when shortcutsEnabled is false (#727)", async () => {
