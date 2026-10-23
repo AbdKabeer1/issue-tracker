@@ -32,9 +32,9 @@ describe("resolveIssuesForMergedPullRequest (#474)", () => {
     const ids = await resolveIssuesForMergedPullRequest("https://github.com/o/r/pull/1", db as never);
     expect(ids).toEqual(["bug-1"]);
     expect(db.bug.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { pullRequestUrl: "https://github.com/o/r/pull/1", isDeleted: false, status: { not: "resolved" } },
+      where: { pullRequestUrl: "https://github.com/o/r/pull/1", isDeleted: false, status: { in: ["open", "in_progress"] } },
     }));
-    expect(tx.bug.updateMany).toHaveBeenCalledWith({ where: { id: "bug-1", status: { not: "resolved" } }, data: { status: "resolved" } });
+    expect(tx.bug.updateMany).toHaveBeenCalledWith({ where: { id: "bug-1", status: { in: ["open", "in_progress"] } }, data: { status: "resolved" } });
     expect(tx.bugActivity.create).toHaveBeenCalledWith({ data: expect.objectContaining({ bugId: "bug-1", actorId: "person", type: "status_changed" }) });
     expect(tx.issueClaim.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ releaseReason: "resolved" }) }));
     expect(publish.mock.calls.map((c) => c[1].type)).toEqual(["claim.released", "issue.updated"]);
@@ -53,6 +53,30 @@ describe("resolveIssuesForMergedPullRequest (#474)", () => {
     expect(await resolveIssuesForMergedPullRequest("https://github.com/o/r/pull/1", db as never)).toEqual([]);
     expect(tx.bugActivity.create).not.toHaveBeenCalled();
     expect(tx.issueClaim.updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("never selects or updates a closed issue (#624)", async () => {
+    const db = { bug: { findMany: vi.fn().mockResolvedValue([]) }, $transaction: vi.fn() };
+    await resolveIssuesForMergedPullRequest("https://github.com/o/r/pull/3", db as never);
+    const status = db.bug.findMany.mock.calls[0][0].where.status as { in: string[] };
+    expect(status.in).not.toContain("closed");
+    expect(status.in).not.toContain("resolved");
+  });
+
+  it("leaves an issue closed between the read and the transaction closed (#624)", async () => {
+    publish.mockClear();
+    // The conditional update matches nothing once someone has closed the issue.
+    const tx = { bug: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, bugActivity: { create: vi.fn() }, issueClaim: { updateMany: vi.fn() } };
+    const db = {
+      bug: { findMany: vi.fn().mockResolvedValue([{
+        id: "bug-2", tenantId: "t", projectId: "p", status: "open", assigneeId: null, reporterId: "rep", claims: [],
+      }]) },
+      $transaction: vi.fn((fn: (t: typeof tx) => Promise<boolean>) => fn(tx)),
+    };
+    expect(await resolveIssuesForMergedPullRequest("https://github.com/o/r/pull/4", db as never)).toEqual([]);
+    expect(tx.bug.updateMany).toHaveBeenCalledWith({ where: { id: "bug-2", status: { in: ["open", "in_progress"] } }, data: { status: "resolved" } });
+    expect(tx.bugActivity.create).not.toHaveBeenCalled();
     expect(publish).not.toHaveBeenCalled();
   });
 
