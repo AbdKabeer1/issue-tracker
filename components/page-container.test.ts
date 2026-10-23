@@ -42,7 +42,7 @@ describe("page container token (#415)", () => {
 
   it("keeps the issue description at a readable measure inside the container", () => {
     expect(read("components/editable-issue-description.tsx")).toContain(
-      "mt-2 max-w-3xl",
+      'className="max-w-3xl',
     );
   });
 });
