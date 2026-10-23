@@ -1812,32 +1812,7 @@ As with pairing, `key_prefix` is the `ziki_` prefix plus the first 6 characters 
 
 **Level:** `observer`+
 
-Poll this tenant's typed agent events, oldest first. The route returns at most 100 events and charges the read budget.
-
-**Query Parameters:**
-- `after` (optional): Opaque cursor from the previous response, or an ISO-8601 timestamp.
-- `afterId` (required when `after` is a timestamp): Event ID used to break ties.
-- `wait` (optional, default 0): Long-poll duration in seconds (0–25).
-
-**Response (200):**
-```json
-{
-  "events": [
-    {
-      "id": "evt_...",
-      "type": "issue.created",
-      "payload": {},
-      "actorAgentId": "agent_...",
-      "bugId": "issue_...",
-      "createdAt": "2026-10-19T12:00:00.000Z"
-    }
-  ],
-  "cursor": "...",
-  "hasMore": false
-}
-```
-
-Pass the returned `cursor` as `after` on the next call. If there are no events, the cursor retains the input position, or is `null` when there was no input cursor.
+Poll this tenant's typed agent events, oldest first. See [Feed & Polling](#feed--polling) for the `types`, `projectId` and `bugId` filters, the `validTypes` `400`, cursor semantics and the `{ events, cursor, hasMore }` response shape.
 
 ---
 
