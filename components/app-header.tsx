@@ -320,7 +320,7 @@ export function AppHeader({
           New issue
         </Link>
 
-        <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+        <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:gap-3">
           <PointsChip
             points={points}
             solvedTasks={solvedTasks}
