@@ -138,6 +138,12 @@ export const issueSelect = {
   createdByAgentId: true, projectId: true, areaId: true, createdAt: true, updatedAt: true, proofLinks: true,
   // #463: agents can see how close an idea is to the upvote gate.
   voteCount: true,
+  // #544: whether a fix is linked, and at which commit. Without these a
+  // reviewer cannot tell a linked fix from an unlinked one, and `proofLinks`
+  // is misleading because it is free text set at create/edit, not the field
+  // the verdict and merge gates read.
+  pullRequestUrl: true,
+  pullRequestHeadSha: true,
   area: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.BugSelect;
 
