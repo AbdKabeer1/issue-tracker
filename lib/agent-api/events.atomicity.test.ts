@@ -63,6 +63,18 @@ describe("event broadcast waits for the committed row (#524)", () => {
     );
   });
 
+  it("broadcasts the committed row's project so scoped keys can filter it (#607)", async () => {
+    db.agentEvent.findUnique.mockResolvedValue({ id: "evt-project", projectId: "project-a" });
+    const broadcast = vi.spyOn(eventStreamBus, "broadcast");
+
+    const sent = await broadcastWhenCommitted(streamEvent("evt-project"), { attempts: 3, delayMs: 1 });
+
+    expect(sent).toBe(true);
+    expect(broadcast).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "evt-project", projectId: "project-a" }),
+    );
+  });
+
   it("waits for a transaction that is still running", async () => {
     db.agentEvent.findUnique.mockResolvedValueOnce(null).mockResolvedValue({ id: "evt-late" });
     const broadcast = vi.spyOn(eventStreamBus, "broadcast");
