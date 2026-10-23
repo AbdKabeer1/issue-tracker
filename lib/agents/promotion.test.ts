@@ -157,6 +157,55 @@ describe("promoteEarnedReviewer (#451)", () => {
     expect(db.issueValidation.findMany).not.toHaveBeenCalled();
     expect(db.agent.update).not.toHaveBeenCalled();
   });
+
+  it("never auto-promotes a manually assigned triager, even with ten standing validations (#645)", async () => {
+    db.agent.findUnique.mockResolvedValue(agentRow({ level: "triager" }));
+    db.issueValidation.findMany.mockResolvedValue(
+      Array.from({ length: EARNED_REVIEWER_VALIDATIONS }, () => validation()),
+    );
+
+    const result = await promoteEarnedReviewer("a1");
+
+    expect(result).toEqual({ ok: true, changed: false, standing: 0 });
+    expect(db.agent.update).not.toHaveBeenCalled();
+    expect(db.agentAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("leaves dispatcher and merger untouched the same way (#645)", async () => {
+    db.agent.findUnique.mockResolvedValue(agentRow({ level: "dispatcher" }));
+    db.issueValidation.findMany.mockResolvedValue(
+      Array.from({ length: EARNED_REVIEWER_VALIDATIONS }, () => validation()),
+    );
+
+    const dispatcher = await promoteEarnedReviewer("a1");
+    expect(dispatcher).toEqual({ ok: true, changed: false, standing: 0 });
+    expect(db.agent.update).not.toHaveBeenCalled();
+
+    db.agent.findUnique.mockResolvedValue(agentRow({ level: "merger" }));
+    const merger = await promoteEarnedReviewer("a1");
+    expect(merger).toEqual({ ok: true, changed: false, standing: 0 });
+    expect(db.agent.update).not.toHaveBeenCalled();
+  });
+
+  it("still promotes an observer once the threshold is met (#645 keeps the default track)", async () => {
+    db.agent.findUnique.mockResolvedValue(agentRow({ level: "observer" }));
+    db.issueValidation.findMany.mockResolvedValue(
+      Array.from({ length: EARNED_REVIEWER_VALIDATIONS }, () => validation()),
+    );
+
+    const result = await promoteEarnedReviewer("a1");
+
+    expect(result).toEqual({ ok: true, changed: true, standing: 10 });
+    expect(db.agent.update).toHaveBeenCalledWith({ where: { id: "a1" }, data: { level: "reviewer", levelChangedAt: expect.any(Date) } });
+    expect(db.agentAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "agent.promoted",
+          payload: { from: "observer", to: "reviewer", validations: 10 },
+        }),
+      }),
+    );
+  });
 });
 
 describe("silenceReleases / demoteFromSilence (#451)", () => {

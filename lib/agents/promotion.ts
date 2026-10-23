@@ -1,12 +1,14 @@
 import type { AgentLevel, Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
-import { hasLevel } from "@/lib/agents/levels";
 import { isTenantAdmin } from "@/lib/agents/membership";
 import { reviewerConflict, type ReviewedBug } from "@/lib/agents/independence";
 import type { AppRole } from "@/lib/roles";
 // requireSuperAdmin is imported lazily in runLevelPromotions to avoid pulling NextAuth into unit tests
 import { IssueApiError } from "@/lib/agent-api/issues";
+
+/** Levels an agent can still earn from recorded work; anything else is owner-granted (#645). */
+const EARN_TRACK: readonly AgentLevel[] = ["observer", "contributor"];
 
 /**
  * Moving agents between levels from their recorded work (#451).
@@ -144,9 +146,15 @@ export type DemotionResult =
   | { ok: false; error: string };
 
 /**
- * Earn `reviewer` from standing validations. Promotes an agent below reviewer
- * once it has `EARNED_REVIEWER_VALIDATIONS` standing validations, and only
- * once: an agent already at reviewer or above is left alone.
+ * Earn `reviewer` from standing validations. Promotes an agent on the default
+ * track (`observer` or `contributor`) once it has
+ * `EARNED_REVIEWER_VALIDATIONS` standing validations, and only once: an agent
+ * already at reviewer or above is left alone (#451).
+ *
+ * An explicitly assigned `triager` is never auto-promoted (#645): the admin's
+ * manual choice is the constraint, and the earned threshold applies only to
+ * agents still sitting on default levels. Earning while specialized is left
+ * visible via the `agent.promoted` audit trail, which is not written here.
  */
 export async function promoteEarnedReviewer(agentId: string, db: Db = prisma): Promise<PromotionResult> {
   const agent = await db.agent.findUnique({
@@ -154,23 +162,26 @@ export async function promoteEarnedReviewer(agentId: string, db: Db = prisma): P
     select: { id: true, tenantId: true, level: true },
   });
   if (!agent) return { ok: false, error: "Agent not found." };
-  if (hasLevel(agent.level, "reviewer")) return { ok: true, changed: false, standing: 0 };
+  if (EARN_TRACK.includes(agent.level)) {
+    const standing = await standingValidations(agentId, db);
+    if (standing < EARNED_REVIEWER_VALIDATIONS) return { ok: true, changed: false, standing };
 
-  const standing = await standingValidations(agentId, db);
-  if (standing < EARNED_REVIEWER_VALIDATIONS) return { ok: true, changed: false, standing };
-
-  await db.agent.update({
-    where: { id: agentId },
-    data: { level: "reviewer", levelChangedAt: new Date() },
-  });
-  await audit(
-    { agentId, tenantId: agent.tenantId },
-    "agent.promoted",
-    `agent:${agentId}`,
-    { from: agent.level, to: "reviewer", validations: standing },
-    { db },
-  );
-  return { ok: true, changed: true, standing };
+    await db.agent.update({
+      where: { id: agentId },
+      data: { level: "reviewer", levelChangedAt: new Date() },
+    });
+    await audit(
+      { agentId, tenantId: agent.tenantId },
+      "agent.promoted",
+      `agent:${agentId}`,
+      { from: agent.level, to: "reviewer", validations: standing },
+      { db },
+    );
+    return { ok: true, changed: true, standing };
+  }
+  // Specialized levels (triager/dispatcher/merger) are owner-granted decisions:
+  // they never move automatically, even when the threshold is crossed (#645).
+  return { ok: true, changed: false, standing: 0 };
 }
 
 /**
