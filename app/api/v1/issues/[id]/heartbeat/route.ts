@@ -5,6 +5,8 @@ import { heartbeatClaim } from "@/lib/agent-api/availability";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
+  // #556: heartbeats have their own budget so they never compete with the
+  // write budget an actively-working agent needs for real work.
   return agentIssueRequest(request, "claims.heartbeat", "contributor", id, async (agent) => {
     if (!request.nextUrl.searchParams.get("projectId")) return NextResponse.json({ error: "projectId is required." }, { status: 400 });
     const scope = await issueProject(agent, request.nextUrl.searchParams);
@@ -14,7 +16,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       if (error instanceof IssueApiError) throw error;
       return NextResponse.json({ error: "Heartbeat unavailable; try again." }, { status: 503 });
     }
-  });
+  }, { budget: "heartbeat" });
 }
 
 const apiMethodNotAllowed = createMethodNotAllowed(["POST", "OPTIONS"]);
