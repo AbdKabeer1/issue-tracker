@@ -71,7 +71,10 @@ describe("account menu role switch", () => {
     expect(header?.className).toContain("bg-zk-surface");
     expect(document.querySelector("aside")?.className).toContain("bg-deep-ocean");
     const account = screen.getByRole("button", { name: /account menu/i });
-    expect(account.parentElement?.parentElement?.className).toContain("shrink-0");
+    // Wraps on phones (no sideways scroll at 360px), never squeezed from sm up.
+    const toolbar = account.parentElement?.parentElement?.className.split(/\s+/) ?? [];
+    expect(toolbar).toContain("min-w-0");
+    expect(toolbar).toContain("sm:shrink-0");
   });
 
   it("opens the account menu and asks to switch the active role", async () => {
