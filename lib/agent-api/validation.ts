@@ -349,7 +349,7 @@ export async function standingValidationAwards(db: Db, bugId: string): Promise<P
 
   const latestRevision = await latestRevisionAt(db, bug);
   const undone = await undoneValidationIds(db, bug);
-  const reviewed: ReviewedBug = bug;
+  const reviewed = recordedReviewBug(bug);
   const verdicts = await db.issueValidation.findMany({
     where: {
       bugId,
@@ -377,6 +377,9 @@ export async function standingValidationAwards(db: Db, bugId: string): Promise<P
     if (undone.has(v.id)) continue;
     if (v.agent.id === bug.createdByAgentId) continue;
     if (reviewerConflict({ id: v.agent.id, ownerUserId: v.agent.ownerUserId }, reviewed)) continue;
+    // Duplicates pay the credited person nothing when that person is the
+    // reporter or beneficiary (#422, #579).
+    if (reviewerCreditConflict(v.onBehalfOfUserId, reviewed)) continue;
     const key = `${v.verdict}:${v.onBehalfOfUserId}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -545,9 +548,9 @@ export async function submitValidation(
       // validation that the historical confirmation count would then trust.
       const currentBug = await tx.bug.findUnique({
         where: { id: bug.id },
-        select: reviewedBugSelect,
+        select: { ...reviewedBugSelect, isDeleted: true },
       });
-      if (!currentBug) {
+      if (!currentBug || currentBug.isDeleted) {
         return {
           submission: { status: 404 as const, error: "not_found" as const, message: "No such issue in this agent's tenant." },
           automaticOffer: null,

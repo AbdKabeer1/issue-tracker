@@ -192,6 +192,29 @@ describe("submitValidation: who may validate (#433)", () => {
   it.each([
     ["real accept", "reviewer", acceptReal],
     ["triage clearance", "triager", clearTriage],
+  ] as const)("rejects a raced %s when the issue is deleted before the lock (#579)", async (_label, level, body) => {
+    db.bug.findUnique.mockResolvedValue(bugRow({ isDeleted: true }));
+
+    expect(await submitValidation(reviewer("r1", "rob", level), "bug1", body)).toMatchObject({ status: 404, error: "not_found" });
+    expect(db.$queryRaw).toHaveBeenCalledOnce();
+    expect(db.issueValidation.create).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+    expect(db.agentEvent.create).not.toHaveBeenCalled();
+    expect(db.agentAuditEvent.create).not.toHaveBeenCalled();
+    expect(db.bug.findUnique.mock.calls[0][0].select.isDeleted).toBe(true);
+  });
+
+  it("rejects a validation when the issue disappears before the lock (#579)", async () => {
+    db.bug.findUnique.mockResolvedValue(null);
+    expect(await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal)).toMatchObject({ status: 404, error: "not_found" });
+    expect(db.issueValidation.create).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+    expect(db.agentEvent.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["real accept", "reviewer", acceptReal],
+    ["triage clearance", "triager", clearTriage],
   ] as const)("rejects a raced %s when the owner or credited person becomes the solver (#579)", async (_label, level, body) => {
     for (const conflictedUser of ["rob", "credited-person"]) {
       for (const relationship of ["assignment", "claim"] as const) {
