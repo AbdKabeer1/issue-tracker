@@ -107,8 +107,16 @@ export function VoteButton({
   // does not contain that phrase, which is the issue-page axe failure.
   const voteWord = count === 1 ? "vote" : "votes";
   const label = isMd
-    ? `${upvoted ? "Upvoted" : "Upvote"} ${count} ${voteWord}${upvoted ? ", click to remove your vote" : ""}`
-    : `${count} ${voteWord}${upvoted ? ", upvoted, click to remove" : ", click to upvote"}`;
+    ? `${upvoted ? "Upvoted" : "Upvote"} ${count} ${voteWord}${
+        readOnly ? ", voting unavailable" : upvoted ? ", click to remove your vote" : ""
+      }`
+    : `${count} ${voteWord}${
+        readOnly
+          ? `${upvoted ? ", upvoted" : ""}, voting unavailable`
+          : upvoted
+            ? ", upvoted, click to remove"
+            : ", click to upvote"
+      }`;
   const tone = upvoted
     ? "border-electric-blue-strong bg-electric-blue-strong text-white hover:border-electric-blue-strong hover:bg-electric-blue-strong"
     : "border-zk-border bg-zk-surface text-zk-text hover:border-zk-border hover:bg-zk-chip";
