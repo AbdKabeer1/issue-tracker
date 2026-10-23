@@ -50,13 +50,14 @@ export type StartPairingResult =
   | { ok: true; userCode: string; deviceCode: string; expiresAt: Date }
   | { ok: false; error: string };
 
-export async function startPairing(input: { name?: unknown; model?: unknown; level?: unknown }, now = new Date()): Promise<StartPairingResult> {
+export async function startPairing(input: { name?: unknown; model?: unknown; level?: unknown; instructions?: unknown }, now = new Date()): Promise<StartPairingResult> {
   const name = agentNameSchema.safeParse(input.name ?? "");
   if (!name.success) return { ok: false, error: name.error.issues[0]?.message ?? "Send the agent's name." };
   const model = input.model == null ? null : agentModelSchema.safeParse(input.model);
   if (model && !model.success) return { ok: false, error: model.error.issues[0]?.message ?? "Invalid model." };
   const level = parseRequestedLevel(input.level);
   if (!level.ok) return { ok: false, error: level.error };
+  const instructions = input.instructions == null ? null : String(input.instructions);
 
   const userCode = generateUserCode();
   const deviceCode = generateDeviceCode();
@@ -68,6 +69,7 @@ export async function startPairing(input: { name?: unknown; model?: unknown; lev
       proposedName: name.data,
       proposedModel: model?.data || null,
       proposedLevel: level.level,
+      proposedInstructions: instructions,
       expiresAt,
     },
   });
@@ -75,7 +77,7 @@ export async function startPairing(input: { name?: unknown; model?: unknown; lev
   return { ok: true, userCode, deviceCode, expiresAt };
 }
 
-export type PendingPairing = { id: string; proposedName: string; proposedModel: string | null; proposedLevel: AgentLevel | null; expiresAt: Date };
+export type PendingPairing = { id: string; proposedName: string; proposedModel: string | null; proposedLevel: AgentLevel | null; proposedInstructions: string | null; expiresAt: Date };
 
 /** The pairing a typed code names, if it can still be approved. */
 export async function findPendingPairing(userCode: string, now = new Date()): Promise<PendingPairing | null> {
@@ -83,7 +85,7 @@ export async function findPendingPairing(userCode: string, now = new Date()): Pr
   if (!code) return null;
   return prisma.agentPairing.findFirst({
     where: { codeHash: hashSecret(code), approvedAt: null, expiresAt: { gt: now } },
-    select: { id: true, proposedName: true, proposedModel: true, proposedLevel: true, expiresAt: true },
+    select: { id: true, proposedName: true, proposedModel: true, proposedLevel: true, proposedInstructions: true, expiresAt: true },
   });
 }
 
@@ -149,7 +151,7 @@ export async function approvePairing(
     if (approved.count !== 1) return { ok: false, error: CODE_NOT_FOUND } as const;
     const pairing = await tx.agentPairing.findUnique({
       where: { codeHash },
-      select: { id: true, proposedName: true, proposedModel: true, proposedLevel: true },
+      select: { id: true, proposedName: true, proposedModel: true, proposedLevel: true, proposedInstructions: true },
     });
     if (!pairing) return { ok: false, error: CODE_NOT_FOUND } as const;
     await attachApprovedAgent(tx, {
@@ -157,6 +159,7 @@ export async function approvePairing(
       proposedName: pairing.proposedName,
       proposedModel: pairing.proposedModel,
       proposedLevel: pairing.proposedLevel,
+      proposedInstructions: pairing.proposedInstructions,
       ownerUserId: owner.id,
       tenantId: tenant,
     });
@@ -176,7 +179,7 @@ export async function approvePairing(
 export async function materializeApprovedPairings(ownerUserId: string, tenantId: string): Promise<void> {
   const waiting = await prisma.agentPairing.findMany({
     where: { ownerUserId, tenantId, approvedAt: { not: null }, agentId: null, consumedAt: null },
-    select: { id: true, proposedName: true, proposedModel: true, proposedLevel: true, ownerUserId: true, tenantId: true },
+    select: { id: true, proposedName: true, proposedModel: true, proposedLevel: true, proposedInstructions: true, ownerUserId: true, tenantId: true },
   });
   for (const pairing of waiting) {
     if (!pairing.ownerUserId || !pairing.tenantId) continue;
@@ -186,6 +189,7 @@ export async function materializeApprovedPairings(ownerUserId: string, tenantId:
         proposedName: pairing.proposedName,
         proposedModel: pairing.proposedModel,
         proposedLevel: pairing.proposedLevel,
+        proposedInstructions: pairing.proposedInstructions,
         ownerUserId: pairing.ownerUserId!,
         tenantId: pairing.tenantId!,
       }));
@@ -200,7 +204,7 @@ type PairingTx = Prisma.TransactionClient;
 /** The approved agent, created once. A second caller keeps the agent the first one stored. */
 async function attachApprovedAgent(
   tx: PairingTx,
-  pairing: { id: string; proposedName: string; proposedModel: string | null; proposedLevel: AgentLevel | null; ownerUserId: string; tenantId: string },
+  pairing: { id: string; proposedName: string; proposedModel: string | null; proposedLevel: AgentLevel | null; proposedInstructions: string | null; ownerUserId: string; tenantId: string },
 ): Promise<string> {
   const created = await tx.agent.create({
     data: {
@@ -209,6 +213,7 @@ async function attachApprovedAgent(
       name: pairing.proposedName,
       model: pairing.proposedModel,
       level: pairing.proposedLevel ?? PAIRED_AGENT_LEVEL,
+      instructions: pairing.proposedInstructions,
     },
     select: { id: true },
   });
@@ -226,7 +231,7 @@ async function attachApprovedAgent(
     { agentId: created.id, tenantId: pairing.tenantId },
     "agent.created",
     `agent:${created.id}`,
-    { name: pairing.proposedName, model: pairing.proposedModel, level: pairing.proposedLevel ?? PAIRED_AGENT_LEVEL, via: "pairing" },
+    { name: pairing.proposedName, model: pairing.proposedModel, level: pairing.proposedLevel ?? PAIRED_AGENT_LEVEL, instructions: pairing.proposedInstructions, via: "pairing" },
     { actorUserId: pairing.ownerUserId, db: tx },
   );
   return created.id;
@@ -252,6 +257,7 @@ export async function collectPairing(deviceCode: unknown, now = new Date()): Pro
       proposedName: true,
       proposedModel: true,
       proposedLevel: true,
+      proposedInstructions: true,
       expiresAt: true,
       approvedAt: true,
       consumedAt: true,
@@ -303,6 +309,7 @@ export async function collectPairing(deviceCode: unknown, now = new Date()): Pro
       name: pairing.proposedName,
       model: pairing.proposedModel,
       level: pairing.proposedLevel ?? PAIRED_AGENT_LEVEL,
+      instructions: pairing.proposedInstructions,
       projectId,
     });
     await tx.agentPairing.update({ where: { id: pairing.id }, data: { agentId: key.agentId } });
@@ -310,7 +317,7 @@ export async function collectPairing(deviceCode: unknown, now = new Date()): Pro
       { agentId: key.agentId, tenantId },
       "agent.created",
       `agent:${key.agentId}`,
-      { name: key.name, model: pairing.proposedModel, level: pairing.proposedLevel ?? PAIRED_AGENT_LEVEL, projectId, via: "pairing" },
+      { name: key.name, model: pairing.proposedModel, level: pairing.proposedLevel ?? PAIRED_AGENT_LEVEL, instructions: pairing.proposedInstructions, projectId, via: "pairing" },
       { actorUserId: ownerUserId, db: tx },
     );
     return { status: "issued", key, projectId } as const;

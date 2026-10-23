@@ -55,7 +55,7 @@ export type IssuedKey = { agentId: string; name: string; level: AgentLevel; rawK
 /** Inserts an agent and its first key. Shared by the settings page and pairing. */
 export async function insertAgentWithKey(
   db: Db,
-  input: { tenantId: string; ownerUserId: string; name: string; model: string | null; level: AgentLevel; projectId: string },
+  input: { tenantId: string; ownerUserId: string; name: string; model: string | null; level: AgentLevel; projectId: string; instructions?: string | null },
 ): Promise<IssuedKey> {
   const key = generateApiKey();
   const { projectId, ...agentInput } = input;

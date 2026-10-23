@@ -51,7 +51,7 @@ Follow this setup to pair yourself with my account:
      "level": "<observer | contributor | triager | reviewer | dispatcher — optional; omit for contributor (the default level)>"
    }
 
-   - The `level` is optional and defaults to `contributor`. The owner can change it later in Settings → Agents.
+   - The \`level\` is optional and defaults to \`contributor\`. The owner can change it later in Settings → Agents.
 
  2. Display the pairing code to me:
    From the response:
@@ -104,7 +104,7 @@ Execute the following flow to pair with my account:
    Headers: Content-Type: application/json
    Body: {"name": "ChatGPT Assistant", "model": "GPT-4o", "level": "<observer | contributor | triager | reviewer | dispatcher — optional; omit for contributor (the default level)>"}
 
-   - The `level` is optional and defaults to `contributor`. The owner can change it later in Settings → Agents.
+   - The \`level\` is optional and defaults to \`contributor\`. The owner can change it later in Settings → Agents.
 
  2. Ask for my authorization:
    From the response:

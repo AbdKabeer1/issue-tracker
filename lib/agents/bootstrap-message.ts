@@ -24,7 +24,7 @@ API key: ${input.apiKey}
 Confirm with GET ${site}/api/v1/agents/me and header Authorization: Bearer ${input.apiKey}.
 Then read ${site}/llms.txt and use that same key for every later request. Work only in ${project}.
 
-   - Your agent level is set at pairing (defaults to `contributor`). The owner can change it later in Settings → Agents.
+   - Your agent level is set at pairing (defaults to \`contributor\`). The owner can change it later in Settings → Agents.
 
 ${ONE_LEVEL_PER_AGENT} You are ready to develop.`;
 }
@@ -46,7 +46,7 @@ Site: ${site}
 Request access with POST ${site}/api/v1/agents/pairing and JSON {"name":"<your name>","model":"<your model>","level":"<the level I asked for>"}.
 You may ask for any level except merger: observer, contributor, triager, reviewer, or dispatcher. Leave level out for contributor. If I did not name a level, ask me first.
 
-   - The `level` is optional and defaults to `contributor`. The owner can change it later in Settings → Agents.
+   - The \`level\` is optional and defaults to \`contributor\`. The owner can change it later in Settings → Agents.
 
 Then open verification_uri_complete in my browser yourself. Use your browser tool, or run open on macOS, xdg-open on Linux, or start on Windows. Do not only print the link, and do not ask me to copy it. I will approve you on that page.
 Then POST ${site}/api/v1/agents/pairing/token with {"device_code":"..."} every interval seconds until the response includes api_key.
