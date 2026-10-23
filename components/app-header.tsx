@@ -309,7 +309,9 @@ export function AppHeader({
   const activeWorkspace = workspaces.find((workspace) => workspace.id === activeTenantId) ?? workspaces[0];
 
   return (
-    <header className="sticky top-0 z-40 border-b border-zk-border bg-zk-surface">
+    // Sticky only from lg: on phones and tablets the toolbar wraps onto rows,
+    // and a header that tall pinned to the top covers the page under it.
+    <header className="relative z-40 border-b border-zk-border bg-zk-surface lg:sticky lg:top-0">
       <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
         <Link
           href="/issues/new"
