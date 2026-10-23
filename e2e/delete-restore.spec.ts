@@ -17,7 +17,7 @@ test("deletes an issue, finds it among deleted ones, and restores it", async ({ 
 
   await page.goto(`/issues?deleted=true&q=${encodeURIComponent(title)}`);
   const deletedIssue = page.getByRole("link", { name: new RegExp(title) });
-  await expect(deletedIssue).toHaveAttribute("href", url);
+  await expect(deletedIssue).toHaveAttribute("href", new URL(url).pathname);
   // The wide, horizontally scrollable table can put the link's hit target
   // beneath the mobile shell while Playwright scrolls it into view. Verify its
   // destination, then open that route directly to exercise restore behavior.
