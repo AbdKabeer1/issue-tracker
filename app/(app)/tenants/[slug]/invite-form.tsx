@@ -64,8 +64,8 @@ export function InviteForm({ tenantId }: { tenantId: string }) {
 
   if (sent) {
     return (
-      <div role="status" className="mt-4 space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4">
-        <p className="text-sm font-medium text-slate-900">
+      <div role="status" className="mt-4 space-y-3 rounded-[14px] border border-zk-warn-bd bg-zk-warn-bg p-4">
+        <p className="text-sm font-medium text-zk-text">
           Invite ready for {sent.email}. Copy the link now: it won&apos;t be shown again.
         </p>
         <label htmlFor="new-invite-link" className="sr-only">
@@ -83,8 +83,8 @@ export function InviteForm({ tenantId }: { tenantId: string }) {
             Copy link
           </Button>
         </div>
-        <p className="text-xs text-slate-700">{deliveryNote(sent)}</p>
-        <p className="text-xs text-slate-700">
+        <p className="text-xs text-zk-text2">{deliveryNote(sent)}</p>
+        <p className="text-xs text-zk-text2">
           It works once, only for {sent.email}, and expires <LocalTime date={sent.expiresAt} />.
         </p>
         <Button type="button" variant="secondary" onClick={() => setSent(null)}>
@@ -99,7 +99,7 @@ export function InviteForm({ tenantId }: { tenantId: string }) {
   return (
     <form ref={formRef} action={action} className="mt-4 space-y-1" noValidate>
       <input type="hidden" name="tenantId" value={tenantId} />
-      <label htmlFor="invite-email" className="block text-sm font-medium text-slate-800">
+      <label htmlFor="invite-email" className="block text-sm font-medium text-zk-text">
         Email address
       </label>
       <div className="flex flex-col gap-2 sm:flex-row">
@@ -122,7 +122,7 @@ export function InviteForm({ tenantId }: { tenantId: string }) {
       </div>
       <FieldError formId={FORM_ID} field="email" errors={fieldErrors} />
       {formError ? (
-        <p role="alert" className="text-sm text-red-700">
+        <p role="alert" className="text-sm text-zk-bad-fg">
           {formError}
         </p>
       ) : null}

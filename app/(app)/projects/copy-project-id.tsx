@@ -25,12 +25,12 @@ export function CopyProjectIdButton({ projectId }: { projectId: string }) {
       onClick={handleCopy}
       aria-label="Copy Project ID"
       title="Copy Project ID for API and agent configuration"
-      className="inline-flex items-center gap-1 rounded border border-slate-200 bg-card px-2 py-0.5 text-xs font-medium text-slate-600 shadow-2xs transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+      className="inline-flex items-center gap-1 rounded-xl border border-zk-border bg-zk-surface px-2 py-0.5 text-xs font-medium text-zk-text2 shadow-2xs transition hover:border-zk-border hover:bg-zk-chip hover:text-zk-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue"
     >
       {copied ? (
         <>
           <svg
-            className="h-3.5 w-3.5 text-teal-600"
+            className="h-3.5 w-3.5 text-zk-accent"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -39,12 +39,12 @@ export function CopyProjectIdButton({ projectId }: { projectId: string }) {
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
-          <span className="text-[11px] font-semibold text-teal-700">Copied</span>
+          <span className="text-[11px] font-semibold text-zk-accent">Copied</span>
         </>
       ) : (
         <>
           <svg
-            className="h-3.5 w-3.5 text-slate-400"
+            className="h-3.5 w-3.5 text-zk-muted"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"

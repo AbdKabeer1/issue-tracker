@@ -65,10 +65,10 @@ export function SelfAssignButton({
           type="button"
           disabled={pending}
           onClick={() => handleToggle(!isAssignedToMe)}
-          className={`rounded text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:ring-offset-2 disabled:opacity-50 ${
+          className={`rounded text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue-strong focus-visible:ring-offset-2 disabled:opacity-50 ${
             isAssignedToMe
-              ? "text-slate-500 hover:text-red-600 hover:underline"
-              : "text-teal-700 hover:text-teal-800 hover:underline"
+              ? "text-zk-muted hover:text-zk-bad-fg hover:underline"
+              : "text-zk-accent hover:text-zk-accent hover:underline"
           } ${className}`}
           title={isAssignedToMe ? "Unassign yourself from this issue" : "Assign this issue to yourself"}
         >
@@ -81,7 +81,7 @@ export function SelfAssignButton({
               : "Assign to me"}
         </button>
         {error ? (
-          <span className="text-xs text-red-600" role="alert">
+          <span className="text-xs text-zk-bad-fg" role="alert">
             {error}
           </span>
         ) : null}
@@ -119,10 +119,10 @@ export function SelfAssignButton({
       {error ? (
         <span
           id={errorId}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-red-700"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-zk-bad-fg"
           role="alert"
         >
-          <AlertIcon className="h-3.5 w-3.5 shrink-0 text-red-600" />
+          <AlertIcon className="h-3.5 w-3.5 shrink-0 text-zk-bad-fg" />
           <span>{error}</span>
         </span>
       ) : null}

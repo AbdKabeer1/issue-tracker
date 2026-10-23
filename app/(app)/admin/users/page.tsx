@@ -18,9 +18,9 @@ import { calculatePagination } from "@/lib/pagination";
 export const metadata = { title: "Admins" };
 
 const roleBadgeClass = {
-  member: "bg-slate-100 text-slate-700",
-  admin: "bg-teal-100 text-teal-800",
-  owner: "bg-amber-100 text-amber-900",
+  member: "bg-zk-chip text-zk-text2",
+  admin: "bg-zk-tint text-zk-accent",
+  owner: "bg-zk-warn-bg text-zk-warn-fg",
 } as const;
 
 /**
@@ -53,12 +53,12 @@ export default async function AdminUsersPage({
   if (!tenantId || !tenantName || !tenantSlug) {
     return (
       <div className="space-y-3">
-        <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Admin management</h1>
-        <p className="max-w-xl text-sm text-slate-600">
+        <h1 className="text-xl font-semibold text-zk-text sm:text-2xl">Admin management</h1>
+        <p className="max-w-xl text-sm text-zk-text2">
           Open an organization first. Roles on this page belong to one organization,
           not to every account on the site.
         </p>
-        <Link href="/tenants" className="text-sm font-medium text-teal-700 hover:underline">
+        <Link href="/tenants" className="text-sm font-medium text-zk-accent hover:underline">
           Choose an organization
         </Link>
       </div>
@@ -94,9 +94,9 @@ export default async function AdminUsersPage({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Admin management</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-600">
-            People in <span className="font-medium text-slate-800">{tenantName}</span>.
+          <h1 className="text-xl font-semibold text-zk-text sm:text-2xl">Admin management</h1>
+          <p className="mt-1 max-w-2xl text-sm text-zk-text2">
+            People in <span className="font-medium text-zk-text">{tenantName}</span>.
             Promoting someone makes them an admin of this organization only. Accounts from
             another organization are not listed here, and a site-wide admin title does not
             make someone an admin of {tenantName}.
@@ -104,29 +104,29 @@ export default async function AdminUsersPage({
           <p className="mt-2 text-sm">
             <Link
               href={`/tenants/${tenantSlug}`}
-              className="font-medium text-teal-700 hover:underline"
+              className="font-medium text-zk-accent hover:underline"
             >
               Invites for {tenantName}
             </Link>
-            <span className="text-slate-400"> · </span>
-            <Link href="/tenants" className="font-medium text-teal-700 hover:underline">
+            <span className="text-zk-muted"> · </span>
+            <Link href="/tenants" className="font-medium text-zk-accent hover:underline">
               Switch organization
             </Link>
           </p>
         </div>
         <div className="w-full sm:w-auto">
           <Suspense
-            fallback={<div className="h-9 w-full animate-pulse rounded-lg bg-slate-100 sm:w-64" />}
+            fallback={<div className="h-9 w-full animate-pulse rounded-lg bg-zk-chip sm:w-64" />}
           >
             <UserSearch />
           </Suspense>
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-card">
+      <div className="overflow-x-auto rounded-[20px] border border-zk-border bg-zk-surface">
         {members.length > 0 ? (
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <table className="min-w-full divide-y divide-zk-border text-sm">
+            <thead className="bg-zk-tint text-left text-xs font-semibold uppercase tracking-wide text-zk-accent">
               <tr>
                 <th className="whitespace-nowrap px-4 py-3">User</th>
                 <th className="whitespace-nowrap px-4 py-3">Role</th>
@@ -134,15 +134,15 @@ export default async function AdminUsersPage({
                 <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-zk-divider">
               {members.map((member) => (
-                <tr key={member.user.id} className="hover:bg-slate-50/80">
+                <tr key={member.user.id} className="hover:bg-zk-chip/80">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <Avatar name={member.user.name} image={member.user.image} size="md" />
                       <div className="min-w-0">
-                        <div className="font-medium text-slate-900">{member.user.name}</div>
-                        <div className="break-all text-xs text-slate-500 sm:text-sm">{member.user.email}</div>
+                        <div className="font-medium text-zk-text">{member.user.name}</div>
+                        <div className="break-all text-xs text-zk-muted sm:text-sm">{member.user.email}</div>
                       </div>
                     </div>
                   </td>
@@ -152,11 +152,11 @@ export default async function AdminUsersPage({
                         {MEMBERSHIP_ROLE_LABELS[member.role]}
                       </Badge>
                       {member.user.role === "super_admin" ? (
-                        <Badge className="bg-amber-100 text-amber-900">Site super admin</Badge>
+                        <Badge className="rounded-full bg-zk-warn-bg text-zk-warn-fg">Site super admin</Badge>
                       ) : null}
                     </div>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                  <td className="whitespace-nowrap px-4 py-3 text-zk-text2">
                     <LocalTime date={member.createdAt} />
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right">
@@ -179,21 +179,21 @@ export default async function AdminUsersPage({
           </table>
         ) : query ? (
           <div className="px-4 py-12 text-center">
-            <p className="font-medium text-slate-800">
+            <p className="font-medium text-zk-text">
               No one in {tenantName} matching &ldquo;{query}&rdquo;
             </p>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-zk-muted">
               This search only looks at people who have joined {tenantName}.
             </p>
             <Link
               href="/admin/users"
-              className="mt-3 inline-flex text-sm font-medium text-teal-700 hover:underline"
+              className="mt-3 inline-flex text-sm font-medium text-zk-accent hover:underline"
             >
               Clear search
             </Link>
           </div>
         ) : (
-          <p className="px-4 py-8 text-center text-sm text-slate-500">
+          <p className="px-4 py-8 text-center text-sm text-zk-muted">
             No one has joined {tenantName} yet.
           </p>
         )}

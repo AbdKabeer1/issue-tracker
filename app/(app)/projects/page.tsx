@@ -37,13 +37,13 @@ export default async function ProjectsPage({
   if (!tenantId) {
     return (
       <div className="mx-auto max-w-2xl space-y-4">
-        <h1 className="text-2xl font-semibold text-slate-900">Projects</h1>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <h1 className="text-2xl font-extrabold tracking-tight text-zk-text">Projects</h1>
+        <div className="rounded-xl border border-zk-warn-bd bg-zk-warn-bg p-4 text-sm text-zk-warn-fg">
           <p>{NO_TENANT_MESSAGE}</p>
           <div className="mt-3">
             <Link
               href="/tenants"
-              className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-teal-800"
+              className="inline-flex items-center justify-center rounded-full bg-electric-blue-strong px-3.5 py-1.5 text-xs font-medium text-white hover:opacity-90"
             >
               Create or join a workspace &rarr;
             </Link>
@@ -98,11 +98,11 @@ export default async function ProjectsPage({
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="space-y-1">
-        <Link href="/issues" className="text-sm text-teal-700 hover:underline">
+        <Link href="/issues" className="text-sm text-zk-accent hover:underline">
           ← Back to issues
         </Link>
-        <h1 className="text-2xl font-semibold text-slate-900">Projects</h1>
-        <p className="text-sm text-slate-600">
+        <h1 className="text-2xl font-extrabold tracking-tight text-zk-text">Projects</h1>
+        <p className="text-sm text-zk-text2">
           A project is one product inside {tenant?.name ?? "your workspace"}, such as a web app.
           The issue list follows the project selected in the bar. A platform, such as Web or Mobile,
           is a label on an issue, not another project.
@@ -110,40 +110,40 @@ export default async function ProjectsPage({
       </div>
 
       {error ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <p className="rounded-[14px] border border-zk-bad-bd bg-zk-bad-bg px-3 py-2 text-sm text-zk-bad-fg">
           {error}
         </p>
       ) : null}
       {notice ? (
-        <p className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+        <p className="rounded-[14px] border border-zk-border bg-zk-ok-bg px-3 py-2 text-sm text-zk-ok-fg">
           {notice}
         </p>
       ) : null}
 
-      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
-        <h2 className="text-base font-semibold text-slate-900">
+      <section className="rounded-[20px] border border-zk-border bg-zk-surface p-4 sm:p-6">
+        <h2 className="text-base font-semibold text-zk-text">
           Create a project
         </h2>
         <CreateProjectForm />
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-card">
-        <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 sm:px-6">
-          <h2 className="text-base font-semibold text-slate-900">
+      <section className="overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface">
+        <div className="border-b border-zk-border bg-zk-tint px-4 py-3 sm:px-6">
+          <h2 className="text-base font-semibold text-zk-text">
             Your projects
           </h2>
-          <p className="mt-0.5 text-xs text-slate-500">
+          <p className="mt-0.5 text-xs text-zk-muted">
             Switching here also changes the project shown in the header.
           </p>
         </div>
         {activeProjects.length === 0 ? (
           archivedProjects.length > 0 ? (
-            <p className="px-4 py-6 text-sm text-slate-600 sm:px-6">
+            <p className="px-4 py-6 text-sm text-zk-text2 sm:px-6">
               No active projects. Restore one below or create a new one.
             </p>
           ) : (
-            <div className="space-y-2 px-4 py-6 text-sm text-slate-600 sm:px-6">
-              <p className="font-medium text-slate-800">No projects yet. Create the first one above.</p>
+            <div className="space-y-2 px-4 py-6 text-sm text-zk-text2 sm:px-6">
+              <p className="font-medium text-zk-text">No projects yet. Create the first one above.</p>
               <p>
                 Make one project per product you track, so each gets its own issues. For example, a
                 software team might have <span className="font-medium">Web app</span>,{" "}
@@ -157,7 +157,7 @@ export default async function ProjectsPage({
             </div>
           )
         ) : (
-          <ul className="divide-y divide-slate-200">
+          <ul className="divide-y divide-zk-border">
             {activeProjects.map((project) => {
               const active = project.id === activeProjectId;
               return (
@@ -166,26 +166,26 @@ export default async function ProjectsPage({
                   className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                    <p className="flex items-center gap-2 text-sm font-medium text-zk-text">
                       <span className="truncate">{project.name}</span>
                       {active ? (
-                        <Badge className="bg-teal-50 text-teal-800 ring-1 ring-teal-200">
+                        <Badge className="rounded-full bg-zk-tint text-zk-accent ring-1 ring-zk-border">
                           Active
                         </Badge>
                       ) : null}
                     </p>
-                    <p className="mt-0.5 text-xs text-slate-500">
+                    <p className="mt-0.5 text-xs text-zk-muted">
                       {project.slug} · {project._count.bugs}{" "}
                       {project._count.bugs === 1 ? "issue" : "issues"}
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-slate-500">Project ID:</span>
-                      <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-700">
+                      <span className="text-xs text-zk-muted">Project ID:</span>
+                      <code className="rounded bg-zk-chip px-1.5 py-0.5 font-mono text-[11px] text-zk-text2">
                         {project.id}
                       </code>
                       <CopyProjectIdButton projectId={project.id} />
                       {canManageProjects ? (
-                        <Link href={`/projects/${encodeURIComponent(project.slug)}/settings`} className="text-xs font-medium text-teal-700 hover:underline">Settings</Link>
+                        <Link href={`/projects/${encodeURIComponent(project.slug)}/settings`} className="text-xs font-medium text-zk-accent hover:underline">Settings</Link>
                       ) : null}
                     </div>
                     <div className="mt-3">
@@ -201,11 +201,11 @@ export default async function ProjectsPage({
                     />
 
                     {isOwner ? (
-                      <details className="mt-3 text-xs text-slate-600">
-                        <summary className="cursor-pointer font-medium text-slate-700">
+                      <details className="mt-3 text-xs text-zk-text2">
+                        <summary className="cursor-pointer font-medium text-zk-text2">
                           Archive or delete
                         </summary>
-                        <div className="mt-2 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div className="mt-2 space-y-4 rounded-xl border border-zk-border bg-zk-tint p-3">
                           <form action={setProjectArchivedAction}>
                             <input type="hidden" name="projectId" value={project.id} />
                             <input type="hidden" name="archived" value="true" />
@@ -216,7 +216,7 @@ export default async function ProjectsPage({
 
                           <form action={deleteProjectAction} className="space-y-1">
                             <input type="hidden" name="projectId" value={project.id} />
-                            <p className="font-medium text-slate-700">Delete project</p>
+                            <p className="font-medium text-zk-text2">Delete project</p>
                             <p>
                               Only works when the project has no issues. Otherwise archive it.
                             </p>
@@ -226,7 +226,7 @@ export default async function ProjectsPage({
                                 placeholder={`Type ${project.name}`}
                                 autoComplete="off"
                                 required
-                                className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
+                                className="min-w-0 flex-1 rounded-xl border border-zk-border px-2 py-1 text-sm text-zk-text"
                               />
                               <Button type="submit" variant="danger-secondary">
                                 Delete project
@@ -253,25 +253,25 @@ export default async function ProjectsPage({
       </section>
 
       {isOwner && archivedProjects.length > 0 ? (
-        <section className="overflow-hidden rounded-xl border border-slate-200 bg-card">
-          <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 sm:px-6">
-            <h2 className="text-base font-semibold text-slate-900">Archived projects</h2>
-            <p className="mt-0.5 text-xs text-slate-500">
+        <section className="overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface">
+          <div className="border-b border-zk-border bg-zk-tint px-4 py-3 sm:px-6">
+            <h2 className="text-base font-semibold text-zk-text">Archived projects</h2>
+            <p className="mt-0.5 text-xs text-zk-muted">
               Archived projects are hidden from the switcher and can&apos;t be selected.
               Restore one to use it again.
             </p>
           </div>
-          <ul className="divide-y divide-slate-200">
+          <ul className="divide-y divide-zk-border">
             {archivedProjects.map((project) => (
               <li key={project.id} className="space-y-3 px-4 py-3 sm:px-6">
                 <div>
-                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900">
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-zk-text">
                     <span className="truncate">{project.name}</span>
-                    <Badge className="bg-amber-50 text-amber-800 ring-1 ring-amber-200">
+                    <Badge className="rounded-full bg-zk-warn-bg text-zk-warn-fg ring-1 ring-zk-warn-bd">
                       Archived
                     </Badge>
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-500">
+                  <p className="mt-0.5 text-xs text-zk-muted">
                     {project.slug} · {project._count.bugs}{" "}
                     {project._count.bugs === 1 ? "issue" : "issues"}
                   </p>
@@ -291,7 +291,7 @@ export default async function ProjectsPage({
                       placeholder={`Type ${project.name}`}
                       autoComplete="off"
                       required
-                      className="rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
+                      className="rounded-xl border border-zk-border px-2 py-1 text-sm text-zk-text"
                     />
                     <Button type="submit" variant="danger-secondary">
                       Delete

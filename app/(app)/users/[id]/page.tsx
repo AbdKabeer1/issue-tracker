@@ -25,9 +25,9 @@ type ProfileProps = { params: Promise<{ id: string }>; searchParams?: Promise<Re
 const RECENT = 10;
 
 const roleBadgeClass: Record<string, string> = {
-  user: "bg-slate-100 text-slate-700",
-  admin: "bg-teal-100 text-teal-800",
-  super_admin: "bg-amber-100 text-amber-900",
+  user: "bg-zk-chip text-zk-text2",
+  admin: "bg-zk-tint text-zk-accent",
+  super_admin: "bg-zk-warn-bg text-zk-warn-fg",
 };
 
 export async function generateMetadata({
@@ -124,16 +124,16 @@ export default async function ProfilePage({ params, searchParams }: ProfileProps
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <Link href="/issues" className="text-sm text-teal-700 hover:underline">
+        <Link href="/issues" className="text-sm text-zk-accent hover:underline">
           ← Back to issues
         </Link>
-        <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold text-slate-900">
+        <h1 className="flex flex-wrap items-center gap-2 text-2xl font-extrabold tracking-tight text-zk-text">
           {person.name}
           <Badge className={roleBadgeClass[person.role]}>
             {roleLabels[person.role]}
           </Badge>
         </h1>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-zk-text2">
           Joined <LocalTime date={person.createdAt} />
         </p>
       </div>
@@ -148,32 +148,32 @@ export default async function ProfilePage({ params, searchParams }: ProfileProps
 
       {balance || (walletVisible && person.walletAddress) ? (
         <section
-          className="rounded-xl border border-slate-200 bg-card p-4 sm:p-5"
+          className="rounded-[20px] border border-zk-border bg-zk-surface p-4 sm:p-5"
           aria-labelledby="balance-heading"
         >
           <h2
             id="balance-heading"
-            className="text-sm font-semibold uppercase tracking-wide text-slate-500"
+            className="text-sm font-semibold uppercase tracking-wide text-zk-muted"
           >
             Balance
           </h2>
           {balance ? (
             <>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-zk-text">
                 {balance.lifetime.points}
-                <span className="ml-1 text-sm font-normal text-slate-600">
+                <span className="ml-1 text-sm font-normal text-zk-text2">
                   point{balance.lifetime.points === 1 ? "" : "s"}
                 </span>
               </p>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-zk-text2">
                 {balance.lifetime.entries} ledger entr
                 {balance.lifetime.entries === 1 ? "y" : "ies"}, corrections included
               </p>
             </>
           ) : null}
           {walletVisible && person.walletAddress ? (
-            <p className="mt-2 break-all font-mono text-sm text-slate-700">
-              <span className="font-sans font-medium text-slate-600">Wallet </span>
+            <p className="mt-2 break-all font-mono text-sm text-zk-text2">
+              <span className="font-sans font-medium text-zk-text2">Wallet </span>
               {person.walletAddress}
             </p>
           ) : null}
@@ -184,8 +184,8 @@ export default async function ProfilePage({ params, searchParams }: ProfileProps
         <PointsLedger page={ledger} profileId={person.id} from={ledgerQuery.success ? ledgerQuery.data.from : undefined} to={ledgerQuery.success ? ledgerQuery.data.to : undefined} error={ledgerError} />
       ) : null}
 
-      <section className="rounded-xl border border-slate-200 bg-card p-4 sm:p-5" aria-labelledby="profile-agents-heading">
-        <h2 id="profile-agents-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+      <section className="rounded-[20px] border border-zk-border bg-zk-surface p-4 sm:p-5" aria-labelledby="profile-agents-heading">
+        <h2 id="profile-agents-heading" className="text-sm font-semibold uppercase tracking-wide text-zk-muted">
           Agents
         </h2>
         <TeamAgentList agents={agents} manageLevels={manageLevels} />
@@ -209,11 +209,11 @@ export default async function ProfilePage({ params, searchParams }: ProfileProps
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-card px-4 py-3">
-      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+    <div className="rounded-[20px] border border-zk-border bg-zk-surface px-4 py-3">
+      <dt className="text-xs font-medium uppercase tracking-wide text-zk-muted">
         {label}
       </dt>
-      <dd className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
+      <dd className="mt-1 text-2xl font-semibold tabular-nums text-zk-text">
         {value}
       </dd>
     </div>
@@ -238,26 +238,26 @@ function IssueList({
   total?: number;
 }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-card">
-      <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+    <section className="rounded-[20px] border border-zk-border bg-zk-surface">
+      <h2 className="border-b border-zk-divider px-4 py-3 text-sm font-semibold uppercase tracking-wide text-zk-muted">
         {heading}
         {total !== undefined && total > issues.length ? (
-          <span className="ml-2 font-normal normal-case tracking-normal text-slate-500">
+          <span className="ml-2 font-normal normal-case tracking-normal text-zk-muted">
             showing the {issues.length} most recent of {total}
           </span>
         ) : null}
       </h2>
       {issues.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-slate-500">{empty}</p>
+        <p className="px-4 py-6 text-sm text-zk-muted">{empty}</p>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-zk-divider">
           {issues.map((issue) => (
             <li key={issue.id}>
               <Link
                 href={`/issues/${issue.id}`}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm transition hover:bg-slate-50"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm transition hover:bg-zk-chip"
               >
-                <span className="min-w-0 flex-1 break-words font-medium text-slate-900">
+                <span className="min-w-0 flex-1 break-words font-medium text-zk-text">
                   {issue.title}
                 </span>
                 <Badge className={statusClass[issue.status]}>

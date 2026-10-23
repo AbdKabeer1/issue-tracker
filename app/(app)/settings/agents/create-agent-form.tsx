@@ -1,17 +1,66 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, type ReactNode } from "react";
 import { createAgentAction, type CreateAgentActionResult } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { copyText } from "@/lib/clipboard";
-import { AGENT_LEVEL_LABELS, SELF_REGISTRATION_LEVELS } from "@/lib/agents/levels";
+import {
+  AGENT_LEVEL_DESCRIPTIONS,
+  AGENT_LEVEL_LABELS,
+  SELF_REGISTRATION_LEVELS,
+} from "@/lib/agents/levels";
 import type { AgentLevel } from "@prisma/client";
 import { AGENT_MODEL_MAX, AGENT_NAME_MAX } from "@/lib/agents/registry-limits";
+import {
+  agentsInputClass,
+  agentsLabelClass,
+  agentsMutedClass,
+  agentsPrimaryBtn,
+  agentsSurface,
+} from "./agents-ui";
 
 export type AgentProjectChoice = { id: string; name: string };
+
+const LEVEL_ICONS: Partial<Record<AgentLevel, ReactNode>> = {
+  observer: (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  ),
+  contributor: (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+    </svg>
+  ),
+  triager: (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path strokeLinecap="round" d="M3 6h18M7 12h10M10 18h4" />
+    </svg>
+  ),
+  reviewer: (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+    </svg>
+  ),
+  dispatcher: (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M22 2 11 13M22 2l-7 20-4-9-9-4z" />
+    </svg>
+  ),
+  merger: (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <circle cx="18" cy="18" r="3" />
+      <circle cx="6" cy="6" r="3" />
+      <path strokeLinecap="round" d="M6 21V9a9 9 0 0 0 9 9" />
+    </svg>
+  ),
+};
+
+const ADMIN_ONLY: ReadonlySet<AgentLevel> = new Set(["dispatcher", "merger"]);
 
 /** Register an agent; its key is shown here once and never again (#427). */
 export function CreateAgentForm({
@@ -26,6 +75,7 @@ export function CreateAgentForm({
   const toast = useToast();
   const [name, setName] = useState("");
   const [model, setModel] = useState("");
+  const [level, setLevel] = useState<AgentLevel>(levels[0] ?? "observer");
   const [issued, setIssued] = useState<Extract<CreateAgentActionResult, { ok: true }> | null>(null);
   const [result, action, pending] = useActionState<CreateAgentActionResult | undefined, FormData>(
     async (previous, formData) => {
@@ -41,10 +91,13 @@ export function CreateAgentForm({
   );
   const error = result && !result.ok ? result : null;
 
-  // Put the person on the key, so it's selected and ready to copy.
   useEffect(() => {
     if (issued) document.getElementById("new-agent-key")?.focus();
   }, [issued]);
+
+  useEffect(() => {
+    if (!levels.includes(level)) setLevel(levels[0] ?? "observer");
+  }, [levels, level]);
 
   async function copy() {
     if (!issued) return;
@@ -53,8 +106,8 @@ export function CreateAgentForm({
 
   if (issued) {
     return (
-      <div className="mt-4 space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4" role="status">
-        <p className="text-sm font-medium text-slate-900">
+      <div className={`mt-4 space-y-3 ${agentsSurface} border-zk-warn-bd bg-zk-warn-bg/40 p-4`} role="status">
+        <p className="text-sm font-semibold text-zk-text">
           {issued.name} is registered. Copy its key now. It stays on this page with the agent.
         </p>
         <label htmlFor="new-agent-key" className="sr-only">
@@ -65,18 +118,18 @@ export function CreateAgentForm({
             id="new-agent-key"
             readOnly
             value={issued.rawKey}
-            className="font-mono text-xs"
+            className={`${agentsInputClass} font-mono text-xs`}
             onFocus={(event) => event.currentTarget.select()}
           />
-          <Button type="button" onClick={copy}>
+          <Button type="button" onClick={copy} className={agentsPrimaryBtn}>
             Copy key
           </Button>
         </div>
-        <p className="text-xs text-slate-600">
+        <p className={agentsMutedClass}>
           The agent sends it as <code className="font-mono">Authorization: Bearer &lt;key&gt;</code>. If
           it&apos;s lost, regenerate the key on this page. The current key stops working immediately.
         </p>
-        <Button type="button" variant="secondary" onClick={() => setIssued(null)}>
+        <Button type="button" variant="secondary" onClick={() => setIssued(null)} className="rounded-full">
           I&apos;ve saved it
         </Button>
       </div>
@@ -85,17 +138,19 @@ export function CreateAgentForm({
 
   if (projects.length === 0) {
     return (
-      <p className="mt-3 text-sm text-slate-600">
+      <p className={`mt-3 ${agentsMutedClass}`}>
         This workspace has no projects yet, so a key can&apos;t be limited to one.
       </p>
     );
   }
 
+  const selectedProject = projects.find((project) => project.id === activeProjectId) ?? projects[0];
+
   return (
-    <form action={action} className="mt-4 space-y-3" noValidate>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1">
-          <label htmlFor="agent-name" className="block text-sm font-medium text-slate-800">
+    <form action={action} className="mt-4 space-y-5" noValidate>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <label htmlFor="agent-name" className={agentsLabelClass}>
             Name
           </label>
           <Input
@@ -106,13 +161,14 @@ export function CreateAgentForm({
             placeholder="Ada's Claude"
             maxLength={AGENT_NAME_MAX + 20}
             required
+            className={agentsInputClass}
             aria-invalid={error?.field === "name" || undefined}
             aria-describedby={error ? "agent-form-error" : undefined}
           />
         </div>
-        <div className="space-y-1">
-          <label htmlFor="agent-model" className="block text-sm font-medium text-slate-800">
-            Model <span className="font-normal text-slate-500">(optional)</span>
+        <div className="space-y-1.5">
+          <label htmlFor="agent-model" className={agentsLabelClass}>
+            Model <span className="font-normal text-zk-muted">(optional)</span>
           </label>
           <Input
             id="agent-model"
@@ -121,53 +177,95 @@ export function CreateAgentForm({
             onChange={(event) => setModel(event.target.value)}
             placeholder="Claude, GPT, …"
             maxLength={AGENT_MODEL_MAX + 20}
+            className={agentsInputClass}
             aria-invalid={error?.field === "model" || undefined}
           />
         </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1">
-          <label htmlFor="agent-project" className="block text-sm font-medium text-slate-800">
-            Project
-          </label>
-          <Select
-            id="agent-project"
-            name="projectId"
-            defaultValue={
-              activeProjectId && projects.some((project) => project.id === activeProjectId)
-                ? activeProjectId
-                : projects[0]?.id
-            }
-            required
-            aria-invalid={error?.field === "projectId" || undefined}
-          >
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </Select>
-          <p className="text-xs text-slate-500">The key only works in this project.</p>
-        </div>
-        <div className="space-y-1">
-          <label htmlFor="agent-level" className="block text-sm font-medium text-slate-800">
-            Starting level
-          </label>
-          <Select id="agent-level" name="level" defaultValue="observer">
-            {levels.map((level) => (
-              <option key={level} value={level}>
-                {AGENT_LEVEL_LABELS[level]}
-              </option>
-            ))}
-          </Select>
-        </div>
+
+      <div className="space-y-1.5 sm:max-w-sm">
+        <label htmlFor="agent-project" className={agentsLabelClass}>
+          Project
+        </label>
+        <Select
+          id="agent-project"
+          name="projectId"
+          defaultValue={
+            activeProjectId && projects.some((project) => project.id === activeProjectId)
+              ? activeProjectId
+              : projects[0]?.id
+          }
+          required
+          className={agentsInputClass}
+          aria-invalid={error?.field === "projectId" || undefined}
+        >
+          {projects.map((project) => (
+            <option key={project.id} value={project.id}>
+              {project.name}
+            </option>
+          ))}
+        </Select>
+        <p className="text-xs text-zk-muted">The key only works in this project.</p>
       </div>
+
+      <fieldset className="space-y-3">
+        <legend className={agentsLabelClass}>Starting level</legend>
+        <p className="text-xs text-zk-muted">All working roles can read and comment.</p>
+        <input type="hidden" name="level" value={level} />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Starting level">
+          {levels.map((option) => {
+            const on = level === option;
+            const admin = ADMIN_ONLY.has(option);
+            return (
+              <button
+                key={option}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => setLevel(option)}
+                className={`flex flex-col gap-2 rounded-2xl p-4 text-left transition ${
+                  on
+                    ? "border-2 border-electric-blue-strong bg-zk-tint shadow-[0_8px_20px_rgba(46,111,239,0.15)]"
+                    : "m-px border border-zk-border bg-zk-surface hover:border-electric-blue/40"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span
+                    className={`flex h-8 w-8 items-center justify-center rounded-[10px] ${
+                      on ? "bg-electric-blue-strong text-white" : "bg-zk-tint text-zk-accent"
+                    }`}
+                  >
+                    {LEVEL_ICONS[option]}
+                  </span>
+                  <span
+                    className={`mt-0.5 h-[18px] w-[18px] shrink-0 rounded-full box-border ${
+                      on ? "border-[5px] border-electric-blue-strong bg-white" : "border-2 border-zk-border"
+                    }`}
+                    aria-hidden
+                  />
+                </div>
+                <span className="text-sm font-bold text-zk-text">{AGENT_LEVEL_LABELS[option]}</span>
+                <span className="text-xs text-zk-muted">{AGENT_LEVEL_DESCRIPTIONS[option]}</span>
+                {admin ? (
+                  <span className="text-[11px] font-semibold text-zk-warn-fg">Needs tenant admin grant</span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-zk-muted">
+          Registering as {AGENT_LEVEL_LABELS[level]}
+          {selectedProject ? ` in ${selectedProject.name}` : ""}
+        </p>
+      </fieldset>
+
       {error ? (
-        <p id="agent-form-error" className="text-sm text-red-700" role="alert">
+        <p id="agent-form-error" className="text-sm font-medium text-zk-bad-fg" role="alert">
           {error.error}
         </p>
       ) : null}
-      <Button type="submit" disabled={pending}>
+
+      <Button type="submit" disabled={pending} className={agentsPrimaryBtn}>
         {pending ? "Registering…" : "Register agent"}
       </Button>
     </form>

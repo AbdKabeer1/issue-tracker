@@ -8,31 +8,46 @@ export default async function ProfilePage() {
   const user = await requireUser();
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div className="space-y-1">
-        <Link href="/settings" className="text-sm text-teal-700 hover:underline">
-          ← Back to settings
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 pb-10">
+      <div className="flex flex-col gap-2.5">
+        <Link
+          href="/settings?section=account"
+          className="inline-flex min-h-8 items-center gap-1.5 self-start text-sm font-semibold text-zk-accent hover:underline"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M19 12H5M12 19l-7-7 7-7" />
+          </svg>
+          Back to settings
         </Link>
-        <h1 className="text-2xl font-semibold text-slate-900">Profile</h1>
-        <p className="text-sm text-slate-600">
+        <h1 className="m-0 text-[28px] font-extrabold tracking-[-0.02em] text-zk-text">Profile</h1>
+        <p className="m-0 text-sm text-zk-muted">
           Manage how your name appears on issues and comments.
         </p>
       </div>
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Your profile
-        </h2>
-        <DisplayNameForm initialName={user.name ?? ""} />
-        <div className="mt-6 space-y-1">
-          <p className="text-sm font-medium text-slate-800">Email</p>
-          <p className="break-words text-sm text-slate-600">{user.email}</p>
-          <p className="text-xs text-slate-500">Your sign-in email cannot be changed here.</p>
-        </div>
-        <p className="mt-6 text-sm">
-          <Link href={`/users/${user.id}`} className="text-teal-700 hover:underline">
-            See how your profile looks to others
+
+      <section className="flex flex-col gap-4 rounded-[20px] border border-zk-border bg-zk-surface p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h2 className="m-0 text-lg font-bold text-zk-text">Your profile</h2>
+            <span className="text-[13px] text-zk-muted">How you appear to everyone in the workspace.</span>
+          </div>
+          <Link
+            href={`/users/${user.id}`}
+            className="inline-flex h-[38px] items-center gap-1.5 rounded-full border border-zk-border px-3.5 text-[13px] font-bold text-zk-text hover:bg-zk-chip"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+            See how others see you
           </Link>
-        </p>
+        </div>
+        <DisplayNameForm initialName={user.name ?? ""} />
+        <div className="space-y-1 border-t border-zk-divider pt-4">
+          <p className="text-sm font-bold text-zk-text">Email</p>
+          <p className="break-words text-sm text-zk-text2">{user.email}</p>
+          <p className="text-xs text-zk-muted">Your sign-in email cannot be changed here.</p>
+        </div>
       </section>
     </div>
   );

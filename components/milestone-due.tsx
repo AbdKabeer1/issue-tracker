@@ -13,10 +13,10 @@ function localToday(): string {
 }
 
 const toneClass: Record<DueTone, string> = {
-  overdue: "border-red-200 bg-red-50 text-red-800",
-  soon: "border-amber-200 bg-amber-50 text-amber-900",
-  later: "border-slate-200 bg-slate-50 text-slate-700",
-  done: "border-slate-200 bg-slate-100 text-slate-600",
+  overdue: "border-zk-bad-bd bg-zk-bad-bg text-zk-bad-fg",
+  soon: "border-zk-warn-bd bg-zk-warn-bg text-zk-warn-fg",
+  later: "border-zk-border bg-zk-tint text-zk-text2",
+  done: "border-zk-border bg-zk-chip text-zk-text2",
 };
 
 /**

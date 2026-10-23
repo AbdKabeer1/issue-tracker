@@ -61,33 +61,33 @@ export default async function ProjectSettingsPage({
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="space-y-2">
-        <Link href="/projects" className="text-sm text-teal-700 hover:underline">← Projects</Link>
-        <h1 className="text-2xl font-semibold text-slate-900">{project.name} settings</h1>
-        <p className="text-sm text-slate-600">Owners and admins can update project details and connect its GitHub App installation.</p>
+        <Link href="/projects" className="text-sm text-zk-accent hover:underline">← Projects</Link>
+        <h1 className="text-2xl font-extrabold tracking-tight text-zk-text">{project.name} settings</h1>
+        <p className="text-sm text-zk-text2">Owners and admins can update project details and connect its GitHub App installation.</p>
       </div>
-      {github === "error" ? <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">GitHub setup could not be completed. Start the connection again from this page.</p> : null}
-      {github === "connected" ? <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">GitHub App installation connected.</p> : null}
-      {github === "unavailable" ? <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">The GitHub App is not configured. Set GITHUB_APP_SLUG before connecting it.</p> : null}
-      <section className="space-y-5 rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
+      {github === "error" ? <p role="alert" className="rounded-[14px] bg-zk-warn-bg p-3 text-sm text-zk-warn-fg">GitHub setup could not be completed. Start the connection again from this page.</p> : null}
+      {github === "connected" ? <p role="status" className="rounded-[14px] bg-zk-ok-bg p-3 text-sm text-zk-ok-fg">GitHub App installation connected.</p> : null}
+      {github === "unavailable" ? <p role="alert" className="rounded-[14px] bg-zk-warn-bg p-3 text-sm text-zk-warn-fg">The GitHub App is not configured. Set GITHUB_APP_SLUG before connecting it.</p> : null}
+      <section className="space-y-5 rounded-[20px] border border-zk-border bg-zk-surface p-4 sm:p-6">
         <ProjectSettingsForm project={project} />
-        <div className="border-t border-slate-200 pt-5">
-          <h2 className="text-base font-semibold text-slate-900">GitHub App</h2>
-          <p className="mt-1 text-sm text-slate-600">Installation ID: {project.githubInstallationId ?? "Not connected"}. No access token is stored.</p>
+        <div className="border-t border-zk-border pt-5">
+          <h2 className="text-base font-semibold text-zk-text">GitHub App</h2>
+          <p className="mt-1 text-sm text-zk-text2">Installation ID: {project.githubInstallationId ?? "Not connected"}. No access token is stored.</p>
           <form action={`/projects/${encodeURIComponent(project.slug)}/settings/github`} method="get" className="mt-3">
             <Button type="submit">{project.githubInstallationId ? "Change installation" : "Connect GitHub App"}</Button>
           </form>
         </div>
       </section>
-      <section className="space-y-5 rounded-xl border border-slate-200 bg-card p-4 sm:p-6" aria-labelledby="workflow-heading">
+      <section className="space-y-5 rounded-[20px] border border-zk-border bg-zk-surface p-4 sm:p-6" aria-labelledby="workflow-heading">
         <div>
-          <h2 id="workflow-heading" className="text-base font-semibold text-slate-900">Workflow</h2>
-          <p className="mt-1 text-sm text-slate-600">
+          <h2 id="workflow-heading" className="text-base font-semibold text-zk-text">Workflow</h2>
+          <p className="mt-1 text-sm text-zk-text2">
             The gates agents work under in this project. Changes are audited.
           </p>
         </div>
         <WorkflowSettingsForm slug={project.slug} workflow={workflow} />
       </section>
-      <section className="space-y-5 rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
+      <section className="space-y-5 rounded-[20px] border border-zk-border bg-zk-surface p-4 sm:p-6">
         <ProjectApprovalRulesSection
           projectId={project.id}
           slug={project.slug}
@@ -96,7 +96,7 @@ export default async function ProjectSettingsPage({
         />
       </section>
       <ProjectAreasManager projectSlug={project.slug} areas={areas} />
-      <Link href="/issues" className="inline-block text-sm text-teal-700 hover:underline">Back to issues</Link>
+      <Link href="/issues" className="inline-block text-sm text-zk-accent hover:underline">Back to issues</Link>
     </div>
   );
 }

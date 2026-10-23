@@ -25,7 +25,7 @@ import { JoinWorkspaceForm } from "./join-workspace-form";
 /* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Workspaces" };
 
-const card = "rounded-xl border border-slate-200 bg-card p-4 sm:p-6";
+const card = "rounded-[20px] border border-zk-border bg-zk-surface p-4 sm:p-6";
 
 /**
  * Where a person picks the tenant to work in, creates one, or accepts an
@@ -80,10 +80,10 @@ export default async function TenantsPage({
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold text-slate-900">
+        <h1 className="text-2xl font-extrabold tracking-tight text-zk-text">
           {hasTenants ? "Choose a workspace" : "Join or create a workspace"}
         </h1>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-zk-text2">
           {hasTenants
             ? "A workspace is your team. A project is one product inside it. A platform, such as Web or Mobile, is only a label on an issue."
             : "You're not in a workspace yet. Accept an invite, or create a workspace of your own."}
@@ -91,12 +91,12 @@ export default async function TenantsPage({
       </div>
 
       {error ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <p className="rounded-[14px] border border-zk-bad-bd bg-zk-bad-bg px-3 py-2 text-sm text-zk-bad-fg">
           {error}
         </p>
       ) : null}
       {notice ? (
-        <p className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+        <p className="rounded-[14px] border border-zk-border bg-zk-ok-bg px-3 py-2 text-sm text-zk-ok-fg">
           {notice}
         </p>
       ) : null}
@@ -106,19 +106,19 @@ export default async function TenantsPage({
       ) : null}
 
       {listedInvites.length > 0 ? (
-        <section aria-labelledby="your-invites" className="overflow-hidden rounded-xl border border-teal-200 bg-card">
+        <section aria-labelledby="your-invites" className="overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface">
           <h2
             id="your-invites"
-            className="border-b border-teal-200 bg-teal-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6"
+            className="border-b border-zk-border bg-zk-tint px-4 py-3 text-base font-semibold text-zk-text sm:px-6"
           >
             Invitations
           </h2>
-          <ul className="divide-y divide-slate-200">
+          <ul className="divide-y divide-zk-border">
             {listedInvites.map((row) => (
               <li key={row.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-900">{row.tenant.name}</p>
-                  <p className="mt-0.5 text-xs text-slate-500">
+                  <p className="truncate text-sm font-medium text-zk-text">{row.tenant.name}</p>
+                  <p className="mt-0.5 text-xs text-zk-muted">
                     {row.invitedByName} invited you · expires <LocalTime date={row.expiresAt} />
                   </p>
                 </div>
@@ -130,18 +130,18 @@ export default async function TenantsPage({
       ) : null}
 
       {joinRequests.length > 0 ? (
-        <section aria-labelledby="your-join-requests" className="overflow-hidden rounded-xl border border-slate-200 bg-card">
-          <h2 id="your-join-requests" className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6">
+        <section aria-labelledby="your-join-requests" className="overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface">
+          <h2 id="your-join-requests" className="border-b border-zk-border bg-zk-tint px-4 py-3 text-base font-semibold text-zk-text sm:px-6">
             Your workspace requests
           </h2>
-          <ul className="divide-y divide-slate-200">
+          <ul className="divide-y divide-zk-border">
             {joinRequests.map((request) => (
               <li key={request.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-900">{request.tenant.name}</p>
-                  <p className="mt-0.5 text-xs text-slate-500">Requested <LocalTime date={request.requestedAt} /></p>
+                  <p className="truncate text-sm font-medium text-zk-text">{request.tenant.name}</p>
+                  <p className="mt-0.5 text-xs text-zk-muted">Requested <LocalTime date={request.requestedAt} /></p>
                 </div>
-                <Badge className={request.status === "approved" ? "bg-teal-50 text-teal-800 ring-1 ring-teal-200" : request.status === "rejected" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800 ring-1 ring-amber-200"}>
+                <Badge className={request.status === "approved" ? "bg-zk-tint text-zk-accent ring-1 ring-zk-border" : request.status === "rejected" ? "bg-zk-bad-bg text-zk-bad-fg" : "bg-zk-warn-bg text-zk-warn-fg ring-1 ring-zk-warn-bd"}>
                   {request.status === "pending" ? "Request Pending" : request.status[0]!.toUpperCase() + request.status.slice(1)}
                 </Badge>
               </li>
@@ -153,11 +153,11 @@ export default async function TenantsPage({
       {!hasTenants && !inviteId ? (
         <>
           {/* #641: a newcomer's first step is their own workspace, explained. */}
-          <section aria-labelledby="how-ziki-works" className="rounded-xl border border-teal-200 bg-teal-50/60 p-4 sm:p-6">
-            <h2 id="how-ziki-works" className="text-base font-semibold text-slate-900">
+          <section aria-labelledby="how-ziki-works" className="rounded-xl border border-zk-border bg-zk-tint p-4 sm:p-6">
+            <h2 id="how-ziki-works" className="text-base font-semibold text-zk-text">
               How Ziki is organised
             </h2>
-            <ul className="mt-2 space-y-1.5 text-sm text-slate-700">
+            <ul className="mt-2 space-y-1.5 text-sm text-zk-text2">
               <li>
                 <span className="font-medium">A workspace</span> is your team or company. Its people, projects,
                 and issues stay inside it.
@@ -173,28 +173,28 @@ export default async function TenantsPage({
             </ul>
           </section>
           <section aria-labelledby="create-tenant-first" className={card}>
-            <h2 id="create-tenant-first" className="text-base font-semibold text-slate-900">
+            <h2 id="create-tenant-first" className="text-base font-semibold text-zk-text">
               Create your workspace
             </h2>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-zk-text2">
               It takes one name. You&apos;ll be its owner, and a first project is created with it.
             </p>
             <CreateTenantForm nameMax={TENANT_NAME_MAX} />
           </section>
-          <section aria-labelledby="discover-workspaces" className="overflow-hidden rounded-xl border border-slate-200 bg-card">
-            <h2 id="discover-workspaces" className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6">
+          <section aria-labelledby="discover-workspaces" className="overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface">
+            <h2 id="discover-workspaces" className="border-b border-zk-border bg-zk-tint px-4 py-3 text-base font-semibold text-zk-text sm:px-6">
               Discover workspaces
             </h2>
             {discoverable.length === 0 ? (
-              <p className="px-4 py-4 text-sm text-slate-600 sm:px-6">No workspaces are currently accepting join requests. You can still join with an invite or create a workspace.</p>
+              <p className="px-4 py-4 text-sm text-zk-text2 sm:px-6">No workspaces are currently accepting join requests. You can still join with an invite or create a workspace.</p>
             ) : (
-              <ul className="divide-y divide-slate-200">
+              <ul className="divide-y divide-zk-border">
                 {discoverable.map((tenant) => (
                   <li key={tenant.id} className="flex flex-wrap items-center gap-4 px-4 py-4 sm:px-6">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-slate-900">{tenant.name}</p>
-                      {tenant.description ? <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{tenant.description}</p> : null}
-                      {tenant.memberships[0]?.user.name ? <p className="mt-1 text-xs text-slate-500">Owner: {tenant.memberships[0].user.name}</p> : null}
+                      <p className="truncate text-sm font-semibold text-zk-text">{tenant.name}</p>
+                      {tenant.description ? <p className="mt-1 whitespace-pre-wrap text-sm text-zk-text2">{tenant.description}</p> : null}
+                      {tenant.memberships[0]?.user.name ? <p className="mt-1 text-xs text-zk-muted">Owner: {tenant.memberships[0].user.name}</p> : null}
                     </div>
                     <JoinWorkspaceForm tenantId={tenant.id} pending={tenant.joinRequests[0]?.status === "pending"} />
                   </li>
@@ -206,29 +206,29 @@ export default async function TenantsPage({
       ) : null}
 
       {hasTenants ? (
-        <section aria-labelledby="your-tenants" className="overflow-hidden rounded-xl border border-slate-200 bg-card">
+        <section aria-labelledby="your-tenants" className="overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface">
           <h2
             id="your-tenants"
-            className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6"
+            className="border-b border-zk-border bg-zk-tint px-4 py-3 text-base font-semibold text-zk-text sm:px-6"
           >
             Your workspaces
           </h2>
-          <ul className="divide-y divide-slate-200">
+          <ul className="divide-y divide-zk-border">
             {activeTenants.map((tenant) => {
               const current = tenant.id === currentTenantId;
               return (
                 <li key={tenant.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
                   <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900">
+                    <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-zk-text">
                       <span className="truncate">{tenant.name}</span>
                       {current ? (
-                        <Badge className="bg-teal-50 text-teal-800 ring-1 ring-teal-200">Current</Badge>
+                        <Badge className="rounded-full bg-zk-tint text-zk-accent ring-1 ring-zk-border">Current</Badge>
                       ) : null}
                     </p>
-                    <p className="mt-0.5 text-xs text-slate-500">
+                    <p className="mt-0.5 text-xs text-zk-muted">
                       {/* #537: the slug tells tenants with the same name apart. */}
                       <span className="font-mono">{tenant.slug}</span> · {MEMBERSHIP_ROLE_LABELS[tenant.role]} ·{" "}
-                      <Link href={`/tenants/${tenant.slug}`} className="text-teal-700 hover:underline">
+                      <Link href={`/tenants/${tenant.slug}`} className="text-zk-accent hover:underline">
                         People and invites
                       </Link>
                     </p>
@@ -250,27 +250,27 @@ export default async function TenantsPage({
       {archivedTenants.length > 0 ? (
         <section
           aria-labelledby="archived-tenants"
-          className="overflow-hidden rounded-xl border border-slate-200 bg-card"
+          className="overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface"
         >
           <h2
             id="archived-tenants"
-            className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6"
+            className="border-b border-zk-border bg-zk-tint px-4 py-3 text-base font-semibold text-zk-text sm:px-6"
           >
             Archived workspaces
           </h2>
-          <p className="border-b border-slate-200 px-4 py-3 text-sm text-slate-600 sm:px-6">
+          <p className="border-b border-zk-border px-4 py-3 text-sm text-zk-text2 sm:px-6">
             Archived workspaces are hidden from the switcher and can&apos;t be opened. Restore one
             to work in it again.
           </p>
-          <ul className="divide-y divide-slate-200">
+          <ul className="divide-y divide-zk-border">
             {archivedTenants.map((tenant) => (
               <li
                 key={tenant.id}
                 className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-900">{tenant.name}</p>
-                  <p className="mt-0.5 text-xs text-slate-500">
+                  <p className="truncate text-sm font-medium text-zk-text">{tenant.name}</p>
+                  <p className="mt-0.5 text-xs text-zk-muted">
                     <span className="font-mono">{tenant.slug}</span> · Archived · {MEMBERSHIP_ROLE_LABELS[tenant.role]}
                   </p>
                 </div>
@@ -288,10 +288,10 @@ export default async function TenantsPage({
       ) : null}
 
       <section aria-labelledby="join-with-invite" className={card}>
-        <h2 id="join-with-invite" className="text-base font-semibold text-slate-900">
+        <h2 id="join-with-invite" className="text-base font-semibold text-zk-text">
           Join with an invite
         </h2>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-zk-text2">
           {hasTenants
             ? "Workspaces are invite-only. Open the link an owner or admin sent you, or paste it here."
             : "Joining your team instead? Open the invite link an owner or admin sent you, or paste it here."}
@@ -301,7 +301,7 @@ export default async function TenantsPage({
 
       {hasTenants || inviteId ? (
         <section aria-labelledby="create-tenant" className={card}>
-          <h2 id="create-tenant" className="text-base font-semibold text-slate-900">
+          <h2 id="create-tenant" className="text-base font-semibold text-zk-text">
             Create a workspace
           </h2>
           <CreateTenantForm nameMax={TENANT_NAME_MAX} />
@@ -309,11 +309,11 @@ export default async function TenantsPage({
       ) : null}
 
       {zeduOwnerNeeded ? (
-        <section aria-labelledby="zedu-owner" className="rounded-xl border border-amber-200 bg-amber-50 p-4 sm:p-6">
-          <h2 id="zedu-owner" className="text-base font-semibold text-amber-900">
+        <section aria-labelledby="zedu-owner" className="rounded-xl border border-zk-warn-bd bg-zk-warn-bg p-4 sm:p-6">
+          <h2 id="zedu-owner" className="text-base font-semibold text-zk-warn-fg">
             Ziki has no owner yet
           </h2>
-          <p className="mt-1 text-sm text-amber-900">
+          <p className="mt-1 text-sm text-zk-warn-fg">
             Everyone moved into Ziki is a member, so nobody can invite people. As the site&apos;s
             super admin, choose its first owner from its existing members.
           </p>

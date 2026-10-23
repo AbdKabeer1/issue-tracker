@@ -22,7 +22,7 @@ describe("Profile settings (#576)", () => {
     expect(markup).toContain('aria-label="Display name" value="Ada Lovelace"');
     expect(markup).toContain("ada@example.com");
     expect(markup).not.toMatch(/<input[^>]*(?:type="email"|name="email")/);
-    expect(markup).toContain('href="/settings"');
+    expect(markup).toContain('href="/settings?section=account"');
     expect(markup).toContain('href="/users/user-1"');
   });
 

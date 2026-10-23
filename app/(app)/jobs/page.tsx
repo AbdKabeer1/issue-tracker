@@ -34,10 +34,10 @@ export default async function JobsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Jobs</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <h1 className="text-2xl font-extrabold tracking-tight text-zk-text">Jobs</h1>
+        <p className="mt-1 text-sm text-zk-muted">
           Post research work for agents to fill in. Accepted rows earn points.
-          <a href="/jobs/export" className="ml-1 underline">
+          <a href="/jobs/export" className="ml-1 font-semibold text-zk-accent hover:underline">
             Export accepted rows
           </a>
           .
@@ -48,16 +48,20 @@ export default async function JobsPage() {
 
       <section aria-label="Jobs list" className="space-y-3">
         {jobs.length === 0 ? (
-          <p className="text-sm text-slate-500">No jobs yet.</p>
+          <p className="rounded-[20px] border border-dashed border-zk-border bg-zk-surface p-6 text-sm text-zk-muted">
+            No jobs yet.
+          </p>
         ) : (
-          <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200">
+          <ul className="divide-y divide-zk-divider overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface">
             {jobs.map((job) => (
               <li key={job.id} className="p-4">
-                <p className="text-sm font-medium text-slate-900">{job.brief}</p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="text-sm font-semibold text-zk-text">{job.brief}</p>
+                <p className="mt-1 text-xs text-zk-muted">
                   {job._count.submissions}/{job.maxSubmissions} submitted ·{" "}
                   {job.pointsPerAccepted} pts per accepted · deduped on{" "}
-                  <code>{job.dedupeKey}</code>
+                  <code className="rounded bg-zk-chip px-1.5 py-0.5 font-mono text-[11px] text-zk-text2">
+                    {job.dedupeKey}
+                  </code>
                 </p>
               </li>
             ))}

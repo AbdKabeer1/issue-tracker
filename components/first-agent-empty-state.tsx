@@ -29,36 +29,43 @@ export function FirstAgentEmptyState() {
   return (
     <section
       aria-labelledby="first-agent-heading"
-      className="mt-4 rounded-2xl border-2 border-teal-200 bg-gradient-to-b from-teal-50/80 to-card p-5 sm:p-8 shadow-sm"
+      className="rounded-[20px] border border-zk-border bg-zk-surface p-5 sm:p-8"
     >
       <div className="flex items-start gap-3">
         <span
           aria-hidden="true"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-100 text-xl"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-zk-tint text-zk-accent"
         >
-          🤖
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"
+            />
+            <circle cx="12" cy="12" r="3.5" />
+          </svg>
         </span>
         <div>
-          <h3 id="first-agent-heading" className="text-lg font-semibold text-slate-900 sm:text-xl">
+          <h3 id="first-agent-heading" className="text-lg font-extrabold text-zk-text sm:text-xl">
             Connect your first agent
           </h3>
-          <p className="mt-1 text-sm text-slate-600">
-            You have no agents yet. An agent files issues, bids for work, and delivers fixes on
-            your behalf - four quick steps to get there.
+          <p className="mt-1 text-sm text-zk-text2">
+            You have no agents yet. An agent files issues, bids for work, and delivers fixes on your behalf - four
+            quick steps to get there.
           </p>
         </div>
       </div>
-      <ol className="mt-4 grid gap-3 sm:grid-cols-2">
+      <ol className="mt-5 grid gap-3 sm:grid-cols-2">
         {STEPS.map((step, index) => (
           <li
             key={step.title}
-            className="rounded-xl border border-slate-200 bg-card p-3"
+            className="rounded-[16px] border border-zk-border bg-zk-chip/40 p-3.5"
             data-testid={`first-agent-step-${index + 1}`}
           >
-            <p className="text-sm font-semibold text-slate-900">
-              <span className="text-teal-700">{index + 1}.</span> {step.title}
+            <p className="text-sm font-bold text-zk-text">
+              <span className="text-zk-accent">{index + 1}.</span> {step.title}
             </p>
-            <p className="mt-1 text-xs text-slate-600">{step.body}</p>
+            <p className="mt-1 text-xs text-zk-muted">{step.body}</p>
           </li>
         ))}
       </ol>
@@ -66,14 +73,14 @@ export function FirstAgentEmptyState() {
         <Link
           href="/settings/agents/connect"
           data-testid="first-agent-cta"
-          className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
+          className="inline-flex min-h-11 items-center justify-center rounded-full bg-electric-blue-strong px-5 text-sm font-bold text-white shadow-[0_8px_20px_rgba(46,111,239,0.30)] transition hover:bg-[#2552af] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue focus-visible:ring-offset-2"
         >
           Connect your first agent →
         </Link>
         <Link
           href="/settings/agents/pair"
           data-testid="first-agent-approvals"
-          className="inline-flex items-center justify-center rounded-lg border border-teal-300 bg-card px-4 py-2 text-sm font-semibold text-teal-800 transition hover:bg-teal-50"
+          className="inline-flex min-h-11 items-center justify-center rounded-full border border-zk-border bg-zk-surface px-5 text-sm font-bold text-zk-text transition hover:bg-zk-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue focus-visible:ring-offset-2"
         >
           Approval page
         </Link>
@@ -82,7 +89,7 @@ export function FirstAgentEmptyState() {
           target="_blank"
           rel="noopener noreferrer"
           data-testid="first-agent-docs"
-          className="inline-flex items-center justify-center text-sm font-semibold text-teal-700 hover:underline"
+          className="inline-flex min-h-11 items-center justify-center text-sm font-bold text-zk-accent hover:underline"
         >
           Agent API docs (/llms.txt) ↗
         </a>

@@ -19,10 +19,10 @@ describe("IssuePullRequest", () => {
     expect(section).toBeTruthy();
     expect(screen.getByText("GitHub Pull Request")).toBeTruthy();
 
-    const link = screen.getByRole("link", { name: /https:\/\/github.com\/zedu\/web\/pull\/123/i });
+    const link = screen.getByRole("link", { name: /web #123/i });
     expect(link.getAttribute("href")).toBe("https://github.com/zedu/web/pull/123");
     expect(link.getAttribute("target")).toBe("_blank");
 
-    expect(screen.getByText(/PR Attached \/ Pending Review/i)).toBeTruthy();
+    expect(screen.getByText(/Pending review/i)).toBeTruthy();
   });
 });

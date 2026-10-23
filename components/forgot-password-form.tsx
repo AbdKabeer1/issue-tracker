@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 import { FieldError, useFieldErrors } from "@/components/ui/field-errors";
 import { Input } from "@/components/ui/input";
 
+const fieldClass =
+  "h-12 rounded-xl border-zk-border bg-zk-surface text-zk-text shadow-none placeholder:text-zk-muted focus:border-electric-blue focus:ring-electric-blue/20";
+
 export function ForgotPasswordForm() {
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -17,7 +20,7 @@ export function ForgotPasswordForm() {
   return (
     <form
       ref={formRef}
-      className="space-y-4"
+      className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
         setError(null);
@@ -39,7 +42,7 @@ export function ForgotPasswordForm() {
       }}
     >
       <div className="space-y-1.5">
-        <label htmlFor="email" className="text-sm font-medium text-slate-700">
+        <label htmlFor="email" className="text-sm font-medium text-zk-text2">
           Email
         </label>
         <Input
@@ -51,21 +54,26 @@ export function ForgotPasswordForm() {
           placeholder="you@example.com"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
+          className={fieldClass}
           {...errs.attrs("email")}
         />
         <FieldError formId={errs.formId} field="email" errors={errs.fieldErrors} />
       </div>
       {error ? (
-        <p className="text-sm text-red-600" role="alert">
+        <p className="text-sm text-zk-bad-fg" role="alert">
           {error}
         </p>
       ) : null}
       {success ? (
-        <p className="text-sm text-teal-800" role="status">
+        <p className="text-sm text-zk-ok-fg" role="status">
           {success}
         </p>
       ) : null}
-      <Button type="submit" className="w-full" disabled={pending}>
+      <Button
+        type="submit"
+        className="h-12 w-full bg-electric-blue-strong text-base font-bold text-white hover:bg-electric-blue focus-visible:ring-electric-blue"
+        disabled={pending}
+      >
         {pending ? "Sending…" : "Send reset link"}
       </Button>
     </form>

@@ -162,10 +162,10 @@ export function AssigneeCombobox({
           // Keep the list open while clicking an option in it.
           if (!listRef.current?.contains(event.relatedTarget as Node)) close();
         }}
-        className={`w-full rounded-lg border border-slate-300 bg-card py-2 pl-3 pr-8 text-sm text-slate-900 shadow-xs placeholder:text-slate-400 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 ${inputClassName}`}
+        className={`w-full rounded-lg border border-zk-border bg-zk-surface py-2 pl-3 pr-8 text-sm text-zk-text shadow-xs placeholder:text-zk-muted focus:border-electric-blue-strong focus:outline-none focus:ring-1 focus:ring-electric-blue-strong ${inputClassName}`}
       />
       <svg
-        className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+        className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zk-muted"
         viewBox="0 0 20 20"
         fill="currentColor"
         aria-hidden="true"
@@ -184,10 +184,10 @@ export function AssigneeCombobox({
           role="listbox"
           aria-label="Assignees"
           tabIndex={-1}
-          className="absolute left-0 z-30 mt-1 max-h-64 w-full min-w-[14rem] overflow-y-auto rounded-lg border border-slate-200 bg-card py-1 text-sm shadow-lg"
+          className="absolute left-0 z-30 mt-1 max-h-64 w-full min-w-[14rem] overflow-y-auto rounded-lg border border-zk-border bg-zk-surface py-1 text-sm shadow-lg"
         >
           {options.length === 0 ? (
-            <li className="px-3 py-2 text-slate-500" role="presentation">
+            <li className="px-3 py-2 text-zk-muted" role="presentation">
               No people match “{query.trim()}”
             </li>
           ) : (
@@ -210,8 +210,8 @@ export function AssigneeCombobox({
                   onMouseEnter={() => setActiveIndex(index)}
                   onClick={() => choose(option)}
                   className={`flex cursor-pointer items-center justify-between gap-2 px-3 py-2 ${
-                    active ? "bg-teal-50 text-teal-900" : "text-slate-800"
-                  } ${option.id ? "" : "text-slate-500"}`}
+                    active ? "bg-zk-tint text-zk-accent" : "text-zk-text"
+                  } ${option.id ? "" : "text-zk-muted"}`}
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     {option.person ? (
@@ -220,7 +220,7 @@ export function AssigneeCombobox({
                     <span className="truncate">{option.label}</span>
                   </span>
                   {selected ? (
-                    <svg className="h-4 w-4 shrink-0 text-teal-700" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <svg className="h-4 w-4 shrink-0 text-zk-accent" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                       <path
                         fillRule="evenodd"
                         d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.5 7.5a1 1 0 0 1-1.4 0L3.3 9.7a1 1 0 1 1 1.4-1.4l3.8 3.8 6.8-6.8a1 1 0 0 1 1.4 0Z"

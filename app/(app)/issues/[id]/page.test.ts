@@ -193,6 +193,7 @@ describe("BugDetailPage conditional user query (#349)", () => {
     expect(pageSourceFresh).toContain('id="conversation"');
     expect(pageSourceFresh).toContain('id="comments"');
     expect(pageSourceFresh).toContain("Conversation ({comments.visibleCount})");
+    expect(pageSourceFresh).toContain("IssueSectionTabs");
   });
 
   describe("runtime execution", () => {

@@ -70,13 +70,13 @@ export function TwoFactorSettings({
   }
 
   const errorLine = error ? (
-    <p id="two-factor-error" className="text-sm text-red-600" role="alert">
+    <p id="two-factor-error" className="text-sm text-zk-bad-fg" role="alert">
       {error}
     </p>
   ) : null;
 
   const signedOutLine = signedOutOthers ? (
-    <p className="text-sm text-slate-600" role="status">
+    <p className="text-sm text-zk-muted" role="status">
       {SIGNED_OUT_NOTICE}
     </p>
   ) : null;
@@ -93,15 +93,15 @@ export function TwoFactorSettings({
   if (step.name === "codes") {
     return (
       <div className="mt-4 space-y-3">
-        <p className="text-sm font-medium text-slate-900">{step.heading}</p>
+        <p className="text-sm font-medium text-zk-text">{step.heading}</p>
         {signedOutLine}
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-zk-muted">
           Save these backup codes somewhere safe, like a password manager. Each one works once if you
           lose your phone. <strong>They are shown only now.</strong>
         </p>
         <ul
           aria-label="Backup codes"
-          className="grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-sm text-slate-900"
+          className="grid grid-cols-2 gap-2 rounded-lg border border-zk-border bg-zk-tint p-3 font-mono text-sm text-zk-text"
         >
           {step.codes.map((code) => (
             <li key={code}>{code}</li>
@@ -140,17 +140,17 @@ export function TwoFactorSettings({
           );
         }}
       >
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-zk-muted">
           1. Scan this with your authenticator app, or type the key in by hand.
         </p>
         {/* A data: URL made on the server from the otpauth link. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={step.qr} alt="QR code for your authenticator app" width={220} height={220} />
-        <p className="text-sm text-slate-600">
-          Key: <code className="select-all font-mono text-xs text-slate-900">{step.secret}</code>
+        <p className="text-sm text-zk-muted">
+          Key: <code className="select-all font-mono text-xs text-zk-text">{step.secret}</code>
         </p>
         <div className="space-y-1.5">
-          <label htmlFor="confirm-code" className="text-sm font-medium text-slate-700">
+          <label htmlFor="confirm-code" className="text-sm font-medium text-zk-text2">
             2. Enter the 6-digit code it shows
           </label>
           <Input
@@ -188,7 +188,7 @@ export function TwoFactorSettings({
         }}
       >
         <div className="space-y-1.5">
-          <label htmlFor="setup-password" className="text-sm font-medium text-slate-700">
+          <label htmlFor="setup-password" className="text-sm font-medium text-zk-text2">
             Confirm your password to continue
           </label>
           <PasswordInput
@@ -233,14 +233,14 @@ export function TwoFactorSettings({
           }
         }}
       >
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-zk-muted">
           {disabling
             ? "Turning this off means your password alone signs you in again."
             : "This replaces your old backup codes, which stop working."}{" "}
           Confirm it is you:
         </p>
         <div className="space-y-1.5">
-          <label htmlFor="reauth-password" className="text-sm font-medium text-slate-700">
+          <label htmlFor="reauth-password" className="text-sm font-medium text-zk-text2">
             Password
           </label>
           <PasswordInput
@@ -252,7 +252,7 @@ export function TwoFactorSettings({
           />
         </div>
         <div className="space-y-1.5">
-          <label htmlFor="reauth-code" className="text-sm font-medium text-slate-700">
+          <label htmlFor="reauth-code" className="text-sm font-medium text-zk-text2">
             Authenticator or backup code
           </label>
           <Input
@@ -279,15 +279,15 @@ export function TwoFactorSettings({
   return (
     <div className="mt-4 space-y-3">
       {signedOutLine}
-      <p className="text-sm text-slate-900">
+      <p className="text-sm text-zk-text">
         Status:{" "}
-        <span className={enabled ? "font-semibold text-teal-800" : "font-semibold text-slate-700"}>
+        <span className={enabled ? "font-semibold text-zk-ok-fg" : "font-semibold text-zk-text2"}>
           {enabled ? "On" : "Off"}
         </span>
       </p>
       {enabled ? (
         <>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-zk-muted">
             {backupCodesLeft} backup {backupCodesLeft === 1 ? "code" : "codes"} left.
             {backupCodesLeft <= 2 ? " Make new ones soon." : ""}
           </p>

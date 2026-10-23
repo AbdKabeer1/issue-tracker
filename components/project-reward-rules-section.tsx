@@ -18,32 +18,32 @@ export function ProjectRewardRulesSection({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+    <div className="rounded-xl border border-zk-border bg-zk-tint/70 p-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-slate-900">Reward & Points Rules</h3>
-          <p className="text-xs text-slate-500">
+          <h3 className="text-sm font-semibold text-zk-text">Reward & Points Rules</h3>
+          <p className="text-xs text-zk-muted">
             Define custom reward bounties for solvers, reporters, and reviewers in this project.
           </p>
         </div>
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className="text-xs font-medium text-teal-700 hover:text-teal-800"
+          className="text-xs font-medium text-zk-accent hover:text-zk-accent"
         >
           {open ? "Hide custom rules" : "Customize rewards"}
         </button>
       </div>
 
       {open ? (
-        <div className="mt-4 space-y-4 border-t border-slate-200 pt-3">
+        <div className="mt-4 space-y-4 border-t border-zk-border pt-3">
           <div>
-            <span className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
+            <span className="block text-xs font-semibold uppercase tracking-wider text-zk-text2">
               Solver points by severity
             </span>
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div>
-                <label htmlFor="solverPointsLow" className="block text-xs text-slate-500">Low</label>
+                <label htmlFor="solverPointsLow" className="block text-xs text-zk-muted">Low</label>
                 <Input
                   id="solverPointsLow"
                   type="number"
@@ -56,7 +56,7 @@ export function ProjectRewardRulesSection({
                 />
               </div>
               <div>
-                <label htmlFor="solverPointsMedium" className="block text-xs text-slate-500">Medium</label>
+                <label htmlFor="solverPointsMedium" className="block text-xs text-zk-muted">Medium</label>
                 <Input
                   id="solverPointsMedium"
                   type="number"
@@ -69,7 +69,7 @@ export function ProjectRewardRulesSection({
                 />
               </div>
               <div>
-                <label htmlFor="solverPointsHigh" className="block text-xs text-slate-500">High</label>
+                <label htmlFor="solverPointsHigh" className="block text-xs text-zk-muted">High</label>
                 <Input
                   id="solverPointsHigh"
                   type="number"
@@ -82,7 +82,7 @@ export function ProjectRewardRulesSection({
                 />
               </div>
               <div>
-                <label htmlFor="solverPointsCritical" className="block text-xs text-slate-500">Critical</label>
+                <label htmlFor="solverPointsCritical" className="block text-xs text-zk-muted">Critical</label>
                 <Input
                   id="solverPointsCritical"
                   type="number"
@@ -99,10 +99,10 @@ export function ProjectRewardRulesSection({
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label htmlFor="reporterPoints" className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
+              <label htmlFor="reporterPoints" className="block text-xs font-semibold uppercase tracking-wider text-zk-text2">
                 Reporter bounty
               </label>
-              <p className="text-xs text-slate-500">Points awarded when an issue is confirmed.</p>
+              <p className="text-xs text-zk-muted">Points awarded when an issue is confirmed.</p>
               <Input
                 id="reporterPoints"
                 type="number"
@@ -115,10 +115,10 @@ export function ProjectRewardRulesSection({
               />
             </div>
             <div>
-              <label htmlFor="reviewerPoints" className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
+              <label htmlFor="reviewerPoints" className="block text-xs font-semibold uppercase tracking-wider text-zk-text2">
                 Reviewer bounty
               </label>
-              <p className="text-xs text-slate-500">Points awarded for accepted merge verdicts.</p>
+              <p className="text-xs text-zk-muted">Points awarded for accepted merge verdicts.</p>
               <Input
                 id="reviewerPoints"
                 type="number"
@@ -133,10 +133,10 @@ export function ProjectRewardRulesSection({
           </div>
 
           <div>
-            <label htmlFor="rewardGuidelines" className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
+            <label htmlFor="rewardGuidelines" className="block text-xs font-semibold uppercase tracking-wider text-zk-text2">
               Earning guidelines / notes
             </label>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-zk-muted">
               Ways points can be earned in this project (e.g. security audits, test suites).
             </p>
             <Textarea

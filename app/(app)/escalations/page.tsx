@@ -96,88 +96,65 @@ export default async function EscalationsPage({
     return s ? `/escalations?${s}` : "/escalations";
   };
 
+  const statusPill = (active: boolean) =>
+    `inline-flex h-9 items-center rounded-full px-3.5 text-xs font-semibold transition-colors ${
+      active
+        ? "bg-electric-blue-strong text-white"
+        : "bg-zk-chip text-zk-text2 hover:bg-zk-tint"
+    }`;
+
+  const typePill = (active: boolean) =>
+    `inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold transition-colors ${
+      active
+        ? "bg-deep-ocean text-white"
+        : "bg-zk-chip text-zk-muted hover:bg-zk-tint hover:text-zk-text"
+    }`;
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Agent Escalations</h1>
-          <p className="text-sm text-slate-600">
+          <h1 className="text-2xl font-extrabold tracking-tight text-zk-text">Agent Escalations</h1>
+          <p className="mt-1 text-sm text-zk-muted">
             Incoming blockers, authorization requests, and questions requiring human guidance.
           </p>
         </div>
         {pendingCount > 0 ? (
-          <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 border border-amber-200">
-            <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+          <span className="inline-flex items-center gap-1.5 self-start rounded-full border border-zk-warn-bd bg-zk-warn-bg px-3 py-1 text-xs font-semibold text-zk-warn-fg">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-zk-warn-fg" />
             {pendingCount} waiting for resolution
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800 border border-emerald-200">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-zk-ok-bg px-3 py-1 text-xs font-semibold text-zk-ok-fg">
+            <span className="h-2 w-2 rounded-full bg-zk-ok-fg" />
             All escalations unblocked
           </span>
         )}
       </div>
 
-      {/* Filter Tabs */}
-      <div className="space-y-3 rounded-lg border border-slate-200 bg-card p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Status</span>
-          <div className="flex items-center gap-1">
-            <Link
-              href={makeQuery("waiting", typeFilter)}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                statusFilter === "waiting"
-                  ? "bg-teal-700 text-white"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-              }`}
-            >
+      <div className="space-y-3 rounded-[20px] border border-zk-border bg-zk-surface p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zk-divider pb-3">
+          <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-zk-accent">Status</span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Link href={makeQuery("waiting", typeFilter)} className={statusPill(statusFilter === "waiting")}>
               Waiting ({pendingCount})
             </Link>
-            <Link
-              href={makeQuery("answered", typeFilter)}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                statusFilter === "answered"
-                  ? "bg-teal-700 text-white"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-              }`}
-            >
+            <Link href={makeQuery("answered", typeFilter)} className={statusPill(statusFilter === "answered")}>
               Resolved ({rows.length - pendingCount})
             </Link>
-            <Link
-              href={makeQuery("all", typeFilter)}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                statusFilter === "all"
-                  ? "bg-teal-700 text-white"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-              }`}
-            >
+            <Link href={makeQuery("all", typeFilter)} className={statusPill(statusFilter === "all")}>
               All ({rows.length})
             </Link>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
-          <span className="mr-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Type</span>
-          <Link
-            href={makeQuery(statusFilter, "all")}
-            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-              typeFilter === "all"
-                ? "bg-slate-800 text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
+          <span className="mr-2 text-[11px] font-bold uppercase tracking-[0.06em] text-zk-accent">Type</span>
+          <Link href={makeQuery(statusFilter, "all")} className={typePill(typeFilter === "all")}>
             All Types
           </Link>
           {ALL_TYPES.map((t) => (
-            <Link
-              key={t}
-              href={makeQuery(statusFilter, t)}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                typeFilter === t
-                  ? "bg-slate-800 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
+            <Link key={t} href={makeQuery(statusFilter, t)} className={typePill(typeFilter === t)}>
               {t}
             </Link>
           ))}
@@ -185,40 +162,40 @@ export default async function EscalationsPage({
       </div>
 
       {filtered.length > 0 ? (
-        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-card shadow-xs">
+        <ul className="divide-y divide-zk-divider overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface">
           {filtered.map((item) => (
-            <li key={`${item.kind}-${item.id}`} className="p-4 sm:p-5 space-y-3">
+            <li key={`${item.kind}-${item.id}`} className="space-y-3 p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <EscalationTypeBadge type={item.escalationType} />
-                  <Link href={item.href} className="font-medium text-teal-800 hover:underline">
+                  <Link href={item.href} className="font-semibold text-zk-accent hover:underline">
                     {item.kind === "redesign" ? item.title : item.agentName}
                   </Link>
                   {item.kind === "redesign" ? (
-                    <span className="text-xs text-slate-500">{item.agentName}</span>
+                    <span className="text-xs text-zk-muted">{item.agentName}</span>
                   ) : null}
-                  <span className="text-xs text-slate-400">•</span>
-                  <LocalTime date={item.createdAt} className="text-xs text-slate-500" />
+                  <span className="text-xs text-zk-muted">•</span>
+                  <LocalTime date={item.createdAt} className="text-xs text-zk-muted" />
                 </div>
                 {item.isWaiting ? (
-                  <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 border border-amber-200">
+                  <span className="inline-flex items-center rounded-full border border-zk-warn-bd bg-zk-warn-bg px-2.5 py-0.5 text-xs font-semibold text-zk-warn-fg">
                     Awaiting response
                   </span>
                 ) : (
-                  <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 border border-emerald-200">
+                  <span className="inline-flex items-center rounded-full bg-zk-ok-bg px-2.5 py-0.5 text-xs font-semibold text-zk-ok-fg">
                     Resolved
                   </span>
                 )}
               </div>
 
-              <p className="text-sm text-slate-800 whitespace-pre-wrap">{item.body}</p>
+              <p className="whitespace-pre-wrap text-sm text-zk-text">{item.body}</p>
 
               {item.bug ? (
                 <div className="text-xs">
-                  <span className="text-slate-500">Linked Issue: </span>
+                  <span className="text-zk-muted">Linked Issue: </span>
                   <Link
                     href={`/issues/${item.bug.id}`}
-                    className="font-medium text-teal-700 hover:underline"
+                    className="font-semibold text-zk-accent hover:underline"
                   >
                     #{item.bug.title}
                   </Link>
@@ -226,24 +203,21 @@ export default async function EscalationsPage({
               ) : null}
 
               {item.isWaiting && item.kind === "question" ? (
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zk-divider pt-2">
                   <QuickResolveButtons escalationId={item.id} />
-                  <Link
-                    href={item.href}
-                    className="text-xs font-medium text-teal-700 hover:underline"
-                  >
+                  <Link href={item.href} className="text-xs font-semibold text-zk-accent hover:underline">
                     Write custom response →
                   </Link>
                 </div>
               ) : item.isWaiting ? (
-                <div className="pt-2 border-t border-slate-100">
-                  <Link href={item.href} className="text-xs font-medium text-teal-700 hover:underline">
+                <div className="border-t border-zk-divider pt-2">
+                  <Link href={item.href} className="text-xs font-semibold text-zk-accent hover:underline">
                     Review proposal →
                   </Link>
                 </div>
               ) : item.kind === "question" ? (
-                <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-700 border border-slate-100 space-y-1">
-                  <span className="font-semibold text-slate-600">Your resolution:</span>
+                <div className="space-y-1 rounded-[12px] border border-zk-border bg-zk-chip/60 p-3 text-xs text-zk-text2">
+                  <span className="font-semibold text-zk-muted">Your resolution:</span>
                   <p className="whitespace-pre-wrap">{item.answer}</p>
                 </div>
               ) : null}
@@ -251,9 +225,9 @@ export default async function EscalationsPage({
           ))}
         </ul>
       ) : (
-        <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center bg-card">
-          <p className="text-sm font-medium text-slate-700">No escalations match this filter.</p>
-          <p className="mt-1 text-xs text-slate-500">
+        <div className="rounded-[20px] border border-dashed border-zk-border bg-zk-surface p-8 text-center">
+          <p className="text-sm font-semibold text-zk-text">No escalations match this filter.</p>
+          <p className="mt-1 text-xs text-zk-muted">
             Agents ask for blockers, permissions, and guidance here.
           </p>
         </div>

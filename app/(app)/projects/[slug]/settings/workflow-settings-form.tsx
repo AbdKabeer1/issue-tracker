@@ -39,7 +39,7 @@ export function WorkflowSettingsForm({
     <form action={action} className="space-y-4">
       <input type="hidden" name="slug" value={slug} />
       {result && !result.ok ? (
-        <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">
+        <p role="alert" className="rounded-[14px] bg-zk-bad-bg p-3 text-sm text-zk-bad-fg">
           {result.error}
         </p>
       ) : null}
@@ -48,7 +48,7 @@ export function WorkflowSettingsForm({
           const limits = WORKFLOW_LIMITS[field.name];
           const error = result && !result.ok ? result.fieldErrors?.[field.name] : undefined;
           return (
-            <label key={field.name} htmlFor={`workflow-${field.name}`} className="block space-y-1 text-sm font-medium text-slate-800">
+            <label key={field.name} htmlFor={`workflow-${field.name}`} className="block space-y-1 text-sm font-medium text-zk-text">
               {field.label}
               <Input
                 id={`workflow-${field.name}`}
@@ -63,15 +63,15 @@ export function WorkflowSettingsForm({
                 aria-describedby={`workflow-${field.name}-hint`}
                 aria-invalid={error ? true : undefined}
               />
-              <span id={`workflow-${field.name}-hint`} className="block text-xs font-normal text-slate-500">
+              <span id={`workflow-${field.name}-hint`} className="block text-xs font-normal text-zk-muted">
                 {field.hint} ({limits.min}–{limits.max})
               </span>
-              {error ? <span className="block text-xs text-red-700">{error}</span> : null}
+              {error ? <span className="block text-xs text-zk-bad-fg">{error}</span> : null}
             </label>
           );
         })}
       </div>
-      <label className="flex items-start gap-2 text-sm text-slate-800">
+      <label className="flex items-start gap-2 text-sm text-zk-text">
         <input
           type="checkbox"
           name="autoMerge"
@@ -80,7 +80,7 @@ export function WorkflowSettingsForm({
         />
         <span>
           Automatically merge accepted fixes
-          <span className="block text-xs font-normal text-slate-500">
+          <span className="block text-xs font-normal text-zk-muted">
             When off, tracker acceptance still records the fix; a person merges the pull request.
           </span>
         </span>
@@ -89,7 +89,7 @@ export function WorkflowSettingsForm({
         <Button type="submit" disabled={pending}>
           {pending ? "Saving…" : "Save workflow"}
         </Button>
-        {result?.ok ? <span role="status" className="text-sm text-emerald-800">Workflow saved.</span> : null}
+        {result?.ok ? <span role="status" className="text-sm text-zk-ok-fg">Workflow saved.</span> : null}
       </div>
     </form>
   );

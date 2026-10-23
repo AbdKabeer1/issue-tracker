@@ -41,11 +41,11 @@ describe("PairForm standing instructions (#431)", () => {
     const box = screen.getByLabelText(/Standing instructions/) as HTMLTextAreaElement;
     fireEvent.change(box, { target: { value: "Owner-edited brief." } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve agent" }));
     await screen.findByText("Choose a project in this workspace.");
     expect((screen.getByLabelText(/Standing instructions/) as HTMLTextAreaElement).value).toBe("Owner-edited brief.");
 
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve agent" }));
     await waitFor(() => expect(pairAgentAction).toHaveBeenCalledTimes(2));
     const retried = pairAgentAction.mock.calls[1][1] as FormData;
     expect(retried.get("instructions")).toBe("Owner-edited brief.");
@@ -56,8 +56,29 @@ describe("PairForm standing instructions (#431)", () => {
     renderForm("Focus on desktop bugs.");
     fireEvent.change(screen.getByLabelText(/Standing instructions/), { target: { value: "" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve agent" }));
     await screen.findByText("Choose a project in this workspace.");
     expect((screen.getByLabelText(/Standing instructions/) as HTMLTextAreaElement).value).toBe("");
   });
+
+  it("auto-formats the pairing code and disables Continue until valid", () => {
+    render(
+      <PairForm
+        initialCode=""
+        pending={null}
+        unknownCode={false}
+        projects={[{ id: "project_1", name: "Ziki" } as never]}
+        activeProjectId="project_1"
+        instructionsMaxLength={4000}
+      />,
+    );
+    const input = screen.getByLabelText(/Pairing code/) as HTMLInputElement;
+    const continueBtn = screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement;
+    expect(continueBtn.disabled).toBe(true);
+
+    fireEvent.change(input, { target: { value: "abcd2345" } });
+    expect(input.value).toBe("ABCD-2345");
+    expect(continueBtn.disabled).toBe(false);
+  });
+
 });
