@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
+vi.mock("@/lib/auth-helpers", () => ({
+  requireSuperAdmin: vi.fn(),
+  requireUser: vi.fn(),
+  requireAdmin: vi.fn(),
+}));
+
 const db = vi.hoisted(() => ({
   agentApiKey: { findUnique: vi.fn() },
   agentAuditEvent: { create: vi.fn() },
@@ -51,13 +57,14 @@ beforeEach(() => {
 
 describe("POST /api/v1/issues/{id}/heartbeat (#556)", () => {
   it("succeeds for an agent that has exhausted its write budget", async () => {
+    const now = Date.now();
     // Spend the entire standard 30-write budget directly, the same counter
     // the create/comment/validate routes use.
     for (let i = 0; i < 30; i++) {
-      const result = await consumeAgentBudget({ id: "agent-a", burst: false, burstUntil: null }, "write", i);
+      const result = await consumeAgentBudget({ id: "agent-a", burst: false, burstUntil: null }, "write", now);
       expect(result.allowed).toBe(true);
     }
-    expect((await consumeAgentBudget({ id: "agent-a", burst: false, burstUntil: null }, "write", 31)).allowed).toBe(false);
+    expect((await consumeAgentBudget({ id: "agent-a", burst: false, burstUntil: null }, "write", now)).allowed).toBe(false);
 
     const response = await heartbeat(request(), context);
     expect(response.status).toBe(200);
@@ -70,12 +77,13 @@ describe("POST /api/v1/issues/{id}/heartbeat (#556)", () => {
     expect(response.headers.get("ratelimit-budget")).toBe("heartbeat");
     expect(response.headers.get("x-ratelimit-limit")).toBe("120");
     // The write budget is untouched by a heartbeat call.
-    expect((await consumeAgentBudget({ id: "agent-a", burst: false, burstUntil: null }, "write", 1)).remaining).toBe(29);
+    expect((await consumeAgentBudget({ id: "agent-a", burst: false, burstUntil: null }, "write")).remaining).toBe(29);
   });
 
   it("honestly reports a 429 with heartbeat's own limit once that budget (not write) is exhausted", async () => {
+    const now = Date.now();
     for (let i = 0; i < 120; i++) {
-      const result = await consumeAgentBudget({ id: "agent-a", burst: false, burstUntil: null }, "heartbeat", i);
+      const result = await consumeAgentBudget({ id: "agent-a", burst: false, burstUntil: null }, "heartbeat", now);
       expect(result.allowed).toBe(true);
     }
     const response = await heartbeat(request(), context);
