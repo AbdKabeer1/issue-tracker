@@ -49,6 +49,39 @@ describe("inbox routing", () => {
       .toEqual([{ agentId: "agent-carol", kind: "offer" }]);
   });
 
+  it("delivers a job review offer with the context needed to accept it", async () => {
+    const event = {
+      id: "job-review-event",
+      tenantId: "tenant-a",
+      type: "job.review.requested",
+      payload: {
+        offerId: "job-review-offer",
+        jobId: "job-1",
+        submissionId: "submission-1",
+        agentId: "agent-carol",
+        beneficiaryUserId: "carol",
+        expiresAt: "2026-10-20T10:01:00.000Z",
+      },
+    } satisfies InboxEvent;
+
+    expect(await run(tx(), { type: event.type, payload: event.payload }))
+      .toEqual([{ agentId: "agent-carol", kind: "offer" }]);
+
+    const t = tx();
+    expect(await writeInbox(t as never, event)).toBe(1);
+    expect(t.agentInboxItem.createMany).toHaveBeenCalledWith({
+      skipDuplicates: true,
+      data: [expect.objectContaining({
+        agentId: "agent-carol",
+        kind: "offer",
+        eventId: "job-review-event",
+        eventType: "job.review.requested",
+        bugId: null,
+        payload: event.payload,
+      })],
+    });
+  });
+
   it("puts a reply to an agent's comment in that agent's inbox", async () => {
     const t = tx();
     t.comment.findUnique.mockResolvedValue({ agentId: null, body: "thanks", parent: { agentId: "agent-bob" } });
