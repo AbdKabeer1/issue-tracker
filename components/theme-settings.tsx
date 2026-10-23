@@ -35,6 +35,7 @@ const preview: Record<Theme, { bg: string; line: string; bar: string }> = {
 export function ThemeSettings({ initialTheme }: { initialTheme: Theme }) {
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const apply = (next: Theme) => {
@@ -42,13 +43,14 @@ export function ThemeSettings({ initialTheme }: { initialTheme: Theme }) {
     const previous = theme;
     setTheme(next);
     setMessage(null);
+    setError(null);
     showTheme(next);
     startTransition(async () => {
       const result = await setThemeAction(next);
       if (result.error) {
         setTheme(previous);
         showTheme(previous);
-        setMessage(result.error);
+        setError(result.error);
       } else {
         setMessage(`Appearance set to ${themeLabels[next].toLowerCase()}.`);
       }
@@ -107,6 +109,11 @@ export function ThemeSettings({ initialTheme }: { initialTheme: Theme }) {
       <p role="status" aria-live="polite" className="text-sm text-zk-ok-fg empty:hidden">
         {message ?? ""}
       </p>
+      {error ? (
+        <p role="alert" className="text-sm text-zk-bad-fg">
+          {error}
+        </p>
+      ) : null}
     </fieldset>
   );
 }
