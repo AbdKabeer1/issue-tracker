@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient, Status } from "@prisma/client";
 import { statusChangedSummary } from "@/lib/activity-log";
 import { publish } from "@/lib/agent-api/events";
 import { prisma } from "@/lib/prisma";
@@ -13,6 +13,14 @@ export function verifyGithubSignature(rawBody: string, signature: string | null,
 }
 
 /**
+ * Only work that is still going on can be resolved by a merge. A closed issue
+ * was finished on purpose (won't fix, duplicate, superseded), so a merge, or a
+ * webhook redelivered later, must leave it closed, as the agent resolve API
+ * does (#624).
+ */
+const UNFINISHED: Status[] = ["open", "in_progress"];
+
+/**
  * #474: a pull request linked to an issue was merged on GitHub, not through
  * Ziki's merge gate. Resolve the issue, close its claim and tell pollers.
  * Solver points are not awarded here: they follow the review gates (a merger's
@@ -23,18 +31,18 @@ export async function resolveIssuesForMergedPullRequest(
   db: PrismaClient = prisma,
 ): Promise<string[]> {
   const bugs = await db.bug.findMany({
-    where: { pullRequestUrl, isDeleted: false, status: { not: "resolved" } },
+    where: { pullRequestUrl, isDeleted: false, status: { in: UNFINISHED } },
     select: { id: true, tenantId: true, projectId: true, status: true, assigneeId: true, reporterId: true,
       claims: { where: { status: "active", releasedAt: null }, select: { id: true, agentId: true, beneficiaryUserId: true } } },
   });
   const resolved: string[] = [];
   for (const bug of bugs) {
     const didResolve = await db.$transaction(async (tx) => {
-      // Re-check inside the transaction: a person resolving the issue, or a
-      // redelivered webhook, may have won since the read above. Then there is
-      // nothing to record or publish.
+      // Re-check inside the transaction: a person resolving or closing the
+      // issue, or a redelivered webhook, may have won since the read above.
+      // Then there is nothing to record or publish.
       const changed = await tx.bug.updateMany({
-        where: { id: bug.id, status: { not: "resolved" } },
+        where: { id: bug.id, status: { in: UNFINISHED } },
         data: { status: "resolved" },
       });
       if (changed.count !== 1) return false;
