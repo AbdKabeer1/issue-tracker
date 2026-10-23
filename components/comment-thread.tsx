@@ -25,6 +25,12 @@ import { useToast } from "@/components/ui/toast";
 type AttachmentsByComment = Record<string, AttachmentView[]>;
 /** Each author's role in the issue's organization, by user id (#489). */
 type OrganizationRoles = Record<string, OrganizationRole>;
+type ViewerProps = {
+  currentUserId?: string;
+  currentUserRole?: AppRole | null;
+  tenantAdmin?: boolean;
+  readOnly?: boolean;
+};
 
 type UserOption = { id: string; name: string };
 
@@ -110,15 +116,6 @@ function commentCardStyle(type?: CommentType | null): string {
   const resolved: CommentType = type && type in commentTypeVisual ? type : "comment";
   return `border-zk-border bg-zk-surface border-l-4 ${commentTypeVisual[resolved].accent}`;
 }
-
-type ViewerProps = {
-  currentUserId?: string;
-  currentUserRole?: AppRole | null;
-  /** Owner, admin, or site super admin of this issue's organization. */
-  tenantAdmin?: boolean;
-  /** Deleted issues: show comments but no reply, edit, delete or new comment. */
-  readOnly?: boolean;
-};
 
 function CommentEditForm({
   comment,
