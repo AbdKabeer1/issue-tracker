@@ -352,5 +352,38 @@ describe("CreateBugForm project-scoped drafts (#729)", () => {
     });
     expect(mockStorage["draft:u1:bug:new"]).toBeUndefined();
   });
+
+  it("clears the project draft after creation redirects to the new issue (#583)", async () => {
+    mockedCreateBug.mockRejectedValueOnce({
+      digest: "NEXT_REDIRECT;push;/issues/583;303;",
+    });
+    renderForm({ ...defaultProps, currentUserId: "u1", projectId: "project-a" });
+
+    await fillValidForm(user);
+    await waitFor(() => {
+      expect(mockStorage["draft:u1:bug:new:project-a"]).toBeDefined();
+    });
+
+    await user.click(submitButton());
+    await waitFor(() => expect(mockedCreateBug).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(mockStorage["draft:u1:bug:new:project-a"]).toBeUndefined();
+    });
+  });
+
+  it("preserves the project draft when creation fails", async () => {
+    mockedCreateBug.mockResolvedValueOnce({ error: "Could not create issue." });
+    renderForm({ ...defaultProps, currentUserId: "u1", projectId: "project-a" });
+
+    await fillValidForm(user);
+    await waitFor(() => {
+      expect(mockStorage["draft:u1:bug:new:project-a"]).toBeDefined();
+    });
+
+    await user.click(submitButton());
+    await waitFor(() => expect(screen.getByRole("alert")).toBeDefined());
+
+    expect(mockStorage["draft:u1:bug:new:project-a"]).toBeDefined();
+  });
 });
 

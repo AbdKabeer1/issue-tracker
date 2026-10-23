@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CharacterCounter } from "@/components/ui/character-counter";
 import { AttachmentPicker } from "@/components/attachment-picker";
 import { SimilarIssues } from "@/components/similar-issues";
+import { isIssueCreatedRedirect } from "@/lib/issue-created-redirect";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { useFormDraft } from "@/components/use-form-draft";
 import { buildDraftKey } from "@/lib/form-drafts";
@@ -162,6 +163,7 @@ export function CreateIssueForm({
               clearDraft();
             }
           } catch (error) {
+            if (isIssueCreatedRedirect(error)) clearDraft();
             unstable_rethrow(error);
             setError(submitFailureMessage(navigator.onLine));
             setCanRetry(true);
