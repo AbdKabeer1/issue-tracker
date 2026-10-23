@@ -79,7 +79,7 @@ function LinkRow({ href, label, external }: { href: string; label: string; exter
 export default async function SettingsPage(
   props: {
     searchParams?: Promise<{ section?: string | string[] }>;
-  } = {},
+  },
 ) {
   const user = await requireUser();
   const params = props.searchParams ? await props.searchParams : {};

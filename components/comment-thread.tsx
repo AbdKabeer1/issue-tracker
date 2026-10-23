@@ -27,6 +27,13 @@ type OrganizationRoles = Record<string, OrganizationRole>;
 
 type UserOption = { id: string; name: string };
 
+type ViewerProps = {
+  currentUserId?: string;
+  currentUserRole?: AppRole | null;
+  tenantAdmin?: boolean;
+  readOnly?: boolean;
+};
+
 const commentTypeVisual: Record<
   CommentType,
   { label: string; chip: string; accent: string; filterOn: string }
