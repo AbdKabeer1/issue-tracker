@@ -36,7 +36,7 @@ export function ZeduOwnerForm() {
 
   return (
     <form ref={formRef} action={action} className="mt-4 space-y-1" noValidate>
-      <label htmlFor="zedu-owner-email" className="block text-sm font-medium text-slate-800">
+      <label htmlFor="zedu-owner-email" className="block text-sm font-medium text-zk-text">
         Member&apos;s email
       </label>
       <div className="flex flex-col gap-2 sm:flex-row">
@@ -59,7 +59,7 @@ export function ZeduOwnerForm() {
       </div>
       <FieldError formId={FORM_ID} field="email" errors={fieldErrors} />
       {formError ? (
-        <p role="alert" className="text-sm text-red-700">
+        <p role="alert" className="text-sm text-zk-bad-fg">
           {formError}
         </p>
       ) : null}

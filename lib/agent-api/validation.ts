@@ -6,11 +6,11 @@ import { reviewerConflict, reviewerCreditConflict, type ReviewedBug } from "@/li
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { award, type PointAward } from "@/lib/points/award";
-import { confirmationReviewerSourceKey, CONFIRMATION_REVIEWER_POINTS, DUPLICATE_MARKER_POINTS, duplicateMarkerSourceKey, pointSourceKey, reviewerPointsAt, TRIAGER_CLEAR_POINTS, triagerClearSourceKey } from "@/lib/points/rules";
+import { confirmationReviewerSourceKey, duplicateMarkerSourceKey, pointSourceKey, reviewerPointsAt, triagerClearSourceKey } from "@/lib/points/rules";
 import {
   calculateReporterPoints,
-  getProjectRewardConfig,
 } from "@/lib/points/project-rewards";
+import { getPlatformRewardConfig, getProjectRewardConfig } from "@/lib/points/platform-rewards";
 import { severities } from "@/lib/validations/issue";
 import { publish } from "@/lib/agent-api/events";
 import { promoteEarnedReviewer } from "@/lib/agents/promotion";
@@ -309,6 +309,7 @@ export async function standingValidationAwards(db: Db, bugId: string): Promise<P
   const bug = await db.bug.findUnique({ where: { id: bugId }, select: reviewedBugSelect });
   if (!bug) return [];
 
+  const platform = await getPlatformRewardConfig(db);
   const entries: PointAward[] = [];
 
   // Confirming reviewers are skipped entirely once a duplicate marker stands,
@@ -321,7 +322,7 @@ export async function standingValidationAwards(db: Db, bugId: string): Promise<P
         userId,
         bugId,
         role: "reviewer",
-        points: reviewerPointsAt(index, CONFIRMATION_REVIEWER_POINTS),
+        points: reviewerPointsAt(index, platform.confirmationReviewer),
         sourceKey: confirmationReviewerSourceKey(bugId, userId),
       });
     });
@@ -366,7 +367,7 @@ export async function standingValidationAwards(db: Db, bugId: string): Promise<P
         userId: v.onBehalfOfUserId,
         bugId,
         role: "triager",
-        points: TRIAGER_CLEAR_POINTS,
+        points: platform.triagerClear,
         sourceKey: triagerClearSourceKey(bugId, v.onBehalfOfUserId),
       });
     } else if (v.verdict === "accept") {
@@ -375,7 +376,7 @@ export async function standingValidationAwards(db: Db, bugId: string): Promise<P
         userId: v.onBehalfOfUserId,
         bugId,
         role: "triager",
-        points: DUPLICATE_MARKER_POINTS,
+        points: platform.duplicateMarker,
         sourceKey: duplicateMarkerSourceKey(bugId, v.onBehalfOfUserId),
       });
     }
@@ -570,9 +571,10 @@ export async function submitValidation(
         (await isTriageCleared(tx, bug));
       const newlyConfirmed = confirmed && !wasConfirmed;
       const duplicate = await isDuplicate(tx, bug);
+      const platform = await getPlatformRewardConfig(tx);
       if (body.kind === "duplicate") {
-        // The duplicate pass pays its own role (#428): 1 for clearing a report
-        // as not a duplicate (triage permission required), 5 for marking a real one.
+        // The duplicate pass pays its own role (#428): clear vs mark amounts
+        // come from platform settings (hard-coded fallback).
         const sourceKey =
           body.verdict === "reject" && hasLevel(agent.level, "triager")
             ? triagerClearSourceKey(bug.id, onBehalfOfUserId)
@@ -585,7 +587,7 @@ export async function submitValidation(
             userId: onBehalfOfUserId,
             bugId: bug.id,
             role: "triager",
-            points: body.verdict === "reject" ? TRIAGER_CLEAR_POINTS : DUPLICATE_MARKER_POINTS,
+            points: body.verdict === "reject" ? platform.triagerClear : platform.duplicateMarker,
             sourceKey,
           });
         }
@@ -599,7 +601,7 @@ export async function submitValidation(
             userId: onBehalfOfUserId,
             bugId: bug.id,
             role: "reviewer",
-            points: reviewerPointsAt(index, CONFIRMATION_REVIEWER_POINTS),
+            points: reviewerPointsAt(index, platform.confirmationReviewer),
             sourceKey: confirmationReviewerSourceKey(bug.id, onBehalfOfUserId),
           });
         }

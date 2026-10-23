@@ -84,5 +84,13 @@ describe("point rules (#428)", () => {
     it("never shows a negative percentage after a correction", () => {
       expect(pointsProgress(-10, 0).pointsPercent).toBe(0);
     });
+
+    it("uses an optional target override for the goal", () => {
+      expect(pointsProgress(100, 0, 200)).toMatchObject({
+        pointsPercent: 50,
+        targetMet: false,
+      });
+      expect(pointsProgress(200, 0, 200).targetMet).toBe(true);
+    });
   });
 });

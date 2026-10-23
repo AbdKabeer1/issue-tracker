@@ -37,14 +37,14 @@ export function AgentResolvedNotice({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-zk-border bg-zk-chip px-3 py-2 text-sm text-zk-text">
       <p className="min-w-0 flex-1">
         Resolved by <span className="font-medium">{resolution.agentName}</span> because{" "}
         <a
           href={resolution.pullRequestUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="font-medium text-teal-800 underline underline-offset-2 break-all"
+          className="font-medium text-zk-accent underline underline-offset-2 break-all"
         >
           its pull request
         </a>{" "}
@@ -56,7 +56,7 @@ export function AgentResolvedNotice({
         </Button>
       ) : null}
       {error ? (
-        <p role="alert" className="w-full text-sm text-red-700">
+        <p role="alert" className="w-full text-sm text-zk-bad-fg">
           {error}
         </p>
       ) : null}

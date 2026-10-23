@@ -7,10 +7,14 @@ import {
   removeMemberAction,
   setMemberRoleAction,
 } from "@/app/actions/membership";
-import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import type { OrganizationRole } from "@/lib/organization-role";
+
+const secondaryBtn =
+  "inline-flex min-h-10 items-center justify-center rounded-full border border-zk-border bg-zk-surface px-3.5 py-2 text-sm font-bold text-zk-text transition hover:bg-zk-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue focus-visible:ring-offset-2 disabled:opacity-50";
+const dangerBtn =
+  "inline-flex min-h-10 items-center justify-center rounded-full border border-zk-bad-bd bg-zk-surface px-3.5 py-2 text-sm font-bold text-zk-bad-fg transition hover:bg-zk-bad-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zk-bad-fg focus-visible:ring-offset-2 disabled:opacity-50";
 
 /**
  * Promote, demote, remove, or leave inside one organization.
@@ -76,9 +80,9 @@ export function MemberRoleActions({
     buttons.push({
       key: "promote",
       node: (
-        <Button
+        <button
           type="button"
-          variant="secondary"
+          className={secondaryBtn}
           disabled={pending}
           onClick={async () => {
             const confirmed = await confirm({
@@ -94,7 +98,7 @@ export function MemberRoleActions({
           }}
         >
           {pending ? "Promoting…" : "Promote to admin"}
-        </Button>
+        </button>
       ),
     });
   }
@@ -103,9 +107,9 @@ export function MemberRoleActions({
     buttons.push({
       key: "demote",
       node: (
-        <Button
+        <button
           type="button"
-          variant="secondary"
+          className={secondaryBtn}
           disabled={pending}
           onClick={async () => {
             const confirmed = await confirm({
@@ -122,7 +126,7 @@ export function MemberRoleActions({
           }}
         >
           {pending ? "Removing…" : "Remove admin"}
-        </Button>
+        </button>
       ),
     });
   }
@@ -131,9 +135,9 @@ export function MemberRoleActions({
     buttons.push({
       key: "demote-owner",
       node: (
-        <Button
+        <button
           type="button"
-          variant="secondary"
+          className={secondaryBtn}
           disabled={pending}
           onClick={async () => {
             const confirmed = await confirm({
@@ -150,7 +154,7 @@ export function MemberRoleActions({
           }}
         >
           {pending ? "Updating…" : "Demote to admin"}
-        </Button>
+        </button>
       ),
     });
   }
@@ -159,9 +163,9 @@ export function MemberRoleActions({
     buttons.push({
       key: "remove",
       node: (
-        <Button
+        <button
           type="button"
-          variant="danger-secondary"
+          className={dangerBtn}
           disabled={pending}
           onClick={async () => {
             const confirmed = await confirm({
@@ -178,7 +182,7 @@ export function MemberRoleActions({
           }}
         >
           Remove
-        </Button>
+        </button>
       ),
     });
   }
@@ -187,9 +191,9 @@ export function MemberRoleActions({
     buttons.push({
       key: "leave",
       node: (
-        <Button
+        <button
           type="button"
-          variant="danger-secondary"
+          className={dangerBtn}
           disabled={pending}
           onClick={async () => {
             const confirmed = await confirm({
@@ -203,13 +207,13 @@ export function MemberRoleActions({
           }}
         >
           Leave
-        </Button>
+        </button>
       ),
     });
   }
 
   if (buttons.length === 0) {
-    return <span className="text-xs text-slate-500">—</span>;
+    return <span className="text-xs text-zk-muted">—</span>;
   }
 
   return (
@@ -220,7 +224,7 @@ export function MemberRoleActions({
         ))}
       </div>
       {error ? (
-        <p className="text-xs text-red-600" role="alert">
+        <p className="text-xs text-zk-bad-fg" role="alert">
           {error}
         </p>
       ) : null}

@@ -46,8 +46,8 @@ export function SimilarIssues({ title, id }: { title: string; id?: string }) {
   return (
     <div id={id} aria-live="polite" className="empty:hidden">
       {issues.length > 0 ? (
-        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <p className="text-xs font-medium text-amber-900">
+        <div className="mt-2 rounded-lg border border-zk-warn-bd bg-zk-warn-bg p-3">
+          <p className="text-xs font-medium text-zk-warn-fg">
             Is it one of these? Voting on an existing issue helps more than a duplicate.
           </p>
           <ul className="mt-2 space-y-1.5">
@@ -57,15 +57,15 @@ export function SimilarIssues({ title, id }: { title: string; id?: string }) {
                   href={issuePath(issue.number)}
                   target="_blank"
                   rel="noopener"
-                  className="min-w-0 break-words font-medium text-teal-800 hover:underline"
+                  className="min-w-0 break-words font-medium text-zk-accent hover:underline"
                 >
-                  <span className="font-normal text-slate-500 tabular-nums">
+                  <span className="font-normal text-zk-muted tabular-nums">
                     {formatIssueNumber(issue.number)}
                   </span>{" "}
                   {issue.title}
                   <span className="sr-only"> (opens in a new tab)</span>
                 </a>
-                <span className="text-xs text-slate-600">
+                <span className="text-xs text-zk-text2">
                   {statusLabels[issue.status]} · {issue.voteCount} vote{issue.voteCount === 1 ? "" : "s"}
                 </span>
               </li>

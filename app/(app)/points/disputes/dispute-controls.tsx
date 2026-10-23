@@ -26,8 +26,8 @@ export function DisputeControls({ dispute }: { dispute: DisputeView }) {
     <form action={action} className="space-y-2" noValidate>
       <input type="hidden" name="disputeId" value={dispute.id} />
       <div className="space-y-1">
-        <label htmlFor={`note-${dispute.id}`} className="block text-xs font-medium text-slate-600">
-          Note <span className="font-normal text-slate-500">(optional)</span>
+        <label htmlFor={`note-${dispute.id}`} className="block text-xs font-medium text-zk-text2">
+          Note <span className="font-normal text-zk-muted">(optional)</span>
         </label>
         <Textarea
           id={`note-${dispute.id}`}
@@ -74,7 +74,7 @@ export function DisputeControls({ dispute }: { dispute: DisputeView }) {
         </Button>
       </div>
       {error ? (
-        <p className="text-sm text-red-700" role="alert">
+        <p className="text-sm text-zk-bad-fg" role="alert">
           {error.error}
         </p>
       ) : null}

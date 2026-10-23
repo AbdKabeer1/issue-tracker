@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { setThemeAction } from "@/app/actions/settings";
-import { THEMES, themeAttribute, themeDescriptions, themeLabels, type Theme } from "@/lib/theme";
+import { THEMES, themeAttribute, themeLabels, type Theme } from "@/lib/theme";
 
 /** Shows a choice on this page at once, before the server has saved it, and syncs localStorage (#659). */
 function showTheme(theme: Theme) {
@@ -15,6 +15,22 @@ function showTheme(theme: Theme) {
   } catch {}
 }
 
+const themeHints: Record<Theme, string> = {
+  system: "Match this device",
+  light: "Always light",
+  dark: "Always dark",
+};
+
+const preview: Record<Theme, { bg: string; line: string; bar: string }> = {
+  system: {
+    bg: "linear-gradient(90deg, #FFFFFF 50%, #0E1A33 50%)",
+    line: "#8FA3C4",
+    bar: "#3978F6",
+  },
+  light: { bg: "#FFFFFF", line: "#E3E8F2", bar: "#3978F6" },
+  dark: { bg: "#0E1A33", line: "#22324F", bar: "#3978F6" },
+};
+
 /** Settings → Appearance (#277): System / Light / Dark. */
 export function ThemeSettings({ initialTheme }: { initialTheme: Theme }) {
   const [theme, setTheme] = useState<Theme>(initialTheme);
@@ -22,10 +38,10 @@ export function ThemeSettings({ initialTheme }: { initialTheme: Theme }) {
   const [pending, startTransition] = useTransition();
 
   const apply = (next: Theme) => {
+    if (next === theme) return;
     const previous = theme;
     setTheme(next);
     setMessage(null);
-    // Straight away on this page; the server renders it from now on.
     showTheme(next);
     startTransition(async () => {
       const result = await setThemeAction(next);
@@ -40,35 +56,55 @@ export function ThemeSettings({ initialTheme }: { initialTheme: Theme }) {
   };
 
   return (
-    <fieldset className="mt-4" disabled={pending}>
+    <fieldset className="space-y-4" disabled={pending}>
       <legend className="sr-only">Appearance</legend>
-      <div className="grid gap-2 sm:grid-cols-3">
-        {THEMES.map((option) => (
-          <label
-            key={option}
-            className={`flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm transition ${
-              theme === option
-                ? "border-teal-600 bg-teal-50 ring-1 ring-teal-600"
-                : "border-slate-200 hover:bg-slate-50"
-            }`}
-          >
-            <input
-              type="radio"
-              name="theme"
-              value={option}
-              checked={theme === option}
-              onChange={() => apply(option)}
-              className="mt-0.5 h-4 w-4 border-slate-300 text-teal-600 focus:ring-teal-500"
-            />
-            <span>
-              <span className="block font-medium text-slate-900">{themeLabels[option]}</span>
-              <span className="block text-xs text-slate-600">{themeDescriptions[option]}</span>
-            </span>
-          </label>
-        ))}
+      <div
+        role="radiogroup"
+        aria-label="Theme"
+        className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(170px,1fr))]"
+      >
+        {THEMES.map((option) => {
+          const on = theme === option;
+          const pv = preview[option];
+          return (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => apply(option)}
+              className={`flex flex-col gap-3 rounded-2xl p-3 text-left font-inherit transition ${
+                on
+                  ? "border-2 border-electric-blue-strong bg-zk-tint"
+                  : "m-px border border-zk-border bg-zk-surface"
+              }`}
+            >
+              <span
+                className="box-border flex h-[72px] w-full flex-col gap-1.5 rounded-[10px] border border-zk-border p-2.5"
+                style={{ background: pv.bg }}
+                aria-hidden="true"
+              >
+                <span className="h-2 w-[40%] rounded-full" style={{ background: pv.bar }} />
+                <span className="h-1.5 w-[80%] rounded-full" style={{ background: pv.line }} />
+                <span className="h-1.5 w-[60%] rounded-full" style={{ background: pv.line }} />
+              </span>
+              <span className="flex w-full items-center justify-between gap-2">
+                <span className="flex min-w-0 flex-col gap-0.5 text-left">
+                  <span className="text-sm font-bold text-zk-text">{themeLabels[option]}</span>
+                  <span className="text-xs text-zk-muted">{themeHints[option]}</span>
+                </span>
+                <span
+                  className={`box-border h-[18px] w-[18px] shrink-0 rounded-full ${
+                    on ? "border-[5px] border-electric-blue-strong bg-white" : "border-2 border-zk-border"
+                  }`}
+                  aria-hidden="true"
+                />
+              </span>
+            </button>
+          );
+        })}
       </div>
-      <p className="mt-2 text-xs text-slate-500">Saved to your account, so it follows you to every device.</p>
-      <p role="status" aria-live="polite" className="mt-1 text-sm text-emerald-700 empty:hidden">
+      <p role="status" aria-live="polite" className="text-sm text-zk-ok-fg empty:hidden">
         {message ?? ""}
       </p>
     </fieldset>

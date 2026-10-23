@@ -72,7 +72,7 @@ export function VoterOverflowBadge({ label, overflow, size }: VoterOverflowBadge
             event.currentTarget.blur();
           }
         }}
-        className={`relative inline-flex cursor-default items-center justify-center rounded-full bg-slate-100 font-bold text-slate-600 ring-card tabular-nums select-none outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+        className={`relative inline-flex cursor-default items-center justify-center rounded-full bg-zk-chip font-bold text-zk-text2 ring-card tabular-nums select-none outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
           isSm ? "h-5 w-5 text-[9px] ring-1" : "h-7 w-7 text-xs ring-2"
         }`}
       >
@@ -81,7 +81,7 @@ export function VoterOverflowBadge({ label, overflow, size }: VoterOverflowBadge
       <span
         id={popoverId}
         aria-hidden="true"
-        className={`absolute top-full left-0 z-20 mt-1.5 max-h-60 w-max max-w-56 overflow-y-auto rounded-lg border border-slate-200 bg-card px-3 py-2 text-left text-xs font-normal text-slate-700 shadow-lg transition-opacity group-hover/overflow:visible group-hover/overflow:opacity-100 group-focus-within/overflow:visible group-focus-within/overflow:opacity-100 ${
+        className={`absolute top-full left-0 z-20 mt-1.5 max-h-60 w-max max-w-56 overflow-y-auto rounded-lg border border-zk-border bg-zk-surface px-3 py-2 text-left text-xs font-normal text-zk-text2 shadow-lg transition-opacity group-hover/overflow:visible group-hover/overflow:opacity-100 group-focus-within/overflow:visible group-focus-within/overflow:opacity-100 ${
           open ? "visible opacity-100" : "invisible opacity-0"
         }`}
       >
@@ -93,7 +93,7 @@ export function VoterOverflowBadge({ label, overflow, size }: VoterOverflowBadge
           ))}
         </ul>
         {overflow.others > 0 ? (
-          <p className={`text-slate-500 ${overflow.names.length > 0 ? "mt-1" : ""}`}>
+          <p className={`text-zk-muted ${overflow.names.length > 0 ? "mt-1" : ""}`}>
             {overflow.names.length > 0 ? "and " : ""}
             {overflow.others} {overflow.others === 1 ? "other" : "others"}
           </p>

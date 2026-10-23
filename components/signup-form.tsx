@@ -8,6 +8,9 @@ import { FieldError, useFieldErrors } from "@/components/ui/field-errors";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 
+const fieldClass =
+  "h-12 rounded-xl border-zk-border bg-zk-surface text-zk-text shadow-none placeholder:text-zk-muted focus:border-electric-blue focus:ring-electric-blue/20";
+
 export function SignupForm({
   callbackUrl = "/dashboard",
 }: {
@@ -25,7 +28,7 @@ export function SignupForm({
   return (
     <form
       ref={formRef}
-      className="space-y-4"
+      className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
         setError(null);
@@ -52,7 +55,7 @@ export function SignupForm({
       }}
     >
       <div className="space-y-1.5">
-        <label htmlFor="name" className="text-sm font-medium text-slate-700">
+        <label htmlFor="name" className="text-sm font-medium text-zk-text2">
           Name
         </label>
         <Input
@@ -65,12 +68,13 @@ export function SignupForm({
           placeholder="Ada Lovelace"
           value={name}
           onChange={(event) => setName(event.target.value)}
+          className={fieldClass}
           {...errs.attrs("name")}
         />
         <FieldError formId={errs.formId} field="name" errors={errs.fieldErrors} />
       </div>
       <div className="space-y-1.5">
-        <label htmlFor="email" className="text-sm font-medium text-slate-700">
+        <label htmlFor="email" className="text-sm font-medium text-zk-text2">
           Email
         </label>
         <Input
@@ -82,15 +86,13 @@ export function SignupForm({
           placeholder="you@example.com"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
+          className={fieldClass}
           {...errs.attrs("email")}
         />
         <FieldError formId={errs.formId} field="email" errors={errs.fieldErrors} />
       </div>
       <div className="space-y-1.5">
-        <label
-          htmlFor="password"
-          className="text-sm font-medium text-slate-700"
-        >
+        <label htmlFor="password" className="text-sm font-medium text-zk-text2">
           Password
         </label>
         <PasswordInput
@@ -102,15 +104,13 @@ export function SignupForm({
           placeholder="At least 8 characters"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
+          className={fieldClass}
           {...errs.attrs("password")}
         />
         <FieldError formId={errs.formId} field="password" errors={errs.fieldErrors} />
       </div>
       <div className="space-y-1.5">
-        <label
-          htmlFor="confirmPassword"
-          className="text-sm font-medium text-slate-700"
-        >
+        <label htmlFor="confirmPassword" className="text-sm font-medium text-zk-text2">
           Confirm password
         </label>
         <PasswordInput
@@ -122,16 +122,25 @@ export function SignupForm({
           minLength={8}
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
+          className={fieldClass}
           {...errs.attrs("confirmPassword")}
         />
-        <FieldError formId={errs.formId} field="confirmPassword" errors={errs.fieldErrors} />
+        <FieldError
+          formId={errs.formId}
+          field="confirmPassword"
+          errors={errs.fieldErrors}
+        />
       </div>
       {error ? (
-        <p className="text-sm text-red-600" role="alert">
+        <p className="text-sm text-zk-bad-fg" role="alert">
           {error}
         </p>
       ) : null}
-      <Button type="submit" className="w-full" disabled={pending}>
+      <Button
+        type="submit"
+        className="h-12 w-full bg-electric-blue-strong text-base font-bold text-white hover:bg-electric-blue focus-visible:ring-electric-blue"
+        disabled={pending}
+      >
         {pending ? "Creating account…" : "Create account"}
       </Button>
     </form>

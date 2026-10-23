@@ -30,7 +30,7 @@ export function AcceptInviteForm({
         {pending ? "Joining…" : `Join ${tenantName}`}
       </Button>
       {result?.error ? (
-        <p role="alert" className="text-sm text-red-700">
+        <p role="alert" className="text-sm text-zk-bad-fg">
           {result.error}
         </p>
       ) : null}

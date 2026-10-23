@@ -22,10 +22,16 @@ export function MarkAllReadButton({ allWorkspaces = false }: { allWorkspaces?: b
 
   return (
     <div className="space-y-1">
-      <Button type="button" variant="secondary" disabled={pending} onClick={markAllRead}>
+      <Button
+        type="button"
+        variant="secondary"
+        disabled={pending}
+        onClick={markAllRead}
+        className="h-10 rounded-full border border-zk-border bg-zk-surface px-4 font-semibold text-zk-text hover:bg-zk-chip"
+      >
         {pending ? "Marking…" : "Mark all as read"}
       </Button>
-      {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
+      {error ? <p role="alert" className="text-sm text-zk-bad-fg">{error}</p> : null}
     </div>
   );
 }

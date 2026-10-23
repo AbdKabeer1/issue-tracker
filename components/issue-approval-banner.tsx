@@ -69,27 +69,27 @@ export function IssueApprovalBanner({
   return (
     <section
       aria-label="Human approval required"
-      className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"
+      className="flex flex-col gap-3 rounded-xl border border-zk-warn-bd bg-zk-warn-bg p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"
     >
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <span className="text-lg" aria-hidden="true">
             ⚠️
           </span>
-          <h2 className="text-sm font-semibold text-amber-950">
+          <h2 className="text-sm font-semibold text-zk-warn-fg">
             Human approval required
           </h2>
         </div>
-        <p className="text-sm text-amber-900">
+        <p className="text-sm text-zk-warn-fg">
           This issue requires workspace approval {stageLabel}.
           {ruleReasons.length ? (
-            <span className="ml-1 text-xs text-amber-800">
+            <span className="ml-1 text-xs text-zk-warn-fg">
               ({ruleReasons.join(", ")})
             </span>
           ) : null}
         </p>
         {error ? (
-          <p role="alert" className="text-xs font-medium text-red-700">
+          <p role="alert" className="text-xs font-medium text-zk-bad-fg">
             {error}
           </p>
         ) : null}
@@ -110,13 +110,13 @@ export function IssueApprovalBanner({
               type="button"
               disabled={pending}
               onClick={() => handleDecision("rejected")}
-              className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-card px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex items-center justify-center rounded-lg border border-zk-border bg-zk-surface px-3 py-1.5 text-xs font-semibold text-zk-text2 shadow-xs hover:bg-zk-chip disabled:opacity-50"
             >
               {pending ? "Saving…" : "Reject"}
             </button>
           </>
         ) : (
-          <span className="text-xs italic text-amber-800">
+          <span className="text-xs italic text-zk-warn-fg">
             Waiting for workspace owner or admin decision
           </span>
         )}

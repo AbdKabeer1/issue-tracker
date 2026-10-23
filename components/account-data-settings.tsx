@@ -3,27 +3,19 @@
 import { useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
 import { deleteAccountAction } from "@/app/actions/account";
-import { Button } from "@/components/ui/button";
-import { useConfirm } from "@/components/ui/confirm-dialog";
 import { isRedirectError } from "@/lib/toast-store";
 
 export function AccountDataSettings() {
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
   const [pending, startTransition] = useTransition();
-  const confirm = useConfirm();
 
-  const handleDelete = async () => {
+  const deleteLocked = confirmText !== "DELETE" || pending;
+
+  const handleDelete = () => {
+    if (confirmText !== "DELETE") return;
     setError(null);
-    const confirmed = await confirm({
-      title: "Delete your account?",
-      body:
-        "This action is permanent and cannot be undone. Your authored issues and comments will be anonymised, your agents and keys will be revoked, and your organization memberships will be removed.",
-      confirmLabel: "Delete account",
-      tone: "danger",
-    });
-
-    if (!confirmed) return;
-
     startTransition(async () => {
       try {
         const result = await deleteAccountAction();
@@ -40,67 +32,105 @@ export function AccountDataSettings() {
   };
 
   return (
-    <div className="space-y-6 pt-2">
-      <div>
-        <h3 className="text-sm font-medium text-slate-900">Download your data</h3>
-        <p className="mt-1 text-sm text-slate-600">
-          Export a complete JSON file of issues you&apos;ve filed, comments you&apos;ve posted,
-          votes you&apos;ve cast, and points you&apos;ve earned.
-        </p>
-        <div className="mt-3">
-          <a
-            href="/api/user/export"
-            download
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-card px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              className="h-4 w-4 text-slate-500"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
-              />
-            </svg>
-            Download my data
-          </a>
+    <div className="flex flex-col gap-4">
+      <section className="flex flex-wrap items-center justify-between gap-4 rounded-[20px] border border-zk-border bg-zk-surface p-6">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 sm:min-w-[320px]">
+          <h2 className="m-0 text-lg font-bold text-zk-text">Download your data</h2>
+          <p className="m-0 text-[13px] leading-relaxed text-zk-muted">
+            Export a complete JSON file of issues you&apos;ve filed, comments you&apos;ve posted,
+            votes you&apos;ve cast and points you&apos;ve earned.
+          </p>
         </div>
-      </div>
+        <a
+          href="/api/user/export"
+          download
+          className="inline-flex h-11 items-center gap-2 rounded-full border border-zk-border bg-zk-surface px-[18px] text-sm font-bold text-zk-text transition hover:bg-zk-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue focus-visible:ring-offset-2"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+          </svg>
+          Download my data
+        </a>
+      </section>
 
-      <div className="border-t border-slate-200 pt-6">
-        <h3 className="text-sm font-medium text-rose-700">Delete account</h3>
-        <p className="mt-1 text-sm text-slate-600">
-          Permanently delete your user account. Your authored content will be safely anonymised,
-          your agents and API keys revoked, and all organization memberships removed.
-          You cannot delete your account while you are the sole owner of an organization.
-        </p>
+      <section className="flex flex-col gap-3.5 rounded-[20px] border border-zk-bad-bd bg-zk-bad-soft p-6">
+        <div className="flex items-start gap-3.5">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-zk-bad-bg text-zk-bad-fg">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+            </svg>
+          </span>
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <h2 className="m-0 text-lg font-bold text-zk-bad-fg">Delete account</h2>
+            <p className="m-0 text-[13px] leading-relaxed text-zk-text2">
+              Permanently delete your account. Your authored content is anonymised, your agents and
+              API keys are revoked, and all organization memberships are removed. You can&apos;t
+              delete your account while you&apos;re the sole owner of an organization.
+            </p>
+          </div>
+        </div>
 
         {error ? (
           <div
             role="alert"
-            className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"
+            className="rounded-[14px] border border-zk-bad-bd bg-zk-surface p-3 text-sm text-zk-bad-fg"
           >
             {error}
           </div>
         ) : null}
 
-        <div className="mt-3">
-          <Button
+        {!confirming ? (
+          <button
             type="button"
-            variant="danger"
             disabled={pending}
-            onClick={handleDelete}
+            onClick={() => {
+              setConfirming(true);
+              setConfirmText("");
+              setError(null);
+            }}
+            className="h-11 self-start rounded-full border border-zk-bad-bd bg-zk-surface px-5 text-sm font-bold text-zk-bad-fg transition hover:bg-zk-bad-bg/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zk-bad-fg focus-visible:ring-offset-2 disabled:opacity-50"
           >
-            {pending ? "Deleting account..." : "Delete account"}
-          </Button>
-        </div>
-      </div>
+            Delete account…
+          </button>
+        ) : (
+          <div className="flex flex-col gap-2.5 rounded-[14px] border border-zk-bad-bd bg-zk-surface p-4">
+            <label className="flex flex-col gap-1.5 text-[13px] font-bold text-zk-text">
+              Type DELETE to confirm
+              <input
+                type="text"
+                value={confirmText}
+                onChange={(event) => setConfirmText(event.target.value)}
+                autoComplete="off"
+                className="h-11 rounded-xl border border-zk-bad-bd bg-zk-surface px-3.5 text-sm tracking-[0.06em] text-zk-text outline-none focus-visible:ring-2 focus-visible:ring-zk-bad-fg"
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirming(false);
+                  setConfirmText("");
+                }}
+                className="h-[42px] rounded-full border border-zk-border bg-zk-surface px-[18px] font-bold text-zk-text hover:bg-zk-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleteLocked}
+                onClick={handleDelete}
+                className={`h-[42px] rounded-full border-0 px-[18px] text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zk-bad-fg focus-visible:ring-offset-2 ${
+                  deleteLocked
+                    ? "cursor-not-allowed bg-zk-chip text-zk-muted"
+                    : "bg-[#B4233F] text-white hover:brightness-105"
+                }`}
+              >
+                {pending ? "Deleting…" : "Permanently delete"}
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

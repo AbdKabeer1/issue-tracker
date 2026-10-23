@@ -26,7 +26,7 @@ export function InviteLinkForm() {
 
   return (
     <form ref={formRef} action={action} className="mt-4 space-y-1" noValidate>
-      <label htmlFor="invite-link-input" className="block text-sm font-medium text-slate-800">
+      <label htmlFor="invite-link-input" className="block text-sm font-medium text-zk-text">
         Invite link
       </label>
       <div className="flex flex-col gap-2 sm:flex-row">

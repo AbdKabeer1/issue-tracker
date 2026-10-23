@@ -168,7 +168,7 @@ export function ThemeToggle({
       aria-label={label}
       title={label}
       data-testid="theme-toggle"
-      className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-white/5 hover:text-porcelain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-tint focus-visible:ring-offset-2 focus-visible:ring-offset-deep-ocean ${className}`}
+      className={`relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-zk-border bg-zk-surface text-zk-text transition-colors hover:bg-zk-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue focus-visible:ring-offset-2 ${className}`}
     >
       {isDark ? <SunIcon /> : <MoonIcon />}
     </button>
@@ -182,13 +182,9 @@ export function AccountThemeSelector() {
   const [theme, setTheme, pending] = useTheme();
 
   return (
-    <div
-      className="flex items-center justify-between px-2 py-1.5 text-xs"
-      role="group"
-      aria-label="Theme preference"
-    >
-      <span className="font-medium text-slate-600">Theme</span>
-      <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 p-0.5">
+    <div className="flex flex-col gap-2 px-3 py-2.5" role="group" aria-label="Theme preference">
+      <span className="text-xs font-bold uppercase tracking-[0.06em] text-zk-muted">Theme</span>
+      <div className="grid grid-cols-3 gap-0.5 rounded-xl bg-zk-seg p-1">
         {THEMES.map((opt) => (
           <button
             key={opt}
@@ -196,10 +192,8 @@ export function AccountThemeSelector() {
             disabled={pending}
             onClick={() => setTheme(opt)}
             aria-pressed={theme === opt}
-            className={`rounded px-1.5 py-0.5 text-xs font-medium transition-colors ${
-              theme === opt
-                ? "bg-card text-slate-900 shadow-xs ring-1 ring-slate-200"
-                : "text-slate-600 hover:text-slate-900"
+            className={`inline-flex h-9 items-center justify-center rounded-lg text-xs font-semibold ${
+              theme === opt ? "bg-zk-surface text-zk-text" : "text-zk-text2 hover:text-zk-text"
             }`}
           >
             {themeLabels[opt]}

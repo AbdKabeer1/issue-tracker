@@ -33,14 +33,13 @@ test.describe("no sideways scroll", () => {
     });
   }
 
-  test("the menu button replaces the full header below 1024px", async ({ page }) => {
+  test("the sidebar stays on the page at phone and desktop widths", async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 900 });
     await page.goto("/issues");
-    await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "Main" })).toBeHidden();
+    await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open menu" })).toHaveCount(0);
 
     await page.setViewportSize({ width: 1280, height: 900 });
-    await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Open menu" })).toBeHidden();
+    await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();
   });
 });
