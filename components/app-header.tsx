@@ -320,9 +320,10 @@ export function AppHeader({
           New issue
         </Link>
 
-        {/* min-w-0, not shrink-0: the group must be able to narrow so its own
-            flex-wrap can break the chips onto rows at 360px (no sideways scroll). */}
-        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+        {/* Phones: min-w-0 lets the group narrow so its flex-wrap breaks the
+            chips onto rows at 360px (no sideways scroll). From sm up it keeps
+            shrink-0 so the account controls are never squeezed. */}
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 sm:shrink-0 sm:gap-3">
           <PointsChip
             points={points}
             solvedTasks={solvedTasks}
