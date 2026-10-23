@@ -1,18 +1,24 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { switchActiveRoleAction } from "@/app/actions/auth";
 import { selectTenantAction } from "@/app/(app)/tenants/actions";
 import { labelInNameMismatches } from "@/lib/a11y/label-in-name";
 import { AppHeader } from "./app-header";
+import { AppSidebar } from "./app-sidebar";
+import { recentNotificationsAction } from "@/app/actions/notifications";
+import { BASE_PATH } from "@/lib/base-path";
+
+vi.mock("@/app/actions/notifications", () => ({ recentNotificationsAction: vi.fn() }));
 
 vi.mock("next/image", () => ({
   default: (props: { alt?: string }) => <span data-testid="img" aria-hidden={props.alt === ""} />,
 }));
 
+const navigation = vi.hoisted(() => ({ pathname: "/issues" }));
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/issues",
+  usePathname: () => navigation.pathname,
 }));
 
 vi.mock("@/app/(app)/tenants/actions", () => ({
@@ -34,35 +40,137 @@ const selectTenant = vi.mocked(selectTenantAction);
 afterEach(() => cleanup());
 
 beforeEach(() => {
+  vi.mocked(recentNotificationsAction).mockReset().mockResolvedValue([]);
+  navigation.pathname = "/issues";
   switchRole.mockReset();
   switchRole.mockResolvedValue({ error: "refused" });
 });
 
+describe("notification preview (#615)", () => {
+  it("toggles without navigation and preserves the tooltip and unread label", async () => {
+    const user = userEvent.setup();
+    renderHeader({ unreadCount: 3 });
+    const bell = screen.getByRole("button", { name: "Notifications, 3 unread" });
+    const location = window.location.href;
+    expect(bell.title).toBe("Notifications, 3 unread");
+    expect(recentNotificationsAction).not.toHaveBeenCalled();
+    await user.click(bell);
+    expect(bell.getAttribute("aria-expanded")).toBe("true");
+    expect(await screen.findByText("No notifications yet.")).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("region", { name: "Recent notifications" }));
+    expect(window.location.href).toBe(location);
+    expect(screen.getByRole("link", { name: "View all notifications" }).getAttribute("href")).toBe("/notifications");
+    await user.click(bell);
+    expect(bell.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("renders summaries, timestamps, unread state and the existing read-on-open links", async () => {
+    vi.mocked(recentNotificationsAction).mockResolvedValue([
+      { id: "n1", title: "Issue assigned to you", createdAt: new Date("2026-10-22T12:00:00Z"), readAt: null },
+      { id: "n2", title: "New comment", createdAt: new Date("2026-10-21T12:00:00Z"), readAt: new Date() },
+    ]);
+    renderHeader();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Notifications" }));
+    const link = await screen.findByRole("link", { name: /Unread: Issue assigned to you/ });
+    expect(link.getAttribute("href")).toBe(`${BASE_PATH}/notifications/n1`);
+    expect(link.querySelector("time")?.dateTime).toBe("2026-10-22T12:00:00.000Z");
+    expect(screen.getByRole("link", { name: /New comment/ }).textContent).not.toContain("Unread:");
+    expect(recentNotificationsAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("supports keyboard opening, Escape focus restoration and outside dismissal", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+    const bell = screen.getByRole("button", { name: "Notifications" });
+    bell.focus();
+    await user.keyboard("{Enter}");
+    await screen.findByText("No notifications yet.");
+    await user.keyboard("{Escape}");
+    expect(document.activeElement).toBe(bell);
+    expect(screen.queryByRole("region", { name: "Recent notifications" })).toBeNull();
+    await user.click(bell);
+    fireEvent.pointerDown(document.body);
+    expect(bell.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("shows loading and allows retry after failure", async () => {
+    let reject!: (error: Error) => void;
+    vi.mocked(recentNotificationsAction).mockReturnValueOnce(new Promise((_, fail) => { reject = fail; }));
+    const user = userEvent.setup();
+    renderHeader();
+    await user.click(screen.getByRole("button", { name: "Notifications" }));
+    expect(screen.getByRole("status").textContent).toBe("Loading notifications...");
+    reject(new Error("offline"));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("No notifications yet.")).toBeTruthy();
+  });
+
+  it("lets Tab leave the preview and clears it when the workspace changes", async () => {
+    const user = userEvent.setup();
+    const view = renderHeader();
+    await user.click(screen.getByRole("button", { name: "Notifications" }));
+    await screen.findByText("No notifications yet.");
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole("link", { name: "View all notifications" }));
+    await user.tab();
+    expect(screen.queryByRole("region", { name: "Recent notifications" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Notifications" }));
+    view.rerender(<AppHeader activeTenantId="t2" />);
+    expect(screen.queryByRole("region", { name: "Recent notifications" })).toBeNull();
+  });
+
+  it("ignores an obsolete request after closing and reopening", async () => {
+    let resolve!: (items: Awaited<ReturnType<typeof recentNotificationsAction>>) => void;
+    vi.mocked(recentNotificationsAction).mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    const user = userEvent.setup();
+    renderHeader();
+    const bell = screen.getByRole("button", { name: "Notifications" });
+    await user.click(bell);
+    await user.click(bell);
+    await user.click(bell);
+    await screen.findByText("No notifications yet.");
+    await act(async () => {
+      resolve([{ id: "old", title: "Stale alert", createdAt: new Date(), readAt: null }]);
+    });
+    expect(screen.queryByText("Stale alert")).toBeNull();
+  });
+});
+
 function renderHeader(props?: Partial<Parameters<typeof AppHeader>[0]>) {
+  const shared = {
+    userName: "Ada Lovelace",
+    role: "super_admin" as const,
+    isRealSuperAdmin: true,
+    isRealAdmin: true,
+    workspaces: [{ id: "t1", name: "Ziki", slug: "ziki" }],
+    activeTenantId: "t1",
+    ...props,
+  };
   return render(
-    <AppHeader
-      {...{
-        userName: "Ada Lovelace",
-        role: "super_admin" as const,
-        isRealSuperAdmin: true,
-        isRealAdmin: true,
-        workspaces: [{ id: "t1", name: "Ziki", slug: "ziki" }],
-        activeTenantId: "t1",
-        ...props,
-      }}
-    />,
+    <>
+      <AppSidebar
+        issueCount={4}
+        workspaces={shared.workspaces ?? []}
+        activeTenantId={shared.activeTenantId ?? null}
+      />
+      <AppHeader {...shared} />
+    </>,
   );
 }
 
 describe("account menu role switch", () => {
-  it("keeps the account menu outside the blurred header layer", () => {
+  it("paints the sidebar navy and the top bar as a surface", () => {
     renderHeader();
     const header = document.querySelector("header");
     expect(header?.className).not.toContain("backdrop-blur");
-    const background = header?.querySelector(":scope > [aria-hidden='true']");
-    expect(background?.className).toContain("backdrop-blur");
+    expect(header?.className).toContain("bg-zk-surface");
+    expect(document.querySelector("aside")?.className).toContain("bg-deep-ocean");
     const account = screen.getByRole("button", { name: /account menu/i });
-    expect(account.parentElement?.parentElement?.className).toContain("shrink-0");
+    // Wraps on phones and tablets (no sideways scroll), never squeezed from lg up.
+    const toolbar = account.parentElement?.parentElement?.className.split(/\s+/) ?? [];
+    expect(toolbar).toContain("min-w-0");
+    expect(toolbar).toContain("lg:shrink-0");
   });
 
   it("opens the account menu and asks to switch the active role", async () => {
@@ -77,28 +185,32 @@ describe("account menu role switch", () => {
     expect(switchRole).toHaveBeenCalledWith("user", `${window.location.pathname}${window.location.search}`);
   });
 
-  it("renders Escalations inside Agents, with the pending count on the menu (#763)", async () => {
-    const user = userEvent.setup();
-    renderHeader({ pendingEscalationsCount: 5 });
-    expect(screen.getAllByLabelText("5 pending").length).toBeGreaterThan(0);
-    await user.click(screen.getByRole("button", { name: /agents/i }));
-    const escalationsLink = screen.getByRole("menuitem", { name: /escalations/i });
-    expect(escalationsLink.getAttribute("href")).toBe("/escalations");
+  it("keeps Overview and Issues in the sidebar", () => {
+    renderHeader();
+    expect(screen.getByRole("link", { name: "Overview" }).getAttribute("href")).toBe("/dashboard");
+    expect(screen.getByRole("link", { name: /^Issues/ }).getAttribute("href")).toBe("/issues");
   });
 
-  it("renders the Workspace menu and its grouped links (#761)", async () => {
+  it("closes the Agents menu when a destination is chosen", async () => {
     const user = userEvent.setup();
     renderHeader();
+    await user.click(screen.getByRole("button", { name: "Agents" }));
+    expect(screen.getByRole("button", { name: "Agents" }).getAttribute("aria-expanded")).toBe("true");
+    await user.click(screen.getByRole("link", { name: "Manage agents" }));
+    expect(screen.getByRole("button", { name: "Agents" }).getAttribute("aria-expanded")).toBe("false");
+  });
 
-    const manageBtn = screen.getByRole("button", { name: "Workspace" });
-    expect(manageBtn).toBeTruthy();
+  it("renders Escalations as a link, with the pending count (#763)", () => {
+    renderHeader({ pendingEscalationsCount: 5 });
+    const link = screen.getByRole("link", { name: /escalation/i });
+    expect(link.getAttribute("href")).toBe("/escalations");
+    expect(screen.getAllByLabelText("5 pending").length).toBeGreaterThan(0);
+  });
 
-    await user.click(manageBtn);
-
-    expect(screen.getByRole("menuitem", { name: /projects/i })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: /milestones/i })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: /platforms/i })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: /types/i })).toBeTruthy();
+  it("does not put a Workspace menu in the bar", () => {
+    renderHeader();
+    expect(screen.queryByRole("button", { name: "Workspace" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Workspace" })).toBeNull();
   });
 
   it("shows this person's points in the bar", () => {
@@ -117,9 +229,9 @@ describe("account menu role switch", () => {
       pendingEscalationsCount: 5,
     });
     expect(labelInNameMismatches(container)).toEqual([]);
-    const workspace = screen.getByRole("combobox", { name: /active workspace, ziki/i });
+    const workspace = screen.getByRole("button", { name: /active workspace, ziki/i });
     expect(workspace.getAttribute("aria-label")).toBeNull();
-    expect(workspace.querySelector("option[selected], option")?.textContent).toBe("Ziki");
+    expect(workspace.textContent).toContain("Ziki");
   });
 
   it("switches the active workspace as soon as one is chosen", async () => {
@@ -132,9 +244,8 @@ describe("account menu role switch", () => {
       activeTenantId: "t1",
     });
 
-    const workspace = screen.getByRole("combobox", { name: /active workspace, ziki/i });
-    expect((workspace as HTMLSelectElement).value).toBe("t1");
-    await user.selectOptions(workspace, "t2");
+    await user.click(screen.getByRole("button", { name: /active workspace, ziki/i }));
+    await user.click(screen.getByRole("option", { name: "Acme" }));
 
     expect(selectTenant).toHaveBeenCalledTimes(1);
     const data = selectTenant.mock.calls[0][0] as FormData;
@@ -143,11 +254,12 @@ describe("account menu role switch", () => {
 
   it("links to workspaces when the person has none", () => {
     renderHeader({ workspaces: [], activeTenantId: null });
-    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.queryByRole("button", { name: /active workspace/i })).toBeNull();
     expect(screen.getByRole("link", { name: "Workspaces" }).getAttribute("href")).toBe("/tenants");
   });
 
-  it("shows the slug when two workspaces share a name", () => {
+  it("shows the slug when two workspaces share a name", async () => {
+    const user = userEvent.setup();
     renderHeader({
       workspaces: [
         { id: "t1", name: "Acme", slug: "acme" },
@@ -155,9 +267,11 @@ describe("account menu role switch", () => {
       ],
       activeTenantId: "t1",
     });
+    const trigger = screen.getByRole("button", { name: /active workspace, acme \(acme\)/i });
+    expect(trigger.getAttribute("aria-label")).toBeNull();
+    await user.click(trigger);
     expect(screen.getByRole("option", { name: "Acme (acme)" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "Acme (acme-eu)" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: /active workspace, acme \(acme\)/i })).toBeTruthy();
   });
 
   it("renders Docs & /llms.txt link in the account menu (#625)", async () => {
@@ -188,5 +302,29 @@ describe("theme toggle in header (#659)", () => {
 
     expect(screen.getByRole("group", { name: /theme preference/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Dark" })).toBeTruthy();
+  });
+});
+
+
+describe("Profile account navigation (#576)", () => {
+  it.each([
+    ["/settings/profile", "Profile"],
+    ["/settings", "Settings"],
+    ["/settings/security", "Settings"],
+  ])("marks only %s current in both account menus", async (pathname, currentLabel) => {
+    navigation.pathname = pathname;
+    const user = userEvent.setup();
+    const { container } = renderHeader();
+
+    for (const [buttonName, panelId] of [[/account menu/i, "account-menu"]] as const) {
+      await user.click(screen.getByRole("button", { name: buttonName }));
+      const panel = container.querySelector(`#${panelId}`)!;
+      const profile = panel.querySelector('a[href="/settings/profile"]')!;
+      const settings = panel.querySelector('a[href="/settings"]')!;
+      expect(profile.textContent).toBe("Profile");
+      expect(settings.textContent).toBe("Settings");
+      expect(profile.getAttribute("aria-current")).toBe(currentLabel === "Profile" ? "page" : null);
+      expect(settings.getAttribute("aria-current")).toBe(currentLabel === "Settings" ? "page" : null);
+    }
   });
 });

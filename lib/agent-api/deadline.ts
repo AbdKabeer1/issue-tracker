@@ -5,6 +5,7 @@ import { IssueApiError } from "@/lib/agent-api/issues";
 import { publish } from "@/lib/agent-api/events";
 import { deliveryWindowMinutes, extendDeadline, isDeliveryOverdue } from "@/lib/claim-deadline";
 import { workflowFor } from "@/lib/workflow";
+import { parseIssueRef, resolveIssueRef } from "@/lib/issue-ref";
 
 const id = z.string().trim().min(1).max(191);
 
@@ -19,8 +20,12 @@ export const extendSchema = z.object({
  * the heartbeat does not change it. A second request is a 409, as is asking
  * after the deadline has passed or after a fix is already linked.
  */
-export async function extendClaim(agent: AgentContext, projectId: string, bugId: string, reason: string) {
+export async function extendClaim(agent: AgentContext, projectId: string, issueRef: string, reason: string) {
   return prisma.$transaction(async (tx) => {
+    // #604: the path may be the readable number (`123`, `ZE-123`) or the id, as on reads.
+    const ref = parseIssueRef(issueRef);
+    const bugId = ref.kind === "id" ? ref.id : (await resolveIssueRef(tx, ref, { tenantId: agent.tenantId }))?.id;
+    if (!bugId) throw new IssueApiError(404, "Issue not found in this project.");
     const locked = await tx.$queryRaw<{ id: string }[]>`
       SELECT "id" FROM "Bug" WHERE "id" = ${bugId} AND "tenantId" = ${agent.tenantId}
       AND "projectId" = ${projectId} AND "isDeleted" = false FOR NO KEY UPDATE`;

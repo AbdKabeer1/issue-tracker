@@ -9,7 +9,7 @@ import {
 } from "@/components/markdown-editor";
 import { MentionText } from "@/components/comment-body";
 import { AttachmentPicker } from "@/components/attachment-picker";
-import { clearDraft, draftKey, readDraft, writeDraft } from "@/lib/comment-draft";
+import { clearDraft, discardLegacyDraft, draftKey, readDraft, writeDraft } from "@/lib/comment-draft";
 import { useToast } from "@/components/ui/toast";
 import type { CommentType } from "@/lib/validations/issue";
 
@@ -18,6 +18,8 @@ type UserOption = { id: string; name: string };
 type CommentFormProps = {
   bugId: string;
   users: UserOption[];
+  /** The signed-in viewer, so drafts never cross accounts (#481). */
+  viewerId?: string | null;
   parentId?: string;
   parentAuthorName?: string;
   onCancel?: () => void;
@@ -27,6 +29,7 @@ type CommentFormProps = {
 export function CommentForm({
   bugId,
   users,
+  viewerId,
   parentId,
   parentAuthorName,
   onCancel,
@@ -45,7 +48,7 @@ export function CommentForm({
   const [isSettling, setIsSettling] = useState(false);
   const [pending, startTransition] = useTransition();
   const isReply = Boolean(parentId);
-  const key = draftKey(bugId, parentId);
+  const key = draftKey(viewerId, bugId, parentId);
   const bodyId = parentId ? `body-${parentId}` : "body";
   const errorId = `${bodyId}-error`;
   const [bodyInvalid, setBodyInvalid] = useState(false);
@@ -58,6 +61,10 @@ export function CommentForm({
   // and setting state during the effect would be the cascading render the
   // lint rule warns about. A microtask after mount is the first safe moment.
   useEffect(() => {
+    // Drafts saved before #481 have no viewer in the key. They cannot be
+    // attributed, so drop them here instead of handing them to whoever is
+    // signed in now.
+    discardLegacyDraft(localStorage, bugId, parentId);
     const saved = readDraft(localStorage, key);
     if (!saved) return;
     queueMicrotask(() => {
@@ -65,7 +72,7 @@ export function CommentForm({
       setBody((current) => (current ? current : saved));
       setRestored(true);
     });
-  }, [key]);
+  }, [bugId, key, parentId]);
 
   const update = useCallback(
     (next: string) => {
@@ -150,29 +157,30 @@ export function CommentForm({
       {parentId ? (
         <input type="hidden" name="parentId" value={parentId} />
       ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          <label htmlFor="comment-type-select" className="text-xs font-medium text-slate-600">
-            Type:
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <span className="text-[15px] font-bold text-zk-text">Add to conversation</span>
+          <label htmlFor="comment-type-select" className="inline-flex items-center gap-2 text-[13px] font-semibold text-zk-muted">
+            Type
+            <select
+              id="comment-type-select"
+              name="type"
+              value={commentType}
+              onChange={(e) => setCommentType(e.target.value as CommentType)}
+              className="h-[38px] rounded-full border border-zk-border bg-zk-surface px-3 text-[13px] font-bold text-zk-text shadow-xs focus:border-electric-blue-strong focus:outline-none focus:ring-1 focus:ring-electric-blue-strong"
+            >
+              <option value="comment">Comment</option>
+              <option value="bid">Bid</option>
+              <option value="review">Review</option>
+              <option value="delivery">Delivery</option>
+              <option value="request_to_merge">Merge request</option>
+            </select>
           </label>
-          <select
-            id="comment-type-select"
-            name="type"
-            value={commentType}
-            onChange={(e) => setCommentType(e.target.value as CommentType)}
-            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-          >
-            <option value="comment">💬 Comment</option>
-            <option value="bid">🏷️ Bid</option>
-            <option value="review">🔍 Review</option>
-            <option value="delivery">📦 Delivery</option>
-            <option value="request_to_merge">🔀 Request to Merge</option>
-          </select>
         </div>
       )}
       <label
         id={`${parentId ? `body-${parentId}` : "body"}-label`}
         htmlFor={parentId ? `body-${parentId}` : "body"}
-        className="block text-sm font-medium text-slate-700"
+        className={isReply ? "block text-sm font-medium text-zk-text2" : "sr-only"}
       >
         {isReply
           ? `Reply to ${parentAuthorName ?? "comment"}`
@@ -199,7 +207,7 @@ export function CommentForm({
             : "Add to the conversation… Type @ to mention someone (they get notified)"
         }
         footer={
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-zk-muted">
             Markdown is supported. People you @mention get an email and an
             in-app notification (they can turn these off in Settings).
           </p>
@@ -211,16 +219,16 @@ export function CommentForm({
         onUploadingChange={setPickerUploading}
       />
       {error ? (
-        <p id={errorId} className="text-sm text-red-600" role="alert">
+        <p id={errorId} className="text-sm text-zk-bad-fg" role="alert">
           {error}
         </p>
       ) : null}
       {restored ? (
-        <p className="flex flex-wrap items-center gap-2 text-xs text-slate-600" role="status">
+        <p className="flex flex-wrap items-center gap-2 text-xs text-zk-text2" role="status">
           <span>Restored an unsent draft.</span>
           <button
             type="button"
-            className="rounded-sm font-medium text-teal-700 underline hover:text-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+            className="rounded-sm font-bold text-zk-accent underline hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue-strong"
             onClick={() => update("")}
           >
             Discard it
@@ -228,12 +236,12 @@ export function CommentForm({
         </p>
       ) : null}
       {statusMessage ? (
-        <p role="status" aria-live="polite" className="text-xs text-emerald-700 font-medium">
+        <p role="status" aria-live="polite" className="text-xs font-medium text-zk-ok-fg">
           {statusMessage}
         </p>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={pending || isSettling || !body.trim() || isUploading}>
+        <Button type="submit" disabled={pending || isSettling || !body.trim() || isUploading} className="h-11 rounded-full px-[22px] shadow-[0_8px_20px_rgba(46,111,239,0.30)]">
           {pending || isSettling
             ? isReply
               ? "Replying…"

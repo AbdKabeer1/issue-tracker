@@ -23,10 +23,10 @@ export function OnboardingPrompt({ prompt }: { prompt: string }) {
 
   return (
     <div className="mt-4 space-y-3">
-      <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-800">
+      <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-2xl border border-zk-border bg-zk-chip p-3 text-xs leading-relaxed text-zk-text">
         {prompt}
       </pre>
-      <Button type="button" variant="secondary" onClick={copy}>
+      <Button type="button" onClick={copy} className="rounded-full bg-electric-blue-strong text-white hover:bg-[#2552af] focus-visible:ring-electric-blue">
         {copied ? "Copied" : "Copy prompt"}
       </Button>
     </div>

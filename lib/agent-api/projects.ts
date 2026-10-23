@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { IssueApiError } from "@/lib/agent-api/issues";
+import {
+  getPlatformRewardConfig,
+  projectDefaultsFromPlatform,
+} from "@/lib/points/platform-rewards";
 import { parseProjectRewardConfig } from "@/lib/points/project-rewards";
 import { workflowValues } from "@/lib/workflow-config";
 import type { Prisma } from "@prisma/client";
@@ -29,11 +33,15 @@ export async function listAgentProjectSummaries(tenantId: string) {
 
 /** Every project in the agent's tenant, with each project's goal and open-issue count. */
 export async function listAgentProjects(tenantId: string) {
-  const projects = await prisma.project.findMany({
-    where: { tenantId },
-    orderBy: { slug: "asc" },
-    select: projectSelect,
-  });
+  const [projects, platform] = await Promise.all([
+    prisma.project.findMany({
+      where: { tenantId },
+      orderBy: { slug: "asc" },
+      select: projectSelect,
+    }),
+    getPlatformRewardConfig(prisma),
+  ]);
+  const base = projectDefaultsFromPlatform(platform);
   const openCounts = await prisma.bug.groupBy({
     by: ["projectId"],
     where: { tenantId, projectId: { in: projects.map((project) => project.id) }, isDeleted: false, status: "open" },
@@ -42,7 +50,7 @@ export async function listAgentProjects(tenantId: string) {
   const openByProject = new Map(openCounts.map((row) => [row.projectId, row._count._all]));
   return projects.map((project) => ({
     ...project,
-    rewardRules: parseProjectRewardConfig(project.rewardConfig),
+    rewardRules: parseProjectRewardConfig(project.rewardConfig, base),
     workflow: workflowValues(project.workflow),
     openIssueCount: openByProject.get(project.id) ?? 0,
   }));
@@ -50,17 +58,20 @@ export async function listAgentProjects(tenantId: string) {
 
 /** One project in the agent's tenant; foreign project ids are a 404, not a leak. */
 export async function getAgentProject(tenantId: string, projectId: string) {
-  const project = await prisma.project.findFirst({
-    where: { id: projectId, tenantId },
-    select: projectSelect,
-  });
+  const [project, platform] = await Promise.all([
+    prisma.project.findFirst({
+      where: { id: projectId, tenantId },
+      select: projectSelect,
+    }),
+    getPlatformRewardConfig(prisma),
+  ]);
   if (!project) throw new IssueApiError(404, "Project not found.");
   const openIssueCount = await prisma.bug.count({
     where: { tenantId, projectId: project.id, isDeleted: false, status: "open" },
   });
   return {
     ...project,
-    rewardRules: parseProjectRewardConfig(project.rewardConfig),
+    rewardRules: parseProjectRewardConfig(project.rewardConfig, projectDefaultsFromPlatform(platform)),
     workflow: workflowValues(project.workflow),
     openIssueCount,
   };

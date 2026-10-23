@@ -47,17 +47,104 @@ function timeOf(decision: AgentDecision): number {
   return new Date(decision.at).getTime();
 }
 
+type VerdictVisual = {
+  label: string;
+  chip: string;
+  iconWrap: string;
+};
+
+function verdictVisual(decision: AgentDecision): VerdictVisual {
+  switch (decision.kind) {
+    case "rejected":
+      return {
+        label: "Not a real issue",
+        chip: "bg-zk-bad-bg text-zk-bad-fg",
+        iconWrap: "bg-zk-bad-bg text-zk-bad-fg",
+      };
+    case "confirmed":
+      return {
+        label: "Confirmed",
+        chip: "bg-zk-ok-bg text-zk-ok-fg",
+        iconWrap: "bg-zk-ok-bg text-zk-ok-fg",
+      };
+    case "claimed":
+      return {
+        label: "Claimed",
+        chip: "bg-zk-info-bg text-zk-info-fg",
+        iconWrap: "bg-zk-info-bg text-zk-info-fg",
+      };
+    case "verdict":
+      return decision.goodToMerge
+        ? {
+            label: "Good to merge",
+            chip: "bg-zk-ok-bg text-zk-ok-fg",
+            iconWrap: "bg-zk-ok-bg text-zk-ok-fg",
+          }
+        : {
+            label: "Not ready to merge",
+            chip: "bg-zk-warn-bg text-zk-warn-fg",
+            iconWrap: "bg-zk-warn-bg text-zk-warn-fg",
+          };
+    case "accepted":
+      return {
+        label: "Good to merge",
+        chip: "bg-zk-ok-bg text-zk-ok-fg",
+        iconWrap: "bg-zk-ok-bg text-zk-ok-fg",
+      };
+  }
+}
+
+function VerdictGlyph({ kind, goodToMerge }: { kind: AgentDecision["kind"]; goodToMerge?: boolean }) {
+  const common = "h-[15px] w-[15px]";
+  if (kind === "rejected") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={common} aria-hidden>
+        <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (kind === "claimed") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={common} aria-hidden>
+        <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (kind === "verdict" && !goodToMerge) {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={common} aria-hidden>
+        <path d="M12 9v4M12 17h.01" strokeLinecap="round" />
+        <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (kind === "verdict" || kind === "accepted") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={common} aria-hidden>
+        <circle cx="18" cy="18" r="3" />
+        <circle cx="6" cy="6" r="3" />
+        <path d="M6 9v12M6 9a9 9 0 0 0 9 9" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={common} aria-hidden>
+      <path d="M20 6 9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function sentence(decision: AgentDecision) {
   switch (decision.kind) {
     case "confirmed":
       return (
         <>
-          <span className="font-medium text-slate-900">{decision.agentName}</span> confirmed this issue as real
+          <strong className="font-bold text-zk-text">{decision.agentName}</strong> confirmed this issue as real
           {decision.severity ? (
             <>
               {" "}
               and set the severity to{" "}
-              <span className="font-medium text-slate-900">{severityLabel[decision.severity]}</span>
+              <strong className="font-bold text-zk-text">{severityLabel[decision.severity]}</strong>
             </>
           ) : null}
           {decision.personName ? <> on behalf of {decision.personName}</> : null}.
@@ -66,14 +153,14 @@ function sentence(decision: AgentDecision) {
     case "rejected":
       return (
         <>
-          <span className="font-medium text-slate-900">{decision.agentName}</span> found this isn&apos;t a real
+          <strong className="font-bold text-zk-text">{decision.agentName}</strong> found this isn&apos;t a real
           issue{decision.personName ? <> on behalf of {decision.personName}</> : null}.
         </>
       );
     case "claimed":
       return (
         <>
-          <span className="font-medium text-slate-900">{decision.agentName}</span> claimed this issue for{" "}
+          <strong className="font-bold text-zk-text">{decision.agentName}</strong> claimed this issue for{" "}
           {decision.personName}.
           {decision.waitingOnName ? (
             <>
@@ -92,14 +179,14 @@ function sentence(decision: AgentDecision) {
     case "verdict":
       return (
         <>
-          <span className="font-medium text-slate-900">{decision.agentName}</span> said this fix is{" "}
+          <strong className="font-bold text-zk-text">{decision.agentName}</strong> said this fix is{" "}
           {decision.goodToMerge ? "good to merge" : "not ready to merge"}.
         </>
       );
     case "accepted":
       return (
         <>
-          <span className="font-medium text-slate-900">{decision.agentName}</span> accepted the fix and marked this
+          <strong className="font-bold text-zk-text">{decision.agentName}</strong> accepted the fix and marked this
           issue resolved.
         </>
       );
@@ -118,29 +205,48 @@ export function IssueAgentActivity({ decisions }: { decisions: ReadonlyArray<Age
   return (
     <section
       aria-label="Agent decisions"
-      className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6"
+      className="rounded-[20px] border border-zk-border bg-zk-surface p-5 sm:p-[22px]"
     >
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-        Agent decisions
-      </h2>
-      <ol className="relative mt-5 space-y-0 border-l border-slate-200 pl-4 sm:pl-5">
-        {ordered.map((decision) => (
-          <li key={decision.id} className="relative pb-5 last:pb-0">
-            <span
-              aria-hidden
-              className="absolute -left-[1.2rem] sm:-left-[1.45rem] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-teal-600"
-            />
-            <LocalTime className="text-xs text-slate-500" date={decision.at} />
-            <p className="mt-1 text-sm text-slate-800">{sentence(decision)}</p>
-            {decision.kind === "rejected" && decision.notes ? (
-              <ExpandableText maxLines={3} expandText="View more" collapseText="View less">
-                <blockquote className="mt-1 whitespace-pre-wrap break-words border-l-2 border-slate-300 pl-3 text-sm text-slate-700">
-                  {decision.notes}
-                </blockquote>
-              </ExpandableText>
-            ) : null}
-          </li>
-        ))}
+      <h2 className="sr-only">Agent decisions</h2>
+      <ol className="flex flex-col gap-1">
+        {ordered.map((decision, index) => {
+          const visual = verdictVisual(decision);
+          const isLast = index === ordered.length - 1;
+          return (
+            <li key={decision.id} className="flex gap-3.5">
+              <div className="flex flex-col items-center">
+                <span
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${visual.iconWrap}`}
+                >
+                  <VerdictGlyph
+                    kind={decision.kind}
+                    goodToMerge={decision.kind === "verdict" ? decision.goodToMerge : undefined}
+                  />
+                </span>
+                <span
+                  aria-hidden
+                  className={isLast ? "hidden" : "my-1 min-h-4 w-0.5 flex-1 bg-zk-divider"}
+                />
+              </div>
+              <div className={`min-w-0 flex-1 ${isLast ? "pb-0" : "pb-4"}`}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-extrabold ${visual.chip}`}>
+                    {visual.label}
+                  </span>
+                  <LocalTime className="text-xs text-zk-muted" date={decision.at} />
+                </div>
+                <p className="mt-1.5 text-sm leading-snug text-zk-text2">{sentence(decision)}</p>
+                {decision.kind === "rejected" && decision.notes ? (
+                  <ExpandableText maxLines={3} expandText="View more" collapseText="View less">
+                    <blockquote className="mt-1.5 whitespace-pre-wrap break-words rounded-r-[10px] border-l-[3px] border-zk-border bg-zk-chip px-3.5 py-2.5 text-[13px] leading-relaxed text-zk-text2">
+                      {decision.notes}
+                    </blockquote>
+                  </ExpandableText>
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
       </ol>
     </section>
   );

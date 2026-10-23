@@ -121,7 +121,7 @@ export function AgentKeyCopyButton({
           aria-expanded={popoverOpen}
           aria-haspopup="dialog"
           title="Agent key"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zk-border bg-zk-surface text-zk-text2 transition hover:bg-zk-chip hover:text-zk-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue focus-visible:ring-offset-2"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
             <circle cx="8" cy="15" r="3.25" />
@@ -130,7 +130,7 @@ export function AgentKeyCopyButton({
         </button>
       ) : (
       <div
-        className={`inline-flex h-9 items-center rounded-lg border border-slate-200 bg-slate-50 ${
+        className={`inline-flex h-10 items-center rounded-full border border-zk-border bg-zk-chip ${
           fullWidth ? "w-full justify-between" : ""
         }`}
       >
@@ -139,10 +139,10 @@ export function AgentKeyCopyButton({
           onClick={() => setPopoverOpen((prev) => !prev)}
           title="View Agent Key configuration details"
           aria-expanded={popoverOpen}
-          className="inline-flex h-full items-center gap-1.5 rounded-l-lg px-2.5 text-xs text-slate-700 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+          className="inline-flex h-full items-center gap-1.5 rounded-l-full px-3 text-xs text-zk-text2 hover:text-zk-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue"
         >
-          <span className="font-medium text-slate-700">Agent Key:</span>
-          <span className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] text-slate-600 ring-1 ring-slate-200">
+          <span className="font-semibold text-zk-text">Agent Key:</span>
+          <span className="rounded-full bg-zk-surface px-1.5 py-0.5 font-mono text-[11px] text-zk-text2 ring-1 ring-zk-border">
             {shortKey}
           </span>
         </button>
@@ -153,10 +153,10 @@ export function AgentKeyCopyButton({
           onClick={handleCopyKey}
           title={apiKey ? "Copy your agent key and this site" : `Copy key to clipboard: ${projectId}`}
           aria-label="Copy key to agent"
-          className="inline-flex h-full items-center border-l border-slate-200 px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 rounded-r-lg transition"
+          className="inline-flex h-full items-center rounded-r-full border-l border-zk-border px-3 text-xs font-semibold text-zk-text2 transition hover:bg-zk-surface hover:text-zk-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue"
         >
           {copied ? (
-            <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 text-[11px]">
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-zk-ok-fg">
               <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
@@ -164,7 +164,7 @@ export function AgentKeyCopyButton({
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 text-[11px]">
-              <svg className="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <svg className="h-3.5 w-3.5 text-zk-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
               Copy
@@ -178,16 +178,16 @@ export function AgentKeyCopyButton({
         <div
           role="dialog"
           aria-label="Agent Key Information"
-          className={`absolute top-full z-50 mt-1.5 w-80 rounded-xl border border-slate-200 bg-white p-4 text-xs shadow-lg ring-1 ring-black/5 ${
+          className={`absolute top-full z-50 mt-1.5 w-80 rounded-[20px] border border-zk-border bg-zk-surface p-4 text-xs shadow-[0_16px_40px_rgba(11,23,51,0.16)] ${
             align === "end" ? "right-0" : "left-0"
           }`}
         >
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <span className="font-semibold text-slate-900">Agent key</span>
+          <div className="flex items-center justify-between border-b border-zk-divider pb-2">
+            <span className="font-bold text-zk-text">Agent key</span>
             <button
               type="button"
               onClick={() => setPopoverOpen(false)}
-              className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-zk-muted hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
               aria-label="Close"
             >
               <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -201,54 +201,54 @@ export function AgentKeyCopyButton({
               <button
                 type="button"
                 onClick={handleCopyKey}
-                className="inline-flex h-8 w-full items-center justify-center rounded-lg bg-teal-700 text-xs font-medium text-white hover:bg-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
+                className="inline-flex h-8 w-full items-center justify-center rounded-full bg-electric-blue-strong text-xs font-bold text-white hover:bg-[#2552af] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue focus-visible:ring-offset-2"
               >
                 {copied ? "Copied" : "Copy key to agent"}
               </button>
             ) : null}
             <div>
-              <span className="text-slate-500 block text-[11px]">Active Project</span>
-              <span className="font-medium text-slate-800">{projectName ?? "Current Project"}</span>
+              <span className="block text-[11px] text-zk-muted">Active Project</span>
+              <span className="font-semibold text-zk-text">{projectName ?? "Current Project"}</span>
             </div>
 
             {apiKey ? (
-              <p className="text-slate-600">
+              <p className="text-zk-text2">
                 Copy sends your API key and this site. The agent can start without you registering one.
               </p>
             ) : null}
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-slate-500 text-[11px]">Or share only this site</span>
+                <span className="text-[11px] text-zk-muted">Or share only this site</span>
                 <button
                   type="button"
                   onClick={handleCopySite}
-                  className="text-teal-700 hover:text-teal-900 font-medium hover:underline text-[11px]"
+                  className="text-[11px] font-semibold text-zk-accent hover:underline"
                 >
                   Copy site
                 </button>
               </div>
-              <p className="text-slate-600">
+              <p className="text-zk-text2">
                 The agent opens the approval page in your browser. You approve it while signed in, and the key comes back to the agent.
               </p>
             </div>
 
             <div>
-              <span className="text-slate-500 block text-[11px]">API key prefixes</span>
+              <span className="block text-[11px] text-zk-muted">API key prefixes</span>
               {keys.length > 0 ? (
                 <ul className="mt-1 space-y-1">
                   {keys.map((key) => (
-                    <li key={`${key.prefix}-${key.projectName ?? "all"}`} className="font-mono text-[11px] text-slate-800">
+                    <li key={`${key.prefix}-${key.projectName ?? "all"}`} className="font-mono text-[11px] text-zk-text">
                       {key.prefix}…{key.projectName ? ` · ${key.projectName}` : " · every project"}
                     </li>
                   ))}
                 </ul>
               ) : apiKey ? (
-                <p className="mt-1 text-slate-600">
+                <p className="mt-1 text-zk-text2">
                   Your personal key is ready. Copy sends it with this site, and the agent can start without you registering one.
                 </p>
               ) : (
-                <p className="mt-1 text-slate-600">
+                <p className="mt-1 text-zk-text2">
                   No live key for this project. Open the app again, or register one in settings. The full secret is shown only once.
                 </p>
               )}
@@ -256,41 +256,41 @@ export function AgentKeyCopyButton({
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-slate-500 text-[11px]">Project id (for API queries)</span>
+                <span className="text-[11px] text-zk-muted">Project id (for API queries)</span>
                 <button
                   type="button"
                   onClick={handleCopyProjectId}
-                  className="text-teal-700 hover:text-teal-900 font-medium hover:underline text-[11px]"
+                  className="text-[11px] font-semibold text-zk-accent hover:underline"
                 >
                   Copy id
                 </button>
               </div>
-              <code className="block rounded bg-slate-50 px-2 py-1 font-mono text-[11px] text-slate-800 select-all border border-slate-200 break-all">
+              <code className="block rounded bg-slate-50 px-2 py-1 font-mono text-[11px] text-zk-text select-all border border-slate-200 break-all">
                 {projectId}
               </code>
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-slate-500 text-[11px]">Issue Feed Endpoint</span>
+                <span className="text-[11px] text-zk-muted">Issue Feed Endpoint</span>
                 <button
                   type="button"
                   onClick={handleCopyEndpoint}
-                  className="text-teal-700 hover:text-teal-900 font-medium hover:underline text-[11px]"
+                  className="text-[11px] font-semibold text-zk-accent hover:underline"
                 >
                   Copy URL
                 </button>
               </div>
-              <code className="block rounded bg-slate-50 px-2 py-1 font-mono text-[10px] text-slate-700 border border-slate-200 break-all">
+              <code className="block block break-all rounded-xl border border-zk-border bg-zk-chip px-2 py-1.5 font-mono text-[10px] text-zk-text2">
                 /api/v1/issues?projectId={projectId}
               </code>
             </div>
 
-            <div className="pt-2 border-t border-slate-100 flex flex-col gap-1.5 font-medium text-teal-700">
+            <div className="flex flex-col gap-1.5 border-t border-zk-divider pt-2 font-semibold text-zk-accent">
               <Link
                 href="/settings/agents"
                 onClick={() => setPopoverOpen(false)}
-                className="hover:underline hover:text-teal-900 flex items-center justify-between"
+                className="flex items-center justify-between hover:underline"
               >
                 <span>Manage Agent API Keys</span>
                 <span>→</span>
@@ -298,7 +298,7 @@ export function AgentKeyCopyButton({
               <Link
                 href="/settings/agents/pair"
                 onClick={() => setPopoverOpen(false)}
-                className="hover:underline hover:text-teal-900 flex items-center justify-between"
+                className="flex items-center justify-between hover:underline"
               >
                 <span>Pair an Agent via Code</span>
                 <span>→</span>
@@ -306,7 +306,7 @@ export function AgentKeyCopyButton({
               <Link
                 href="/llms.txt"
                 onClick={() => setPopoverOpen(false)}
-                className="hover:underline hover:text-teal-900 flex items-center justify-between"
+                className="flex items-center justify-between hover:underline"
               >
                 <span>Agent Spec (/llms.txt)</span>
                 <span>→</span>

@@ -28,6 +28,8 @@ vi.mock("@/lib/github/merge-pr", async (original) => ({
 const db = vi.hoisted(() => ({
   bug: { findFirst: vi.fn(), update: vi.fn() },
   issueClaim: { findFirst: vi.fn() },
+  reviewOffer: { findFirst: vi.fn() },
+  testVerdict: { updateMany: vi.fn() },
   bugActivity: { create: vi.fn() },
   agentAuditEvent: { create: vi.fn() },
   agentEvent: { create: vi.fn() },
@@ -85,6 +87,8 @@ describe("POST /api/v1/issues/[id]/github (#452)", () => {
     });
     db.bug.update.mockResolvedValue({});
     db.issueClaim.findFirst.mockResolvedValue({ id: "claim-1" });
+    db.reviewOffer.findFirst.mockResolvedValue(null);
+    db.testVerdict.updateMany.mockResolvedValue({ count: 0 });
     db.bugActivity.create.mockResolvedValue({});
     db.agentAuditEvent.create.mockResolvedValue({});
     db.agentEvent.create.mockResolvedValue({ id: "event-1" });
@@ -136,6 +140,50 @@ describe("POST /api/v1/issues/[id]/github (#452)", () => {
     expect(response.status).toBe(409);
     expect(db.bug.update).not.toHaveBeenCalled();
     expect(mocks.merge).not.toHaveBeenCalled();
+  });
+
+  it("lets an accepted review-offer holder link the pull request when none is linked (#539)", async () => {
+    db.issueClaim.findFirst.mockResolvedValue(null);
+    db.reviewOffer.findFirst.mockResolvedValue({ id: "offer-1" });
+    mocks.merge.mockResolvedValue({ status: 409, merged: false, reason: "not_accepted", message: "no" });
+
+    const response = await POST(request({ pullRequestUrl: PR_URL }), params);
+
+    expect(response.status).toBe(200);
+    expect(db.bug.update).toHaveBeenCalledWith({
+      where: { id: "bug1" },
+      data: { pullRequestUrl: PR_URL, pullRequestHeadSha: null },
+    });
+  });
+
+  it("does not let a review-offer holder replace an already linked pull request (#539)", async () => {
+    db.issueClaim.findFirst.mockResolvedValue(null);
+    db.reviewOffer.findFirst.mockResolvedValue({ id: "offer-1" });
+    db.bug.findFirst.mockResolvedValue({
+      id: "bug1",
+      pullRequestUrl: PR_URL,
+      project: { repoUrl: "https://github.com/zedu/web", githubInstallationId: null },
+    });
+    mocks.standingAcceptance.mockResolvedValue(null);
+
+    const response = await POST(
+      request({ pullRequestUrl: "https://github.com/zedu/web/pull/999" }),
+      params,
+    );
+
+    expect(response.status).toBe(409);
+    expect(db.bug.update).not.toHaveBeenCalled();
+  });
+
+  it("re-attributes verdicts recorded before the pull request was linked (#539)", async () => {
+    mocks.merge.mockResolvedValue({ status: 409, merged: false, reason: "not_accepted", message: "no" });
+    const response = await POST(request({ pullRequestUrl: PR_URL }), params);
+
+    expect(response.status).toBe(200);
+    expect(db.testVerdict.updateMany).toHaveBeenCalledWith({
+      where: { bugId: "bug1", OR: [{ pullRequestUrl: null }, { pullRequestUrl: "" }] },
+      data: { pullRequestUrl: PR_URL },
+    });
   });
 
   it("links only, without merging, before the fix is accepted", async () => {

@@ -1,17 +1,34 @@
+import { createMethodNotAllowed, createOptions } from "@/lib/agent-api/http-errors";
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { agentIssueRequest } from "@/lib/agent-api/issues";
 import { prisma } from "@/lib/prisma";
 import { pointBalance } from "@/lib/points/balance";
 
+const timestamp = z.string().datetime({ offset: true });
+const dateBound = z.union([timestamp, z.string().date()]);
+
+function parseBound(val: string | undefined, isTo: boolean): Date | undefined {
+  if (!val) return undefined;
+  if (val.length === 10) {
+    return new Date(isTo ? `${val}T23:59:59.999Z` : `${val}T00:00:00.000Z`);
+  }
+  return new Date(val);
+}
+
 const balanceQuerySchema = z
   .object({
-    from: z.coerce.date().optional(),
-    to: z.coerce.date().optional(),
+    from: dateBound.optional(),
+    to: dateBound.optional(),
   })
-  .refine((query) => !query.from || !query.to || query.from.getTime() <= query.to.getTime(), {
-    message: "`from` must not be after `to`.",
-  });
+  .refine(
+    (query) => {
+      const from = parseBound(query.from, false);
+      const to = parseBound(query.to, true);
+      return !from || !to || from.getTime() <= to.getTime();
+    },
+    { message: "`from` must not be after `to`." },
+  );
 
 /**
  * GET /api/v1/agents/me/points?from=&to= — the balance of the person this key
@@ -21,6 +38,8 @@ const balanceQuerySchema = z
  *
  * `from`/`to` are optional inclusive ISO-8601 bounds on when the entry was
  * written; with neither, the period covers everything and matches `lifetime`.
+ * A date-only `to` bound includes the entire UTC day through 23:59:59.999Z.
+ * Non-ISO strings return 400.
  * The wallet address is deliberately not in this response: it is readable only
  * by the person and tenant admins, and an agent is neither.
  *
@@ -36,11 +55,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const from = parseBound(parsed.data.from, false);
+    const to = parseBound(parsed.data.to, true);
+
     const balance = await pointBalance(prisma, {
       tenantId: agent.tenantId,
       userId: agent.ownerId,
-      from: parsed.data.from,
-      to: parsed.data.to,
+      from,
+      to,
     });
 
     return NextResponse.json({
@@ -51,3 +73,11 @@ export async function GET(request: NextRequest) {
     });
   });
 }
+
+const apiMethodNotAllowed = createMethodNotAllowed(["GET", "HEAD", "OPTIONS"]);
+const apiOptions = createOptions(["GET", "HEAD", "OPTIONS"]);
+export const POST = apiMethodNotAllowed;
+export const PUT = apiMethodNotAllowed;
+export const PATCH = apiMethodNotAllowed;
+export const DELETE = apiMethodNotAllowed;
+export const OPTIONS = apiOptions;

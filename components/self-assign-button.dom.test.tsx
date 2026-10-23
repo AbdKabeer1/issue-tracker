@@ -16,7 +16,7 @@ describe("SelfAssignButton focus indicator (#651)", () => {
     render(<SelfAssignButton bugId="bug_1" isAssignedToMe={isAssignedToMe} variant="ghost" size="xs" />);
     const classes = screen.getByRole("button", { name }).className;
     expect(classes).toContain("focus-visible:ring-2");
-    expect(classes).toContain("focus-visible:ring-teal-700");
+    expect(classes).toContain("focus-visible:ring-electric-blue-strong");
     expect(classes).toContain("focus-visible:ring-offset-2");
   });
 

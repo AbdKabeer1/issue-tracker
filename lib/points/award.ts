@@ -1,10 +1,7 @@
 import type { Prisma, PrismaClient, Severity } from "@prisma/client";
 import { pointSourceKey, solverPoints, type PointRole } from "./rules";
-import {
-  calculateSolverPoints,
-  getProjectRewardConfig,
-  type ProjectRewardConfig,
-} from "./project-rewards";
+import { calculateSolverPoints, type ProjectRewardConfig } from "./project-rewards";
+import { getPlatformRewardConfig, getProjectRewardConfig } from "./platform-rewards";
 
 /**
  * Writes points to the ledger (#428). The backfill (#435), the merge gate
@@ -30,6 +27,23 @@ export type PointAward = {
 export async function award(db: Db, entry: PointAward): Promise<boolean> {
   const { count } = await db.pointEntry.createMany({ data: [entry], skipDuplicates: true });
   return count > 0;
+}
+
+export async function awardDispatcher(
+  db: Db,
+  issue: { id: string; tenantId: string },
+  dispatcherUserId: string | null | undefined,
+): Promise<boolean> {
+  if (!dispatcherUserId) return false;
+  const platform = await getPlatformRewardConfig(db);
+  return award(db, {
+    tenantId: issue.tenantId,
+    bugId: issue.id,
+    userId: dispatcherUserId,
+    role: "dispatcher",
+    points: platform.dispatcher,
+    sourceKey: `dispatcher:${issue.id}`,
+  });
 }
 
 export type ResolvedIssue = {
@@ -75,9 +89,8 @@ export async function awardSolver(db: Db, issue: ResolvedIssue): Promise<boolean
       });
       projectId = bug?.projectId;
     }
-    if (projectId && "project" in db) {
-      rewardConfig = await getProjectRewardConfig(db, projectId);
-    }
+    // Always resolve through platform → hard-coded when projectId is missing.
+    rewardConfig = await getProjectRewardConfig(db, projectId);
   }
 
   const entry = solverAward({ ...issue, rewardConfig });

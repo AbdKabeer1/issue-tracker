@@ -45,6 +45,9 @@ export function isPublicPath(
     pathWithoutBase.startsWith("/api/health") ||
     // GitHub calls this with an HMAC signature, not a session (#474).
     pathWithoutBase === "/api/github/webhook" ||
+    // The scheduler calls the platform sweeps with Bearer CRON_SECRET and no
+    // session (#571); the route rejects a wrong or missing secret itself.
+    pathWithoutBase === "/api/internal/cron" ||
     // The agent API (#427) authenticates every call with an agent key, not a
     // session; each route rejects a request without one.
     pathWithoutBase.startsWith("/api/v1/") ||
@@ -91,9 +94,10 @@ export default auth((req) => {
   }
 
   // Allow reset links even when a session exists; only bounce login/signup.
+  // Signed-in people land on the Overview, the post-login home.
   if (isLoggedIn && isAuthPage) {
     return NextResponse.redirect(
-      new URL(BASE_PATH ? `${BASE_PATH}/issues` : "/issues", req.nextUrl.origin),
+      new URL(BASE_PATH ? `${BASE_PATH}/dashboard` : "/dashboard", req.nextUrl.origin),
     );
   }
 

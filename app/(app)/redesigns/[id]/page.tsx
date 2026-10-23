@@ -16,14 +16,47 @@ export default async function RedesignPage({ params }: { params: Promise<{ id: s
     include: { authorAgent: { select: { name: true } }, onBehalfOf: { select: { name: true } }, approver: { select: { name: true } } },
   });
   if (!proposal) notFound();
-  return <article className="space-y-5">
-    <Link href="/redesigns" className="text-indigo-700 underline">All redesign proposals</Link>
-    <h1 className="text-2xl font-semibold">{proposal.title}</h1>
-    <p className="text-sm text-slate-600">Proposed by {proposal.authorAgent.name} for {proposal.onBehalfOf.name}.</p>
-    <p className="font-medium">{proposal.status === "proposed" ? "waiting for a person" : proposal.status}</p>
-    <div className="whitespace-pre-wrap rounded border border-slate-200 bg-white p-5">{proposal.body}</div>
-    {proposal.bugId && <Link href={`/issues/${proposal.bugId}`} className="block text-indigo-700 underline">View linked issue</Link>}
-    {proposal.status === "proposed" && !proposal.bugId && <DecisionButtons id={proposal.id} />}
-    {proposal.approvedAt && <p className="text-sm text-slate-600">Approved by {proposal.approver?.name ?? "a workspace member"} at <LocalTime date={proposal.approvedAt} />.</p>}
-  </article>;
+
+  const waiting = proposal.status === "proposed";
+  const statusLabel = waiting ? "waiting for a person" : proposal.status;
+
+  return (
+    <article className="mx-auto max-w-2xl space-y-5">
+      <Link href="/escalations?type=Redesign" className="text-sm font-semibold text-zk-accent hover:underline">
+        Escalations
+      </Link>
+      <div>
+        <h1 className="text-2xl font-extrabold tracking-tight text-zk-text">{proposal.title}</h1>
+        <p className="mt-1 text-sm text-zk-muted">
+          Proposed by {proposal.authorAgent.name} for {proposal.onBehalfOf.name}.
+        </p>
+      </div>
+      <p>
+        <span
+          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+            waiting
+              ? "border border-zk-warn-bd bg-zk-warn-bg text-zk-warn-fg"
+              : "bg-zk-ok-bg text-zk-ok-fg"
+          }`}
+        >
+          {statusLabel}
+        </span>
+      </p>
+      <div className="whitespace-pre-wrap rounded-[20px] border border-zk-border bg-zk-surface p-5 text-zk-text">
+        {proposal.body}
+      </div>
+      {proposal.bugId ? (
+        <Link href={`/issues/${proposal.bugId}`} className="block text-sm font-semibold text-zk-accent hover:underline">
+          View linked issue
+        </Link>
+      ) : null}
+      {waiting && !proposal.bugId ? <DecisionButtons id={proposal.id} /> : null}
+      {proposal.approvedAt ? (
+        <p className="text-sm text-zk-muted">
+          Approved by {proposal.approver?.name ?? "a workspace member"} at{" "}
+          <LocalTime date={proposal.approvedAt} />.
+        </p>
+      ) : null}
+    </article>
+  );
 }

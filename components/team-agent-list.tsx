@@ -1,9 +1,18 @@
+import type { AgentLevel } from "@prisma/client";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { TeamAgentLevelControl } from "@/components/team-agent-level";
 import { AGENT_LEVEL_LABELS } from "@/lib/agents/levels";
 import type { TeamAgent } from "@/lib/team-directory";
 
-export function TeamAgentList({ agents }: { agents: TeamAgent[] }) {
+export function TeamAgentList({
+  agents,
+  manageLevels = null,
+}: {
+  agents: TeamAgent[];
+  /** Roles this viewer may assign. Absent keeps the read-only reputation badge. */
+  manageLevels?: AgentLevel[] | null;
+}) {
   if (agents.length === 0) {
     return <p className="mt-2 text-sm text-slate-500">No active agents.</p>;
   }
@@ -17,7 +26,16 @@ export function TeamAgentList({ agents }: { agents: TeamAgent[] }) {
             <Badge className={agent.online ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-700"}>
               {agent.online ? "Online" : "Offline"}
             </Badge>
-            <Badge className="bg-teal-50 text-teal-800">Reputation: {AGENT_LEVEL_LABELS[agent.level]}</Badge>
+            {manageLevels ? (
+              <TeamAgentLevelControl
+                agentId={agent.id}
+                agentName={agent.name}
+                level={agent.level}
+                levels={manageLevels}
+              />
+            ) : (
+              <Badge className="bg-teal-50 text-teal-800">Reputation: {AGENT_LEVEL_LABELS[agent.level]}</Badge>
+            )}
           </div>
           <p className="mt-1 text-sm text-slate-600">
             {agent.model ?? "Model not specified"} · {agent.acceptedFixes} accepted fixes in the last 30 days

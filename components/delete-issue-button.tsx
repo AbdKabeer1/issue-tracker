@@ -121,10 +121,10 @@ export function DeleteIssueButton({
       {error ? (
         <p
           id={errorId}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-red-700"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-zk-bad-fg"
           role="alert"
         >
-          <AlertIcon className="h-3.5 w-3.5 shrink-0 text-red-600" />
+          <AlertIcon className="h-3.5 w-3.5 shrink-0 text-zk-bad-fg" />
           <span>{error}</span>
         </p>
       ) : null}

@@ -149,6 +149,29 @@ describe("awardBid", () => {
     bug: openBug,
   };
 
+  it("preserves the dispatcher owner on an auto-awarded claim", async () => {
+    db.issueBid.findUnique.mockResolvedValue(stored);
+    db.issueClaim.create.mockResolvedValue({ id: "claim1" });
+    const dispatcher = { ...caller, ownerId: "dispatcher-owner", level: "dispatcher" as const };
+    await awardBid({ id: "reporter" }, "bid1", dispatcher);
+    expect(db.issueClaim.create.mock.calls[0][0].data).toMatchObject({
+      dispatcherUserId: "dispatcher-owner", beneficiaryUserId: "ada", status: "active",
+    });
+  });
+
+  it("rejects forged dispatcher attribution from a lower-level caller", async () => {
+    await expect(awardBid({ id: "reporter" }, "bid1", caller)).rejects.toThrow("dispatcher");
+    expect(db.issueClaim.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects dispatcher attribution from another tenant", async () => {
+    db.issueBid.findUnique.mockResolvedValue(stored);
+    await expect(awardBid({ id: "reporter" }, "bid1", {
+      ...caller, tenantId: "another-tenant", level: "dispatcher",
+    })).rejects.toMatchObject({ status: 404 });
+    expect(db.issueClaim.create).not.toHaveBeenCalled();
+  });
+
   it("lets the reporter turn one bid into the active claim", async () => {
     db.issueBid.findUnique.mockResolvedValue(stored);
     db.issueClaim.create.mockResolvedValue({ id: "claim1" });
@@ -196,5 +219,89 @@ describe("withdrawBid", () => {
     await withdrawBid(caller, "project", "issue1");
     expect(db.issueBid.updateMany.mock.calls[0][0].data.withdrawnAt).toBeInstanceOf(Date);
     expect(publish).toHaveBeenCalledWith(db, expect.objectContaining({ type: "issue.bid_withdrawn" }));
+  });
+});
+
+
+describe("readable bid references (#587)", () => {
+  const canonicalId = "cmvcanonicalissue587";
+
+  it.each(["587", "ZE-587"])("lists bids for %s using the scoped canonical issue ID", async (reference) => {
+    db.bug.findFirst.mockResolvedValue({ id: canonicalId, areaId: null });
+    db.issueBid.findMany.mockResolvedValue([]);
+
+    await expect(listBids(caller, "project", reference)).resolves.toEqual([]);
+    expect(db.bug.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { number: 587, tenantId: "tenant", projectId: "project", isDeleted: false },
+    }));
+    expect(db.issueBid.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { bugId: canonicalId, withdrawnAt: null, awardedAt: null },
+    }));
+  });
+
+  it.each(["587", "ZE-587"])("locks and saves the canonical ID when bidding on %s", async (reference) => {
+    db.bug.findFirst.mockResolvedValue({ id: canonicalId, projectId: "project", status: "open", voteCount: 3 });
+    db.$queryRaw.mockResolvedValue([{ id: canonicalId }]);
+
+    await placeBid(caller, "project", reference, "I can fix it");
+
+    expect(db.bug.findFirst).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: { number: 587, tenantId: "tenant", projectId: "project", isDeleted: false },
+    }));
+    const [sql, ...values] = db.$queryRaw.mock.calls[0];
+    expect(Array.from(sql as TemplateStringsArray).join("?")).toContain("FOR UPDATE");
+    expect(values).toEqual([canonicalId, "tenant", "project"]);
+    expect(isConfirmed).toHaveBeenCalledWith(canonicalId, db);
+    expect(db.issueClaim.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { bugId: canonicalId, releasedAt: null },
+    }));
+    expect(db.issueBid.findUnique).toHaveBeenCalledWith({
+      where: { bugId_agentId: { bugId: canonicalId, agentId: "agent1" } },
+    });
+    expect(db.issueBid.create).toHaveBeenCalledWith({ data: {
+      bugId: canonicalId, agentId: "agent1", beneficiaryUserId: "ada", note: "I can fix it",
+    } });
+    expect(publish).toHaveBeenCalledWith(db, expect.objectContaining({
+      bugId: canonicalId,
+      payload: expect.objectContaining({ issueId: canonicalId, projectId: "project" }),
+    }));
+  });
+
+  it("keeps canonical references working without a numeric lookup", async () => {
+    db.bug.findFirst.mockResolvedValue({ id: canonicalId, projectId: "project", status: "open", voteCount: 3 });
+    db.$queryRaw.mockResolvedValue([{ id: canonicalId }]);
+    await placeBid(caller, "project", canonicalId);
+    expect(db.bug.findFirst).toHaveBeenCalledTimes(1);
+    expect(db.bug.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: canonicalId, tenantId: "tenant", projectId: "project", isDeleted: false },
+    }));
+    expect(db.$queryRaw.mock.calls[0].slice(1)).toEqual([canonicalId, "tenant", "project"]);
+  });
+
+  it.each([listBids, placeBid])("does not access bids for a missing, deleted, or differently scoped numeric issue", async (operation) => {
+    db.bug.findFirst.mockResolvedValue(null);
+    await expect(operation(caller, "project", "587")).rejects.toMatchObject({ status: 404 });
+    expect(db.bug.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { number: 587, tenantId: "tenant", projectId: "project", isDeleted: false },
+    }));
+    expect(db.$queryRaw).not.toHaveBeenCalled();
+    expect(db.issueBid.findMany).not.toHaveBeenCalled();
+    expect(db.issueBid.create).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("rechecks scoped issue existence after taking the lock", async () => {
+    db.bug.findFirst.mockResolvedValueOnce({ id: canonicalId }).mockResolvedValueOnce(null);
+    db.$queryRaw.mockResolvedValue([{ id: canonicalId }]);
+    await expect(placeBid(caller, "project", "587")).rejects.toMatchObject({ status: 404 });
+    expect(db.issueBid.create).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it.each([listBids, placeBid])("rejects another project before resolving a numeric issue for a project-scoped key", async (operation) => {
+    await expect(operation({ ...caller, projectId: "key-project" }, "project", "587")).rejects.toThrow();
+    expect(db.bug.findFirst).not.toHaveBeenCalled();
+    expect(db.$queryRaw).not.toHaveBeenCalled();
+    expect(db.issueBid.create).not.toHaveBeenCalled();
   });
 });

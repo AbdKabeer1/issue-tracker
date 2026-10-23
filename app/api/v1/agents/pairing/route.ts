@@ -1,12 +1,12 @@
+import { createMethodNotAllowed, createOptions } from "@/lib/agent-api/http-errors";
 import { NextResponse, type NextRequest } from "next/server";
 import { clientRateLimitKey, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { PAIRING_LINK_MESSAGE } from "@/lib/agents/pairing-link";
 import { absoluteUrl } from "@/lib/site-url";
 import { consumePairingLimit } from "@/lib/agents/rate-limit";
-import { PAIRING_LINK_MESSAGE } from "@/lib/agents/pairing-link";
 import { PAIRING_POLL_INTERVAL, pairingApprovalPath, startPairing } from "@/lib/agents/pairing";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 import { agentPlatformDisabledResponse } from "@/lib/agents/platform-gate";
-import { createMethodNotAllowed, createOptions } from "@/lib/agent-api/http-errors";
 
 /**
  * POST /api/v1/agents/pairing — an agent without a key asks to join (#427).

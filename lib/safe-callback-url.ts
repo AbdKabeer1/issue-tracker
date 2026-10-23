@@ -12,7 +12,7 @@ const DISALLOWED_CALLBACK_PATHS = [
 /** Same-origin relative paths only — blocks open redirects, auth loops, and normalizes basePath. */
 export function safeCallbackUrl(
   value: FormDataEntryValue | string | null | undefined,
-  fallback = "/issues",
+  fallback = "/dashboard",
 ): string {
   if (typeof value !== "string") return fallback;
   const trimmed = value.trim();

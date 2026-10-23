@@ -10,6 +10,8 @@ import { formatProofLinkLabel } from "@/lib/proof-links";
 export type EditableProofLinksProps = {
   bugId: string;
   initialLinks: string[];
+  /** The issue's attached pull request, shown here even when it is not in the link list. */
+  linkedPullRequestUrl?: string | null;
   canEdit: boolean;
 };
 
@@ -33,21 +35,24 @@ function ExternalLinkIcon({ className = "h-4 w-4 shrink-0" }: { className?: stri
 }
 
 /** The issue's proof links, which the reporter or an admin can change after filing (#737). */
-export function EditableProofLinks({ bugId, initialLinks, canEdit }: EditableProofLinksProps) {
+export function EditableProofLinks({ bugId, initialLinks, linkedPullRequestUrl, canEdit }: EditableProofLinksProps) {
   const router = useRouter();
+  const links = linkedPullRequestUrl && !initialLinks.includes(linkedPullRequestUrl)
+    ? [linkedPullRequestUrl, ...initialLinks]
+    : initialLinks;
   const [isEditing, setIsEditing] = useState(false);
-  const [value, setValue] = useState(initialLinks.join("\n"));
+  const [value, setValue] = useState(links.join("\n"));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const handleStartEdit = () => {
-    setValue(initialLinks.join("\n"));
+    setValue(links.join("\n"));
     setError(null);
     setIsEditing(true);
   };
 
   const handleCancel = () => {
-    setValue(initialLinks.join("\n"));
+    setValue(links.join("\n"));
     setError(null);
     setIsEditing(false);
   };
@@ -72,15 +77,15 @@ export function EditableProofLinks({ bugId, initialLinks, canEdit }: EditablePro
   };
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+    <section className="rounded-xl border border-zk-border bg-zk-surface p-4 sm:p-6">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-zk-muted">
           GitHub PR
         </h2>
         {canEdit && !isEditing ? (
           <Button
             variant="ghost"
-            className="px-2.5 py-1 text-xs text-slate-600 hover:text-slate-900"
+            className="px-2.5 py-1 text-xs text-zk-text2 hover:text-zk-text"
             onClick={handleStartEdit}
           >
             Edit
@@ -92,7 +97,7 @@ export function EditableProofLinks({ bugId, initialLinks, canEdit }: EditablePro
         <form onSubmit={handleSave} className="mt-4 space-y-3">
           {error ? (
             <div
-              className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+              className="rounded-lg border border-zk-bad-bd bg-zk-bad-bg p-3 text-sm text-zk-bad-fg"
               role="alert"
             >
               {error}
@@ -113,7 +118,7 @@ export function EditableProofLinks({ bugId, initialLinks, canEdit }: EditablePro
               "https://github.com/organization/repo/pull/123"
             }
           />
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-zk-muted">
             One GitHub link per line, at most 20. Leave empty to remove them all.
           </p>
 
@@ -126,20 +131,20 @@ export function EditableProofLinks({ bugId, initialLinks, canEdit }: EditablePro
             </Button>
           </div>
         </form>
-      ) : initialLinks.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-500">No GitHub PR attached to this report.</p>
+      ) : links.length === 0 ? (
+        <p className="mt-3 text-sm text-zk-muted">No GitHub PR attached to this report.</p>
       ) : (
         <ul className="mt-3 space-y-2">
-          {initialLinks.map((url, index) => (
+          {links.map((url, index) => (
             <li key={`${index}-${url}`}>
               <a
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
                 title={url}
-                className="inline-flex items-center gap-1.5 break-all text-sm font-medium text-teal-700 hover:underline"
+                className="inline-flex items-center gap-1.5 break-all text-sm font-medium text-zk-accent hover:underline"
               >
-                <ExternalLinkIcon className="h-4 w-4 shrink-0 text-slate-500" />
+                <ExternalLinkIcon className="h-4 w-4 shrink-0 text-zk-muted" />
                 <span>{formatProofLinkLabel(url)}</span>
               </a>
             </li>

@@ -43,7 +43,7 @@ import { databaseErrorReason } from "@/lib/db-error";
 /* Static on purpose: a title built from the slug could name someone else's tenant. */
 export const metadata = { title: "Organization" };
 
-const card = "rounded-xl border border-slate-200 bg-white p-4 sm:p-6";
+const card = "rounded-[20px] border border-zk-border bg-zk-surface p-4 sm:p-6";
 
 function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -160,18 +160,18 @@ export default async function TenantPage({
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="space-y-2">
-        <Link href="/tenants" className="text-sm text-teal-700 hover:underline">
+        <Link href="/tenants" className="text-sm text-zk-accent hover:underline">
           ← All organizations
         </Link>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="min-w-0 truncate text-2xl font-semibold text-slate-900">{tenant.name}</h1>
+          <h1 className="min-w-0 truncate text-2xl font-extrabold tracking-tight text-zk-text">{tenant.name}</h1>
           {tenant.archivedAt ? (
-            <Badge className="bg-amber-50 text-amber-800 ring-1 ring-amber-200">Archived</Badge>
+            <Badge className="rounded-full bg-zk-warn-bg text-zk-warn-fg ring-1 ring-zk-warn-bd">Archived</Badge>
           ) : current ? (
-            <Badge className="bg-teal-50 text-teal-800 ring-1 ring-teal-200">Current</Badge>
+            <Badge className="rounded-full bg-zk-tint text-zk-accent ring-1 ring-zk-border">Current</Badge>
           ) : null}
         </div>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-zk-text2">
           You&apos;re {tenant.role === "member" ? "a" : "an"} {MEMBERSHIP_ROLE_LABELS[tenant.role].toLowerCase()}
           {summary
             ? ` · ${plural(summary.memberships, "member")} · ${plural(summary.projects, "project")}`
@@ -186,9 +186,9 @@ export default async function TenantPage({
       </div>
 
       {tenant.archivedAt ? (
-        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 sm:p-6">
-          <h2 className="text-base font-semibold text-amber-900">This organization is archived</h2>
-          <p className="mt-1 text-sm text-amber-900">
+        <section className="rounded-xl border border-zk-warn-bd bg-zk-warn-bg p-4 sm:p-6">
+          <h2 className="text-base font-semibold text-zk-warn-fg">This organization is archived</h2>
+          <p className="mt-1 text-sm text-zk-warn-fg">
             Archived organizations are hidden from the switcher and can&apos;t be opened. Its issues and
             members stay here, read-only, until an owner restores it.
           </p>
@@ -205,29 +205,29 @@ export default async function TenantPage({
       ) : null}
 
       {error ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <p className="rounded-[14px] border border-zk-bad-bd bg-zk-bad-bg px-3 py-2 text-sm text-zk-bad-fg">
           {error}
         </p>
       ) : null}
       {notice ? (
-        <p className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+        <p className="rounded-[14px] border border-zk-border bg-zk-ok-bg px-3 py-2 text-sm text-zk-ok-fg">
           {notice}
         </p>
       ) : null}
 
       {canManageSettings ? (
         <section aria-labelledby="tenant-settings" className={card}>
-          <h2 id="tenant-settings" className="text-base font-semibold text-slate-900">
+          <h2 id="tenant-settings" className="text-base font-semibold text-zk-text">
             Organization settings
           </h2>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-1 text-sm text-zk-text2">
             Rename this organization, archive it, or delete it permanently when it has no issues,
             agents or other members.
           </p>
 
           <form action={renameTenantAction} className="mt-4 space-y-2">
             <input type="hidden" name="tenantId" value={tenant.id} />
-            <label htmlFor="tenant-name" className="block text-sm font-medium text-slate-800">
+            <label htmlFor="tenant-name" className="block text-sm font-medium text-zk-text">
               Display name
             </label>
             <div className="flex flex-wrap items-center gap-2">
@@ -237,20 +237,20 @@ export default async function TenantPage({
                 defaultValue={tenant.name}
                 maxLength={TENANT_NAME_MAX}
                 required
-                className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-900"
+                className="min-w-0 flex-1 rounded-xl border border-zk-border px-3 py-1.5 text-sm text-zk-text"
               />
               <Button type="submit" variant="secondary">
                 Save name
               </Button>
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-zk-muted">
               The organization&apos;s URL stays the same, so existing links keep working.
             </p>
           </form>
 
-          <div className="mt-5 space-y-4 border-t border-slate-200 pt-4">
+          <div className="mt-5 space-y-4 border-t border-zk-border pt-4">
             {tenant.slug === ZEDU_SLUG ? (
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-zk-muted">
                 Zedu is the default workspace and can&apos;t be archived or deleted.
               </p>
             ) : (
@@ -261,20 +261,20 @@ export default async function TenantPage({
                   <Button type="submit" variant="secondary">
                     Archive organization
                   </Button>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-zk-muted">
                     Archiving hides it from the switcher. You can restore it later.
                   </p>
                 </form>
 
                 <form action={deleteTenantAction} className="space-y-2">
                   <input type="hidden" name="tenantId" value={tenant.id} />
-                  <p className="text-sm font-medium text-slate-800">Delete organization</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-sm font-medium text-zk-text">Delete organization</p>
+                  <p className="text-xs text-zk-muted">
                     Deleting is permanent and only works when the organization has no issues, agents or
                     other members. Otherwise archive it instead.
                   </p>
-                  <label htmlFor="confirm-tenant-name" className="block text-xs text-slate-600">
-                    Type <span className="font-semibold text-slate-800">{tenant.name}</span> to
+                  <label htmlFor="confirm-tenant-name" className="block text-xs text-zk-text2">
+                    Type <span className="font-semibold text-zk-text">{tenant.name}</span> to
                     confirm
                   </label>
                   <div className="flex flex-wrap items-center gap-2">
@@ -284,7 +284,7 @@ export default async function TenantPage({
                       placeholder={tenant.name}
                       autoComplete="off"
                       required
-                      className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-900"
+                      className="min-w-0 flex-1 rounded-xl border border-zk-border px-3 py-1.5 text-sm text-zk-text"
                     />
                     <Button type="submit" variant="danger-secondary">
                       Delete organization
@@ -298,11 +298,11 @@ export default async function TenantPage({
       ) : null}
 
       <section aria-labelledby="tenant-managers" className={card}>
-        <h2 id="tenant-managers" className="text-base font-semibold text-slate-900">
+        <h2 id="tenant-managers" className="text-base font-semibold text-zk-text">
           Owners and admins
         </h2>
         {managers.length === 0 ? (
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-1 text-sm text-zk-text2">
             {tenant.slug === ZEDU_SLUG
               ? "Ziki has no owner yet, so nobody can invite people. The site's super admin can choose one from its members."
               : "Nobody here can invite people yet."}
@@ -310,42 +310,42 @@ export default async function TenantPage({
         ) : (
           <ul className="mt-2 space-y-1">
             {managers.map((manager) => (
-              <li key={manager.user.id} className="flex items-center gap-2 text-sm text-slate-800">
+              <li key={manager.user.id} className="flex items-center gap-2 text-sm text-zk-text">
                 <span className="truncate">{manager.user.name}</span>
-                <Badge className="bg-slate-100 text-slate-700">{MEMBERSHIP_ROLE_LABELS[manager.role]}</Badge>
+                <Badge className="rounded-full bg-zk-chip text-zk-text2">{MEMBERSHIP_ROLE_LABELS[manager.role]}</Badge>
               </li>
             ))}
           </ul>
         )}
         {canManage ? null : (
-          <p className="mt-3 text-xs text-slate-500">
+          <p className="mt-3 text-xs text-zk-muted">
             Only owners and admins can invite people. Ask one of them to invite your teammate.
           </p>
         )}
       </section>
 
-      <section aria-labelledby="tenant-members" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <section aria-labelledby="tenant-members" className="overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface">
         <h2
           id="tenant-members"
-          className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6"
+          className="border-b border-zk-border bg-zk-tint px-4 py-3 text-base font-semibold text-zk-text sm:px-6"
         >
           Members
         </h2>
-        <p className="border-b border-slate-200 px-4 py-3 text-sm text-slate-600 sm:px-6">
+        <p className="border-b border-zk-border px-4 py-3 text-sm text-zk-text2 sm:px-6">
           Roles here apply only in {tenant.name}. Someone who is an admin somewhere else is a member here until an owner promotes them.
         </p>
-        <ul className="divide-y divide-slate-200">
+        <ul className="divide-y divide-zk-border">
           {members.map((member) => (
             <li key={member.user.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
               <Avatar name={member.user.name} image={member.user.image} size="md" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-slate-900">{member.user.name}</p>
-                <p className="truncate text-xs text-slate-500">{member.user.email}</p>
-                <p className="mt-0.5 text-xs text-slate-500">
+                <p className="truncate text-sm font-medium text-zk-text">{member.user.name}</p>
+                <p className="truncate text-xs text-zk-muted">{member.user.email}</p>
+                <p className="mt-0.5 text-xs text-zk-muted">
                   Joined <LocalTime date={member.createdAt} />
                 </p>
               </div>
-              <Badge className="bg-slate-100 text-slate-700">{MEMBERSHIP_ROLE_LABELS[member.role]}</Badge>
+              <Badge className="rounded-full bg-zk-chip text-zk-text2">{MEMBERSHIP_ROLE_LABELS[member.role]}</Badge>
               <MemberRoleActions
                 tenantId={tenant.id}
                 tenantName={tenant.name}
@@ -366,31 +366,31 @@ export default async function TenantPage({
       {canManage ? (
         <>
           <section aria-labelledby="workspace-discovery" className={card}>
-            <h2 id="workspace-discovery" className="text-base font-semibold text-slate-900">Workspace discovery</h2>
-            <p className="mt-1 text-sm text-slate-600">When enabled, people without a workspace can find this one and request access. They become members only after an owner or admin approves.</p>
+            <h2 id="workspace-discovery" className="text-base font-semibold text-zk-text">Workspace discovery</h2>
+            <p className="mt-1 text-sm text-zk-text2">When enabled, people without a workspace can find this one and request access. They become members only after an owner or admin approves.</p>
             <form action={updateTenantDiscoveryAction} className="mt-4 space-y-4">
               <input type="hidden" name="tenantId" value={tenant.id} />
-              <label className="flex items-start gap-3 text-sm text-slate-800">
-                <input type="checkbox" name="discoverable" defaultChecked={summary?.discoverable ?? false} className="mt-0.5 rounded border-slate-300 text-teal-700 focus:ring-teal-600" />
-                <span><span className="font-medium">Accept join requests</span><span className="mt-0.5 block text-xs text-slate-500">Show this workspace in discovery to users who do not belong to a workspace.</span></span>
+              <label className="flex items-start gap-3 text-sm text-zk-text">
+                <input type="checkbox" name="discoverable" defaultChecked={summary?.discoverable ?? false} className="mt-0.5 rounded border-zk-border text-zk-accent focus:ring-electric-blue" />
+                <span><span className="font-medium">Accept join requests</span><span className="mt-0.5 block text-xs text-zk-muted">Show this workspace in discovery to users who do not belong to a workspace.</span></span>
               </label>
-              <label className="block text-sm font-medium text-slate-800" htmlFor="workspace-description">Description <span className="font-normal text-slate-500">(optional, up to {TENANT_DESCRIPTION_MAX} characters)</span></label>
-              <textarea id="workspace-description" name="description" maxLength={TENANT_DESCRIPTION_MAX} rows={3} defaultValue={summary?.description ?? ""} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600" />
+              <label className="block text-sm font-medium text-zk-text" htmlFor="workspace-description">Description <span className="font-normal text-zk-muted">(optional, up to {TENANT_DESCRIPTION_MAX} characters)</span></label>
+              <textarea id="workspace-description" name="description" maxLength={TENANT_DESCRIPTION_MAX} rows={3} defaultValue={summary?.description ?? ""} className="w-full rounded-xl border border-zk-border px-3 py-2 text-sm text-zk-text shadow-sm focus:border-electric-blue focus:outline-none focus:ring-1 focus:ring-electric-blue" />
               <Button type="submit">Save discovery settings</Button>
             </form>
           </section>
 
-          <section aria-labelledby="join-requests" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <h2 id="join-requests" className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6">Workspace join requests</h2>
+          <section aria-labelledby="join-requests" className="overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface">
+            <h2 id="join-requests" className="border-b border-zk-border bg-zk-tint px-4 py-3 text-base font-semibold text-zk-text sm:px-6">Workspace join requests</h2>
             {joinRequests.length === 0 ? (
-              <p className="px-4 py-4 text-sm text-slate-600 sm:px-6">No pending requests.</p>
+              <p className="px-4 py-4 text-sm text-zk-text2 sm:px-6">No pending requests.</p>
             ) : (
-              <ul className="divide-y divide-slate-200">
+              <ul className="divide-y divide-zk-border">
                 {joinRequests.map((request) => (
                   <li key={request.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-900">{request.user.name ?? request.user.email}</p>
-                      <p className="truncate text-xs text-slate-500">{request.user.email} · requested <LocalTime date={request.requestedAt} /></p>
+                      <p className="truncate text-sm font-medium text-zk-text">{request.user.name ?? request.user.email}</p>
+                      <p className="truncate text-xs text-zk-muted">{request.user.email} · requested <LocalTime date={request.requestedAt} /></p>
                     </div>
                     <form action={reviewTenantJoinRequestAction} className="flex gap-2">
                       <input type="hidden" name="requestId" value={request.id} />
@@ -404,36 +404,36 @@ export default async function TenantPage({
           </section>
 
           <section aria-labelledby="share-link" className={card}>
-            <h2 id="share-link" className="text-base font-semibold text-slate-900">
+            <h2 id="share-link" className="text-base font-semibold text-zk-text">
               Invite link
             </h2>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-zk-text2">
               Share one link instead of typing each email. Anyone who opens it and signs in with Google
               joins as a member — a new Google account is created if they don&apos;t have one, and this
               organization is added to it. Pick how long the link lasts and how many people can use it.
               Once that limit is reached, or you revoke the link, it stops working.
             </p>
             <ShareLinkForm tenantId={tenant.id} />
-            <ul className="mt-4 divide-y divide-slate-200 border-t border-slate-200">
+            <ul className="mt-4 divide-y divide-zk-border border-t border-zk-border">
               {shareLinks.length === 0 ? (
-                <li className="pt-4 text-sm text-slate-600">No invite links yet.</li>
+                <li className="pt-4 text-sm text-zk-text2">No invite links yet.</li>
               ) : (
                 shareLinks.map((link) => {
                   const who = joinedSummary(link.joinedNames, link.useCount);
                   const statusClass =
                     link.state === "open"
-                      ? "bg-teal-50 text-teal-800 ring-1 ring-teal-200"
+                      ? "bg-zk-tint text-zk-accent ring-1 ring-zk-border"
                       : link.state === "revoked"
-                        ? "bg-red-50 text-red-700"
-                        : "bg-slate-100 text-slate-700";
+                        ? "bg-zk-bad-bg text-zk-bad-fg"
+                        : "bg-zk-chip text-zk-text2";
                   return (
                     <li key={link.id} className="flex flex-wrap items-start gap-3 py-3">
                       <div className="min-w-0 flex-1 space-y-1">
-                        <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900">
+                        <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-zk-text">
                           <span className="truncate">{link.label || "Invite link"}</span>
                           <Badge className={statusClass}>{shareLinkStatusLabel(link.state)}</Badge>
                         </p>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-zk-muted">
                           {link.useCount} joined{link.maxUses != null ? ` of ${link.maxUses}` : ""}
                           {who ? ` · ${who}` : ""}
                           {" · "}
@@ -442,9 +442,9 @@ export default async function TenantPage({
                           {link.invitedByName}
                         </p>
                         {link.url ? (
-                          <p className="truncate font-mono text-xs text-slate-600">{link.url}</p>
+                          <p className="truncate font-mono text-xs text-zk-text2">{link.url}</p>
                         ) : (
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-zk-muted">
                             This link can&apos;t be shown. Revoke it and create another.
                           </p>
                         )}
@@ -468,32 +468,32 @@ export default async function TenantPage({
           </section>
 
           <section aria-labelledby="invite-someone" className={card}>
-            <h2 id="invite-someone" className="text-base font-semibold text-slate-900">
+            <h2 id="invite-someone" className="text-base font-semibold text-zk-text">
               Invite by email
             </h2>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-zk-text2">
               For one person. The link works once, only for the address you enter, and expires after{" "}
               {INVITE_TTL_DAYS} days. To invite several people at once, create an invite link above.
             </p>
             <InviteForm tenantId={tenant.id} />
           </section>
 
-          <section aria-labelledby="pending-invites" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <section aria-labelledby="pending-invites" className="overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface">
             <h2
               id="pending-invites"
-              className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 sm:px-6"
+              className="border-b border-zk-border bg-zk-tint px-4 py-3 text-base font-semibold text-zk-text sm:px-6"
             >
               Pending email invites
             </h2>
             {invites.length === 0 ? (
-              <p className="px-4 py-4 text-sm text-slate-600 sm:px-6">No invites waiting to be accepted.</p>
+              <p className="px-4 py-4 text-sm text-zk-text2 sm:px-6">No invites waiting to be accepted.</p>
             ) : (
-              <ul className="divide-y divide-slate-200">
+              <ul className="divide-y divide-zk-border">
                 {invites.map((invite) => (
                   <li key={invite.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-900">{invite.email}</p>
-                      <p className="mt-0.5 text-xs text-slate-500">
+                      <p className="truncate text-sm font-medium text-zk-text">{invite.email}</p>
+                      <p className="mt-0.5 text-xs text-zk-muted">
                         Invited by {invite.invitedByName} · expires <LocalTime date={invite.expiresAt} />
                       </p>
                     </div>

@@ -1,9 +1,9 @@
+import { createMethodNotAllowed, createOptions } from "@/lib/agent-api/http-errors";
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { createReviewOffers } from "@/lib/agent-api/review-offer";
 import { agentIssueRequest, issueJson } from "@/lib/agent-api/issues";
-import { publish } from "@/lib/agent-api/events";
+import { linkPullRequest } from "@/lib/github/link-pr";
 import {
   clientForInstallation,
   mergeAcceptedFix,
@@ -58,10 +58,20 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       select: { id: true },
     });
     if (!claim) {
-      return NextResponse.json(
-        { error: "Accept an offer or have your bid awarded before linking a fix." },
-        { status: 409 },
-      );
+      // #539: the claim holder is normally the one to link, but a reviewer who
+      // accepted this issue's review offer may attach the pull request when
+      // none is linked yet — otherwise a missing solver leaves reviewed work
+      // stranded with no way to connect it.
+      const reviewOffer = await prisma.reviewOffer.findFirst({
+        where: { bugId: bug.id, agentId: agent.agentId, status: "accepted" },
+        select: { id: true },
+      });
+      if (!reviewOffer || bug.pullRequestUrl) {
+        return NextResponse.json(
+          { error: "Accept an offer or have your bid awarded before linking a fix." },
+          { status: 409 },
+        );
+      }
     }
 
     const repo = parseGitHubRepoUrl(bug.project?.repoUrl);
@@ -97,42 +107,15 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         .catch(() => null);
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.bug.update({
-        where: { id: bug.id },
-        data: { pullRequestUrl: parsed.data.pullRequestUrl, pullRequestHeadSha },
-      });
-
-      await tx.bugActivity.create({
-        data: {
-          bugId: bug.id,
-          actorId: agent.ownerId,
-          type: "edited",
-          summary: `linked PR ${parsed.data.pullRequestUrl}`,
-          metadata: {
-            field: "pullRequestUrl",
-            pullRequestUrl: parsed.data.pullRequestUrl,
-          },
-        },
-      });
-
-      await publish(tx, {
-        tenantId: agent.tenantId,
-        type: "issue.pr_linked",
-        payload: {
-          issueId: bug.id,
-          projectId: bug.projectId,
-          pullRequestUrl: parsed.data.pullRequestUrl,
-          agentId: agent.agentId,
-        },
-        actorAgentId: agent.agentId,
-        bugId: bug.id,
-      });
-    });
-
-    await createReviewOffers(prisma, agent, bug.id, {
+    await linkPullRequest({
+      bugId: bug.id,
+      tenantId: agent.tenantId,
+      projectId: bug.projectId,
       pullRequestUrl: parsed.data.pullRequestUrl,
-    }).catch(() => null);
+      pullRequestHeadSha,
+      actorAgentId: agent.agentId,
+      actorUserId: agent.ownerId,
+    });
 
     const result = await mergeAcceptedFix(agent, id);
     if (result.status === 200) {
@@ -154,3 +137,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     );
   });
 }
+
+const apiMethodNotAllowed = createMethodNotAllowed(["POST", "OPTIONS"]);
+const apiOptions = createOptions(["POST", "OPTIONS"]);
+export const GET = apiMethodNotAllowed;
+export const PUT = apiMethodNotAllowed;
+export const PATCH = apiMethodNotAllowed;
+export const DELETE = apiMethodNotAllowed;
+export const HEAD = apiMethodNotAllowed;
+export const OPTIONS = apiOptions;

@@ -3,7 +3,7 @@ import type { NotificationEvent } from "@/lib/notifications";
 
 const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(), access: vi.fn(), notifyLater: vi.fn(), awardSolver: vi.fn(),
-  db: { bug: { findMany: vi.fn() }, user: { findUnique: vi.fn() }, $transaction: vi.fn() },
+  db: { bug: { findMany: vi.fn() }, user: { findFirst: vi.fn() }, $transaction: vi.fn() },
   tx: {
     bug: { updateMany: vi.fn() }, bugActivity: { createMany: vi.fn() },
     issueWatch: { createMany: vi.fn() }, issueClaim: { updateMany: vi.fn() },
@@ -57,7 +57,7 @@ beforeEach(() => {
   mocks.db.bug.findMany.mockImplementation(async ({ select }) => rows.map((row) =>
     Object.fromEntries(Object.entries(row).filter(([key]) => select[key])),
   ));
-  mocks.db.user.findUnique.mockResolvedValue({ id: "new-assignee", name: "New assignee" });
+  mocks.db.user.findFirst.mockResolvedValue({ id: "new-assignee", name: "New assignee" });
   mocks.tx.bug.updateMany.mockImplementation(async ({ where }) => ({ count: where.id.in.length }));
   mocks.tx.bugActivity.createMany.mockResolvedValue({ count: 1 });
   mocks.tx.issueClaim.updateMany.mockResolvedValue({ count: 1 });
@@ -183,5 +183,32 @@ describe("bulk notification and watch parity (#717)", () => {
     expect((await bulkUpdateBugsAction([], { assigneeId: "new-assignee" })).error).toBeTruthy();
     expect(mocks.db.$transaction).not.toHaveBeenCalled();
     expect(mocks.notifyLater).not.toHaveBeenCalled();
+  });
+});
+
+describe("bulk assignee workspace membership (Ziki #530)", () => {
+  it("looks the assignee up only among members of the issues' workspace", async () => {
+    expect(await bulkUpdateBugsAction(["b1"], { assigneeId: "new-assignee" })).toMatchObject({ ok: true, updated: 1 });
+    expect(mocks.db.user.findFirst).toHaveBeenCalledTimes(2);
+    for (const [query] of mocks.db.user.findFirst.mock.calls) {
+      expect(query.where).toEqual({ id: "new-assignee", memberships: { some: { tenantId: "tenant-1" } } });
+    }
+  });
+
+  it("refuses a user from another workspace and changes nothing", async () => {
+    mocks.db.user.findFirst.mockResolvedValue(null);
+    expect(await bulkUpdateBugsAction(["b1", "b2"], { assigneeId: "outsider" })).toEqual({
+      error: "Assignee not found in this workspace",
+    });
+    expect(mocks.db.bug.findMany).not.toHaveBeenCalled();
+    expect(mocks.db.$transaction).not.toHaveBeenCalled();
+    expect(mocks.tx.issueWatch.createMany).not.toHaveBeenCalled();
+    expect(mocks.notifyLater).not.toHaveBeenCalled();
+    expect(mocks.awardSolver).not.toHaveBeenCalled();
+  });
+
+  it("still lets an admin unassign without an assignee lookup", async () => {
+    expect(await bulkUpdateBugsAction(["b1"], { assigneeId: "" })).toMatchObject({ ok: true, updated: 1 });
+    expect(mocks.db.user.findFirst).not.toHaveBeenCalled();
   });
 });

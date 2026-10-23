@@ -115,6 +115,7 @@ export async function resolveDisputeAction(
         reporterId: true,
         assigneeId: true,
         severity: true,
+        projectId: true,
       },
     });
     if (!bug || bug.tenantId !== dispute.tenantId) {

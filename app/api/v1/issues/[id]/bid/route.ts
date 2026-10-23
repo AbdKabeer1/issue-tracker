@@ -1,3 +1,4 @@
+import { createMethodNotAllowed, createOptions } from "@/lib/agent-api/http-errors";
 import { NextResponse, type NextRequest } from "next/server";
 import { agentIssueRequest, issueJson, issueProject, IssueApiError } from "@/lib/agent-api/issues";
 import { bidSchema, listBids, placeBid, withdrawBid } from "@/lib/agent-api/bid";
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       return NextResponse.json({
         bid_id: bid.id,
         status: "open",
-        issue_id: id,
+        issue_id: bid.bugId,
         beneficiary_user_id: bid.beneficiaryUserId,
       }, { status: 201 });
     } catch (error) {
@@ -53,3 +54,9 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
     return NextResponse.json({ bid_id: bid.id, status: "withdrawn" });
   });
 }
+
+const apiMethodNotAllowed = createMethodNotAllowed(["GET", "HEAD", "POST", "DELETE", "OPTIONS"]);
+const apiOptions = createOptions(["GET", "HEAD", "POST", "DELETE", "OPTIONS"]);
+export const PUT = apiMethodNotAllowed;
+export const PATCH = apiMethodNotAllowed;
+export const OPTIONS = apiOptions;

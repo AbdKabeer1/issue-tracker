@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import type { AgentContext } from "@/lib/agents/require-agent";
+import { AgentProjectError } from "@/lib/agents/require-agent";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { writeInbox } from "@/lib/agent-api/inbox";
-import { eventStreamBus } from "@/lib/events/stream-bus";
+import { eventStreamBus, type StreamEvent } from "@/lib/events/stream-bus";
+import { logger } from "@/lib/logger";
 
 /**
  * Agent event feed (#445).
@@ -84,6 +86,76 @@ export type AgentEventType = (typeof AGENT_EVENT_TYPES)[number];
 
 export type EventPayload = Prisma.InputJsonObject;
 
+/** How often to look for the committed row, and how long to wait between looks. */
+const COMMIT_WAIT_ATTEMPTS = 20;
+const COMMIT_WAIT_DELAY_MS = 50;
+
+function waitMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function broadcast(event: StreamEvent): void {
+  try {
+    eventStreamBus.broadcast(event);
+  } catch {
+    // Ignore broadcast failures to not block publishing
+  }
+}
+
+/**
+ * Broadcast an event only once its row is committed (#524).
+ *
+ * `publish()` usually runs inside the caller's transaction, and an
+ * uncommitted row is invisible to other connections. Broadcasting straight
+ * away let a subscriber read an `issue.validated` event whose validation row
+ * was not readable yet, and a transaction that rolled back still emitted its
+ * event — the event outliving the change it described. The event and the row
+ * have to land together: wait for the row to become visible, and drop the
+ * event when the transaction rolled back and it never does.
+ *
+ * A lookup that fails leaves the row's visibility unknown, so it counts as
+ * "not visible yet": the wait is retried, and if it never becomes readable
+ * the event is dropped rather than sent on a guess. An event may describe a
+ * change that never happened, and subscribers must not see one.
+ *
+ * Returns true when the event was broadcast.
+ */
+export async function broadcastWhenCommitted(
+  event: StreamEvent,
+  options: { attempts?: number; delayMs?: number } = {},
+): Promise<boolean> {
+  const attempts = options.attempts ?? COMMIT_WAIT_ATTEMPTS;
+  const delayMs = options.delayMs ?? COMMIT_WAIT_DELAY_MS;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    let committed: { id: string; projectId: string | null } | null = null;
+    try {
+      committed = await prisma.agentEvent.findUnique({
+        where: { id: event.id },
+        select: { id: true, projectId: true },
+      });
+    } catch (error) {
+      // The row cannot be read, so its visibility is unknown. Treat it as
+      // not visible yet and try again; broadcasting here would send an event
+      // whose row may never exist.
+      logger.warn("agent event row lookup failed; waiting for the row", {
+        eventId: event.id,
+        type: event.type,
+        error,
+      });
+    }
+    if (committed) {
+      // #607: the row carries the project the trigger derived from `bugId`.
+      // Without it the bus cannot enforce a project-scoped key's boundary.
+      broadcast({ ...event, projectId: committed.projectId ?? event.projectId ?? null });
+      return true;
+    }
+    await waitMs(delayMs);
+  }
+  // The transaction rolled back, or the row never became readable: the event
+  // never happened as far as anyone can tell, so nothing is sent.
+  return false;
+}
+
 /**
  * Writes one `AgentEvent` row. Call this inside the same transaction that
  * performs the domain change so the event commits atomically with it.
@@ -124,19 +196,18 @@ export async function publish(
   });
   // #601: what this event addresses to one agent goes to its inbox too.
   await writeInbox(db, { id: event.id, ...params });
-  try {
-    eventStreamBus.broadcast({
-      id: event.id,
-      type: params.type,
-      payload: params.payload as unknown,
-      actorAgentId: params.actorAgentId ?? null,
-      bugId: params.bugId ?? null,
-      tenantId: params.tenantId,
-      createdAt: new Date(),
-    });
-  } catch {
+  // #524: the event reaches subscribers only once its row is committed.
+  void broadcastWhenCommitted({
+    id: event.id,
+    type: params.type,
+    payload: params.payload as unknown,
+    actorAgentId: params.actorAgentId ?? null,
+    bugId: params.bugId ?? null,
+    tenantId: params.tenantId,
+    createdAt: new Date(),
+  }).catch(() => {
     // Ignore broadcast failures to not block publishing
-  }
+  });
   return event;
 }
 
@@ -223,6 +294,26 @@ export function parseEventCursor(
   return cursor ?? "invalid";
 }
 
+/**
+ * The 400 message for a cursor `parseEventCursor` called "invalid" (#465):
+ * names the parameter and the rule instead of a bare "Invalid cursor.".
+ */
+export function eventCursorError(params: URLSearchParams): string {
+  const after = params.get("after");
+  const afterId = params.get("afterId");
+  const isTimestamp = after !== null && z.iso.datetime({ offset: true }).safeParse(after).success;
+
+  if (!after && afterId !== null) return "afterId is only valid together with a timestamp after.";
+  if (afterId !== null) {
+    if (!isTimestamp) {
+      return "after must be an ISO-8601 timestamp with a time and offset (e.g. 2026-10-21T00:00:00.000Z) when afterId is set.";
+    }
+    return "afterId must be a non-empty event id of at most 191 characters.";
+  }
+  if (isTimestamp) return "afterId is required when after is a timestamp.";
+  return "Invalid cursor. Pass the cursor from a previous response, or an ISO timestamp in after together with afterId.";
+}
+
 // ---------------------------------------------------------------------------
 // Filters
 // ---------------------------------------------------------------------------
@@ -243,6 +334,7 @@ export type EventFilters = {
 
 export type EventFilterError = { error: string; validTypes?: readonly string[] };
 
+/** True for a usable id filter value: non-blank and at most 191 chars (the Prisma key width). */
 function validId(value: string): boolean {
   return value.trim() !== "" && value.length <= 191;
 }
@@ -287,6 +379,55 @@ export function parseEventFilters(params: URLSearchParams): EventFilters | Event
 }
 
 // ---------------------------------------------------------------------------
+// Key project scope (#405)
+// ---------------------------------------------------------------------------
+
+/**
+ * Enforces the key's project on event filters (#405).
+ *
+ * A key issued for one project must never receive another project's events,
+ * the same promise the issue, job and SSE routes already make. For a scoped
+ * key:
+ * - an explicit `projectId` for another project throws `AgentProjectError`
+ *   (the wrapper answers `403 project_forbidden`);
+ * - a `bugId` is looked up only inside the caller's tenant, so an
+ *   unknown id and another tenant's id are indistinguishable (both 404);
+ *   a same-tenant bug outside the key's project throws `AgentProjectError`
+ *   (403); events for a bug are only written for issues in the key's project;
+ * - with no explicit `projectId`, the poll is filtered to the key's project
+ *   so an unfiltered poll cannot sweep the whole tenant.
+ *
+ * A legacy key (no `projectId`) keeps today's tenant-wide behavior.
+ * Body note: `scopeEventFilters` narrows to the key's project exactly, so
+ * tenant-level events that carry no `projectId` at all (`goal.*`, #405
+ * follow-up) are not visible to scoped keys until they persist one.
+ */
+export type ScopedEventFilters = { filters: EventFilters } | { status: number; error: string };
+
+/** Applies the rules documented on `ScopedEventFilters`/(#405) above; never mutates `filters`. */
+export async function scopeEventFilters(
+  agent: Pick<AgentContext, "tenantId" | "projectId" | "projectSlug">,
+  filters: EventFilters,
+  db: Pick<typeof prisma, "bug"> = prisma,
+): Promise<ScopedEventFilters> {
+  if (!agent.projectId) return { filters };
+  if (filters.projectId && filters.projectId !== agent.projectId) {
+    throw new AgentProjectError(agent.projectSlug);
+  }
+  if (filters.bugId) {
+    // Tenant-bound lookup: an id from another tenant must look exactly like a
+    // missing one, so the lookup never confirms a cross-tenant bug exists.
+    const bug = await db.bug.findFirst({
+      where: { id: filters.bugId, tenantId: agent.tenantId },
+      select: { projectId: true },
+    });
+    if (!bug) return { status: 404, error: "Issue not found." };
+    if (bug.projectId !== agent.projectId) throw new AgentProjectError(agent.projectSlug);
+  }
+  return { filters: { ...filters, projectId: agent.projectId } };
+}
+
+// ---------------------------------------------------------------------------
 // List
 // ---------------------------------------------------------------------------
 
@@ -323,6 +464,11 @@ async function settledBefore(): Promise<bigint> {
   return BigInt(row.xmin);
 }
 
+/**
+ * The visibility predicate behind a poll cursor: events strictly after
+ * `(txid, id)` (or `(createdAt, id)` for a first page), so ties break by id
+ * and a cursor never repeats or skips a row.
+ */
 function afterCursor(cursor: EventCursor): Prisma.AgentEventWhereInput {
   if ("txid" in cursor) {
     return {

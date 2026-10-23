@@ -33,7 +33,7 @@ const sameDraft = (a: Draft, b: Draft) =>
   (Object.keys(a) as (keyof Draft)[]).every((k) => a[k] === b[k]);
 
 const selectClass =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500";
+  "h-11 w-full rounded-xl border border-zk-border bg-zk-surface px-3 py-2 text-sm text-zk-text shadow-xs focus:border-electric-blue-strong focus:outline-none focus:ring-1 focus:ring-electric-blue-strong";
 
 export function UpdateIssueForm({
   bugId,
@@ -124,7 +124,7 @@ export function UpdateIssueForm({
 
   return (
     <form
-      className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
+      className="space-y-3 rounded-[20px] border border-zk-border bg-zk-surface p-5"
       /* Submitted by hand rather than through the `action` prop: React 19
          resets a form after an action runs, which wiped the selects back to
          their pre-save value even though state held the new one. The fields
@@ -157,7 +157,7 @@ export function UpdateIssueForm({
         });
       }}
     >
-      <h2 className="text-sm font-semibold text-slate-900">
+      <h2 className="text-sm font-semibold text-zk-text">
         {canEditTriage ? "Triage" : "Update status"}
       </h2>
       {/* Remount the fields when the saved values change so they never show
@@ -171,7 +171,7 @@ export function UpdateIssueForm({
         }
       >
         <div>
-          <label htmlFor="status" className="mb-1 block text-xs font-medium text-slate-700">
+          <label htmlFor="status" className="mb-1 block text-xs font-medium text-zk-text2">
             Status
           </label>
           <select
@@ -191,7 +191,7 @@ export function UpdateIssueForm({
         {canEditTriage ? (
           <>
             <div>
-              <label htmlFor="typeId" className="mb-1 block text-xs font-medium text-slate-700">
+              <label htmlFor="typeId" className="mb-1 block text-xs font-medium text-zk-text2">
                 Type
               </label>
               <select
@@ -212,7 +212,7 @@ export function UpdateIssueForm({
             <div>
               <label
                 htmlFor="severity"
-                className="mb-1 block text-xs font-medium text-slate-700"
+                className="mb-1 block text-xs font-medium text-zk-text2"
               >
                 Severity
               </label>
@@ -233,7 +233,7 @@ export function UpdateIssueForm({
             <div>
               <label
                 htmlFor="categoryId"
-                className="mb-1 block text-xs font-medium text-slate-700"
+                className="mb-1 block text-xs font-medium text-zk-text2"
               >
                 Platform
               </label>
@@ -253,7 +253,7 @@ export function UpdateIssueForm({
               </select>
             </div>
             <div>
-              <label htmlFor="areaId" className="mb-1 block text-xs font-medium text-slate-700">
+              <label htmlFor="areaId" className="mb-1 block text-xs font-medium text-zk-text2">
                 Area
               </label>
               <select
@@ -270,7 +270,7 @@ export function UpdateIssueForm({
             <div>
               <label
                 htmlFor="milestoneId"
-                className="mb-1 block text-xs font-medium text-slate-700"
+                className="mb-1 block text-xs font-medium text-zk-text2"
               >
                 Milestone
               </label>
@@ -293,7 +293,7 @@ export function UpdateIssueForm({
             <div>
               <label
                 htmlFor="assigneeId"
-                className="mb-1 block text-xs font-medium text-slate-700"
+                className="mb-1 block text-xs font-medium text-zk-text2"
               >
                 Assignee
               </label>
@@ -310,7 +310,7 @@ export function UpdateIssueForm({
           <div>
             <label
               htmlFor="assigneeId"
-              className="mb-1 block text-xs font-medium text-slate-700"
+              className="mb-1 block text-xs font-medium text-zk-text2"
             >
               Assignee
             </label>
@@ -330,8 +330,8 @@ export function UpdateIssueForm({
 
       {asksForNote ? (
         <div>
-          <label htmlFor="resolutionNote" className="mb-1 block text-xs font-medium text-slate-700">
-            Resolution note <span className="font-normal text-slate-500">(optional)</span>
+          <label htmlFor="resolutionNote" className="mb-1 block text-xs font-medium text-zk-text2">
+            Resolution note <span className="font-normal text-zk-muted">(optional)</span>
           </label>
           <Textarea
             id="resolutionNote"
@@ -345,7 +345,7 @@ export function UpdateIssueForm({
             }}
             placeholder="What happened? e.g. Fixed in the 2.4 release. Clear your cache if you still see it."
           />
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-zk-muted">
             Shown at the top of the issue and sent to the reporter and watchers.{" "}
             {[...note].length}/{RESOLUTION_NOTE_MAX}
           </p>
@@ -359,7 +359,7 @@ export function UpdateIssueForm({
       ) : null}
 
       {/* Announced, so the result of a save isn't visual-only. */}
-      <p role="status" aria-live="polite" className="text-sm text-emerald-700 empty:hidden">
+      <p role="status" aria-live="polite" className="text-sm text-zk-ok-fg empty:hidden">
         {saved ? (
           <>
             Saved.{" "}

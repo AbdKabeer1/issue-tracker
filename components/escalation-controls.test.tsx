@@ -61,6 +61,43 @@ describe("QuickResolveButtons (#763)", () => {
   });
 });
 
+describe("QuickResolveButtons refused action (Ziki #538)", () => {
+  it("shows the server's error as an alert and does not report it resolved", async () => {
+    const user = userEvent.setup();
+    const onResolved = vi.fn();
+    vi.mocked(quickResolveEscalationAction).mockResolvedValue({
+      ok: false,
+      error: "This question was already answered.",
+    });
+
+    render(<QuickResolveButtons escalationId="esc-123" onResolved={onResolved} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /approve & unblock/i }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe("This question was already answered.");
+    expect(onResolved).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /approve & unblock/i })).toHaveProperty("disabled", false);
+  });
+
+  it("clears the error when a retry succeeds", async () => {
+    const user = userEvent.setup();
+    const onResolved = vi.fn();
+    vi.mocked(quickResolveEscalationAction)
+      .mockResolvedValueOnce({ ok: false, error: "You can't answer this escalation." })
+      .mockResolvedValueOnce({ ok: true });
+
+    render(<QuickResolveButtons escalationId="esc-123" onResolved={onResolved} />);
+
+    await user.click(screen.getByRole("button", { name: /authorize work/i }));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: /authorize work/i }));
+    await vi.waitFor(() => expect(onResolved).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
 describe("EscalationAnswerForm (#763)", () => {
   it("renders textarea and submit button", () => {
     render(<EscalationAnswerForm escalationId="esc-456" />);

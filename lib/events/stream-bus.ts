@@ -65,21 +65,19 @@ class EventStreamBus extends EventEmitter {
       // Enforce tenant scoping
       if (sub.agent.tenantId !== event.tenantId) continue;
 
-      // Enforce project scoping if key is project-scoped
-      if (sub.agent.projectId && event.projectId && sub.agent.projectId !== event.projectId) {
+      // Enforce project scoping if key is project-scoped. An event without a
+      // project (tenant-level, or an unknown publisher) cannot be proven to
+      // belong to the key's project, so it is withheld (#607).
+      if (sub.agent.projectId && event.projectId !== sub.agent.projectId) {
         continue;
-      }
-      if (sub.agent.projectId && !event.projectId) {
-        // If agent is project-scoped but event has no project, be restrictive
-        // but allow if filters don't require specific project
       }
 
       // Apply filters
       const filters = sub.filters;
-      if (filters.projectId && event.projectId && filters.projectId !== event.projectId) {
+      if (filters.projectId && event.projectId !== filters.projectId) {
         continue;
       }
-      if (filters.bugId && event.bugId && filters.bugId !== event.bugId) {
+      if (filters.bugId && event.bugId !== filters.bugId) {
         continue;
       }
       if (filters.types?.length || filters.typePrefixes?.length) {

@@ -32,12 +32,19 @@ export default async function NotificationsPage({
     prisma.membership.count({ where: { userId: user.id } }),
   ]);
 
+  const scopePill = (active: boolean) =>
+    `inline-flex h-9 items-center rounded-full px-3.5 text-sm font-semibold transition-colors ${
+      active
+        ? "bg-zk-info-bg font-bold text-zk-info-fg"
+        : "text-zk-muted hover:bg-zk-chip hover:text-zk-text"
+    }`;
+
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Notifications</h1>
-          <p className="text-sm text-slate-600">
+          <h1 className="text-xl font-extrabold tracking-tight text-zk-text sm:text-2xl">Notifications</h1>
+          <p className="mt-1 text-sm text-zk-muted">
             {unread === 0 ? "You're all caught up." : `${unread} unread`}
           </p>
         </div>
@@ -45,18 +52,18 @@ export default async function NotificationsPage({
       </div>
 
       {workspaceCount > 1 ? (
-        <nav className="flex gap-2" aria-label="Notification workspaces">
+        <nav className="flex gap-1.5" aria-label="Notification workspaces">
           <Link
             href="/notifications"
             aria-current={!allWorkspaces ? "page" : undefined}
-            className={`rounded-md px-3 py-1.5 text-sm ${!allWorkspaces ? "bg-teal-100 font-medium text-teal-900" : "text-slate-600 hover:bg-slate-100"}`}
+            className={scopePill(!allWorkspaces)}
           >
             This workspace
           </Link>
           <Link
             href="/notifications?scope=all"
             aria-current={allWorkspaces ? "page" : undefined}
-            className={`rounded-md px-3 py-1.5 text-sm ${allWorkspaces ? "bg-teal-100 font-medium text-teal-900" : "text-slate-600 hover:bg-slate-100"}`}
+            className={scopePill(allWorkspaces)}
           >
             All workspaces
           </Link>
@@ -64,18 +71,18 @@ export default async function NotificationsPage({
       ) : null}
 
       {notifications.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
-          <p className="font-medium text-slate-900">No notifications yet</p>
+        <div className="rounded-[20px] border border-dashed border-zk-border bg-zk-surface p-6 text-sm text-zk-muted">
+          <p className="font-semibold text-zk-text">No notifications yet</p>
           <p className="mt-1">
             New comments, mentions, assignments and status changes on issues
             you&apos;re watching will show up here.
           </p>
-          <Link href="/issues" className="mt-3 inline-flex text-sm font-medium text-teal-700 hover:underline">
+          <Link href="/issues" className="mt-3 inline-flex text-sm font-semibold text-zk-accent hover:underline">
             Go to issues
           </Link>
         </div>
       ) : (
-        <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <ul className="divide-y divide-zk-divider overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface">
           {notifications.map((n) => {
             const unreadItem = !n.readAt;
             return (
@@ -83,24 +90,24 @@ export default async function NotificationsPage({
                 {/* A plain link, not <Link>: prefetching would mark it read. */}
                 <a
                   href={`${BASE_PATH}/notifications/${n.id}`}
-                  className={`flex items-start gap-3 px-4 py-3 text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-600 ${
-                    unreadItem ? "bg-teal-50/40" : ""
+                  className={`flex items-start gap-3 px-4 py-3 text-sm transition-colors hover:bg-zk-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-electric-blue ${
+                    unreadItem ? "bg-zk-tint/50" : ""
                   }`}
                 >
                   <span
-                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${unreadItem ? "bg-teal-600" : "bg-transparent"}`}
+                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${unreadItem ? "bg-electric-blue-strong" : "bg-transparent"}`}
                     aria-hidden="true"
                   />
                   <span className="min-w-0 flex-1">
-                    <span className={`block break-words ${unreadItem ? "font-medium text-slate-900" : "text-slate-700"}`}>
+                    <span className={`block break-words ${unreadItem ? "font-semibold text-zk-text" : "text-zk-text2"}`}>
                       {unreadItem ? <span className="sr-only">Unread: </span> : null}
                       {n.title}
                     </span>
-                    <span className="mt-0.5 block text-xs text-slate-500">
+                    <span className="mt-0.5 block text-xs text-zk-muted">
                       <LocalTime date={n.createdAt} />
                     </span>
                     {workspaceCount > 1 && n.tenant ? (
-                      <span className="mt-1 block text-xs text-slate-500">{n.tenant.name}</span>
+                      <span className="mt-1 block text-xs text-zk-muted">{n.tenant.name}</span>
                     ) : null}
                   </span>
                 </a>
@@ -110,7 +117,7 @@ export default async function NotificationsPage({
         </ul>
       )}
       {notifications.length === PAGE_SIZE ? (
-        <p className="text-xs text-slate-500">Showing your {PAGE_SIZE} most recent notifications.</p>
+        <p className="text-xs text-zk-muted">Showing your {PAGE_SIZE} most recent notifications.</p>
       ) : null}
     </div>
   );

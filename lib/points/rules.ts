@@ -54,7 +54,9 @@ export function reviewerPointsAt(index: number, firstAward: number): number {
 /** The goal is this many points. Solved tasks are counted, not required. */
 export const TARGET_POINTS = 500;
 
-export type PointRole = "solver" | "reporter" | "reviewer" | "triager" | "submission";
+export const DISPATCHER_POINTS = 2;
+
+export type PointRole = "solver" | "reporter" | "reviewer" | "triager" | "submission" | "dispatcher";
 
 /** Idempotency key for paying the triager who cleared an issue as not a duplicate. */
 export function triagerClearSourceKey(bugId: string, userId: string): string {
@@ -101,12 +103,17 @@ function percent(value: number, target: number): number {
   return Math.min(100, Math.max(0, Math.floor((value / target) * 100)));
 }
 
-/** Progress toward 500 points. */
-export function pointsProgress(points: number, solvedTasks: number): PointsProgress {
+/** Progress toward the points goal (hard-coded TARGET_POINTS unless overridden). */
+export function pointsProgress(
+  points: number,
+  solvedTasks: number,
+  target: number = TARGET_POINTS,
+): PointsProgress {
+  const goal = target > 0 ? target : TARGET_POINTS;
   return {
     points,
     solvedTasks,
-    pointsPercent: percent(points, TARGET_POINTS),
-    targetMet: points >= TARGET_POINTS,
+    pointsPercent: percent(points, goal),
+    targetMet: points >= goal,
   };
 }

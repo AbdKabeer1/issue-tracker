@@ -117,6 +117,19 @@ const nextConfig: NextConfig = {
     // #447: lets a page answer 403 with `forbidden()` and app/forbidden.tsx.
     authInterrupts: true,
   },
+  webpack: (config, { nextRuntime }) => {
+    // instrumentation.ts imports the ledger backfill only on Node. The edge
+    // build still traces that import and then fails on net/tls/node:crypto.
+    if (nextRuntime === "edge") {
+      config.resolve.alias = {
+        ...(typeof config.resolve.alias === "object" && !Array.isArray(config.resolve.alias)
+          ? config.resolve.alias
+          : {}),
+        "@/lib/points/backfill-on-start": false,
+      };
+    }
+    return config;
+  },
   turbopack: {
     rules: {
       "*.css": {

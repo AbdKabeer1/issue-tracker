@@ -12,14 +12,16 @@ describe("page container token (#415)", () => {
     expect(PAGE_CONTAINER_CLASS).toContain("px-4");
   });
 
-  it("is the width the header and the layout main both use", () => {
-    for (const source of [
-      read("app/(app)/layout.tsx"),
-      read("components/app-header.tsx"),
-    ]) {
-      expect(source).toContain("PAGE_CONTAINER_CLASS");
-      expect(source).not.toContain("max-w-7xl");
-    }
+  it("aligns the signed-in header and main, and keeps the preview on the shared width", () => {
+    const layout = read("app/(app)/layout.tsx");
+    const header = read("components/app-header.tsx");
+    // The sidebar shell is full-bleed. Header and main share the same horizontal padding.
+    expect(layout).toContain("px-4 py-6");
+    expect(header).toContain("px-4");
+    expect(layout).not.toContain("max-w-7xl");
+    expect(header).not.toContain("max-w-7xl");
+    // Link-preview responses have no sidebar, so they still use the shared container.
+    expect(layout).toContain("PAGE_CONTAINER_CLASS");
   });
 
   it("leaves no ad-hoc page wrapper on the routes named in the ticket", () => {
@@ -39,8 +41,6 @@ describe("page container token (#415)", () => {
   });
 
   it("keeps the issue description at a readable measure inside the container", () => {
-    expect(read("components/editable-issue-description.tsx")).toContain(
-      "mt-2 max-w-3xl",
-    );
+    expect(read("components/editable-issue-description.tsx")).toMatch(/className="[^"]*\bmax-w-3xl\b/);
   });
 });

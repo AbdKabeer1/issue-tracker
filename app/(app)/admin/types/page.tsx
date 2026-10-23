@@ -14,12 +14,12 @@ export default async function AdminTypesPage() {
     if (scope.forbidden) redirect("/issues");
     return (
       <div className="space-y-3">
-        <h1 className="text-2xl font-semibold text-slate-900">Issue type management</h1>
-        <p className="max-w-xl text-sm text-slate-600">
+        <h1 className="text-2xl font-extrabold tracking-tight text-zk-text">Issue type management</h1>
+        <p className="max-w-xl text-sm text-zk-text2">
           Open an organization first. Issue types belong to one organization, not to every
           account on the site.
         </p>
-        <Link href="/tenants" className="text-sm font-medium text-teal-700 hover:underline">
+        <Link href="/tenants" className="text-sm font-medium text-zk-accent hover:underline">
           Choose an organization
         </Link>
       </div>

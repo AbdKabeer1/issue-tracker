@@ -24,7 +24,7 @@ export function SendMessageForm({ agentId, maxLength }: { agentId: string; maxLe
   return (
     <form ref={form} action={action} className="space-y-3">
       <input type="hidden" name="agentId" value={agentId} />
-      <label htmlFor="message-body" className="block text-sm font-medium text-slate-800">
+      <label htmlFor="message-body" className="block text-sm font-medium text-zk-text font-semibold">
         Message
       </label>
       <Textarea
@@ -34,15 +34,20 @@ export function SendMessageForm({ agentId, maxLength }: { agentId: string; maxLe
         required
         maxLength={maxLength}
         placeholder="Focus on desktop bugs today."
+        className="rounded-xl border-zk-border bg-zk-surface text-zk-text placeholder:text-zk-muted focus:border-electric-blue focus:ring-electric-blue/20"
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? "message-error" : undefined}
       />
       {error ? (
-        <p id="message-error" role="alert" className="text-sm text-red-700">
+        <p id="message-error" role="alert" className="text-sm text-zk-bad-fg font-medium">
           {error}
         </p>
       ) : null}
-      <Button type="submit" disabled={pending}>
+      <Button
+        type="submit"
+        disabled={pending}
+        className="rounded-full bg-electric-blue-strong text-white hover:bg-[#2552af] focus-visible:ring-electric-blue"
+      >
         {pending ? "Sending…" : "Send message"}
       </Button>
     </form>
@@ -68,7 +73,7 @@ export function InstructionsForm({
   return (
     <form action={action} className="space-y-3">
       <input type="hidden" name="agentId" value={agentId} />
-      <label htmlFor="agent-instructions" className="block text-sm font-medium text-slate-800">
+      <label htmlFor="agent-instructions" className="block text-sm font-medium text-zk-text font-semibold">
         Standing instructions
       </label>
       <Textarea
@@ -78,23 +83,29 @@ export function InstructionsForm({
         maxLength={maxLength}
         defaultValue={instructions ?? ""}
         placeholder="Use the staging URL. Leave #212 alone."
+        className="rounded-xl border-zk-border bg-zk-surface text-zk-text placeholder:text-zk-muted focus:border-electric-blue focus:ring-electric-blue/20"
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? "instructions-error" : "instructions-help"}
       />
-      <p id="instructions-help" className="text-xs text-slate-500">
+      <p id="instructions-help" className="text-xs text-zk-muted">
         Up to {maxLength} characters. Leave blank to clear.
       </p>
       {error ? (
-        <p id="instructions-error" role="alert" className="text-sm text-red-700">
+        <p id="instructions-error" role="alert" className="text-sm text-zk-bad-fg font-medium">
           {error}
         </p>
       ) : null}
       {result?.ok ? (
-        <p role="status" className="text-sm text-emerald-700">
+        <p role="status" className="text-sm text-zk-ok-fg font-semibold">
           Saved.
         </p>
       ) : null}
-      <Button type="submit" variant="secondary" disabled={pending}>
+      <Button
+        type="submit"
+        variant="secondary"
+        disabled={pending}
+        className="rounded-full border-zk-border bg-zk-surface text-zk-text hover:bg-zk-chip"
+      >
         {pending ? "Saving…" : "Save instructions"}
       </Button>
     </form>

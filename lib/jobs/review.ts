@@ -64,7 +64,7 @@ async function findEligibleReviewers(
       tenantId,
       user: {
         agents: {
-          some: { tenantId, revokedAt: null, level: { in: ["reviewer", "merger"] } },
+          some: { tenantId, revokedAt: null, level: { in: ["reviewer", "dispatcher", "merger"] } },
         },
       },
     },
@@ -73,7 +73,7 @@ async function findEligibleReviewers(
       user: {
         select: {
           agents: {
-            where: { tenantId, revokedAt: null, level: { in: ["reviewer", "merger"] } },
+            where: { tenantId, revokedAt: null, level: { in: ["reviewer", "dispatcher", "merger"] } },
             orderBy: { createdAt: "asc" },
             take: 1,
             select: { id: true },
@@ -123,14 +123,27 @@ export async function createJobReviewOffers(
   job: JobForReview,
   submission: SubmissionForReview,
 ): Promise<number> {
-  const candidates = await findEligibleReviewers(db, job.tenantId, submission, new Set());
+  const offered = await createJobReviewOffersForCandidates(db, caller, job, submission, new Set());
+  // Keep the full quorum when nobody is eligible yet; the durable sweeper will
+  // create the missing offers when reviewers become available.
+  return offered || DEFAULT_REVIEW_VERDICTS_NEEDED;
+}
+
+async function createJobReviewOffersForCandidates(
+  db: Db,
+  caller: { agentId?: string; tenantId: string },
+  job: JobForReview,
+  submission: SubmissionForReview,
+  excludedUserIds: Set<string>,
+  limit = DEFAULT_REVIEW_VERDICTS_NEEDED,
+): Promise<number> {
+  const candidates = await findEligibleReviewers(db, job.tenantId, submission, excludedUserIds);
 
   if (!candidates.length) {
-    // Nobody can review yet. Still 2, so a late reviewer must reach quorum.
-    return DEFAULT_REVIEW_VERDICTS_NEEDED;
+    return 0;
   }
 
-  const selected = candidates.slice(0, DEFAULT_REVIEW_VERDICTS_NEEDED);
+  const selected = candidates.slice(0, limit);
   const now = new Date();
 
   for (const reviewer of selected) {
@@ -160,15 +173,148 @@ export async function createJobReviewOffers(
     });
   }
 
-  return Math.min(selected.length, DEFAULT_REVIEW_VERDICTS_NEEDED);
+  return selected.length;
+}
+
+/**
+ * Fills any missing review-offer slots for a pending submission. A row lock
+ * makes this safe when the cron sweep and a late-accept recovery run together.
+ * Reviewers who already received an offer are not repeatedly re-offered the
+ * same row; a newly eligible reviewer can still be picked on a later sweep.
+ */
+export async function ensureJobReviewOffers(submissionId: string): Promise<number> {
+  return prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "JobSubmission" WHERE "id" = ${submissionId} FOR UPDATE
+    `;
+    if (!locked.length) return 0;
+
+    const submission = await tx.jobSubmission.findUnique({
+      where: { id: submissionId },
+      select: {
+        id: true,
+        jobId: true,
+        agentId: true,
+        beneficiaryUserId: true,
+        reviewsNeeded: true,
+        status: true,
+        job: { select: { id: true, tenantId: true, projectId: true, pointsPerAccepted: true } },
+      },
+    });
+    if (!submission || submission.status !== "pending") return 0;
+
+    const [offers, reviews] = await Promise.all([
+      tx.jobReviewOffer.findMany({
+        where: { submissionId },
+        select: { beneficiaryUserId: true, status: true },
+      }),
+      tx.jobReview.findMany({
+        where: { submissionId },
+        select: { beneficiaryUserId: true },
+      }),
+    ]);
+
+    const reviewedOwners = new Set(reviews.map((review) => review.beneficiaryUserId));
+    const activeOfferOwners = new Set(
+      offers
+        .filter((offer) => offer.status === "offered" || offer.status === "accepted")
+        .map((offer) => offer.beneficiaryUserId),
+    );
+    const excludedUserIds = new Set([
+      ...offers.map((offer) => offer.beneficiaryUserId),
+      ...reviewedOwners,
+    ]);
+    const remaining = Math.max(
+      0,
+      submission.reviewsNeeded - reviewedOwners.size - activeOfferOwners.size,
+    );
+    if (!remaining) return 0;
+
+    return createJobReviewOffersForCandidates(
+      tx,
+      { tenantId: submission.job.tenantId },
+      submission.job,
+      submission,
+      excludedUserIds,
+      remaining,
+    );
+  });
+}
+
+/**
+ * Expires one due job-review offer and replaces it when another reviewer is
+ * available. The expiry commits before replacement creation so it survives a
+ * process restart or a failed attempt to find the next reviewer.
+ */
+export async function expireJobReviewOffer(offerId: string): Promise<string | null> {
+  const submissionId = await prisma.$transaction(async (tx) => {
+    const offer = await tx.jobReviewOffer.findUnique({
+      where: { id: offerId },
+      select: { id: true, submissionId: true, status: true, offeredAt: true, deadlineAt: true },
+    });
+    if (!offer) return null;
+
+    const now = Date.now();
+    const due =
+      (offer.status === "offered" && isReviewOfferExpired(offer.offeredAt, now)) ||
+      (offer.status === "accepted" && isReviewDeadlineExpired(offer.deadlineAt, now));
+    if (!due) return null;
+
+    const updated = await tx.jobReviewOffer.updateMany({
+      where: { id: offer.id, status: offer.status },
+      data: { status: "expired", expiredAt: new Date(now) },
+    });
+    return updated.count ? offer.submissionId : null;
+  });
+
+  return submissionId;
+}
+
+/**
+ * Durable recovery for job-review offers. It expires overdue offers, then
+ * revisits every pending submission so rows created with no eligible reviewers
+ * (or only a partial quorum) can be offered once reviewers become available.
+ */
+export async function sweepJobReviewOffers(): Promise<{ expired: number; offered: number }> {
+  const dueOffers = await prisma.jobReviewOffer.findMany({
+    where: {
+      submission: { status: "pending" },
+      OR: [
+        { status: "offered", offeredAt: { lte: new Date(Date.now() - REVIEW_OFFER_TTL_MS) } },
+        { status: "accepted", deadlineAt: { lte: new Date() } },
+      ],
+    },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  let expired = 0;
+  let offered = 0;
+  for (const offer of dueOffers) {
+    const submissionId = await expireJobReviewOffer(offer.id);
+    if (!submissionId) continue;
+    expired++;
+    offered += await ensureJobReviewOffers(submissionId);
+  }
+
+  const pendingSubmissions = await prisma.jobSubmission.findMany({
+    where: { status: "pending" },
+    select: { id: true },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+  for (const submission of pendingSubmissions) {
+    offered += await ensureJobReviewOffers(submission.id);
+  }
+
+  return { expired, offered };
 }
 
 /** Accepts a pending job review offer (#617), mirroring the PR flow's TTLs. */
 export async function acceptJobReviewOffer(agent: AgentContext, offerId: string) {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const offer = await tx.jobReviewOffer.findUnique({
       where: { id: offerId },
-      include: { submission: { select: { job: { select: { tenantId: true } } } } },
+      include: { submission: { select: { id: true, job: { select: { tenantId: true } } } } },
     });
     if (!offer || offer.submission.job.tenantId !== agent.tenantId) {
       throw new IssueApiError(404, "Review offer not found.");
@@ -180,12 +326,12 @@ export async function acceptJobReviewOffer(agent: AgentContext, offerId: string)
     const now = new Date();
     if (offer.status === "expired" || isReviewOfferExpired(offer.offeredAt, now.getTime())) {
       if (offer.status !== "expired") {
-        await tx.jobReviewOffer.update({
-          where: { id: offer.id },
+        await tx.jobReviewOffer.updateMany({
+          where: { id: offer.id, status: "offered" },
           data: { status: "expired", expiredAt: now },
         });
       }
-      throw new IssueApiError(410, "This review offer expired.");
+      return { kind: "expired" as const, submissionId: offer.submission.id };
     }
     if (offer.status !== "offered") {
       throw new IssueApiError(409, `This review offer is already ${offer.status}.`);
@@ -201,8 +347,14 @@ export async function acceptJobReviewOffer(agent: AgentContext, offerId: string)
     });
 
     await audit(agent, "job.review.offer_accepted", offer.id, {}, { db: tx });
-    return { offer: updated };
+    return { kind: "accepted" as const, offer: updated };
   });
+
+  if (result.kind === "expired") {
+    await ensureJobReviewOffers(result.submissionId);
+    throw new IssueApiError(410, "This review offer expired.");
+  }
+  return { offer: result.offer };
 }
 
 export type ReviewOutcome = {
@@ -226,7 +378,7 @@ export async function reviewJobSubmission(
 ): Promise<ReviewOutcome> {
   const parsed = jobReviewSchema.parse(input);
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const submission = await tx.jobSubmission.findUnique({
       where: { id: submissionId },
       include: { job: { select: { id: true, tenantId: true, projectId: true, pointsPerAccepted: true } } },
@@ -254,7 +406,11 @@ export async function reviewJobSubmission(
       throw new IssueApiError(409, "Accept this submission's review offer before leaving a verdict.");
     }
     if (isReviewDeadlineExpired(offer.deadlineAt)) {
-      throw new IssueApiError(410, "The review deadline passed.");
+      await tx.jobReviewOffer.updateMany({
+        where: { id: offer.id, status: "accepted" },
+        data: { status: "expired", expiredAt: new Date() },
+      });
+      return { kind: "expired" as const, submissionId };
     }
 
     if (submission.status !== "pending") {
@@ -325,8 +481,19 @@ export async function reviewJobSubmission(
       submission: { id: updated.id, status: updated.status, reviewsNeeded: updated.reviewsNeeded },
       review,
       points_awarded: pointsAwarded,
+      kind: "reviewed" as const,
     };
   });
+
+  if (result.kind === "expired") {
+    await ensureJobReviewOffers(result.submissionId);
+    throw new IssueApiError(410, "The review deadline passed.");
+  }
+  return {
+    submission: result.submission,
+    review: result.review,
+    points_awarded: result.points_awarded,
+  };
 }
 
 export { OFFER_STATUSES };

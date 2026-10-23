@@ -69,6 +69,13 @@ describe("isPublicPath (#348)", () => {
     expect(isPublicPath("/favicon.ico")).toBe(true);
   });
 
+  it("lets the scheduler reach the cron runner, and nothing else under /api/internal (#571)", () => {
+    expect(isPublicPath("/api/internal/cron")).toBe(true);
+    expect(isPublicPath("/api/internal")).toBe(false);
+    expect(isPublicPath("/api/internal/cron/extra")).toBe(false);
+    expect(isPublicPath("/api/internal/other")).toBe(false);
+  });
+
   it("lets the agent API through; its routes check the agent key (#427)", () => {
     expect(isPublicPath("/api/v1/agents/me")).toBe(true);
     expect(isPublicPath("/api/v1/agents/pairing")).toBe(true);
@@ -97,6 +104,13 @@ describe("middleware routing (#348)", () => {
   it("allows unauthenticated requests to / without redirecting to /login (#487)", () => {
     const req = createMockReq({ pathname: "/", isLoggedIn: false });
     const res = runMiddleware(req);
+
+    expect(res.status).not.toBe(307);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("lets an unauthenticated scheduler call reach /api/internal/cron instead of /login (#571)", () => {
+    const res = runMiddleware(createMockReq({ pathname: "/api/internal/cron", isLoggedIn: false }));
 
     expect(res.status).not.toBe(307);
     expect(res.headers.get("location")).toBeNull();
@@ -149,12 +163,12 @@ describe("middleware routing (#348)", () => {
     expect(location).toContain(encodeURIComponent("/settings/agents/pair?code=KX7P-2MQD"));
   });
 
-  it("redirects logged-in users visiting /login to /issues", () => {
+  it("redirects logged-in users visiting /login to /dashboard", () => {
     const req = createMockReq({ pathname: "/login", isLoggedIn: true });
     const res = runMiddleware(req);
 
     expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toBe("https://ziki.dev/issues");
+    expect(res.headers.get("location")).toBe("https://ziki.dev/dashboard");
   });
 
   it("allows logged-in users to proceed to protected pages", () => {

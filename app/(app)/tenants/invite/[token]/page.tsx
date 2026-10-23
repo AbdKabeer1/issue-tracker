@@ -28,10 +28,10 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="space-y-1">
-        <Link href="/tenants" className="text-sm text-teal-700 hover:underline">
+        <Link href="/tenants" className="text-sm text-zk-accent hover:underline">
           ← Your workspaces
         </Link>
-        <h1 className="text-2xl font-semibold text-slate-900">Invite</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight text-zk-text">Invite</h1>
       </div>
       <InviteCard invite={invite} accept={{ token }} accountEmail={user.email} />
     </div>

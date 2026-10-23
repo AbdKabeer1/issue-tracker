@@ -12,6 +12,12 @@ import { copyText } from "@/lib/clipboard";
 import { AGENT_LEVEL_LABELS } from "@/lib/agents/levels";
 import { LocalTime } from "@/components/local-time";
 import type { AgentProjectChoice } from "./create-agent-form";
+import {
+  agentsDangerBtn,
+  agentsInputClass,
+  agentsPrimaryBtn,
+  agentsSecondaryBtn,
+} from "./agents-ui";
 
 type BurstExpiryChoice = "keep" | "none" | "2h" | "8h" | "24h" | "custom";
 
@@ -252,15 +258,15 @@ export function AgentControls({
 
   if (revoked) {
     return (
-      <Button type="button" variant="danger-secondary" onClick={remove} disabled={pending}>
+      <Button type="button" onClick={remove} disabled={pending} className={agentsDangerBtn}>
         Delete
       </Button>
     );
   }
 
   return (
-    <div className="flex flex-col gap-2 sm:items-end">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-col gap-3 sm:items-end">
+      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
         <label htmlFor={`level-${agentId}`} className="sr-only">
           Level for {agentName}
         </label>
@@ -269,9 +275,8 @@ export function AgentControls({
           value={current}
           disabled={pending}
           onChange={(event) => changeLevel(event.target.value as AgentLevel)}
-          className="w-auto"
+          className={`${agentsInputClass} w-auto min-w-[8rem]`}
         >
-          {/* The current level stays listed even if this person can't set it. */}
           {[...new Set([current, ...levels])].map((option) => (
             <option key={option} value={option} disabled={!levels.includes(option)}>
               {AGENT_LEVEL_LABELS[option]}
@@ -286,7 +291,7 @@ export function AgentControls({
           value={projectId}
           disabled={pending || projects.length === 0}
           onChange={(event) => setProjectId(event.target.value)}
-          className="w-auto"
+          className={`${agentsInputClass} w-auto min-w-[8rem]`}
         >
           {projects.map((project) => (
             <option key={project.id} value={project.id}>
@@ -296,7 +301,7 @@ export function AgentControls({
         </Select>
         {canSetBurst ? (
           <>
-            <label className="flex items-center gap-1.5 text-xs text-slate-600">
+            <label className="flex min-h-10 items-center gap-1.5 rounded-full bg-zk-chip px-3 text-xs font-semibold text-zk-text2">
               <input
                 type="checkbox"
                 checked={burstOn}
@@ -315,7 +320,7 @@ export function AgentControls({
                   value={expiryChoice}
                   disabled={pending}
                   onChange={(event) => changeExpiry(event.target.value as BurstExpiryChoice)}
-                  className="w-auto"
+                  className={`${agentsInputClass} w-auto`}
                 >
                   {savedUntil ? <option value="keep">Keep current expiry</option> : null}
                   <option value="none">No expiry</option>
@@ -335,13 +340,13 @@ export function AgentControls({
                       value={customUntil}
                       disabled={pending}
                       onChange={(event) => setCustomUntil(event.target.value)}
-                      className="w-auto text-xs"
+                      className={`${agentsInputClass} w-auto text-xs`}
                     />
                     <Button
                       type="button"
-                      variant="secondary"
                       disabled={pending || !customUntil}
                       onClick={() => saveBurst(true, "custom")}
+                      className={agentsSecondaryBtn}
                     >
                       Save expiry
                     </Button>
@@ -351,20 +356,25 @@ export function AgentControls({
             ) : null}
           </>
         ) : burstOn ? (
-          <span className="text-xs text-slate-500">High-volume</span>
+          <span className="text-xs font-semibold text-zk-muted">High-volume</span>
         ) : null}
-        <Button type="button" variant="secondary" onClick={regenerate} disabled={pending || !projectId}>
+        <Button
+          type="button"
+          onClick={regenerate}
+          disabled={pending || !projectId}
+          className={agentsSecondaryBtn}
+        >
           Regenerate key
         </Button>
-        <Button type="button" variant="danger-secondary" onClick={revoke} disabled={pending}>
+        <Button type="button" onClick={revoke} disabled={pending} className={agentsDangerBtn}>
           Revoke
         </Button>
-        <Button type="button" variant="danger-secondary" onClick={remove} disabled={pending}>
+        <Button type="button" onClick={remove} disabled={pending} className={agentsDangerBtn}>
           Delete
         </Button>
       </div>
       {canSetBurst || burstOn ? (
-        <p className="text-xs text-slate-500" suppressHydrationWarning>
+        <p className="text-xs text-zk-muted" suppressHydrationWarning>
           {!burstOn ? (
             "Standard budget: 30 writes an hour."
           ) : burstExpired ? (
@@ -379,8 +389,11 @@ export function AgentControls({
         </p>
       ) : null}
       {issued ? (
-        <div className="w-full space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 sm:max-w-md" role="status">
-          <p className="text-sm font-medium text-slate-900">
+        <div
+          className="w-full space-y-2 rounded-[16px] border border-zk-warn-bd bg-zk-warn-bg/40 p-3 sm:max-w-md"
+          role="status"
+        >
+          <p className="text-sm font-semibold text-zk-text">
             New key for {agentName} ({issued.prefix}…). Copy it now. It stays on this agent&apos;s row.
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -388,21 +401,22 @@ export function AgentControls({
               readOnly
               value={issued.rawKey}
               aria-label={`New key for ${agentName}`}
-              className="font-mono text-xs"
+              className={`${agentsInputClass} font-mono text-xs`}
               onFocus={(event) => event.currentTarget.select()}
             />
-            <Button type="button" onClick={copyIssued}>
+            <Button type="button" onClick={copyIssued} className={agentsPrimaryBtn}>
               Copy key
             </Button>
           </div>
         </div>
       ) : null}
       <details className="w-full text-left sm:max-w-md">
-        <summary className="cursor-pointer text-xs font-medium text-teal-800 hover:underline">
+        <summary className="cursor-pointer text-xs font-bold text-zk-accent hover:underline">
           Preferred areas{selectedAreaIds.length ? ` (${selectedAreaIds.length})` : ""}
         </summary>
-        <div className="mt-2 space-y-2 rounded-md border border-slate-200 p-3">
-          <label className="block text-xs font-medium text-slate-700" htmlFor={`area-project-${agentId}`}>
+        <div className="mt-2 space-y-3 rounded-[16px] border border-zk-border bg-zk-surface p-3">
+          <p className="text-xs text-zk-muted">Pick the areas this agent should look at first.</p>
+          <label className="block text-xs font-semibold text-zk-text" htmlFor={`area-project-${agentId}`}>
             Project
           </label>
           <Select
@@ -410,28 +424,48 @@ export function AgentControls({
             value={preferenceProjectId}
             disabled={pending || projects.length === 0}
             onChange={(event) => setPreferenceProjectId(event.target.value)}
+            className={agentsInputClass}
           >
-            {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
           </Select>
           {projectAreas.length ? (
-            <fieldset className="space-y-1">
-              <legend className="text-xs font-medium text-slate-700">Prefer this agent for</legend>
-              {projectAreas.map((area) => (
-                <label key={area.id} className="flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={selectedAreaIds.includes(area.id)}
-                    disabled={pending}
-                    onChange={(event) => toggleArea(area.id, event.target.checked)}
-                  />
-                  {area.name}
-                </label>
-              ))}
+            <fieldset>
+              <legend className="sr-only">Prefer this agent for</legend>
+              <div className="flex flex-wrap gap-2">
+                {projectAreas.map((area) => {
+                  const on = selectedAreaIds.includes(area.id);
+                  return (
+                    <button
+                      key={area.id}
+                      type="button"
+                      disabled={pending}
+                      aria-pressed={on}
+                      onClick={() => toggleArea(area.id, !on)}
+                      className={`h-[34px] rounded-full px-3.5 text-[13px] font-semibold transition ${
+                        on
+                          ? "border border-electric-blue-strong bg-electric-blue-strong text-white"
+                          : "border border-zk-border bg-zk-surface text-zk-text hover:border-electric-blue/50"
+                      }`}
+                    >
+                      {area.name}
+                    </button>
+                  );
+                })}
+              </div>
             </fieldset>
           ) : (
-            <p className="text-xs text-slate-500">This project has no areas yet.</p>
+            <p className="text-xs text-zk-muted">This project has no areas yet.</p>
           )}
-          <Button type="button" variant="secondary" disabled={pending || !areaPreferencesChanged} onClick={saveAreaPreferences}>
+          <Button
+            type="button"
+            disabled={pending || !areaPreferencesChanged}
+            onClick={saveAreaPreferences}
+            className={agentsSecondaryBtn}
+          >
             {pending ? "Saving…" : "Save area preferences"}
           </Button>
         </div>

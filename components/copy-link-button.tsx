@@ -71,7 +71,7 @@ export function CopyLinkButton({
       type="button"
       disabled={pending}
       onClick={copy}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 print:hidden"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-card px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 print:hidden"
     >
       <LinkIcon className="h-3.5 w-3.5" />
       <span>{copied ? "Copied" : "Copy link"}</span>

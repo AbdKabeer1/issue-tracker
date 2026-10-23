@@ -67,6 +67,15 @@ describe("llms.txt request examples are accepted by the routes (#555)", () => {
     expect(requestBody("POST /api/v1/issues/{id}/validations")).toMatchObject({ kind: "real" });
   });
 
+  it("documents the 201 validation response the route returns (#610)", () => {
+    const validations = section("POST /api/v1/issues/{id}/validations");
+    expect(validations).toContain("**Response (201):**");
+    expect(validations).toContain('"validation"');
+    expect(validations).toContain('"newly_confirmed"');
+    expect(validations).not.toContain('"validationId"');
+    expect(validations).not.toContain('"issueConfirmed"');
+  });
+
   it("documents the merge route without a body it never reads", () => {
     const merge = section("POST /api/v1/issues/{id}/merge");
     expect(merge).not.toContain("**Request Body:**");

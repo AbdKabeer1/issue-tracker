@@ -14,7 +14,7 @@ export function LoadError({
   children?: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-red-200 bg-white px-6 py-10">
+    <div className="rounded-xl border border-red-200 bg-card px-6 py-10">
       <h1 className="text-xl font-semibold text-slate-900">{title}</h1>
       <p className="mt-2 text-sm text-slate-600">{children}</p>
       <p className="mt-4 text-xs text-slate-500">

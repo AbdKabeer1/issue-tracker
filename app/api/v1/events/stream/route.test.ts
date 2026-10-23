@@ -11,6 +11,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/lib/agents/rate-budget", async (original) => ({ ...(await original<typeof import("@/lib/agents/rate-budget")>()), consumeAgentBudget: budget }));
 import { GET } from "./route";
 import { eventStreamBus } from "@/lib/events/stream-bus";
+import { encodeEventCursor } from "@/lib/agent-api/events";
 
 function request(path = "/events/stream", method = "GET", body?: unknown, key = true) {
   return new NextRequest(`http://localhost/api/v1${path}`, {
@@ -23,6 +24,8 @@ function request(path = "/events/stream", method = "GET", body?: unknown, key = 
 const key = () => ({
   id: "key-a",
   revokedAt: null,
+  projectId: null,
+  project: null,
   agent: {
     id: "agent-a",
     name: "Agent",
@@ -34,6 +37,11 @@ const key = () => ({
     owner: { memberships: [{ tenantId: "tenant-a" }] },
   },
 });
+
+/** A key scoped to one project, as pairing issues it. */
+function scopedKey(projectId = "project-a") {
+  return { ...key(), projectId, project: { slug: "alpha" } };
+}
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -232,6 +240,93 @@ describe("events/stream SSE endpoint", () => {
     expect(eventStreamBus.subscriptionCount).toBe(0);
 
     try { await reader!.cancel(); } catch {}
+  });
+
+  it("only streams events from a project-scoped key's project (#607)", async () => {
+    db.agentApiKey.findUnique.mockResolvedValue(scopedKey());
+    const res = await GET(request("/events/stream"));
+    expect(res.status).toBe(200);
+    const reader = res.body?.getReader();
+    await reader!.read(); // connected
+
+    eventStreamBus.broadcast({
+      id: "evt-other-project",
+      type: "issue.created",
+      payload: {},
+      actorAgentId: null,
+      bugId: "issue-b",
+      projectId: "project-b",
+      tenantId: "tenant-a",
+      createdAt: new Date(),
+    });
+    eventStreamBus.broadcast({
+      id: "evt-no-project",
+      type: "goal.created",
+      payload: {},
+      actorAgentId: null,
+      bugId: null,
+      tenantId: "tenant-a",
+      createdAt: new Date(),
+    });
+    eventStreamBus.broadcast({
+      id: "evt-own-project",
+      type: "issue.created",
+      payload: {},
+      actorAgentId: null,
+      bugId: "issue-a",
+      projectId: "project-a",
+      tenantId: "tenant-a",
+      createdAt: new Date(),
+    });
+
+    const { value } = await reader!.read();
+    const text = new TextDecoder().decode(value);
+    expect(text).toContain("evt-own-project");
+    expect(text).not.toContain("evt-other-project");
+    expect(text).not.toContain("evt-no-project");
+
+    const second = await Promise.race([
+      reader!.read().then(() => ({ timeout: false as const })),
+      new Promise<{ timeout: true }>((resolve) => setTimeout(() => resolve({ timeout: true }), 100)),
+    ]);
+    expect(second.timeout).toBe(true);
+    reader!.cancel();
+  });
+
+  it("rejects a foreign projectId for a project-scoped key (#607)", async () => {
+    db.agentApiKey.findUnique.mockResolvedValue(scopedKey());
+    const res = await GET(request("/events/stream?projectId=project-b"));
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("project_forbidden");
+  });
+
+  it("replays only the project-scoped key's events (#607)", async () => {
+    db.agentApiKey.findUnique.mockResolvedValue(scopedKey());
+    db.agentEvent.findMany.mockResolvedValue([
+      {
+        id: "evt-replayed",
+        type: "issue.created",
+        payload: {},
+        actorAgentId: null,
+        bugId: "issue-a",
+        createdAt: new Date("2026-10-19T12:00:00Z"),
+        txid: BigInt(10),
+      },
+    ]);
+    const cursor = encodeEventCursor({ createdAt: new Date("2026-10-19T11:00:00Z"), id: "evt-0" });
+    const res = await GET(request(`/events/stream?after=${cursor}`));
+    expect(res.status).toBe(200);
+    const reader = res.body?.getReader();
+    await reader!.read(); // connected
+
+    const { value } = await reader!.read();
+    const text = new TextDecoder().decode(value);
+    expect(text).toContain("evt-replayed");
+    expect(db.agentEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-a", projectId: "project-a" }) }),
+    );
+    reader!.cancel();
   });
 
   it("validates filters and returns 400 for invalid types", async () => {

@@ -96,7 +96,7 @@ describe("editProofLinksAction (#737)", () => {
     expect(result).toEqual({ ok: true });
     expect(tx.bug.update).toHaveBeenCalledWith({
       where: { id: "bug-1" },
-      data: expect.objectContaining({ proofLinks: [ISSUE, PR] }),
+      data: expect.objectContaining({ proofLinks: [ISSUE, PR], pullRequestUrl: PR }),
     });
     expect(tx.bugActivity.create).toHaveBeenCalledWith({
       data: expect.objectContaining({

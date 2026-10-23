@@ -24,16 +24,16 @@ export function ProjectApprovalRulesSection({
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h2 className="text-base font-semibold text-slate-900">
+        <h2 className="text-base font-semibold text-zk-text">
           Human approval rules
         </h2>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-zk-text2">
           Configure gates where issues must wait for human approval before they can be offered to agents or merged.
         </p>
       </div>
 
       {rules.length ? (
-        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+        <ul className="divide-y divide-zk-border rounded-full border border-zk-border bg-zk-surface">
           {rules.map((rule) => {
             const stageLabel =
               rule.stage === "before_merge" ? "Before merge" : "Before offer";
@@ -48,16 +48,16 @@ export function ProjectApprovalRulesSection({
               >
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800 border border-amber-200">
+                    <span className="inline-flex items-center rounded-md bg-zk-warn-bg px-2 py-0.5 text-xs font-semibold text-zk-warn-fg border border-zk-warn-bd">
                       {stageLabel}
                     </span>
-                    <span className="text-sm font-medium text-slate-900">
+                    <span className="text-sm font-medium text-zk-text">
                       {typeLabel}
                     </span>
-                    <span className="text-xs text-slate-500">· {sevLabel}</span>
+                    <span className="text-xs text-zk-muted">· {sevLabel}</span>
                   </div>
                   {fileLabel ? (
-                    <p className="text-xs text-slate-600 font-mono">
+                    <p className="text-xs text-zk-text2 font-mono">
                       {fileLabel}
                     </p>
                   ) : null}
@@ -78,13 +78,13 @@ export function ProjectApprovalRulesSection({
           })}
         </ul>
       ) : (
-        <p className="text-sm text-slate-500 italic">
+        <p className="text-sm text-zk-muted italic">
           No approval rules configured for this project yet.
         </p>
       )}
 
-      <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-        <h3 className="text-sm font-semibold text-slate-900 mb-3">
+      <div className="rounded-xl border border-zk-border bg-zk-tint/50 p-4">
+        <h3 className="text-sm font-semibold text-zk-text mb-3">
           Add approval rule
         </h3>
         <form action={createApprovalRuleAction} className="space-y-3">
@@ -95,7 +95,7 @@ export function ProjectApprovalRulesSection({
             <div>
               <label
                 htmlFor="rule-stage"
-                className="block text-xs font-medium text-slate-700 mb-1"
+                className="block text-xs font-medium text-zk-text2 mb-1"
               >
                 Gate stage
               </label>
@@ -103,7 +103,7 @@ export function ProjectApprovalRulesSection({
                 id="rule-stage"
                 name="stage"
                 defaultValue="before_merge"
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-2xs focus:border-teal-500 focus:outline-hidden"
+                className="w-full rounded-xl border border-zk-border bg-zk-surface px-3 py-1.5 text-xs text-zk-text shadow-2xs focus:border-electric-blue focus:outline-hidden"
               >
                 <option value="before_merge">Before merge</option>
                 <option value="before_offer">Before offer</option>
@@ -113,7 +113,7 @@ export function ProjectApprovalRulesSection({
             <div>
               <label
                 htmlFor="rule-type"
-                className="block text-xs font-medium text-slate-700 mb-1"
+                className="block text-xs font-medium text-zk-text2 mb-1"
               >
                 Issue type
               </label>
@@ -121,7 +121,7 @@ export function ProjectApprovalRulesSection({
                 id="rule-type"
                 name="issueTypeId"
                 defaultValue=""
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-2xs focus:border-teal-500 focus:outline-hidden"
+                className="w-full rounded-xl border border-zk-border bg-zk-surface px-3 py-1.5 text-xs text-zk-text shadow-2xs focus:border-electric-blue focus:outline-hidden"
               >
                 <option value="">Any issue type</option>
                 {issueTypes.map((type) => (
@@ -135,7 +135,7 @@ export function ProjectApprovalRulesSection({
             <div>
               <label
                 htmlFor="rule-severity"
-                className="block text-xs font-medium text-slate-700 mb-1"
+                className="block text-xs font-medium text-zk-text2 mb-1"
               >
                 Severity
               </label>
@@ -143,7 +143,7 @@ export function ProjectApprovalRulesSection({
                 id="rule-severity"
                 name="severity"
                 defaultValue=""
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-2xs focus:border-teal-500 focus:outline-hidden"
+                className="w-full rounded-xl border border-zk-border bg-zk-surface px-3 py-1.5 text-xs text-zk-text shadow-2xs focus:border-electric-blue focus:outline-hidden"
               >
                 <option value="">Any severity</option>
                 <option value="critical">Critical</option>
@@ -157,7 +157,7 @@ export function ProjectApprovalRulesSection({
           <div>
             <label
               htmlFor="rule-glob"
-              className="block text-xs font-medium text-slate-700 mb-1"
+              className="block text-xs font-medium text-zk-text2 mb-1"
             >
               Changed file glob (optional, for before merge)
             </label>
@@ -166,7 +166,7 @@ export function ProjectApprovalRulesSection({
               type="text"
               name="fileGlob"
               placeholder="e.g. app/(app)/billing/**"
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-2xs focus:border-teal-500 focus:outline-hidden"
+              className="w-full rounded-xl border border-zk-border bg-zk-surface px-3 py-1.5 text-xs text-zk-text shadow-2xs focus:border-electric-blue focus:outline-hidden"
             />
           </div>
 

@@ -87,6 +87,15 @@ beforeEach(() => {
 });
 
 describe("agent issue API authentication", () => {
+  it.each(["triager", "reviewer"] as const)("lets a %s read and comment but not create or claim work", async (level) => {
+    const key = await db.agentApiKey.findUnique();
+    db.agentApiKey.findUnique.mockResolvedValue({ ...key, agent: { ...key.agent, level } });
+    expect((await list(request())).status).toBe(200);
+    expect((await comment(request("POST", { body: "Role-scoped assessment" }), context)).status).toBe(201);
+    expect((await create(request("POST", validBody))).status).toBe(403);
+    expect((await claim(request("POST", {}), context)).status).toBe(403);
+    expect(db.bug.create).not.toHaveBeenCalled();
+  });
   it("fails closed without a key on every route", async () => {
     const responses = await Promise.all([
       list(request("GET", undefined, "", false)), read(request("GET", undefined, "", false), context),
@@ -279,7 +288,7 @@ describe("agent issue reads", () => {
     expect(db.bug.findMany.mock.lastCall?.[0].where).toMatchObject({ areaId: null });
   });
 
-  it("rejects absent/foreign projects, invalid enums, and malformed cursors", async () => {
+  it("rejects absent/foreign projects and malformed cursors", async () => {
     // #563: a missing projectId names the parameter instead of a raw validation dump.
     const missing = await list(request("GET", undefined, ""));
     expect(missing.status).toBe(400);
@@ -288,9 +297,22 @@ describe("agent issue reads", () => {
     db.project.findFirst.mockResolvedValueOnce(null);
     expect((await list(request())).status).toBe(404);
     expect(db.project.findFirst).toHaveBeenCalledWith({ where: { id: "project-a", tenantId: "tenant-a" }, select: { id: true } });
-    expect((await list(request("GET", undefined, "?projectId=project-a&status=unknown"))).status).toBe(422);
-    expect((await list(request("GET", undefined, "?projectId=project-a&stage=queued"))).status).toBe(422);
     expect((await list(request("GET", undefined, "?projectId=project-a&cursor=bad"))).status).toBe(400);
+    expect(db.bug.findMany).not.toHaveBeenCalled();
+  });
+
+  it("names invalid status, severity, stage and assignee filters (#406)", async () => {
+    const cases: [string, string][] = [
+      ["status=unknown", "status must be one of open, in_progress, resolved, closed."],
+      ["severity=urgent", "severity must be one of low, medium, high, critical."],
+      ["stage=queued", "stage must be one of reported, confirmed, ready."],
+      ["assignee=%20", 'assignee must be "none" or a valid user id.'],
+    ];
+    for (const [query, error] of cases) {
+      const response = await list(request("GET", undefined, `?projectId=project-a&${query}`));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error });
+    }
     expect(db.bug.findMany).not.toHaveBeenCalled();
   });
 
@@ -479,6 +501,23 @@ describe("agent issue creation via the real shared create policy", () => {
 });
 
 describe("agent comments", () => {
+  it.each([
+    { reporterId: "owner-a" },
+    { createdByAgent: { ownerUserId: "owner-a" } },
+    { assigneeId: "owner-a" },
+    { claims: [{ status: "active", releasedAt: null, beneficiaryUserId: "owner-a", agent: { ownerUserId: "another-owner" } }] },
+  ])("rejects a structured review from a conflicted owner's other agent (%#)", async (ownership) => {
+    db.bug.findFirst.mockResolvedValue({ ...issue, reporterId: "reporter", beneficiaryUserId: "beneficiary", assigneeId: null, createdByAgent: null, claims: [], ...ownership });
+    const response = await comment(request("POST", { body: "Confirmed", type: "review", metadata: { verdict: "accept", confidence: 100 } }), context);
+    expect(response.status).toBe(403);
+    expect(db.comment.create).not.toHaveBeenCalled();
+    expect(db.bug.update).not.toHaveBeenCalled();
+  });
+
+  it("still allows ordinary discussion by the reporter's agent", async () => {
+    db.bug.findFirst.mockResolvedValue({ ...issue, reporterId: "owner-a" });
+    expect((await comment(request("POST", { body: "More reproduction details", type: "comment" }), context)).status).toBe(201);
+  });
   it("preserves a committed comment response if only the request audit fails (#755)", async () => {
     const error = new Error("Request audit storage unavailable");
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -512,6 +551,33 @@ describe("agent comments", () => {
     expect(log).toHaveBeenCalledWith("[agent-api] request audit failed", expect.objectContaining({
       payload: { status: 500, request: true },
     }), expect.any(Error));
+  });
+
+  it("persists optional confidence alongside other comment metadata", async () => {
+    const metadata = { confidence: 85, confidenceReason: "Regression test passed.", verdict: "assessment" };
+    expect((await comment(request("POST", { body: "Review", type: "review", metadata }), context)).status).toBe(201);
+    expect(db.comment.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ metadata }) }));
+  });
+
+  it("attaches a pull request the assignee mentions in a comment", async () => {
+    const pr = "https://github.com/Zedu-Endor/issue-tracker/pull/1230";
+    db.bug.findFirst.mockResolvedValue({
+      ...issue,
+      reporterId: "reporter-a",
+      assigneeId: "owner-a",
+      pullRequestUrl: null,
+      proofLinks: [],
+    });
+    expect((await comment(request("POST", { body: `Implementation ready: ${pr}` }), context)).status).toBe(201);
+    expect(db.bug.update).toHaveBeenCalledWith({
+      where: { id: issue.id },
+      data: expect.objectContaining({ pullRequestUrl: pr, proofLinks: [pr] }),
+    });
+  });
+
+  it("rejects invalid confidence before writing a comment", async () => {
+    expect((await comment(request("POST", { body: "Review", metadata: { confidence: 101 } }), context)).status).toBe(422);
+    expect(db.comment.create).not.toHaveBeenCalled();
   });
 
   it("records the person and agent with activity, watching, and audit", async () => {
@@ -655,7 +721,7 @@ describe("issue read confirmation", () => {
   }
 
   function accept(id: string, agentId: string, ownerUserId: string) {
-    return { id, agentId, agent: { id: agentId, ownerUserId } };
+    return { id, agentId, onBehalfOfUserId: ownerUserId, agent: { id: agentId, ownerUserId } };
   }
 
   function validation(id: string, createdAt: string, extra: Record<string, unknown> = {}) {
@@ -717,7 +783,7 @@ describe("issue read confirmation", () => {
   });
 
   function triageClear(id: string, agentId: string, ownerUserId: string) {
-    return { id, agentId, agent: { id: agentId, ownerUserId, level: "triager" } };
+    return { id, agentId, onBehalfOfUserId: ownerUserId, agent: { id: agentId, ownerUserId, level: "triager" } };
   }
 
   it("is confirmed once two distinct owners have accepted", async () => {
@@ -742,7 +808,36 @@ describe("issue read confirmation", () => {
     const body = await readIssue();
     expect(body.confirmed).toBe(true);
     expect(body.intake).toBe("issue");
-    expect(body).not.toHaveProperty("voteCount");
+  });
+
+  it("shows the upvote count and the threshold an idea needs (#463)", async () => {
+    db.bug.findFirst.mockResolvedValue({ ...issue, status: "open", voteCount: 2 });
+    db.issueValidation.findMany.mockResolvedValue([accept("v1", "r1", "rob"), accept("v2", "r2", "sam")]);
+    const body = (await readIssue()) as unknown as { voteCount: number; voteThreshold: number; intake: string };
+    expect(body.voteCount).toBe(2);
+    expect(body.voteThreshold).toBe(3);
+    expect(body.intake).toBe("idea");
+    expect(db.bug.findFirst.mock.calls.at(-1)?.[0]?.select.voteCount).toBe(true);
+  });
+
+  it("shows the linked fix and the commit a verdict would test (#544)", async () => {
+    const pullRequestUrl = "https://github.com/Zedu-Endor/issue-tracker/pull/1235";
+    const pullRequestHeadSha = "77e781e7c6d32b1fb25493e4250092d0bf76cb3c";
+    db.bug.findFirst.mockResolvedValue({ ...issue, status: "open", pullRequestUrl, pullRequestHeadSha });
+    db.issueValidation.findMany.mockResolvedValue([]);
+    const body = (await readIssue()) as unknown as { pullRequestUrl: string | null; pullRequestHeadSha: string | null };
+    expect(body.pullRequestUrl).toBe(pullRequestUrl);
+    expect(body.pullRequestHeadSha).toBe(pullRequestHeadSha);
+    expect(db.bug.findFirst.mock.calls.at(-1)?.[0]?.select.pullRequestUrl).toBe(true);
+    expect(db.bug.findFirst.mock.calls.at(-1)?.[0]?.select.pullRequestHeadSha).toBe(true);
+  });
+
+  it("reports an unlinked fix as null rather than omitting it (#544)", async () => {
+    db.bug.findFirst.mockResolvedValue({ ...issue, status: "open", pullRequestUrl: null, pullRequestHeadSha: null });
+    db.issueValidation.findMany.mockResolvedValue([]);
+    const body = (await readIssue()) as unknown as Record<string, unknown>;
+    expect(body).toHaveProperty("pullRequestUrl", null);
+    expect(body).toHaveProperty("pullRequestHeadSha", null);
   });
 
   it("does not confirm when both accepts belong to the same owner", async () => {
@@ -751,6 +846,18 @@ describe("issue read confirmation", () => {
       accept("v2", "r2", "rob"),
     ]);
     expect((await readIssue()).confirmed).toBe(false);
+  });
+
+  it("reads an issue by its readable number as well as its id (#457)", async () => {
+    db.bug.findFirst.mockResolvedValue({ ...issue, status: "open", voteCount: 0 });
+    db.issueValidation.findMany.mockResolvedValue([]);
+    for (const ref of ["12", "ZE-12"]) {
+      await read(request(), { params: Promise.resolve({ id: ref }) });
+      expect(db.bug.findFirst.mock.calls.at(-1)?.[0]?.where).toMatchObject({ number: 12, isDeleted: false });
+      expect(db.bug.findFirst.mock.calls.at(-1)?.[0]?.where).not.toHaveProperty("id");
+    }
+    await read(request(), context);
+    expect(db.bug.findFirst.mock.calls.at(-1)?.[0]?.where).toMatchObject({ id: issue.id });
   });
 
   it("leaves the list response without validations or confirmed", async () => {
@@ -762,5 +869,10 @@ describe("issue read confirmation", () => {
     const body = await response.json();
     expect(body.items[0]).not.toHaveProperty("confirmed");
     expect(body.items[0]).not.toHaveProperty("validations");
+  });
+
+  it("selects the upvote count for each listed issue (#463)", async () => {
+    await list(request());
+    expect(db.bug.findMany.mock.calls.at(-1)?.[0]?.select.voteCount).toBe(true);
   });
 });

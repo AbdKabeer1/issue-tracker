@@ -141,7 +141,7 @@ export function KeyboardShortcuts({
       onClick={(event) => {
         if (event.target === event.currentTarget) setHelpOpen(false);
       }}
-      className="m-auto max-h-[85vh] w-[min(28rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-slate-200 bg-white p-0 text-slate-900 shadow-xl backdrop:bg-black/50"
+      className="m-auto max-h-[85vh] w-[min(28rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-slate-200 bg-card p-0 text-slate-900 shadow-xl backdrop:bg-black/50"
     >
       <div className="p-5">
         <div className="flex items-start justify-between gap-3">

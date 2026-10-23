@@ -1,3 +1,4 @@
+import { createMethodNotAllowed, createOptions } from "@/lib/agent-api/http-errors";
 import { NextResponse, type NextRequest } from "next/server";
 import { agentIssueRequest, issueJson, issueProject, PROJECT_ID_REQUIRED, IssueApiError } from "@/lib/agent-api/issues";
 import { dispatchReadyIssues, dispatcherConfigSchema } from "@/lib/agent-api/dispatcher";
@@ -25,3 +26,12 @@ export async function POST(request: NextRequest) {
     }
   });
 }
+
+const apiMethodNotAllowed = createMethodNotAllowed(["POST", "OPTIONS"]);
+const apiOptions = createOptions(["POST", "OPTIONS"]);
+export const GET = apiMethodNotAllowed;
+export const PUT = apiMethodNotAllowed;
+export const PATCH = apiMethodNotAllowed;
+export const DELETE = apiMethodNotAllowed;
+export const HEAD = apiMethodNotAllowed;
+export const OPTIONS = apiOptions;

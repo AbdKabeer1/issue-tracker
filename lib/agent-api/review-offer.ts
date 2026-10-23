@@ -5,6 +5,8 @@ import { IssueApiError } from "@/lib/agent-api/issues";
 import { publish } from "@/lib/agent-api/events";
 import {
   reviewerConflict,
+  reviewerCreditConflict,
+  ReviewerNotIndependentError,
   type ReviewedBug,
 } from "@/lib/agents/independence";
 import { workflowFor } from "@/lib/workflow";
@@ -66,6 +68,7 @@ const bugReviewSelect = {
   status: true,
   pullRequestUrl: true,
   beneficiaryUserId: true,
+  assigneeId: true,
   reporterId: true,
   createdByAgentId: true,
   createdByAgent: { select: { ownerUserId: true } },
@@ -75,6 +78,7 @@ const bugReviewSelect = {
       releasedAt: true,
       agentId: true,
       beneficiaryUserId: true,
+      dispatcherUserId: true,
       agent: { select: { ownerUserId: true } },
     },
   },
@@ -101,7 +105,7 @@ async function findEligibleReviewerCandidates(
           some: {
             tenantId,
             revokedAt: null,
-            level: { in: ["reviewer", "merger"] },
+            level: { in: ["reviewer", "dispatcher", "merger"] },
           },
         },
       },
@@ -114,7 +118,7 @@ async function findEligibleReviewerCandidates(
             where: {
               tenantId,
               revokedAt: null,
-              level: { in: ["reviewer", "merger"] },
+              level: { in: ["reviewer", "dispatcher", "merger"] },
             },
             orderBy: { createdAt: "asc" },
             take: 1,
@@ -343,6 +347,9 @@ export async function acceptReviewOffer(agent: AgentContext, offerId: string) {
     if (offer.status !== "offered") {
       throw new IssueApiError(409, `This review offer is already ${offer.status}.`);
     }
+
+    const conflict = reviewerConflict({ id: agent.agentId, ownerUserId: agent.ownerId }, offer.bug) ?? reviewerCreditConflict(offer.beneficiaryUserId, offer.bug);
+    if (conflict) throw new IssueApiError(403, "not_independent", { message: new ReviewerNotIndependentError(conflict).message });
 
     const deadlineAt = new Date(now.getTime() + REVIEW_DEADLINE_MS);
     const updated = await tx.reviewOffer.update({

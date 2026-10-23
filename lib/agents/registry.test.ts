@@ -37,6 +37,13 @@ beforeEach(() => {
 });
 
 describe("createAgent (#427)", () => {
+  it.each(["dispatcher", "merger"] as const)("requires tenant admin authority to create a %s", async (level) => {
+    expect(await createAgent(ada, { name: "Privileged agent", level, projectId: "project_web" })).toMatchObject({ ok: false, field: "level" });
+    expect(db.agent.create).not.toHaveBeenCalled();
+    db.membership.findUnique.mockResolvedValue({ role: "admin" });
+    expect(await createAgent(ada, { name: "Privileged agent", level, projectId: "project_web" })).toMatchObject({ ok: true });
+    expect(db.agent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ level }) }));
+  });
   it("returns the raw key and seals it so the owner can copy it again", async () => {
     const result = await createAgent(ada, { name: "  Ada's   Claude ", model: "Claude", projectId: "project_web" });
     expect(result.ok).toBe(true);
@@ -133,9 +140,18 @@ describe("revokeAgent and setAgentLevel (#427)", () => {
     db.agent.findUnique.mockResolvedValue(agentRow);
     db.agent.findUniqueOrThrow.mockResolvedValue({ level: "observer" });
     expect(await setAgentLevel(ada, "agent1", "reviewer")).toEqual({ ok: true });
-    expect(db.agent.update.mock.calls[0][0].data).toEqual({ level: "reviewer" });
+    expect(db.agent.update.mock.calls[0][0].data).toEqual({ level: "reviewer", levelChangedAt: expect.any(Date) });
     expect(await setAgentLevel(ada, "agent1", "merger")).toMatchObject({ ok: false });
+    expect(await setAgentLevel(ada, "agent1", "dispatcher")).toMatchObject({ ok: false });
     expect(db.agent.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a site super admin set merger on someone else's agent", async () => {
+    db.agent.findUnique.mockResolvedValue(agentRow);
+    db.agent.findUniqueOrThrow.mockResolvedValue({ level: "contributor" });
+    expect(await setAgentLevel({ id: "root", role: "super_admin" }, "agent1", "merger")).toEqual({ ok: true });
+    expect(db.agent.update.mock.calls[0][0].data).toEqual({ level: "merger", levelChangedAt: expect.any(Date) });
+    expect(db.membership.findUnique).not.toHaveBeenCalled();
   });
 });
 

@@ -101,18 +101,18 @@ export function MilestoneManager({ milestones }: { milestones: ManagedMilestone[
   return (
     <div className="space-y-4">
       {editing ? (
-        <form onSubmit={save} className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-          <h2 className="text-lg font-medium text-slate-900">
+        <form onSubmit={save} className="space-y-4 rounded-[20px] border border-zk-border bg-zk-surface p-4 shadow-sm sm:p-6">
+          <h2 className="text-lg font-medium text-zk-text">
             {editing === "new" ? "New milestone" : `Edit "${editing.title}"`}
           </h2>
           {error ? (
-            <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <p role="alert" className="rounded-[14px] border border-zk-bad-bd bg-zk-bad-bg p-3 text-sm text-zk-bad-fg">
               {error}
             </p>
           ) : null}
           <div className="grid gap-4 sm:grid-cols-[1fr_12rem]">
             <div className="space-y-1.5">
-              <label htmlFor="milestoneTitle" className="text-sm font-medium text-slate-700">
+              <label htmlFor="milestoneTitle" className="text-sm font-medium text-zk-text2">
                 Title
               </label>
               <Input
@@ -126,7 +126,7 @@ export function MilestoneManager({ milestones }: { milestones: ManagedMilestone[
               />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="milestoneDue" className="text-sm font-medium text-slate-700">
+              <label htmlFor="milestoneDue" className="text-sm font-medium text-zk-text2">
                 Due date (optional)
               </label>
               <Input
@@ -138,7 +138,7 @@ export function MilestoneManager({ milestones }: { milestones: ManagedMilestone[
             </div>
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="milestoneDescription" className="text-sm font-medium text-slate-700">
+            <label htmlFor="milestoneDescription" className="text-sm font-medium text-zk-text2">
               Description (optional)
             </label>
             <Textarea
@@ -166,21 +166,21 @@ export function MilestoneManager({ milestones }: { milestones: ManagedMilestone[
       )}
 
       {milestones.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center text-sm text-slate-600">
+        <p className="rounded-[20px] border border-dashed border-zk-border bg-zk-surface px-6 py-10 text-center text-sm text-zk-text2">
           No milestones yet. Create one, then put issues in it from each issue&apos;s triage panel.
         </p>
       ) : (
-        <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <ul className="divide-y divide-zk-border overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface">
           {milestones.map((m) => (
             <li key={m.id} className="grid gap-3 p-4 sm:grid-cols-[1fr_14rem_auto] sm:items-center">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Link href={milestoneIssuesHref(m.id)} className="font-medium text-slate-900 hover:underline">
+                  <Link href={milestoneIssuesHref(m.id)} className="font-medium text-zk-text hover:underline">
                     {m.title}
                   </Link>
                   <MilestoneDue due={m.dueDate} isClosed={m.isClosed} />
                 </div>
-                {m.description ? <p className="mt-1 text-sm text-slate-600">{m.description}</p> : null}
+                {m.description ? <p className="mt-1 text-sm text-zk-text2">{m.description}</p> : null}
               </div>
               <MilestoneProgressBar progress={m.progress} label={m.title} />
               <div className="flex flex-wrap items-center gap-1 sm:justify-end">
@@ -192,7 +192,7 @@ export function MilestoneManager({ milestones }: { milestones: ManagedMilestone[
                 </Button>
                 <Button
                   variant="ghost"
-                  className="px-2.5 py-1 text-xs text-red-700 hover:bg-red-50"
+                  className="px-2.5 py-1 text-xs text-zk-bad-fg hover:bg-zk-bad-bg"
                   onClick={() => void remove(m)}
                   disabled={pending}
                 >

@@ -9,11 +9,30 @@ import { reportIssue, test } from "./fixtures";
 const WIDTHS = [360, 768, 1024, 1280];
 
 async function expectNoSidewaysScroll(page: Page) {
-  const [scrollWidth, innerWidth] = await page.evaluate(() => [
-    document.documentElement.scrollWidth,
-    window.innerWidth,
-  ]);
-  expect(scrollWidth, `page is ${scrollWidth}px wide in a ${innerWidth}px window`).toBeLessThanOrEqual(innerWidth);
+  const { scrollWidth, innerWidth, overflowers } = await page.evaluate(() => {
+    const overflowers = [...document.body.querySelectorAll<HTMLElement>("*")]
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          tag: element.tagName.toLowerCase(),
+          className: typeof element.className === "string" ? element.className : "",
+          right: Math.round(rect.right),
+          width: Math.round(rect.width),
+        };
+      })
+      .filter((element) => element.right > window.innerWidth + 1)
+      .sort((a, b) => b.right - a.right)
+      .slice(0, 8);
+    return {
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+      overflowers,
+    };
+  });
+  expect(
+    scrollWidth,
+    `page is ${scrollWidth}px wide in a ${innerWidth}px window; overflowing elements: ${JSON.stringify(overflowers)}`,
+  ).toBeLessThanOrEqual(innerWidth);
 }
 
 test.describe("no sideways scroll", () => {
@@ -33,14 +52,13 @@ test.describe("no sideways scroll", () => {
     });
   }
 
-  test("the menu button replaces the full header below 1024px", async ({ page }) => {
+  test("the sidebar stays on the page at phone and desktop widths", async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 900 });
     await page.goto("/issues");
-    await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "Main" })).toBeHidden();
+    await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open menu" })).toHaveCount(0);
 
     await page.setViewportSize({ width: 1280, height: 900 });
-    await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Open menu" })).toBeHidden();
+    await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();
   });
 });

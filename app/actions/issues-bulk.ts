@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { revalidateIssue } from "@/lib/revalidate-issue";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
@@ -77,12 +78,17 @@ export async function bulkUpdateBugsAction(
       : null;
     if (!category) return { error: "Platform not found" };
   }
+  // Same rule as a single edit: the assignee must belong to this workspace,
+  // or a bulk assign would hand the issues (and their solver points) to an
+  // outsider.
   if (typeof change.assigneeId === "string") {
-    const assignee = await prisma.user.findUnique({
-      where: { id: change.assigneeId },
-      select: { id: true },
-    });
-    if (!assignee) return { error: "Assignee not found" };
+    const assignee = tenantId
+      ? await prisma.user.findFirst({
+          where: { id: change.assigneeId, memberships: { some: { tenantId } } },
+          select: { id: true },
+        })
+      : null;
+    if (!assignee) return { error: "Assignee not found in this workspace" };
   }
 
   // The current values come back too, so each issue's activity entry can say
@@ -237,7 +243,7 @@ export async function bulkUpdateBugsAction(
   revalidatePath("/issues");
   revalidatePath("/bugs");
   for (const id of changedIds) {
-    revalidatePath(`/issues/${id}`);
+    revalidateIssue(id);
     revalidatePath(`/bugs/${id}`);
   }
 
@@ -272,8 +278,11 @@ async function resolveNames(
           select: { name: true },
         })
       : null,
-    typeof change.assigneeId === "string"
-      ? prisma.user.findUnique({ where: { id: change.assigneeId }, select: { name: true } })
+    typeof change.assigneeId === "string" && tenantId
+      ? prisma.user.findFirst({
+          where: { id: change.assigneeId, memberships: { some: { tenantId } } },
+          select: { name: true },
+        })
       : null,
   ]);
   return {

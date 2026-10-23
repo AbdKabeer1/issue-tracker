@@ -5,6 +5,8 @@ import { findSimilarIssues } from "@/lib/agent-api/create-policy";
 import type { SimilarIssue } from "@/lib/similar-issues";
 import { audit } from "@/lib/agents/audit";
 import { publish } from "@/lib/agent-api/events";
+import { hasLevel } from "@/lib/agents/levels";
+import { reviewerConflict, ReviewerNotIndependentError } from "@/lib/agents/independence";
 import { z } from "zod";
 
 const idSchema = z.string().trim().min(1).max(191);
@@ -161,11 +163,22 @@ export async function structureIssue(
       typeId: true,
       duplicateOfId: true,
       status: true,
+      reporterId: true,
+      beneficiaryUserId: true,
+      assigneeId: true,
+      createdByAgent: { select: { ownerUserId: true } },
+      claims: { where: { status: "active", releasedAt: null }, select: { status: true, releasedAt: true, beneficiaryUserId: true, dispatcherUserId: true, agent: { select: { ownerUserId: true } } } },
     },
   });
 
   if (!bug) {
     throw new IssueApiError(404, "Issue not found in this project.");
+  }
+
+  const conflict = reviewerConflict({ id: agent.agentId, ownerUserId: agent.ownerId }, bug);
+  if (input.duplicateOfId) {
+    if (!hasLevel(agent.level, "triager")) throw new IssueApiError(403, "Triage permission is required to mark an issue as a duplicate.");
+    if (conflict) throw new IssueApiError(403, new ReviewerNotIndependentError(conflict).message);
   }
 
   const queryTitle = input.title || bug.title;
@@ -263,7 +276,7 @@ export async function structureIssue(
     });
 
     // Record format validation indicating structured format acceptance
-    await tx.issueValidation.upsert({
+    if (hasLevel(agent.level, "reviewer") && !conflict) await tx.issueValidation.upsert({
       where: {
         bugId_agentId_kind: {
           bugId: bug.id,

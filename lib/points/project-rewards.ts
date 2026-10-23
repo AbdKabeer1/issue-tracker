@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Prisma, PrismaClient, Severity } from "@prisma/client";
+import type { Severity } from "@prisma/client";
 import {
   SOLVER_POINTS,
   REPORTER_POINTS,
@@ -39,66 +39,38 @@ export const projectRewardConfigSchema = z
 
 export type ProjectRewardConfig = z.infer<typeof projectRewardConfigSchema>;
 
-export function parseProjectRewardConfig(raw: unknown): ProjectRewardConfig {
-  if (!raw || typeof raw !== "object") {
-    return projectRewardConfigSchema.parse({});
-  }
-  const result = projectRewardConfigSchema.safeParse(raw);
-  if (!result.success) {
-    return projectRewardConfigSchema.parse({});
-  }
-  return result.data;
-}
-
-type Db = PrismaClient | Prisma.TransactionClient;
-
-/**
- * Resolves the effective reward configuration for a project, falling back to
- * default standard values if no custom rewardConfig is defined.
- */
-export async function getProjectRewardConfig(
-  db: Db,
-  projectId: string | null | undefined,
-): Promise<ProjectRewardConfig> {
-  if (!projectId || !db?.project?.findUnique) {
-    return projectRewardConfigSchema.parse({});
-  }
-  const project = await db.project.findUnique({
-    where: { id: projectId },
-    select: { rewardConfig: true },
+/** Parse a project override. Pass `base` so missing fields inherit platform defaults. */
+export function parseProjectRewardConfig(
+  raw: unknown,
+  base?: ProjectRewardConfig | null,
+): ProjectRewardConfig {
+  const fallback = base ?? projectRewardConfigSchema.parse({});
+  if (!raw || typeof raw !== "object") return fallback;
+  const result = projectRewardConfigSchema.safeParse({
+    ...fallback,
+    ...(raw as object),
+    solver: {
+      ...fallback.solver,
+      ...((raw as { solver?: object }).solver ?? {}),
+    },
   });
-  return parseProjectRewardConfig(project?.rewardConfig);
+  return result.success ? result.data : fallback;
 }
 
-/**
- * Calculates solver points considering custom project configuration if present.
- */
 export function calculateSolverPoints(
   severity: Severity,
   config?: ProjectRewardConfig | null,
 ): number {
-  if (!config) {
-    return SOLVER_POINTS[severity];
-  }
+  if (!config) return SOLVER_POINTS[severity];
   return config.solver[severity] ?? SOLVER_POINTS[severity];
 }
 
-/**
- * Calculates reporter points considering custom project configuration if present.
- */
 export function calculateReporterPoints(config?: ProjectRewardConfig | null): number {
-  if (!config) {
-    return REPORTER_POINTS;
-  }
+  if (!config) return REPORTER_POINTS;
   return config.reporter ?? REPORTER_POINTS;
 }
 
-/**
- * Calculates reviewer points considering custom project configuration if present.
- */
 export function calculateReviewerPoints(config?: ProjectRewardConfig | null): number {
-  if (!config) {
-    return REVIEWER_POINTS;
-  }
+  if (!config) return REVIEWER_POINTS;
   return config.reviewer ?? REVIEWER_POINTS;
 }

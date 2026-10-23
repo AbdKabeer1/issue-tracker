@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { clearLeaderboardCache, pointTotals, rankLeaderboard, tenantLeaderboard } from "./leaderboard";
+import { clearLeaderboardCache, pointTotals, rankLeaderboard, tenantLeaderboard, tenantRankFor } from "./leaderboard";
 
 const person = (userId: string, name: string, points: number, solvedTasks: number) => ({
   userId,
@@ -24,6 +24,19 @@ describe("leaderboard (#428)", () => {
       [2, "Bola"],
       [3, "Chi"],
     ]);
+  });
+
+  it("uses the same tie rule in the rank query as rankLeaderboard", async () => {
+    let order = "";
+    const db = {
+      $queryRaw: (strings: TemplateStringsArray) => {
+        order = strings.join(" ");
+        return Promise.resolve([{ rank: 2, total: 4 }]);
+      },
+    };
+    await expect(tenantRankFor(db as never, "tenant-1", "chi")).resolves.toEqual({ rank: 2, total: 4 });
+    expect(order).toMatch(/RANK\(\) OVER \(ORDER BY points DESC, solved DESC\)/);
+    expect(order).not.toMatch(/RANK\(\) OVER \(ORDER BY[^)]*name/);
   });
 
   it("gives people level on points and solved tasks the same rank", () => {

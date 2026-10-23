@@ -1,18 +1,22 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
 import { canDeleteTicket } from "@/lib/ticket-deletion";
 import { currentTenantAccess } from "@/lib/tenant-access";
 import { formatIssueNumber } from "@/lib/issue-number";
+import { issuePath, parseIssueRef, queryString, resolveIssueRef } from "@/lib/issue-ref";
 import { buildVersions } from "@/lib/issue-revisions";
 import { LocalTime } from "@/components/local-time";
 import { RichText } from "@/components/rich-text";
 import { TextDiffView } from "@/components/text-diff-view";
 import { wordDiff } from "@/lib/text-diff";
 
-type Props = { params: Promise<{ id: string }> };
+type Props = {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
 
 export const metadata = { title: "Edit history" };
 
@@ -20,13 +24,22 @@ export const metadata = { title: "Edit history" };
  * Every version of an issue's title and description (#303). Visible to
  * anyone who can see the issue, on the same rule as the issue page.
  */
-export default async function IssueHistoryPage({ params }: Props) {
-  const { id } = await params;
+export default async function IssueHistoryPage({ params, searchParams }: Props) {
+  const { id: rawId } = await params;
   const user = await requireUser();
   const access = await currentTenantAccess(user.id, user.role);
+  const scope = bugInTenant(await currentTenantIdFor(user.id));
+  // #457: readable numbers resolve here; an old id redirects to the number,
+  // keeping its query parameters.
+  const ref = parseIssueRef(rawId);
+  const found = await resolveIssueRef(prisma, ref, scope);
+  if (!found) notFound();
+  if (ref.kind === "id") {
+    permanentRedirect(`${issuePath(found.number, "/history")}${queryString((await searchParams) ?? {})}`);
+  }
 
   const bug = await prisma.bug.findUnique({
-    where: { id, ...bugInTenant(await currentTenantIdFor(user.id)) },
+    where: { id: found.id, ...scope },
     select: {
       id: true,
       number: true,
@@ -63,16 +76,16 @@ export default async function IssueHistoryPage({ params }: Props) {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
-        <Link href={`/issues/${bug.id}`} className="text-sm text-teal-700 hover:underline">
-          ← Back to issue
+        <Link href={issuePath(bug.number)} className="inline-flex min-h-8 items-center gap-1.5 text-sm font-semibold text-zk-accent hover:underline">
+          Back to issue
         </Link>
-        <h1 className="mt-3 text-xl font-semibold text-slate-900 break-words">
+        <h1 className="mt-3 text-[28px] font-extrabold tracking-[-0.02em] text-zk-text break-words">
           Edit history{" "}
-          <span className="font-normal text-slate-500">
+          <span className="font-bold text-zk-muted">
             · {formatIssueNumber(bug.number)} {bug.title}
           </span>
         </h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-zk-text2">
           {versions.length === 1
             ? "This issue has not been edited."
             : `${versions.length} versions of the title and description, newest first.`}
@@ -87,36 +100,36 @@ export default async function IssueHistoryPage({ params }: Props) {
           return (
             <li
               key={version.number}
-              className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6"
+              className="rounded-[20px] border border-zk-border bg-zk-surface p-5 sm:p-6"
               aria-labelledby={`version-${version.number}`}
             >
               <h2 id={`version-${version.number}`} className="flex flex-wrap items-baseline gap-x-2 text-sm">
-                <span className="font-semibold text-slate-900">
+                <span className="font-bold text-zk-text">
                   {version.number === 1 ? "Original report" : `Version ${version.number}`}
                 </span>
                 {version.isCurrent ? (
-                  <span className="rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-800">
+                  <span className="rounded-full bg-zk-ok-bg px-2 py-0.5 text-xs font-bold text-zk-ok-fg">
                     Current
                   </span>
                 ) : null}
-                <span className="text-slate-600">
+                <span className="text-zk-text2">
                   {version.number === 1 ? "by" : "edited by"} {version.author}
                 </span>
-                <LocalTime className="text-xs text-slate-500" date={version.at} />
+                <LocalTime className="text-xs text-zk-muted" date={version.at} />
               </h2>
 
               {previous ? (
                 <div className="mt-4 space-y-3">
                   {title ? (
-                    <p className="text-sm text-slate-700">
+                    <p className="text-sm text-zk-text2">
                       <span className="font-medium">Title: </span>
-                      <del className="rounded-sm bg-red-50 px-1 text-red-900">{previous.title}</del>
+                      <del className="rounded-sm bg-zk-bad-bg px-1 text-zk-bad-fg">{previous.title}</del>
                       <span aria-hidden> → </span>
                       <span className="sr-only"> changed to </span>
-                      <ins className="rounded-sm bg-emerald-50 px-1 text-emerald-900 no-underline">
+                      <ins className="rounded-sm bg-zk-ok-bg px-1 text-zk-ok-fg no-underline">
                         {title.added.map((s, i) =>
                           s.changed ? (
-                            <span key={i} className="bg-emerald-200/80">
+                            <span key={i} className="bg-zk-ok-fg/20">
                               {s.text}
                             </span>
                           ) : (
@@ -131,11 +144,11 @@ export default async function IssueHistoryPage({ params }: Props) {
               ) : null}
 
               <details className="group mt-4" open={!previous}>
-                <summary className="cursor-pointer text-xs font-medium text-teal-700 hover:underline">
+                <summary className="cursor-pointer text-xs font-bold text-zk-accent hover:underline">
                   {previous ? "Show this version as it read" : "As reported"}
                 </summary>
-                <div className="mt-2 rounded-lg border border-slate-100 p-3">
-                  {previous ? <p className="font-semibold text-slate-900">{version.title}</p> : null}
+                <div className="mt-2 rounded-xl border border-zk-divider p-3">
+                  {previous ? <p className="font-bold text-zk-text">{version.title}</p> : null}
                   <RichText content={version.description} />
                 </div>
               </details>

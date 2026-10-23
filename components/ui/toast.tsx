@@ -37,7 +37,7 @@ export function useToast(): Notify {
 const tones: Record<ToastTone, string> = {
   success: "border-emerald-200 bg-emerald-50 text-emerald-900",
   error: "border-red-200 bg-red-50 text-red-900",
-  info: "border-slate-200 bg-white text-slate-900",
+  info: "border-slate-200 bg-card text-slate-900",
 };
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {

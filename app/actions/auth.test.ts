@@ -28,7 +28,8 @@ import { prisma } from "@/lib/prisma";
 import { sendMail } from "@/lib/mail";
 import { hashResetToken } from "@/lib/password-reset";
 import { resetRateLimits } from "@/lib/rate-limit";
-import { forgotPasswordAction, resetPasswordAction, signupAction } from "./auth";
+import { signIn } from "@/auth";
+import { forgotPasswordAction, googleSignInAction, resetPasswordAction, signupAction } from "./auth";
 
 const db = prisma as unknown as {
   user: { findUnique: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> };
@@ -51,6 +52,18 @@ beforeEach(() => {
   vi.stubEnv("RATE_LIMIT_STORE", "memory");
 });
 afterEach(() => vi.unstubAllEnvs());
+
+describe("googleSignInAction", () => {
+  it("falls back to the overview when no callback is given", async () => {
+    await googleSignInAction();
+    expect(signIn).toHaveBeenCalledWith("google", { redirectTo: "/dashboard" });
+  });
+
+  it("keeps a callback passed by the form", async () => {
+    await googleSignInAction(form({ callbackUrl: "/issues/ZE-12" }));
+    expect(signIn).toHaveBeenCalledWith("google", { redirectTo: "/issues/ZE-12" });
+  });
+});
 
 describe("forgotPasswordAction (#210)", () => {
   it("in production without SMTP, says emails aren't available, for every address, without a lookup", async () => {

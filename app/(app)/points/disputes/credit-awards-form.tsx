@@ -27,7 +27,7 @@ export function CreditAwardsForm() {
   return (
     <form action={action} className="space-y-3" noValidate>
       <div className="space-y-1">
-        <label htmlFor="credit-numbers" className="block text-xs font-medium text-slate-600">
+        <label htmlFor="credit-numbers" className="block text-xs font-medium text-zk-text2">
           Issue numbers
         </label>
         <Textarea
@@ -51,16 +51,16 @@ export function CreditAwardsForm() {
           {pending ? "Saving…" : "Credit awards"}
         </Button>
       </div>
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-zk-muted">
         Solver points need a resolved or closed issue with an assignee. Reporter points are
         withheld on duplicates. An award that is already in the ledger is not added again.
       </p>
       {error ? (
-        <p className="text-sm text-red-700" role="alert">
+        <p className="text-sm text-zk-bad-fg" role="alert">
           {error.error}
         </p>
       ) : null}
-      {result?.ok ? <p className="text-sm text-slate-700">{result.message}</p> : null}
+      {result?.ok ? <p className="text-sm text-zk-text2">{result.message}</p> : null}
     </form>
   );
 }

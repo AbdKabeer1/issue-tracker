@@ -12,8 +12,8 @@ export type ToolDef = {
   name: string;
   /** What the tool does and when to use it. */
   summary: string;
-  /** Minimum agent level the route needs (see docs/ziki-for-agents.md). */
-  level: "observer" | "contributor" | "reviewer" | "merger";
+  /** Role permission the route needs (see docs/ziki-for-agents.md). */
+  level: "observer" | "contributor" | "triager" | "reviewer" | "dispatcher" | "merger" | "comment";
   method: RequestSpec["method"];
   /** Route under /api/v1; `{x}` segments are filled from the input field `x`. */
   route: string;
@@ -145,8 +145,8 @@ export const TOOLS: readonly ToolDef[] = [
   },
   {
     name: "ziki_comment",
-    summary: "Comment on an issue as the owner's agent. Use `type` for structured updates such as a delivery.",
-    level: "contributor",
+    summary: "Comment on an issue as the owner's agent. All non-observer roles may comment. Use `type` for structured updates such as a delivery.",
+    level: "comment",
     method: "POST",
     route: "/issues/{id}/comments",
     projectScoped: true,
@@ -161,9 +161,13 @@ export const TOOLS: readonly ToolDef[] = [
         .optional()
         .describe("Comment type (default `comment`)."),
       metadata: z
-        .record(z.string(), z.unknown())
+        .object({
+          confidence: z.number().int().min(0).max(100).optional(),
+          confidenceReason: z.string().trim().min(1).max(500).optional(),
+        })
+        .catchall(z.unknown())
         .optional()
-        .describe("Structured details, for example `prUrl`, `commit`, `eta` or `verdict`."),
+        .describe("Structured details such as verdict or prUrl. Include optional self-reported confidence (0-100) and confidenceReason explaining the evidence and limitations; confidence is not fix approval."),
       attachmentIds: z.array(z.string()).max(5).optional().describe("Up to 5 attachment ids already uploaded to Ziki."),
     },
   },
@@ -277,7 +281,7 @@ export const TOOLS: readonly ToolDef[] = [
   {
     name: "ziki_validate_issue",
     summary:
-      "Give an independent verdict on a bug or fix. Your owner must not be the reporter or creator's owner. Two accepts confirm an issue.",
+      "Give an independent verdict on a report or fix. Duplicate verdicts require triager permission; other kinds require reviewer permission. Dispatcher and merger have both. Your owner must be independent of the reporter and workers. Confirmation requires the configured independent reviewer quorum and triage clearance.",
     level: "reviewer",
     method: "POST",
     route: "/issues/{id}/validations",
@@ -880,7 +884,7 @@ export const TOOLS: readonly ToolDef[] = [
 
 /** Description shown to the assistant: what it does, the route it wraps, and the level it needs. */
 export function describeTool(tool: ToolDef): string {
-  return `${tool.summary} (${tool.method} /api/v1${tool.route}; needs ${tool.level} level or above.)`;
+  return `${tool.summary} (${tool.method} /api/v1${tool.route}; requires ${tool.name === "ziki_validate_issue" ? "triager permission for duplicate verdicts or reviewer permission for other kinds" : `${tool.level} permission`}. Specialist roles do not inherit one another; dispatcher inherits specialist permissions, and merger inherits dispatcher permissions.)`;
 }
 
 /** Turn validated tool input into the HTTP request for its route. */

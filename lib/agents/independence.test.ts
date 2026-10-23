@@ -3,6 +3,7 @@ import {
   assertIndependentReviewer,
   ReviewerNotIndependentError,
   reviewerConflict,
+  reviewerCreditConflict,
   type ReviewedBug,
 } from "./independence";
 
@@ -33,6 +34,17 @@ describe("assertIndependentReviewer (#442)", () => {
     expect(reviewerConflict(aliceAgentA, filedByAliceAgent)).toBe("created-by-own-agent");
   });
 
+  it("rejects the assigned solver's other agents even when someone else is credited", () => {
+    const bug = { ...filedByAliceAgent, assigneeId: bob };
+    expect(reviewerConflict(bobAgent, bug)).toBe("assigned-solver");
+    expect(reviewerCreditConflict(bob, bug)).toBe("assigned-solver");
+  });
+
+  it("rejects the active claim beneficiary even if another person's agent holds the claim", () => {
+    const bug: ReviewedBug = { beneficiaryUserId: carol, claims: [{ status: "active", releasedAt: null, beneficiaryUserId: bob, agent: { ownerUserId: alice } }] };
+    expect(reviewerConflict(bobAgent, bug)).toBe("claim-beneficiary");
+  });
+
   it("allows an agent owned by someone else", () => {
     expect(reviewerConflict(bobAgent, filedByAliceAgent)).toBeNull();
     expect(() => assertIndependentReviewer(bobAgent, filedByAliceAgent)).not.toThrow();
@@ -50,6 +62,23 @@ describe("assertIndependentReviewer (#442)", () => {
       claims: [{ status: "active", releasedAt: null, agent: { ownerUserId: alice } }],
     };
     expect(reviewerConflict(aliceAgentB, claimedByAlice)).toBe("claimed-by-own-agent");
+  });
+
+  it("rejects the dispatcher owner and a credited reviewer benefiting from the completed claim", () => {
+    const bug: ReviewedBug = {
+      beneficiaryUserId: carol,
+      claims: [{ status: "active", dispatcherUserId: alice, agent: { ownerUserId: bob } }],
+    };
+    expect(reviewerConflict(aliceAgentB, bug)).toBe("claim-dispatcher");
+    expect(reviewerCreditConflict(alice, bug)).toBe("claim-dispatcher");
+  });
+
+  it("does not treat dispatchers of abandoned claims as reward beneficiaries", () => {
+    const bug: ReviewedBug = {
+      beneficiaryUserId: carol,
+      claims: [{ status: "released", releasedAt: new Date(), dispatcherUserId: alice }],
+    };
+    expect(reviewerConflict(aliceAgentB, bug)).toBeNull();
   });
 
   it("ignores released and offered claims", () => {

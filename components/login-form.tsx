@@ -4,12 +4,16 @@ import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
 import { googleSignInAction, loginAction } from "@/app/actions/auth";
+import { GoogleSignInButtonInline } from "@/components/google-sign-in-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 
+const fieldClass =
+  "h-12 rounded-xl border-zk-border bg-zk-surface text-zk-text shadow-none placeholder:text-zk-muted focus:border-electric-blue focus:ring-electric-blue/20";
+
 export function LoginForm({
-  callbackUrl = "/issues",
+  callbackUrl = "/dashboard",
   googleEnabled = false,
 }: {
   callbackUrl?: string;
@@ -41,7 +45,7 @@ export function LoginForm({
 
   return (
     <form
-      className="space-y-4"
+      className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
         setError(null);
@@ -74,8 +78,31 @@ export function LoginForm({
         });
       }}
     >
+      {showGoogleButton ? (
+        <>
+          <GoogleSignInButtonInline
+            pending={pending}
+            onClick={() => {
+              setError(null);
+              startTransition(async () => {
+                try {
+                  // Keep the requested page, e.g. an issue from its 404 (#457).
+                  await googleSignInAction(callbackUrl);
+                } catch (error) {
+                  unstable_rethrow(error);
+                  setError("Google sign-in failed. Please try again.");
+                }
+              });
+            }}
+          />
+          <div className="relative py-1 text-center text-xs font-bold tracking-[0.06em] text-zk-muted uppercase">
+            <span className="relative z-10 bg-zk-surface px-2">or</span>
+            <span className="absolute inset-x-0 top-1/2 border-t border-zk-border" />
+          </div>
+        </>
+      ) : null}
       <div className="space-y-1.5">
-        <label htmlFor="email" className="text-sm font-medium text-slate-700">
+        <label htmlFor="email" className="text-sm font-medium text-zk-text2">
           Email
         </label>
         <Input
@@ -87,20 +114,18 @@ export function LoginForm({
           required
           value={email}
           onChange={(event) => setEmail(event.target.value)}
+          className={fieldClass}
           {...fieldAttrs}
         />
       </div>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-2">
-          <label
-            htmlFor="password"
-            className="text-sm font-medium text-slate-700"
-          >
+          <label htmlFor="password" className="text-sm font-medium text-zk-text2">
             Password
           </label>
           <Link
             href="/forgot-password"
-            className="text-xs font-medium text-teal-700 hover:underline"
+            className="text-xs font-semibold text-zk-accent hover:underline"
           >
             Forgot password?
           </Link>
@@ -113,12 +138,13 @@ export function LoginForm({
           required
           value={password}
           onChange={(event) => setPassword(event.target.value)}
+          className={fieldClass}
           {...fieldAttrs}
         />
       </div>
       {needsCode ? (
         <div className="space-y-1.5">
-          <label htmlFor="totp" className="text-sm font-medium text-slate-700">
+          <label htmlFor="totp" className="text-sm font-medium text-zk-text2">
             Authentication code
           </label>
           <Input
@@ -132,48 +158,26 @@ export function LoginForm({
             value={code}
             onChange={(event) => setCode(event.target.value)}
             aria-describedby="totp-help"
+            className={fieldClass}
           />
-          <p id="totp-help" className="text-xs text-slate-500">
+          <p id="totp-help" className="text-xs text-zk-muted">
             Open your authenticator app and enter the 6-digit code. Lost your phone? Use one of
             your backup codes instead.
           </p>
         </div>
       ) : null}
       {error ? (
-        <p id="login-error" className="text-sm text-red-600" role="alert">
+        <p id="login-error" className="text-sm text-zk-bad-fg" role="alert">
           {error}
         </p>
       ) : null}
-      <Button type="submit" className="w-full" disabled={pending}>
+      <Button
+        type="submit"
+        className="h-12 w-full bg-electric-blue-strong text-base font-bold text-white hover:bg-electric-blue focus-visible:ring-electric-blue"
+        disabled={pending}
+      >
         {pending ? "Signing in…" : needsCode ? "Verify and sign in" : "Sign in"}
       </Button>
-      {showGoogleButton ? (
-        <>
-          <div className="relative py-1 text-center text-xs text-slate-500">
-            <span className="bg-white px-2 relative z-10">or</span>
-            <span className="absolute inset-x-0 top-1/2 border-t border-slate-200" />
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            className="w-full"
-            disabled={pending}
-            onClick={() => {
-              setError(null);
-              startTransition(async () => {
-                try {
-                  await googleSignInAction();
-                } catch (error) {
-                  unstable_rethrow(error);
-                  setError("Google sign-in failed. Please try again.");
-                }
-              });
-            }}
-          >
-            Continue with Google
-          </Button>
-        </>
-      ) : null}
     </form>
   );
 }

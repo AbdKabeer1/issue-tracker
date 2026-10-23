@@ -13,6 +13,12 @@ describe("Agent Onboarding Templates (#610)", () => {
   const projectId = "proj_alpha";
   const projectName = "Alpha Project";
 
+  it.each([claudePromptTemplate, chatGptPromptTemplate])("offers only specialist roles during pairing (%#)", (template) => {
+    const prompt = template({ origin, projectId, projectName });
+    expect(prompt).toContain("observer | contributor | triager | reviewer —");
+    expect(prompt).not.toContain("reviewer | dispatcher");
+  });
+
   describe("claudePromptTemplate", () => {
     it("embeds origin, projectId, projectName, and llms.txt link", () => {
       const prompt = claudePromptTemplate({ origin, projectId, projectName });

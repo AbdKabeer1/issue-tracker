@@ -17,6 +17,10 @@ import {
   projectSlugBase,
   parseRewardConfigFromFormData,
 } from "./validation";
+import {
+  getPlatformRewardConfig,
+  projectDefaultsFromPlatform,
+} from "@/lib/points/platform-rewards";
 import { parseProjectRewardConfig } from "@/lib/points/project-rewards";
 
 export type ProjectActionResult = {
@@ -84,7 +88,8 @@ export async function updateProjectAction(
   if (!project) return { error: "Project not found." };
 
   const rawReward = parseRewardConfigFromFormData(formData);
-  const rewardConfig = rawReward ? parseProjectRewardConfig(rawReward) : undefined;
+  const platformBase = projectDefaultsFromPlatform(await getPlatformRewardConfig(prisma));
+  const rewardConfig = rawReward ? parseProjectRewardConfig(rawReward, platformBase) : undefined;
 
   const changes: Record<string, { from: unknown; to: unknown }> = {};
   for (const field of ["name", "goal", "repoUrl", "stagingUrl"] as const) {
@@ -182,7 +187,8 @@ export async function createProjectAction(
   );
 
   const rawReward = parseRewardConfigFromFormData(formData);
-  const rewardConfig = rawReward ? parseProjectRewardConfig(rawReward) : null;
+  const platformBase = projectDefaultsFromPlatform(await getPlatformRewardConfig(prisma));
+  const rewardConfig = rawReward ? parseProjectRewardConfig(rawReward, platformBase) : null;
 
   let project: { id: string };
   try {

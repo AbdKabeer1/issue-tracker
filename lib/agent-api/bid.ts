@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import type { AgentContext } from "@/lib/agents/require-agent";
+import { assertKeyProject, type AgentContext } from "@/lib/agents/require-agent";
+import { requireLevel } from "@/lib/agents/levels";
 import { isTenantAdmin } from "@/lib/agents/membership";
 import { IssueApiError } from "@/lib/agent-api/issues";
 import { isConfirmed } from "@/lib/agent-api/validation";
@@ -14,6 +15,7 @@ import { assigneeChangedSummary, statusChangedSummary } from "@/lib/activity-log
 import { WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
 import { ensureWatching } from "@/lib/watch";
 import type { AppRole } from "@/lib/roles";
+import { parseIssueRef } from "@/lib/issue-ref";
 
 export const BID_NOTE_MAX = 280;
 const id = z.string().trim().min(1).max(191);
@@ -44,8 +46,23 @@ async function competingClaim(tx: Tx, bugId: string) {
 }
 
 /** An agent asks for a task. The issue stays open until a person awards a bid. */
-export async function placeBid(caller: AgentContext, projectId: string, bugId: string, note?: string) {
+export async function placeBid(caller: AgentContext, projectId: string, issueRef: string, note?: string) {
+  assertKeyProject(caller, projectId);
+  const ref = parseIssueRef(issueRef);
   return prisma.$transaction(async (tx) => {
+    let bugId: string;
+    if (ref.kind === "number") {
+      const resolved = await tx.bug.findFirst({
+        where: { number: ref.number, tenantId: caller.tenantId, projectId, isDeleted: false },
+        select: { id: true },
+      });
+      if (!resolved) throw new IssueApiError(404, "Issue not found in this project.");
+      bugId = resolved.id;
+    } else {
+      bugId = ref.id;
+    }
+    // Resolve readable numbers first, then lock and re-read the canonical row
+    // inside the same scope before checking readiness or creating a bid.
     const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${bugId} AND "tenantId" = ${caller.tenantId} AND "projectId" = ${projectId} AND "isDeleted" = false FOR UPDATE`;
     if (!locked.length) throw new IssueApiError(404, "Issue not found in this project.");
     const bug = await tx.bug.findFirst({
@@ -89,13 +106,15 @@ export async function placeBid(caller: AgentContext, projectId: string, bugId: s
 }
 
 export async function listBids(caller: AgentContext, projectId: string, bugId: string) {
+  assertKeyProject(caller, projectId);
+  const ref = parseIssueRef(bugId);
   const bug = await prisma.bug.findFirst({
-    where: { id: bugId, tenantId: caller.tenantId, projectId, isDeleted: false },
+    where: { ...(ref.kind === "number" ? { number: ref.number } : { id: ref.id }), tenantId: caller.tenantId, projectId, isDeleted: false },
     select: { id: true, areaId: true },
   });
   if (!bug) throw new IssueApiError(404, "Issue not found in this project.");
   const bids = await prisma.issueBid.findMany({
-    where: openBidWhere(bugId),
+    where: openBidWhere(bug.id),
     orderBy: { createdAt: "asc" },
     select: {
       id: true,
@@ -150,7 +169,8 @@ export async function withdrawBid(caller: AgentContext, projectId: string, bugId
  * A person picks one bid. The reporter or a tenant admin may award it.
  * The agent's owner becomes the assignee, and the bid becomes an active claim.
  */
-export async function awardBid(actor: Actor, bidId: string) {
+export async function awardBid(actor: Actor, bidId: string, dispatcher?: AgentContext) {
+  if (dispatcher) requireLevel(dispatcher, "dispatcher");
   try {
     const result = await prisma.$transaction(async (tx) => {
       const bid = await tx.issueBid.findUnique({
@@ -161,6 +181,10 @@ export async function awardBid(actor: Actor, bidId: string) {
         },
       });
       if (!bid || bid.bug.isDeleted) throw new IssueApiError(404, "Bid not found.");
+      if (dispatcher) {
+        if (dispatcher.tenantId !== bid.bug.tenantId) throw new IssueApiError(404, "Bid not found.");
+        assertKeyProject(dispatcher, bid.bug.projectId);
+      }
       const allowed = bid.bug.reporterId === actor.id || await isTenantAdmin(actor, bid.bug.tenantId);
       if (!allowed) throw new IssueApiError(403, "Only the reporter or an organization admin can award a bid.");
       const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Bug" WHERE "id" = ${bid.bugId} AND "isDeleted" = false FOR UPDATE`;
@@ -212,6 +236,7 @@ export async function awardBid(actor: Actor, bidId: string) {
           bugId: fresh.bugId,
           beneficiaryUserId: fresh.beneficiaryUserId,
           agentId: fresh.agentId,
+          ...(dispatcher ? { dispatcherUserId: dispatcher.ownerId } : {}),
           status: "active",
           claimedAt: now,
           lastHeartbeatAt: now,

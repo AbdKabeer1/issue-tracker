@@ -19,7 +19,7 @@ export function JoinWorkspaceForm({ tenantId, pending }: { tenantId: string; pen
           {isPending ? "Sending…" : requested ? "Request Pending" : "Join"}
         </Button>
       </form>
-      {state?.error ? <p role="alert" className="mt-2 max-w-56 text-xs text-red-700">{state.error}</p> : null}
+      {state?.error ? <p role="alert" className="mt-2 max-w-56 text-xs text-zk-bad-fg">{state.error}</p> : null}
       {requested ? <p className="sr-only" role="status">Your request is pending review.</p> : null}
     </div>
   );

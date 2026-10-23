@@ -29,57 +29,57 @@ export default async function EscalationDetailPage({
 
   return (
     <article className="mx-auto max-w-2xl space-y-6">
-      <Link href="/escalations" className="inline-flex items-center text-sm text-teal-700 hover:underline">
+      <Link href="/escalations" className="inline-flex items-center text-sm font-semibold text-zk-accent hover:underline">
         ← Back to Escalations
       </Link>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-4">
+      <div className="space-y-4 rounded-[20px] border border-zk-border bg-zk-surface p-5 sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zk-divider pb-4">
           <div className="flex items-center gap-2">
             <EscalationTypeBadge type={escalationType} />
-            <h1 className="text-xl font-semibold text-slate-900">{question.agent.name}</h1>
+            <h1 className="text-xl font-extrabold tracking-tight text-zk-text">{question.agent.name}</h1>
           </div>
-          <LocalTime date={question.createdAt} className="text-xs text-slate-500" />
+          <LocalTime date={question.createdAt} className="text-xs text-zk-muted" />
         </div>
 
         <div className="space-y-1">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.06em] text-zk-accent">
             Escalation Details
           </h2>
-          <p className="whitespace-pre-wrap text-sm text-slate-800 leading-relaxed bg-slate-50/60 p-4 rounded-lg border border-slate-100">
+          <p className="whitespace-pre-wrap rounded-[12px] border border-zk-border bg-zk-chip/50 p-4 text-sm leading-relaxed text-zk-text">
             {parsed.cleanBody}
           </p>
         </div>
 
         {question.bug ? (
-          <div className="rounded-lg bg-teal-50/50 p-3 border border-teal-100 text-xs">
-            <span className="text-slate-600">Associated issue: </span>
+          <div className="rounded-[12px] border border-zk-border bg-zk-tint p-3 text-xs">
+            <span className="text-zk-muted">Associated issue: </span>
             <Link
               href={`/issues/${question.bug.id}`}
-              className="font-medium text-teal-800 hover:underline"
+              className="font-semibold text-zk-accent hover:underline"
             >
-              #{question.bug.title}
+              #{question.bug.number} {question.bug.title}
             </Link>
           </div>
         ) : null}
 
         <div className="pt-2">
-          <h2 id="response-heading" className="text-sm font-semibold text-slate-900 mb-3">
+          <h2 id="response-heading" className="mb-3 text-sm font-extrabold text-zk-text">
             {question.answeredAt ? "Resolution Provided" : "Respond to Agent"}
           </h2>
 
           {question.answeredAt ? (
-            <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/40 p-4">
-              <div className="flex items-center justify-between text-xs text-emerald-900 font-medium">
+            <div className="space-y-2 rounded-[12px] border border-zk-border bg-zk-ok-bg/60 p-4">
+              <div className="flex items-center justify-between text-xs font-semibold text-zk-ok-fg">
                 <span>✓ Resolved</span>
-                <LocalTime date={question.answeredAt} className="text-slate-500" />
+                <LocalTime date={question.answeredAt} className="text-zk-muted" />
               </div>
-              <p className="whitespace-pre-wrap text-sm text-slate-800">{question.answer}</p>
+              <p className="whitespace-pre-wrap text-sm text-zk-text">{question.answer}</p>
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="rounded-lg bg-slate-50 p-3 border border-slate-200">
-                <span className="block text-xs font-medium text-slate-600 mb-2">
+              <div className="rounded-[12px] border border-zk-border bg-zk-chip/50 p-3">
+                <span className="mb-2 block text-xs font-semibold text-zk-muted">
                   Quick Actions:
                 </span>
                 <QuickResolveButtons escalationId={question.id} />

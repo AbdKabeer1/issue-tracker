@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/auth";
+import { IssueSignInLink } from "@/components/issue-sign-in-link";
 import {
   StatusPage,
   primaryActionClass,
@@ -11,7 +12,7 @@ import {
  * exist or was deleted (#214). It sits above [id] so the 404 thrown by
  * [id]/layout.tsx lands here too. Anonymous visitors (link-preview
  * fallbacks) get a sign-in link, because the issue may simply need a
- * session to view.
+ * session to view; it returns them to the issue they asked for (#457).
  */
 export default async function IssueNotFound() {
   const session = await auth();
@@ -26,11 +27,7 @@ export default async function IssueNotFound() {
           <Link href="/issues" className={primaryActionClass}>
             Go to issues
           </Link>
-          {signedIn ? null : (
-            <Link href="/login" className={secondaryActionClass}>
-              Sign in
-            </Link>
-          )}
+          {signedIn ? null : <IssueSignInLink className={secondaryActionClass} />}
         </>
       }
     >

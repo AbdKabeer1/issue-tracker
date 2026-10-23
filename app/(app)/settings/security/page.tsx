@@ -17,32 +17,50 @@ export default async function SecuritySettingsPage() {
   const status = hasPassword ? await twoFactorStatus(user.id) : { enabled: false, backupCodesLeft: 0 };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div className="space-y-1">
-        <Link href="/settings" className="text-sm text-teal-700 hover:underline">
-          ← Back to settings
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 pb-10">
+      <div className="flex flex-col gap-2.5">
+        <Link
+          href="/settings?section=account"
+          className="inline-flex min-h-8 items-center gap-1.5 self-start text-sm font-semibold text-zk-accent hover:underline"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M19 12H5M12 19l-7-7 7-7" />
+          </svg>
+          Back to settings
         </Link>
-        <h1 className="text-2xl font-semibold text-slate-900">Security</h1>
+        <h1 className="m-0 text-[28px] font-extrabold tracking-[-0.02em] text-zk-text">Security</h1>
+        <p className="m-0 text-sm text-zk-muted">Protect your account with a second step at sign-in.</p>
       </div>
-      <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Two-factor sign-in
-        </h2>
+
+      <section className="flex flex-col gap-4 rounded-[20px] border border-zk-border bg-zk-surface p-6">
+        <div className="flex items-center gap-3.5">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-zk-tint text-zk-accent">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+          </span>
+          <div className="flex flex-col gap-1">
+            <h2 className="m-0 text-lg font-bold text-zk-text">Two-factor sign-in</h2>
+            <span className="text-[13px] text-zk-muted">
+              A second step at sign-in so a stolen password is not enough.
+            </span>
+          </div>
+        </div>
         {hasPassword ? (
           <>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="m-0 text-sm text-zk-text2">
               Ask for a 6-digit code from an authenticator app (such as Google Authenticator, 1Password
               or Authy) as well as your password, so a stolen or reused password is not enough to get in.
             </p>
             {!isPasswordAuthEnabled() ? (
-              <p className="mt-2 text-sm text-amber-700">
+              <p className="m-0 rounded-[14px] border border-zk-warn-bd bg-zk-warn-bg px-4 py-3 text-sm text-zk-warn-fg">
                 Password sign-in is turned off on this site, so the code is not asked for here.
               </p>
             ) : null}
             <TwoFactorSettings enabled={status.enabled} backupCodesLeft={status.backupCodesLeft} />
           </>
         ) : (
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="m-0 text-sm text-zk-text2">
             Your account signs in with Google, so turn on Google&apos;s 2-Step Verification in your Google
             account instead. There is no password here to protect.
           </p>

@@ -107,18 +107,19 @@ export function VoteButton({
   // does not contain that phrase, which is the issue-page axe failure.
   const voteWord = count === 1 ? "vote" : "votes";
   const label = isMd
-    ? upvoted
-      ? `Upvoted ${count} ${voteWord}, click to remove your vote`
-      : `Upvote ${count} ${voteWord}`
-    : upvoted
-      ? `Upvoted, ${count} ${voteWord}, click to remove your vote`
-      : `Upvote this issue, ${count} ${voteWord}`;
-  // The large button shows "Upvote 2" / "Upvoted 3", so its name has to start
-  // with that text (WCAG 2.5.3, axe label-content-name-mismatch).
-  const mdLabel = `${upvoted ? "Upvoted" : "Upvote"} ${count} ${voteWord}${upvoted ? ", click to remove your vote" : ""}`;
+    ? `${upvoted ? "Upvoted" : "Upvote"} ${count} ${voteWord}${
+        readOnly ? ", voting unavailable" : upvoted ? ", click to remove your vote" : ""
+      }`
+    : `${count} ${voteWord}${
+        readOnly
+          ? `${upvoted ? ", upvoted" : ""}, voting unavailable`
+          : upvoted
+            ? ", upvoted, click to remove"
+            : ", click to upvote"
+      }`;
   const tone = upvoted
-    ? "border-blue-200 bg-blue-50 text-blue-600 hover:border-blue-300 hover:bg-blue-100"
-    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-blue-600";
+    ? "border-electric-blue-strong bg-electric-blue-strong text-white hover:border-electric-blue-strong hover:bg-electric-blue-strong"
+    : "border-zk-border bg-zk-surface text-zk-text hover:border-zk-border hover:bg-zk-chip";
 
   const errorLine = error ? (
     <p
@@ -139,17 +140,19 @@ export function VoteButton({
             type="button"
             disabled={pending || readOnly}
             aria-pressed={upvoted}
-            aria-label={mdLabel}
+            aria-label={label}
             title={upvoted ? "Remove your upvote" : "Upvote"}
             aria-describedby={error ? errorId : undefined}
             onClick={handleVote}
-            className={`group inline-flex items-center justify-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50 ${tone}`}
+            className={`group inline-flex h-11 items-center justify-center gap-2 rounded-full border px-4 text-sm font-bold transition-all duration-150 active:scale-95 disabled:opacity-50 ${tone}`}
           >
-            <ThumbsUp filled={upvoted} className="h-4 w-4 transition-transform group-hover:scale-110" />
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-hover:-translate-y-0.5">
+              <path d="m18 15-6-6-6 6" />
+            </svg>
             <span>{upvoted ? "Upvoted" : "Upvote"}</span>{" "}
             <span
               className={`rounded-full px-2 py-0.5 text-xs font-bold tabular-nums ${
-                upvoted ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-600"
+                upvoted ? "bg-white/25 text-white" : "bg-zk-tint text-zk-accent"
               }`}
             >
               {count}
@@ -160,7 +163,7 @@ export function VoteButton({
           {showReadinessGate ? (
             <p
               data-testid="readiness-gate-indicator"
-              className={`text-xs font-medium ${unlocked ? "text-emerald-700" : "text-slate-500"}`}
+              className={`text-xs font-medium ${unlocked ? "text-zk-ok-fg" : "text-zk-muted"}`}
             >
               {unlocked
                 ? "Work unlocked"
