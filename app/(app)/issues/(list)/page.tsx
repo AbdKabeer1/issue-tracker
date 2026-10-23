@@ -749,7 +749,7 @@ export default async function BugsPage({
             </div>
           </div>
         ) : (
-          <section className="flex flex-col gap-3.5 rounded-[20px] border border-zk-border bg-zk-surface p-5">
+          <section className="flex flex-col gap-3.5 rounded-[20px] border border-zk-border bg-zk-surface p-3 sm:p-5">
             <div className="flex flex-wrap items-baseline justify-between gap-2.5">
               <div className="flex flex-wrap items-baseline gap-2.5">
                 <h2 className="text-lg font-bold text-zk-text">All issues</h2>
@@ -777,8 +777,8 @@ export default async function BugsPage({
             </div>
 
             <div className="overflow-x-auto">
-              <div className="min-w-[860px]">
-                <div className="flex items-center gap-4 rounded-full bg-zk-tint px-4 py-3.5 text-xs font-bold uppercase tracking-[0.05em] text-zk-accent">
+              <div className="sm:min-w-[860px]">
+                <div className="hidden items-center gap-4 rounded-full bg-zk-tint px-4 py-3.5 text-xs font-bold uppercase tracking-[0.05em] text-zk-accent sm:flex">
                   <span className="w-[52px]">Votes</span>
                   <span className="min-w-0 flex-1">Issue</span>
                   <span className="w-[92px]">Type</span>
@@ -803,7 +803,7 @@ export default async function BugsPage({
                     return (
                       <li
                         key={bug.id}
-                        className={`flex items-center gap-4 px-4 py-3.5 ${
+                        className={`flex items-center gap-2 px-2 py-3.5 sm:gap-4 sm:px-4 ${
                           index < bugs.length - 1 ? "border-b border-zk-divider" : ""
                         }`}
                       >
@@ -866,19 +866,19 @@ export default async function BugsPage({
                             {snippets.has(bug.id) ? <SearchSnippet snippet={snippets.get(bug.id)!} /> : null}
                           </span>
                         </Link>
-                        <span className="w-[92px] shrink-0 text-[13px] text-zk-text2">{typeName}</span>
-                        <span className="w-24 shrink-0">
+                        <span className="hidden w-[92px] shrink-0 text-[13px] text-zk-text2 sm:block">{typeName}</span>
+                        <span className="hidden w-24 shrink-0 sm:block">
                           <span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-bold ${severityPillClass(bug.severity)}`}>
                             {severityLabels[bug.severity]}
                           </span>
                         </span>
-                        <span className="w-[76px] shrink-0">
+                        <span className="hidden w-[76px] shrink-0 sm:block">
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold ${statusPillClass(bug.status)}`}>
                             <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
                             {statusLabels[bug.status]}
                           </span>
                         </span>
-                        <span className="w-[104px] shrink-0">
+                        <span className="hidden w-[104px] shrink-0 sm:block">
                           {stage ? (
                             <span
                               title={intakeDetail(stage, bug.voteCount)}
@@ -891,13 +891,13 @@ export default async function BugsPage({
                             <span className="text-[13px] text-zk-muted">—</span>
                           )}
                         </span>
-                        <span className="w-[84px] shrink-0 text-[13px] text-zk-text2">
+                        <span className="hidden w-[84px] shrink-0 text-[13px] text-zk-text2 sm:block">
                           <RowAge
                             date={currentSort === "newest" ? bug.createdAt : bug.updatedAt}
                             sort={currentSort === "newest" ? "newest" : "updated"}
                           />
                         </span>
-                        <span className="flex w-10 shrink-0 items-center justify-end gap-2">
+                        <span className="hidden w-10 shrink-0 items-center justify-end gap-2 sm:flex">
                           {bug.assignee ? (
                             <RowAssignee name={bug.assignee.name} image={bug.assignee.image} />
                           ) : null}
