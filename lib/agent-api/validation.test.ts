@@ -168,7 +168,71 @@ describe("submitValidation: project confirmation count (#595)", () => {
   });
 });
 
+describe("recorded confirmation independence (#579)", () => {
+  it.each(["beneficiaryUserId", "dispatcherUserId"] as const)("preserves reviews and clearance credited to a later claim's %s", async (claimRole) => {
+    await submitValidation(reviewer("t1", "tia", "triager"), "bug1", { ...clearTriage, onBehalfOfUserId: "credited-triager" });
+    await submitValidation(reviewer("r1", "rob"), "bug1", { ...acceptReal, onBehalfOfUserId: "credited-reviewer" });
+    // A clearance plus only one independent real accept must still fail.
+    expect(await isConfirmed("bug1")).toBe(false);
+    await submitValidation(reviewer("r2", "sam"), "bug1", acceptReal);
+    expect(await isConfirmed("bug1")).toBe(true);
+
+    for (const creditedUser of ["credited-triager", "credited-reviewer"]) {
+      db.bug.findUnique.mockResolvedValue(bugRow({
+        status: "in_progress",
+        assigneeId: "worker",
+        claims: [{ status: "active", releasedAt: null, beneficiaryUserId: "worker", dispatcherUserId: "dispatcher", agent: { ownerUserId: "worker" }, [claimRole]: creditedUser }],
+      }));
+      expect(await isConfirmed("bug1")).toBe(true);
+    }
+  });
+});
+
 describe("submitValidation: who may validate (#433)", () => {
+  it.each([
+    ["real accept", "reviewer", acceptReal],
+    ["triage clearance", "triager", clearTriage],
+  ] as const)("rejects a raced %s when the issue is deleted before the lock (#579)", async (_label, level, body) => {
+    db.bug.findUnique.mockResolvedValue(bugRow({ isDeleted: true }));
+
+    expect(await submitValidation(reviewer("r1", "rob", level), "bug1", body)).toMatchObject({ status: 404, error: "not_found" });
+    expect(db.$queryRaw).toHaveBeenCalledOnce();
+    expect(db.issueValidation.create).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+    expect(db.agentEvent.create).not.toHaveBeenCalled();
+    expect(db.agentAuditEvent.create).not.toHaveBeenCalled();
+    expect(db.bug.findUnique.mock.calls[0][0].select.isDeleted).toBe(true);
+  });
+
+  it("rejects a validation when the issue disappears before the lock (#579)", async () => {
+    db.bug.findUnique.mockResolvedValue(null);
+    expect(await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal)).toMatchObject({ status: 404, error: "not_found" });
+    expect(db.issueValidation.create).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+    expect(db.agentEvent.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["real accept", "reviewer", acceptReal],
+    ["triage clearance", "triager", clearTriage],
+  ] as const)("rejects a raced %s when the owner or credited person becomes the solver (#579)", async (_label, level, body) => {
+    for (const conflictedUser of ["rob", "credited-person"]) {
+      for (const relationship of ["assignment", "claim"] as const) {
+        db.bug.findUnique.mockResolvedValueOnce(bugRow(relationship === "assignment"
+          ? { assigneeId: conflictedUser }
+          : { claims: [{ status: "active", releasedAt: null, beneficiaryUserId: conflictedUser, agent: { ownerUserId: "worker" } }] }));
+
+        expect(await submitValidation(reviewer("r1", "rob", level), "bug1", {
+          ...body,
+          onBehalfOfUserId: "credited-person",
+        })).toMatchObject({ status: 403, error: "not_independent" });
+      }
+    }
+    expect(db.$queryRaw).toHaveBeenCalledTimes(4);
+    expect(db.issueValidation.create).not.toHaveBeenCalled();
+    expect(state.validations).toHaveLength(0);
+  });
+
   it.each(["reviewer", "triager", "dispatcher", "merger"] as const)("blocks the assigned owner's %s even with independent credit", async (level) => {
     db.bug.findFirst.mockResolvedValue(bugRow({ assigneeId: "rob" }));
     const body = level === "triager" ? clearTriage : acceptReal;
@@ -468,13 +532,20 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
     expect(await isConfirmed("bug1")).toBe(false);
   });
 
-  it("drops an accept whose reviewer is no longer independent, e.g. after their owner's agent claimed it", async () => {
+  it("keeps a reviewer's accept after their owner's agent later claims the issue (#579)", async () => {
+    await submitValidation(reviewer("t1", "tia", "triager"), "bug1", clearTriage);
     await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal);
     await submitValidation(reviewer("r2", "sam"), "bug1", acceptReal);
+    expect(await isConfirmed("bug1")).toBe(true);
+
     db.bug.findUnique.mockResolvedValue(
-      bugRow({ claims: [{ status: "active", releasedAt: null, agent: { ownerUserId: "sam" } }] }),
+      bugRow({
+        status: "in_progress",
+        assigneeId: "sam",
+        claims: [{ status: "active", releasedAt: null, beneficiaryUserId: "sam", agent: { ownerUserId: "sam" } }],
+      }),
     );
-    expect(await isConfirmed("bug1")).toBe(false);
+    expect(await isConfirmed("bug1")).toBe(true);
   });
 
   it("pays no reporter points on a duplicate", async () => {
@@ -617,7 +688,7 @@ describe("confirmation: the triage clearance (triager)", () => {
     expect(await isConfirmed("bug1")).toBe(false);
   });
 
-  it("does not count a triager clear that is no longer independent", async () => {
+  it("keeps a triager's clear after the clearing owner wins the bid (#579)", async () => {
     state.validations = [
       { id: "v1", bugId: "bug1", agentId: "r1", kind: "real", verdict: "accept", severity: "high", duplicateOfId: null, onBehalfOfUserId: "rob" },
       { id: "v2", bugId: "bug1", agentId: "r2", kind: "real", verdict: "accept", severity: "high", duplicateOfId: null, onBehalfOfUserId: "sam" },
@@ -628,11 +699,19 @@ describe("confirmation: the triage clearance (triager)", () => {
       r2: { id: "r2", ownerUserId: "sam" },
       t1: { id: "t1", ownerUserId: "tia", level: "triager" },
     };
-    // The triager's owner now holds the claim, so the clear no longer counts.
+    expect(await isConfirmed("bug1")).toBe(true);
+
+    // The triager's owner wins the bid after clearing it. That is a later
+    // claim, not a conflict when the clearance was recorded, so it must not
+    // retroactively un-confirm the issue.
     db.bug.findUnique.mockResolvedValue(
-      bugRow({ claims: [{ status: "active", releasedAt: null, agent: { ownerUserId: "tia" } }] }),
+      bugRow({
+        status: "in_progress",
+        assigneeId: "tia",
+        claims: [{ status: "active", releasedAt: null, beneficiaryUserId: "tia", agent: { ownerUserId: "tia" } }],
+      }),
     );
-    expect(await isConfirmed("bug1")).toBe(false);
+    expect(await isConfirmed("bug1")).toBe(true);
   });
 });
 

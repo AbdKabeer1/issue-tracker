@@ -1,0 +1,70 @@
+Node v22.13.1 / pnpm 10.14.0
+HISTORICAL: review follow-up verification before latest-main merge, 23 October 2026 (Africa/Lagos)
+These results predate the e33ba53a integration and do not verify that base.
+
+RED (before follow-up fix)
+ Test Files  2 failed (2)
+      Tests  4 failed | 76 passed (80)
+   Start at  23:59:11
+   Duration  2.06s (transform 770ms, setup 0ms, collect 2.03s, tests 146ms, environment 0ms, prepare 411ms)
+
+GREEN (focused)
+ Test Files  2 passed (2)
+      Tests  80 passed (80)
+   Start at  00:00:30
+   Duration  2.16s (transform 869ms, setup 0ms, collect 2.44s, tests 235ms, environment 0ms, prepare 233ms)
+
+REQUIRED GATE: VITEST_MAX_FORKS=2 VITEST_MIN_FORKS=1 pnpm check (exit 0)
+ Test Files  439 passed (439)
+      Tests  4396 passed (4396)
+   Start at  00:01:34
+   Duration  195.22s (transform 10.84s, setup 0ms, collect 101.96s, tests 53.94s, environment 43.82s, prepare 52.99s)
+
+==========================================================================
+Node v22.23.4 / pnpm 10.14.0
+MAIN VERIFICATION: e33ba53a99cfcecd29b77734bb38e27d68e86c9e
+Temporary detached worktree; frozen-lockfile install; copied untracked .env only for local tests.
+
+lint: exit 0
+typecheck: exit 0
+
+components/issue-filters.test.ts (run separately): 12 passed (12)
+components/page-container.test.ts (run separately): 4 passed (4)
+
+REQUIRED GATE: VITEST_MAX_FORKS=2 VITEST_MIN_FORKS=1 pnpm check (exit 0)
+ Test Files  441 passed (441)
+      Tests  4437 passed (4437)
+   Start at  16:54:35
+   Duration  214.12s (transform 12.16s, setup 0ms, collect 110.67s, tests 49.39s, environment 48.87s, prepare 61.17s)
+
+==========================================================================
+INTEGRATED BRANCH: fix/ziki-579-recorded-independence
+Merge commit 832973d48b907fa4c4ebe4524fa80ad8ae04022f
+Parents: 800378e2ca7c6e827ecff2c2fd783a8a016b8c7b + e33ba53a99cfcecd29b77734bb38e27d68e86c9e
+origin/main is an ancestor of HEAD.
+
+Focused #579 regression (lib/agent-api/validation.test.ts + lib/points/backfill.test.ts): 85 passed (85)
+Reward configuration (lib/points/platform-rewards.test.ts + lib/points/project-rewards.test.ts): 6 passed (6)
+
+REQUIRED GATE: VITEST_MAX_FORKS=2 VITEST_MIN_FORKS=1 pnpm check (exit 0)
+Rerun on the final code after the credited-person guard.
+ Test Files  441 passed (441)
+      Tests  4448 passed (4448)
+   Start at  17:32:42
+   Duration  231.18s (transform 12.70s, setup 0ms, collect 120.09s, tests 57.93s, environment 47.87s, prepare 68.77s)
+
+PRODUCTION BUILD: pnpm build (exit 0, 190s)
+STANDALONE MCP SERVER: packages/mcp-server install/typecheck/test/build (exit 0)
+ Test Files  3 passed (3)
+      Tests  207 passed (207)
+
+INDEPENDENT REVIEW (read-only subagent): PASS
+ Low: standing duplicate/triager awards omitted the credited-person check
+      -> fixed with reviewerCreditConflict; reporter-credit test now uses an
+         independent reviewing agent; differential re-review PASS
+ Low: severity comparison uses the pre-lock snapshot (pre-existing, out of scope)
+ Low: canonical duplicate target checked only before the lock (pre-existing, out of scope)
+
+PR #1311 (feat/ziki-redesign) remains OPEN (mergedAt null); f3bb1f4c is not an
+ancestor of main. The prior main failures were fixed by PR #1321 /
+fix/ENDOR-640-main-green commit b5b678e6, not by #1311.

@@ -1,0 +1,10 @@
+ ✓ lib/agent-api/validation.test.ts > recorded confirmation independence (#579) > preserves reviews and clearance credited to a later claim's beneficiaryUserId 26ms
+ ✓ lib/agent-api/validation.test.ts > recorded confirmation independence (#579) > preserves reviews and clearance credited to a later claim's dispatcherUserId 18ms
+ ✓ lib/agent-api/validation.test.ts > submitValidation: who may validate (#433) > rejects a raced real accept when the owner or credited person becomes the solver (#579) 9ms
+ ✓ lib/agent-api/validation.test.ts > submitValidation: who may validate (#433) > rejects a raced triage clearance when the owner or credited person becomes the solver (#579) 3ms
+ ✓ lib/agent-api/validation.test.ts > confirmation: the two-reviewer rule (#433) > keeps a reviewer's accept after their owner's agent later claims the issue (#579) 6ms
+ ✓ lib/agent-api/validation.test.ts > confirmation: the triage clearance (triager) > keeps a triager's clear after the clearing owner wins the bid (#579) 2ms
+ Test Files  1 passed (1)
+      Tests  48 passed (48)
+   Start at  23:33:30
+   Duration  9.69s (transform 2.58s, setup 0ms, collect 4.77s, tests 426ms, environment 1ms, prepare 515ms)
