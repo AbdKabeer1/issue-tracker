@@ -1,11 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
-const pointEntry = {
-  update: vi.fn(),
-  createMany: vi.fn(),
-};
-const db = { pointEntry } as unknown as PrismaClient;
+const { pointEntry, db } = vi.hoisted(() => {
+  const pointEntry = {
+    update: vi.fn(),
+    createMany: vi.fn(),
+  };
+  const db = { pointEntry } as unknown as PrismaClient;
+  return { pointEntry, db };
+});
 
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 

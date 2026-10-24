@@ -1,4 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+
+const mergePr = vi.hoisted(() => ({
+  isPullRequestClosedUnmerged: vi.fn(async (url?: string | null) => url?.includes("closed") ?? false),
+}));
+vi.mock("@/lib/github/merge-pr", () => ({
+  isPullRequestClosedUnmerged: mergePr.isPullRequestClosedUnmerged,
+}));
+
 import { award, awardDispatcher, awardSolver, solverAward } from "./award";
 
 /** An in-memory ledger with the unique `sourceKey` the database enforces. */
@@ -73,5 +81,15 @@ describe("points ledger (#428)", () => {
     const { db, createMany } = fakeLedger();
     await award(db, { tenantId: "t", userId: "u", bugId: null, role: "reporter", points: 5, sourceKey: "reporter:b:u" });
     expect(createMany).toHaveBeenCalledWith(expect.objectContaining({ skipDuplicates: true }));
+  });
+
+  it("does not award solver points when the linked pull request is closed without being merged (#642)", async () => {
+    const { db, rows } = fakeLedger();
+    const result = await awardSolver(db, {
+      ...issue,
+      pullRequestUrl: "https://github.com/zedu/web/pull/closed-1",
+    });
+    expect(result).toBe(false);
+    expect(rows).toEqual([]);
   });
 });
