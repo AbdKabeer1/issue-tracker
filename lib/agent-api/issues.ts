@@ -472,14 +472,17 @@ export async function commentOnAgentIssue(agent: AgentContext, request: NextRequ
       bugId, actorId: agent.ownerId, type: "commented", summary: commentedSummary(body),
       metadata: { commentId: created.id, commentPreview: commentPreview(body) },
     } });
+    let attachedPrUrl: string | null = null;
     const attachment = pullRequestAttachment({
       authorId: agent.ownerId,
       assigneeId: bug.assigneeId,
       pullRequestUrl: bug.pullRequestUrl,
       proofLinks: bug.proofLinks ?? [],
       body,
+      type: input.type,
       metadata: input.metadata,
     });
+    if (attachment) attachedPrUrl = attachment.pullRequestUrl;
     await tx.bug.update({
       where: { id: bugId },
       data: {
@@ -505,14 +508,25 @@ export async function commentOnAgentIssue(agent: AgentContext, request: NextRequ
     await publish(tx, {
       tenantId: scope.tenantId,
       type: "comment.created",
-      payload: { commentId: created.id, issueId: bugId, authorId: agent.ownerId },
+      payload: {
+        commentId: created.id,
+        issueId: bugId,
+        authorId: agent.ownerId,
+        ...(attachment ? { linkedPullRequestUrl: attachment.pullRequestUrl } : {}),
+      },
       actorAgentId: agent.agentId,
       bugId,
     });
-    return created;
+    return { created, attachedPrUrl };
   });
-  notifyAgentComment(agent, bug, comment, parentAuthorId);
-  return NextResponse.json({ comment }, { status: 201 });
+  notifyAgentComment(agent, bug, comment.created, parentAuthorId);
+  return NextResponse.json(
+    {
+      comment: comment.created,
+      ...(comment.attachedPrUrl ? { linkedPullRequestUrl: comment.attachedPrUrl } : {}),
+    },
+    { status: 201 },
+  );
 }
 
 /**

@@ -50,9 +50,14 @@ const tx = vi.hoisted(() => ({
   bugActivity: { create: vi.fn() },
 }));
 
+const findAuditEventMock = vi.hoisted(() =>
+  vi.fn<() => Promise<{ id: string; payload: unknown } | null>>(async () => null),
+);
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     bug: { findUnique: vi.fn() },
+    agentAuditEvent: { findFirst: findAuditEventMock },
     $transaction: vi.fn(async (fn: (client: typeof tx) => unknown) => fn(tx)),
   },
 }));
@@ -187,4 +192,47 @@ describe("editProofLinksAction (#737)", () => {
     expect(result).toEqual({ error: TICKET_EDIT_ERRORS.notFound });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
+
+  it("unlinks pull request when proof links are cleared before acceptance", async () => {
+    findBugMock.mockResolvedValue(existingBug([PR], { pullRequestUrl: PR }));
+
+    const result = await save("");
+
+    expect(result).toEqual({ ok: true });
+    expect(tx.bug.update).toHaveBeenCalledWith({
+      where: { id: "bug-1" },
+      data: expect.objectContaining({ proofLinks: [], pullRequestUrl: null }),
+    });
+  });
+
+  it("updates pull request when proof links are replaced before acceptance", async () => {
+    const OTHER_PR = "https://github.com/Zedu-Endor/issue-tracker/pull/999";
+    findBugMock.mockResolvedValue(existingBug([PR], { pullRequestUrl: PR }));
+
+    const result = await save(OTHER_PR);
+
+    expect(result).toEqual({ ok: true });
+    expect(tx.bug.update).toHaveBeenCalledWith({
+      where: { id: "bug-1" },
+      data: expect.objectContaining({ proofLinks: [OTHER_PR], pullRequestUrl: OTHER_PR }),
+    });
+  });
+
+  it("refuses to change pull request when fix has already been accepted", async () => {
+    const OTHER_PR = "https://github.com/Zedu-Endor/issue-tracker/pull/999";
+    findBugMock.mockResolvedValue(existingBug([PR], { pullRequestUrl: PR }));
+    findAuditEventMock.mockResolvedValueOnce({
+      id: "event-accepted",
+      payload: { pullRequestUrl: PR },
+    });
+
+    const result = await save(OTHER_PR);
+
+    expect(result).toEqual({
+      error:
+        "This issue's accepted fix is bound to a different pull request — link the accepted one again.",
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
 });
+

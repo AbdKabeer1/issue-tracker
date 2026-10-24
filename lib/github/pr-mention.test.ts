@@ -14,7 +14,8 @@ describe("pull request mentions", () => {
 
   it("prefers a comment's prUrl over the body", () => {
     expect(pullRequestUrlFromComment("shipped", { prUrl: PR })).toBe(PR);
-    expect(pullRequestUrlFromComment(`see ${PR}`)).toBe(PR);
+    expect(pullRequestUrlFromComment(`delivery: ${PR}`, undefined, "delivery")).toBe(PR);
+    expect(pullRequestUrlFromComment(`see ${PR}`)).toBeNull();
   });
 
   it("picks the first pull request in a list of links", () => {
@@ -25,27 +26,54 @@ describe("pull request mentions", () => {
     expect(firstPullRequestLink(["https://github.com/Zedu-Endor/issue-tracker/issues/423"])).toBeNull();
   });
 
-  it("attaches a pull request mentioned by the assignee, and ignores everyone else", () => {
+  it("does not attach when the assignee merely mentions a pull request in prose (#636)", () => {
+    expect(pullRequestAttachment({
+      authorId: "opeyemi",
+      assigneeId: "opeyemi",
+      pullRequestUrl: null,
+      proofLinks: [],
+      body: `This is similar to PR ${PR} which fixed the login issue.`,
+      type: "comment",
+    })).toBeNull();
+  });
+
+  it("attaches a pull request when the assignee explicitly delivers it (#636)", () => {
     expect(pullRequestAttachment({
       authorId: "opeyemi",
       assigneeId: "opeyemi",
       pullRequestUrl: null,
       proofLinks: [],
       body: `Implementation ready: ${PR}`,
+      type: "delivery",
     })).toEqual({ pullRequestUrl: PR, proofLinks: [PR] });
+
+    expect(pullRequestAttachment({
+      authorId: "opeyemi",
+      assigneeId: "opeyemi",
+      pullRequestUrl: null,
+      proofLinks: [],
+      body: "Shipped fix",
+      metadata: { prUrl: PR },
+    })).toEqual({ pullRequestUrl: PR, proofLinks: [PR] });
+  });
+
+  it("ignores non-assignees and does not overwrite existing pull requests (#636)", () => {
     expect(pullRequestAttachment({
       authorId: "someone-else",
       assigneeId: "opeyemi",
       pullRequestUrl: null,
       proofLinks: [],
       body: PR,
+      type: "delivery",
     })).toBeNull();
+
     expect(pullRequestAttachment({
       authorId: "opeyemi",
       assigneeId: "opeyemi",
       pullRequestUrl: PR,
       proofLinks: [PR],
       body: "https://github.com/Zedu-Endor/issue-tracker/pull/999",
+      type: "delivery",
     })).toBeNull();
   });
 });

@@ -98,7 +98,7 @@ import {
 import { publish } from "@/lib/agent-api/events";
 import { issueChangePayload, publishWebEvent } from "@/lib/agent-api/web-events";
 import { firstPullRequestLink, pullRequestAttachment } from "@/lib/github/pr-mention";
-import { isPullRequestClosedUnmerged } from "@/lib/github/merge-pr";
+import { isPullRequestClosedUnmerged, standingAcceptance } from "@/lib/github/merge-pr";
 import {
   agentMentionNames,
   agentOwnerIds,
@@ -1248,9 +1248,16 @@ export async function editProofLinksAction(
     return { ok: true };
   }
 
-  const attachedPullRequest = existing.pullRequestUrl
-    ? null
-    : firstPullRequestLink(proofLinks);
+  const accepted = await standingAcceptance(prisma, bugId);
+  const nextPullRequest = firstPullRequestLink(proofLinks);
+  if (accepted && existing.pullRequestUrl && nextPullRequest !== existing.pullRequestUrl) {
+    return {
+      error:
+        "This issue's accepted fix is bound to a different pull request — link the accepted one again.",
+    };
+  }
+
+  const updatePullRequest = !accepted && nextPullRequest !== existing.pullRequestUrl;
 
   await prisma.$transaction(async (tx) => {
     await tx.bug.update({
@@ -1258,7 +1265,7 @@ export async function editProofLinksAction(
       data: {
         proofLinks,
         updatedAt: new Date(),
-        ...(attachedPullRequest ? { pullRequestUrl: attachedPullRequest } : {}),
+        ...(updatePullRequest ? { pullRequestUrl: nextPullRequest } : {}),
       },
     });
 
@@ -1266,7 +1273,7 @@ export async function editProofLinksAction(
       bugId,
       type: "issue.updated",
       actorUserId: userId,
-      payload: issueChangePayload({ proofLinks }),
+      payload: issueChangePayload({ proofLinks, ...(updatePullRequest ? { pullRequestUrl: nextPullRequest } : {}) }),
     });
 
     await tx.bugActivity.create({
@@ -1282,6 +1289,20 @@ export async function editProofLinksAction(
         },
       },
     });
+
+    if (updatePullRequest) {
+      await tx.bugActivity.create({
+        data: {
+          bugId,
+          actorId: userId,
+          type: "edited",
+          summary: nextPullRequest
+            ? `linked PR ${nextPullRequest}`
+            : `unlinked PR ${existing.pullRequestUrl}`,
+          metadata: { field: "pullRequestUrl", pullRequestUrl: nextPullRequest, via: "proofLinks" },
+        },
+      });
+    }
   });
 
   revalidatePath("/issues");
@@ -1381,7 +1402,7 @@ export async function addCommentAction(
   const agents = await mentionedAgents(prisma, bug.tenantId, parsed.data.body);
   const normalizedBody = await normalizeMentionTags(parsed.data.body, bug.tenantId, agents);
 
-  const commentId = await prisma.$transaction(async (tx) => {
+  const { commentId, attachedPrUrl } = await prisma.$transaction(async (tx) => {
     const created = await tx.comment.create({
       data: {
         bugId,
@@ -1418,14 +1439,17 @@ export async function addCommentAction(
         } as Prisma.InputJsonValue,
       },
     });
+    let attachedPrUrl: string | null = null;
     const attachment = pullRequestAttachment({
       authorId: userId,
       assigneeId: bug.assigneeId,
       pullRequestUrl: bug.pullRequestUrl,
       proofLinks: bug.proofLinks ?? [],
       body: normalizedBody,
-      metadata,
+      type: parsed.data.type,
+      metadata: parsed.data.metadata as Record<string, unknown> | undefined,
     });
+    if (attachment) attachedPrUrl = attachment.pullRequestUrl;
     await tx.bug.update({
       where: { id: bugId },
       data: {
@@ -1452,9 +1476,14 @@ export async function addCommentAction(
       bugId,
       type: "comment.created",
       actorUserId: userId,
-      payload: { commentId: created.id, parentId: parentId ?? null, authorId: userId },
+      payload: {
+        commentId: created.id,
+        parentId: parentId ?? null,
+        authorId: userId,
+        ...(attachment ? { linkedPullRequestUrl: attachment.pullRequestUrl } : {}),
+      },
     });
-    return created.id;
+    return { commentId: created.id, attachedPrUrl };
   });
 
   // A mentioned agent's owner hears about it like a mention of them (#603).
@@ -1488,7 +1517,7 @@ export async function addCommentAction(
   revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
-  return { ok: true, commentId };
+  return { ok: true, commentId, ...(attachedPrUrl ? { linkedPullRequestUrl: attachedPrUrl } : {}) };
 }
 
 export type ToggleVoteResult = ActionResult & {
