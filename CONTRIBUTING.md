@@ -101,8 +101,6 @@ Zod schemas live in `lib/validations/issue.ts`. Keep unit tests covering happy a
 
 ## Continuous Deployment Flow
 
-- **Staging / Team Testing (Vercel)**:
-  Every merge into `main` on `Zedu-Endor/issue-tracker` automatically triggers `.github/workflows/deploy-vercel.yml`. This runs all checks and deploys a live preview to Vercel so the team can test changes end-to-end before promoting them.
 - **Production (Coolify)**:
   The upstream repository `emerjent/bug-tracker` (formerly `zeduchat/bug-tracker`) deploys to production on Coolify (`ziki.dev`, formerly `issues.zedu.chat`). Only verified and peer-reviewed PRs from team branches are submitted upstream.
 
