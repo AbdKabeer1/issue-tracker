@@ -1,0 +1,50 @@
+/* Create an Issue only; shared editor, controls and the app shell are unchanged. */
+.create-issue-page { max-width: 760px; }
+.create-issue-heading > a { min-height: 40px; gap: 8px; border-radius: 4px; }
+.create-issue-heading > a:focus-visible { outline: 2px solid var(--zk-accent); outline-offset: 4px; }
+.create-issue-heading h1 { margin-top: 12px; font-size: 30px; line-height: 40px; font-weight: 800; letter-spacing: -.025em; }
+.create-issue-heading p { max-width: 640px; font-size: 14px; line-height: 24px; color: var(--zk-text2); }
+.create-issue-card { padding: 28px 32px 32px; border-radius: 24px; }
+.create-issue-form > * { margin-block: 0; }
+.create-issue-form > * + * { margin-block-start: 24px; }
+.create-mode-switch { gap: 8px; margin-bottom: 24px; }
+.create-mode-switch button { min-height: 44px; padding: 0 16px 12px; color: var(--zk-muted); border-bottom: 2px solid transparent; }
+.create-mode-switch button[aria-pressed="true"] { color: var(--zk-accent); border-color: var(--color-electric-blue-strong); }
+.create-mode-switch button:hover { color: var(--zk-text); }
+.create-mode-switch button:focus-visible { outline: 2px solid var(--zk-accent); outline-offset: -3px; border-radius: 6px; }
+.create-fields > *, .create-title-fields > * { margin-block: 0; }
+.create-fields > * + *, .create-title-fields > * + * { margin-block-start: 24px; }
+.create-title-fields { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.create-issue-form label:not(:has(input[type="file"])), .create-issue-form legend { display: block; margin-bottom: 8px; color: var(--zk-text2); font-size: 14px; line-height: 20px; font-weight: 600; }
+.create-issue-form :is(input[type="text"], input:not([type]), select, textarea) { width: 100%; min-height: 44px; border: 1px solid var(--zk-border); border-radius: 12px; padding: 11px 14px; background: var(--zk-surface); color: var(--zk-text); font-size: 14px; line-height: 22px; box-shadow: none; }
+.create-issue-form :is(input, textarea)::placeholder { color: var(--zk-muted); }
+.create-issue-form :is(input:not([type="file"]), select, textarea):focus-visible { outline: 2px solid var(--zk-accent); outline-offset: 2px; }
+.create-issue-form :is(input, select, textarea)[aria-invalid="true"] { border-color: var(--zk-bad-fg); }
+.create-issue-form textarea { resize: vertical; }
+.create-issue-form #proofLinks { min-height: 100px; }
+.create-description > div > div:first-child { border-radius: 12px; box-shadow: none; }
+.create-description > div > div:first-child > div:first-child { border-radius: 12px 12px 0 0; padding: 6px 8px; background: var(--zk-chip); }
+.create-description [role="group"] button, .create-description [role="toolbar"] button { min-width: 32px; min-height: 32px; }
+.create-issue-form .create-description textarea { min-height: 224px; padding: 16px; border: 0; border-radius: 0 0 12px 12px; line-height: 24px; }
+.create-issue-form .create-description textarea:focus-visible { outline: none; }
+.create-description .rich-text { min-height: 224px; line-height: 24px; }
+.create-description p { line-height: 20px; }
+.create-attachments { padding-top: 8px; border-top: 1px solid var(--zk-divider); }
+.create-attachments p { line-height: 20px; color: var(--zk-muted); }
+.create-attachments label:has(input[type="file"]) { min-height: 44px; margin-top: 8px; padding: 10px 16px; border-radius: 12px; gap: 8px; }
+.create-attachments > div > div:first-of-type { align-items: flex-start; flex-direction: column; gap: 10px; }
+.create-attachments span[id] { line-height: 20px; }
+.create-self-assignment { min-height: 44px; gap: 12px; }
+.create-self-assignment input[type="checkbox"] { width: 18px; height: 18px; flex: 0 0 18px; accent-color: var(--color-electric-blue-strong); }
+.create-self-assignment label { margin-bottom: 0; }
+.create-issue-form .create-submit { min-height: 48px; padding: 12px 24px; border-radius: 999px; background: var(--color-electric-blue-strong); color: white; font-size: 14px; font-weight: 700; box-shadow: none; }
+.create-issue-form .create-submit:hover:not(:disabled) { background: var(--color-blue-slate); }
+.create-issue-form .create-submit:focus-visible { outline: 2px solid var(--zk-accent); outline-offset: 4px; }
+@media (max-width: 639px) {
+  .create-issue-card { padding: 20px 16px 24px; border-radius: 20px; }
+  .create-issue-heading h1 { font-size: 26px; line-height: 34px; }
+  .create-mode-switch { gap: 4px; }
+  .create-mode-switch button { padding-left: 12px; padding-right: 12px; }
+  .create-description textarea { min-height: 200px; }
+  .create-issue-form .create-submit { width: 100%; }
+}
