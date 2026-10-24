@@ -7,6 +7,7 @@ import {
   type PointHistoryEntry,
   type PointsGranularity,
 } from "@/lib/points/history";
+import { formatPoints } from "@/lib/points/rules";
 
 const RANGES: { id: PointsGranularity; label: string }[] = [
   { id: "daily", label: "Daily" },
@@ -317,7 +318,7 @@ export function PointsChart({
 
           <div className="flex flex-col items-end">
             <span className="text-[26px] font-extrabold leading-none tabular-nums text-zk-text">
-              {series.total.toLocaleString("en-US")}
+              {formatPoints(series.total)}
             </span>
             <span className="text-xs text-zk-muted">pts in this range</span>
           </div>
@@ -344,11 +345,11 @@ export function PointsChart({
                 <span className="flex min-h-[34px] flex-col items-center justify-end gap-0.5">
                   {over ? (
                     <span className="rounded-full bg-zk-ok-bg px-1.5 py-px text-[11px] font-bold text-zk-ok-fg">
-                      +{bucket.points - WEEKLY_POINTS_TARGET}
+                      +{formatPoints(bucket.points - WEEKLY_POINTS_TARGET)}
                     </span>
                   ) : null}
                   <span className="text-xs font-semibold tabular-nums text-zk-text2">
-                    {bucket.points.toLocaleString("en-US")}
+                    {formatPoints(bucket.points)}
                   </span>
                 </span>
                 <div className="relative h-[180px] w-full max-w-12 overflow-hidden rounded-full bg-zk-tint">

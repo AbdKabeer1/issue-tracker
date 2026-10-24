@@ -24,7 +24,7 @@ import {
   pointsThisWeek,
   type PointHistoryEntry,
 } from "@/lib/points/history";
-import { TARGET_POINTS } from "@/lib/points/rules";
+import { formatPoints, TARGET_POINTS } from "@/lib/points/rules";
 import { prisma } from "@/lib/prisma";
 import { openIssueStages } from "@/lib/issue-stage";
 
@@ -53,9 +53,9 @@ function buildStats(input: {
   return [
     {
       label: "Points",
-      value: String(overview.points.points),
+      value: formatPoints(overview.points.points),
       href: "/leaderboard",
-      chip: weekPoints >= TARGET_POINTS ? "Goal met" : `${toGo} to go`,
+      chip: weekPoints >= TARGET_POINTS ? "Goal met" : `${formatPoints(toGo)} to go`,
       chipTone: weekPoints >= TARGET_POINTS ? "ok" : "tint",
       note: "500 required this week",
     },

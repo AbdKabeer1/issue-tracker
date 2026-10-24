@@ -20,7 +20,7 @@ import { AGENT_LEVEL_LABELS } from "@/lib/agents/levels";
 import { isAdmin, isSuperAdmin, type AppRole } from "@/lib/roles";
 import { Avatar } from "@/components/avatar";
 import { ThemeToggle, AccountThemeSelector } from "@/components/theme-toggle";
-import { pointsProgress, TARGET_POINTS } from "@/lib/points/rules";
+import { formatPoints, pointsProgress, TARGET_POINTS } from "@/lib/points/rules";
 import { recentNotificationsAction } from "@/app/actions/notifications";
 import { LocalTime } from "@/components/local-time";
 import { BASE_PATH } from "@/lib/base-path";
@@ -310,6 +310,7 @@ function PointsChip({
 }) {
   if (!userId) return null;
   const progress = pointsProgress(points, solvedTasks, targetPoints);
+  const shown = formatPoints(points);
   return (
     <Link
       href={`/users/${userId}`}
@@ -318,7 +319,7 @@ function PointsChip({
       <span className="text-electric-blue">
         <TrophyIcon />
       </span>
-      <span className="font-extrabold tabular-nums">{points}</span>
+      <span className="font-extrabold tabular-nums">{shown}</span>
       <span className="text-zk-muted">pts</span>
       <span className="sr-only">
         {" "}

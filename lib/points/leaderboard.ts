@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { pointsNumber } from "./rules";
 
 /**
  * Point balances and the leaderboard (#428), always inside one tenant.
@@ -66,7 +67,7 @@ export async function pointTotals(db: Db, tenantId: string, userId: string): Pro
     db.pointEntry.aggregate({ where: { tenantId, userId }, _sum: { points: true } }),
     db.pointEntry.count({ where: { ...solvedWhere(tenantId), userId } }),
   ]);
-  return { points: sum._sum.points ?? 0, solvedTasks };
+  return { points: pointsNumber(sum._sum.points), solvedTasks };
 }
 
 /**
@@ -123,7 +124,7 @@ export async function paginatedTenantLeaderboard(
             u."id" AS "userId",
             u."name" AS "name",
             u."image" AS "image",
-            COALESCE(SUM(pe."points"), 0)::int AS "points",
+            COALESCE(SUM(pe."points"), 0)::float8 AS "points",
             COALESCE(COUNT(CASE WHEN pe."role" = 'solver' AND pe."points" > 0 AND pe."correctedAt" IS NULL THEN 1 END), 0)::int AS "solvedTasks"
           FROM "User" u
           INNER JOIN "Membership" m ON m."userId" = u."id" AND m."tenantId" = ${tenantId}
@@ -145,7 +146,7 @@ export async function paginatedTenantLeaderboard(
         userId: r.userId,
         name: r.name,
         image: r.image,
-        points: Number(r.points),
+        points: pointsNumber(r.points),
         solvedTasks: Number(r.solvedTasks),
       }));
 
@@ -195,7 +196,7 @@ export async function paginatedTenantLeaderboard(
       userId: b.userId,
       name: user.name,
       image: user.image,
-      points: b._sum.points ?? 0,
+      points: pointsNumber(b._sum.points),
       solvedTasks: solvedById.get(b.userId) ?? 0,
     }];
   });
@@ -240,7 +241,7 @@ export async function tenantRankFor(
       const rows = await (db as PrismaClient).$queryRaw<RankRow[]>`
         WITH totals AS (
           SELECT u."id",
-                 COALESCE(SUM(pe."points"), 0)::int AS points,
+                 COALESCE(SUM(pe."points"), 0)::float8 AS points,
                  COUNT(CASE WHEN pe."role" = 'solver' AND pe."points" > 0 AND pe."correctedAt" IS NULL THEN 1 END)::int AS solved
           FROM "User" u
           INNER JOIN "Membership" m ON m."userId" = u."id" AND m."tenantId" = ${tenantId}

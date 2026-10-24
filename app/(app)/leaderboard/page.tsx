@@ -11,6 +11,7 @@ import {
   type LeaderboardEntry,
 } from "@/lib/points/leaderboard";
 import { getPlatformRewardConfig } from "@/lib/points/platform-rewards";
+import { formatPoints } from "@/lib/points/rules";
 import { Avatar } from "@/components/avatar";
 
 export const metadata = { title: "Leaderboard" };
@@ -145,7 +146,7 @@ export default async function LeaderboardPage({
 
   const standingDetail =
     myStanding?.rank === 1 && secondPlacePoints != null
-      ? `${Math.max(0, myTotals.points - secondPlacePoints)} pts ahead of #2 · ${myTotals.solvedTasks} issues solved`
+      ? `${formatPoints(Math.max(0, myTotals.points - secondPlacePoints))} pts ahead of #2 · ${myTotals.solvedTasks} issues solved`
       : `${myTotals.solvedTasks} issues solved`;
 
   return (
@@ -223,7 +224,7 @@ export default async function LeaderboardPage({
                     </div>
                     <div className="flex items-baseline gap-1.5">
                       <span className="text-[32px] font-extrabold leading-none text-zk-text motion-safe:transition-colors group-hover:text-zk-accent">
-                        {entry.points}
+                        {formatPoints(entry.points)}
                       </span>
                       <span className="text-sm font-semibold text-zk-muted">pts</span>
                     </div>
@@ -239,8 +240,8 @@ export default async function LeaderboardPage({
                       </div>
                       <span className={`text-xs font-bold ${met ? "text-zk-ok-fg" : "text-zk-muted"}`}>
                         {met
-                          ? `Goal reached · +${entry.points - targetPoints}`
-                          : `${targetPoints - entry.points} pts to goal`}
+                          ? `Goal reached · +${formatPoints(entry.points - targetPoints)}`
+                          : `${formatPoints(targetPoints - entry.points)} pts to goal`}
                       </span>
                     </div>
                   </div>
@@ -271,15 +272,15 @@ export default async function LeaderboardPage({
               <div className="relative flex flex-col gap-2">
                 <div className="flex justify-between text-[13px]">
                   <span className="text-[#C9D6EF]">
-                    {myTotals.points} / {targetPoints} pts
+                    {formatPoints(myTotals.points)} / {targetPoints} pts
                   </span>
                   {goalMet ? (
                     <span className="rounded-full bg-[#0F3326] px-2 py-px font-bold text-[#6EE7A8]">
-                      Goal reached · +{myTotals.points - targetPoints}
+                      Goal reached · +{formatPoints(myTotals.points - targetPoints)}
                     </span>
                   ) : (
                     <span className="rounded-full bg-blue-slate px-2 py-px font-bold text-[#C9D6EF]">
-                      {targetPoints - myTotals.points} to goal
+                      {formatPoints(targetPoints - myTotals.points)} to goal
                     </span>
                   )}
                 </div>
@@ -427,7 +428,7 @@ export default async function LeaderboardPage({
                           </span>
                           <span className="w-[90px] text-right text-sm text-zk-text2">{row.solvedTasks}</span>
                           <span className="w-[100px] text-right text-[15px] font-extrabold text-zk-text">
-                            {row.points} <span className="text-xs font-semibold text-zk-muted">pts</span>
+                            {formatPoints(row.points)} <span className="text-xs font-semibold text-zk-muted">pts</span>
                           </span>
                         </li>
                       );

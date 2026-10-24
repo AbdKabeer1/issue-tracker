@@ -1,6 +1,7 @@
 import { createHash, createHmac } from "node:crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { csvRow } from "@/lib/csv";
+import { pointsNumber } from "./rules";
 
 /**
  * Point balances as a signed, reproducible snapshot (#618).
@@ -75,7 +76,7 @@ export async function buildPointsSnapshot(
     return [{
       userId: user.id,
       name: user.name,
-      points: group._sum.points ?? 0,
+      points: pointsNumber(group._sum.points),
       entries: group._count._all,
       walletAddress: user.walletAddress,
     }];

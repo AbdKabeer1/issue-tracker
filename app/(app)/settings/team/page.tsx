@@ -17,6 +17,7 @@ import { TeamMemberRow } from "./team-member-row";
 import { TeamAgentTable } from "./team-agent-table";
 import { isTenantAdminRole } from "@/lib/agents/membership";
 import { settableLevels } from "@/lib/agents/levels";
+import { pointsNumber } from "@/lib/points/rules";
 
 export const metadata = { title: "Team" };
 
@@ -103,7 +104,7 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
   const manageLevels = isTenantAdminRole(viewerMembership?.role, user.role)
     ? settableLevels({ isOwner: false, isTenantAdmin: true })
     : null;
-  const pointsMap = new Map(points.map((row) => [row.userId, row._sum.points ?? 0]));
+  const pointsMap = new Map(points.map((row) => [row.userId, pointsNumber(row._sum.points)]));
   const activeClaimMap = new Map(activeClaims.map((row) => [row.beneficiaryUserId, row._count._all]));
   const showOnlineOnly = filters.online === "1";
   const showCapacityOnly = filters.capacity === "1";

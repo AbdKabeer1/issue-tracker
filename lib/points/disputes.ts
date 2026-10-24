@@ -7,7 +7,7 @@ import {
   calculateSolverPoints,
   type ProjectRewardConfig,
 } from "./project-rewards";
-import { pointSourceKey, type PointRole } from "./rules";
+import { pointSourceKey, pointsNumber, type PointAmount, type PointRole } from "./rules";
 
 /**
  * Dispute logic (#436). A member says an award is missing or wrong; a
@@ -202,7 +202,7 @@ export async function correctEntry(
       userId: string;
       bugId: string | null;
       role: PointRole;
-      points: number;
+      points: PointAmount;
       correctedAt?: Date | null;
     };
     resolvedById: string;
@@ -240,7 +240,7 @@ export async function correctEntry(
     userId: entry.userId,
     bugId: entry.bugId,
     role: entry.role,
-    points: -entry.points,
+    points: -pointsNumber(entry.points),
     sourceKey: correctionSourceKey(entry.id),
   });
   await db.pointDispute.update({
@@ -327,7 +327,7 @@ function toView(row: DisputeRowWithRelations): DisputeView {
     openerId: row.user.id,
     openerName: row.user.name,
     entry: row.pointEntry
-      ? { id: row.pointEntry.id, points: row.pointEntry.points, role: row.pointEntry.role }
+      ? { id: row.pointEntry.id, points: pointsNumber(row.pointEntry.points), role: row.pointEntry.role }
       : null,
   };
 }
@@ -383,7 +383,7 @@ export async function entriesForMember(
   });
   return rows.map((row) => ({
     id: row.id,
-    points: row.points,
+    points: pointsNumber(row.points),
     role: row.role,
     correctedAt: row.correctedAt,
     createdAt: row.createdAt,

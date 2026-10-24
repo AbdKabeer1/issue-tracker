@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { pointsProgress, TARGET_POINTS } from "@/lib/points/rules";
+import { formatPoints, pointsProgress, TARGET_POINTS } from "@/lib/points/rules";
 
 function ProgressRow({
   label,
@@ -17,7 +17,7 @@ function ProgressRow({
       <div className="flex items-baseline justify-between text-sm">
         <span className="font-medium text-zk-text2">{label}</span>
         <span className="tabular-nums text-zk-text2">
-          {value} / {target}
+          {formatPoints(value)} / {target}
         </span>
       </div>
       <div
@@ -55,7 +55,7 @@ export function PointsSummary({
           Leaderboard
         </Link>
       </div>
-      <p className="mt-1 text-3xl font-semibold tabular-nums text-zk-text">{points}</p>
+      <p className="mt-1 text-3xl font-semibold tabular-nums text-zk-text">{formatPoints(points)}</p>
       <p className="text-sm text-zk-text2">
         {solvedTasks} solved task{solvedTasks === 1 ? "" : "s"}
         {progress.targetMet ? " · Goal reached" : ""}

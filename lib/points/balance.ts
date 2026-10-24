@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
+import { pointsNumber } from "./rules";
 
 /**
  * Reading a person's balance straight off the ledger (#618).
@@ -77,7 +78,7 @@ async function totals(
     db.pointEntry.aggregate({ where, _sum: { points: true } }),
     db.pointEntry.count({ where }),
   ]);
-  return { points: sum._sum.points ?? 0, entries: count };
+  return { points: pointsNumber(sum._sum.points), entries: count };
 }
 
 /** `userId`'s balance in `tenantId`, plus the same sum over `from`/`to`. */
