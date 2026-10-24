@@ -54,7 +54,7 @@ function buildStats(input: {
     {
       label: "Points",
       value: formatPoints(overview.points.points),
-      href: "/leaderboard",
+      href: "/workers?view=leaderboard",
       chip: weekPoints >= TARGET_POINTS ? "Goal met" : `${formatPoints(toGo)} to go`,
       chipTone: weekPoints >= TARGET_POINTS ? "ok" : "tint",
       note: "500 required this week",
@@ -245,7 +245,7 @@ export default async function DashboardPage() {
         </div>
         <Link
           href="/issues/new"
-          className="inline-flex h-[42px] items-center gap-2 rounded-full bg-electric-blue-strong px-5 text-sm font-bold text-white shadow-[0_8px_20px_rgba(46,111,239,0.35)] transition hover:bg-[#255fe0]"
+          className="inline-flex h-[42px] items-center gap-2 rounded-full border border-zk-border bg-zk-surface px-5 text-sm font-semibold text-zk-text hover:bg-zk-chip"
         >
           <svg
             width="16"

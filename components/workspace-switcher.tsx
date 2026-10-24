@@ -32,11 +32,11 @@ export function WorkspaceSwitcher({
   activeTenantId: string | null;
   className?: string;
   fullWidth?: boolean;
-  /** "chrome" paints the control for navy chrome. "sidebar" is the tall switcher in the app sidebar. */
-  tone?: "default" | "chrome" | "sidebar";
+  /** "chrome" paints the control for navy chrome. "bar" is the borderless switcher in the app top bar. */
+  tone?: "default" | "chrome" | "bar";
 }) {
-  const chrome = tone === "chrome" || tone === "sidebar";
-  const sidebar = tone === "sidebar";
+  const chrome = tone === "chrome";
+  const bar = tone === "bar";
   const listId = useId();
   const formRef = useRef<HTMLFormElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -95,7 +95,7 @@ export function WorkspaceSwitcher({
   }
 
   return (
-    <div ref={rootRef} className={`relative ${fullWidth || sidebar ? "w-full" : "w-max max-w-40"} ${className}`}>
+    <div ref={rootRef} className={`relative ${fullWidth ? "w-full" : "w-max max-w-40"} ${className}`}>
       <form ref={formRef} action={selectTenantAction}>
         <input type="hidden" name="tenantId" defaultValue={selected.id} />
         <button
@@ -105,8 +105,8 @@ export function WorkspaceSwitcher({
           aria-controls={listId}
           onClick={() => setOpen((current) => !current)}
           className={`inline-flex max-w-full items-center gap-2 border font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-tint focus-visible:ring-offset-2 focus-visible:ring-offset-deep-ocean ${
-            sidebar
-              ? "h-12 w-full justify-between rounded-[14px] border-[#34507F] bg-blue-slate px-3 text-sm text-white"
+            bar
+              ? "h-[30px] rounded-full border-transparent bg-transparent py-0 pl-1.5 pr-2.5 text-[13px] text-zk-text hover:bg-zk-chip max-sm:pl-0 max-sm:text-base max-sm:font-semibold"
               : chrome
                 ? "h-9 rounded-full border-surface-border bg-white/[0.04] py-0 pl-3 pr-2 text-sm text-porcelain hover:bg-white/[0.08]"
                 : "h-9 rounded-full border-slate-200 bg-card py-0 pl-3 pr-2 text-xs text-slate-800 hover:bg-slate-50"
@@ -117,7 +117,7 @@ export function WorkspaceSwitcher({
             <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
           ) : null}
           <span className="truncate">{selectedLabel}</span>
-          <svg className={`h-3.5 w-3.5 shrink-0 ${chrome ? "text-sky-tint/70" : "text-slate-400"}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <svg className={`h-3.5 w-3.5 shrink-0 ${chrome ? "text-sky-tint/70" : bar ? "text-zk-muted" : "text-slate-400"}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
             <path
               fillRule="evenodd"
               d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
@@ -126,13 +126,16 @@ export function WorkspaceSwitcher({
           </svg>
         </button>
         {open ? (
+          <div
+            className={`absolute left-0 top-full z-50 mt-1 rounded-lg border p-1 shadow-sm ${
+              chrome ? "border-surface-border bg-[#142343]" : bar ? "w-60 rounded-2xl border-zk-border bg-zk-surface p-1.5 shadow-[0_16px_40px_rgba(11,23,51,0.16)]" : "border-slate-200 bg-card"
+            } ${fullWidth ? "w-full" : bar ? "" : "w-max min-w-full max-w-56"}`}
+          >
           <ul
             id={listId}
             role="listbox"
             aria-label="Workspaces"
-            className={`absolute left-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border p-1 shadow-sm ${
-              chrome ? "border-surface-border bg-[#142343]" : "border-slate-200 bg-card"
-            } ${fullWidth ? "w-full" : "w-max min-w-full max-w-56"}`}
+            className="max-h-64 overflow-y-auto"
           >
             {workspaces.map((workspace) => {
               const label = visibleName(workspace, shared(workspace.name));
@@ -144,14 +147,18 @@ export function WorkspaceSwitcher({
                     role="option"
                     aria-selected={current}
                     onClick={() => choose(workspace.id)}
-                    className={`block w-full truncate rounded-md px-2 py-1.5 text-left text-xs ${
+                    className={`block w-full truncate rounded-md px-2 py-1.5 text-left ${bar ? "text-sm" : "text-xs"} ${
                       current
                         ? chrome
                           ? "bg-electric-blue/20 font-medium text-white"
-                          : "bg-teal-50 font-medium text-teal-900"
+                          : bar
+                            ? "bg-zk-tint font-medium text-zk-accent"
+                            : "bg-teal-50 font-medium text-teal-900"
                         : chrome
                           ? "text-slate-200 hover:bg-white/5"
-                          : "text-slate-700 hover:bg-slate-50"
+                          : bar
+                            ? "text-zk-text hover:bg-zk-chip"
+                            : "text-slate-700 hover:bg-slate-50"
                     }`}
                   >
                     {label}
@@ -160,6 +167,20 @@ export function WorkspaceSwitcher({
               );
             })}
           </ul>
+          {/* Outside the listbox: a link, not an option. Opens the create form on the workspaces page. */}
+          <div className={`mt-1 border-t pt-1 ${chrome ? "border-surface-border" : bar ? "border-zk-divider" : "border-slate-200"}`}>
+            <Link
+              href="/tenants#create-tenant"
+              onClick={() => setOpen(false)}
+              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left ${bar ? "text-sm font-medium text-zk-accent hover:bg-zk-chip" : chrome ? "text-xs text-sky-tint hover:bg-white/5" : "text-xs text-teal-800 hover:bg-slate-50"}`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Add organisation
+            </Link>
+          </div>
+          </div>
         ) : null}
       </form>
     </div>

@@ -51,7 +51,7 @@ export function PointsSummary({
         <h2 id="points-heading" className="text-sm font-semibold uppercase tracking-wide text-zk-muted">
           Points
         </h2>
-        <Link href="/leaderboard" className="text-sm font-medium text-zk-accent hover:underline">
+        <Link href="/workers?view=leaderboard" className="text-sm font-medium text-zk-accent hover:underline">
           Leaderboard
         </Link>
       </div>

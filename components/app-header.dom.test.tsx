@@ -6,7 +6,6 @@ import { switchActiveRoleAction } from "@/app/actions/auth";
 import { selectTenantAction } from "@/app/(app)/tenants/actions";
 import { labelInNameMismatches } from "@/lib/a11y/label-in-name";
 import { AppHeader } from "./app-header";
-import { AppSidebar } from "./app-sidebar";
 import { recentNotificationsAction } from "@/app/actions/notifications";
 import { BASE_PATH } from "@/lib/base-path";
 
@@ -145,27 +144,19 @@ function renderHeader(props?: Partial<Parameters<typeof AppHeader>[0]>) {
     isRealAdmin: true,
     workspaces: [{ id: "t1", name: "Ziki", slug: "ziki" }],
     activeTenantId: "t1",
+    issueCount: 4,
     ...props,
   };
-  return render(
-    <>
-      <AppSidebar
-        issueCount={4}
-        workspaces={shared.workspaces ?? []}
-        activeTenantId={shared.activeTenantId ?? null}
-      />
-      <AppHeader {...shared} />
-    </>,
-  );
+  return render(<AppHeader {...shared} />);
 }
 
 describe("account menu role switch", () => {
-  it("paints the sidebar navy and the top bar as a surface", () => {
+  it("paints the top bar as a surface with no sidebar", () => {
     renderHeader();
     const header = document.querySelector("header");
     expect(header?.className).not.toContain("backdrop-blur");
     expect(header?.className).toContain("bg-zk-surface");
-    expect(document.querySelector("aside")?.className).toContain("bg-deep-ocean");
+    expect(document.querySelector("aside")).toBeNull();
     const account = screen.getByRole("button", { name: /account menu/i });
     // Wraps on phones and tablets (no sideways scroll), never squeezed from lg up.
     const toolbar = account.parentElement?.parentElement?.className.split(/\s+/) ?? [];
@@ -173,22 +164,26 @@ describe("account menu role switch", () => {
     expect(toolbar).toContain("lg:shrink-0");
   });
 
-  it("opens the account menu and asks to switch the active role", async () => {
+  it("leaves View as out of the account menu", async () => {
     const user = userEvent.setup();
     renderHeader();
 
     await user.click(screen.getByRole("button", { name: /account menu/i }));
 
-    expect(screen.getByRole("group", { name: /view as/i })).toBeTruthy();
-    await user.click(screen.getByRole("radio", { name: /normal user/i }));
-
-    expect(switchRole).toHaveBeenCalledWith("user", `${window.location.pathname}${window.location.search}`);
+    expect(screen.queryByRole("group", { name: /view as/i })).toBeNull();
+    expect(switchRole).not.toHaveBeenCalled();
   });
 
-  it("keeps Overview and Issues in the sidebar", () => {
+  it("puts Dashboard, Issues and Workers in the top bar", () => {
     renderHeader();
-    expect(screen.getByRole("link", { name: "Overview" }).getAttribute("href")).toBe("/dashboard");
-    expect(screen.getByRole("link", { name: /^Issues/ }).getAttribute("href")).toBe("/issues");
+    const nav = screen.getByRole("navigation", { name: "Workspace" });
+    expect(nav.closest("header")).not.toBeNull();
+    expect(screen.getByRole("link", { name: "Dashboard" }).getAttribute("href")).toBe("/dashboard");
+    const issues = screen.getByRole("link", { name: /^Issues/ });
+    expect(issues.getAttribute("href")).toBe("/issues");
+    expect(issues.getAttribute("aria-current")).toBe("page");
+    expect(issues.textContent).toContain("4");
+    expect(screen.getByRole("link", { name: "Workers" }).getAttribute("href")).toBe("/workers");
   });
 
   it("closes the Agents menu when a destination is chosen", async () => {
@@ -200,11 +195,20 @@ describe("account menu role switch", () => {
     expect(screen.getByRole("button", { name: "Agents" }).getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("renders Escalations as a link, with the pending count (#763)", () => {
+  it("lists Escalations in the account menu, with the pending count (#763)", async () => {
+    const user = userEvent.setup();
     renderHeader({ pendingEscalationsCount: 5 });
-    const link = screen.getByRole("link", { name: /escalation/i });
+    expect(screen.queryByRole("link", { name: /escalation/i })).toBeNull();
+    await user.click(screen.getByRole("button", { name: /account menu/i }));
+    const link = screen.getByRole("link", { name: /escalations/i });
     expect(link.getAttribute("href")).toBe("/escalations");
     expect(screen.getAllByLabelText("5 pending").length).toBeGreaterThan(0);
+  });
+
+  it("keeps New issue and the theme toggle out of the bar", () => {
+    renderHeader();
+    expect(screen.queryByRole("link", { name: /new issue/i })).toBeNull();
+    expect(screen.queryByTestId("theme-toggle")).toBeNull();
   });
 
   it("does not put a Workspace menu in the bar", () => {
@@ -213,11 +217,13 @@ describe("account menu role switch", () => {
     expect(screen.queryByRole("link", { name: "Workspace" })).toBeNull();
   });
 
-  it("shows this person's points in the bar", () => {
+  it("shows this person's name and points together in the account chip", () => {
     renderHeader({ userId: "ada", points: 128, solvedTasks: 4 });
-    const link = screen.getByRole("link", { name: /128 pts of 500, 4 solved/i });
-    expect(link.getAttribute("href")).toBe("/users/ada");
-    expect(link.textContent).toContain("128");
+    const account = screen.getByRole("button", {
+      name: /account menu for ada lovelace 128 pts of 500, 4 solved/i,
+    });
+    expect(account.textContent).toContain("Ada Lovelace");
+    expect(account.textContent).toContain("128");
   });
 
   it("keeps each control's visible text inside its accessible name", () => {
@@ -274,26 +280,25 @@ describe("account menu role switch", () => {
     expect(screen.getByRole("option", { name: "Acme (acme-eu)" })).toBeTruthy();
   });
 
-  it("renders Docs & /llms.txt link in the account menu (#625)", async () => {
+  it("orders the account menu: Profile first, Documentation, no Dashboard or Switch workspace (#625)", async () => {
     const user = userEvent.setup();
-    renderHeader();
+    renderHeader({ userId: "ada", points: 128 });
 
     await user.click(screen.getByRole("button", { name: /account menu/i }));
 
-    const docsLink = screen.getByRole("link", { name: /docs & \/llms\.txt/i });
-    expect(docsLink).toBeTruthy();
-    expect(docsLink.getAttribute("href")).toBe("/docs");
+    const menu = document.getElementById("account-menu")!;
+    const links = [...menu.querySelectorAll("a")].map((a) => a.textContent);
+    expect(links[0]).toBe("Profile");
+    expect(screen.getByRole("link", { name: "Documentation" }).getAttribute("href")).toBe("/docs");
+    expect(links).not.toContain("Dashboard");
+    expect(links.some((text) => text?.startsWith("Switch workspace"))).toBe(false);
+    // Points are on the chip, and the menu shows no points or rank.
+    expect(menu.textContent).not.toContain("128 pts");
+    expect(menu.textContent).not.toMatch(/Rank #/);
   });
 });
 
-describe("theme toggle in header (#659)", () => {
-  it("renders the theme toggle button in the header toolbar", () => {
-    renderHeader();
-    const toggle = screen.getByTestId("theme-toggle");
-    expect(toggle).toBeTruthy();
-    expect(toggle.getAttribute("aria-label")).toMatch(/switch to (dark|light) mode/i);
-  });
-
+describe("theme preference (#659)", () => {
   it("renders the theme options in the account menu", async () => {
     const user = userEvent.setup();
     renderHeader();

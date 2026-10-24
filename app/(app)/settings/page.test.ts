@@ -141,7 +141,7 @@ describe("SettingsPage resilience", () => {
     expect(hrefs).not.toContain("/settings/agents");
     expect(hrefs).not.toContain("/settings/agents/pair");
     expect(hrefs).not.toContain("/settings/audit");
-    expect(hrefs).toContain("/settings/team");
+    expect(hrefs).toContain("/workers");
     delete process.env.AGENT_PLATFORM;
   });
 });

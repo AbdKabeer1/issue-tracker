@@ -1,15 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { AgentLevel } from "@prisma/client";
 import { SignOutButton } from "@/components/sign-out-button";
-import type { WorkspaceChoice } from "@/components/workspace-switcher";
-import { RoleSwitcher } from "@/components/role-switcher";
+import { WorkspaceSwitcher, type WorkspaceChoice } from "@/components/workspace-switcher";
 import {
   AGENT_MENU_LINKS,
-  SWITCH_TENANT_LINK,
   headerNavItems,
   initialsOf,
   isNavItemActive,
@@ -17,13 +15,15 @@ import {
   roleViewLabels,
 } from "@/lib/header-nav";
 import { AGENT_LEVEL_LABELS } from "@/lib/agents/levels";
-import { isAdmin, isSuperAdmin, type AppRole } from "@/lib/roles";
+import { isSuperAdmin, type AppRole } from "@/lib/roles";
 import { Avatar } from "@/components/avatar";
-import { ThemeToggle, AccountThemeSelector } from "@/components/theme-toggle";
+import { AccountThemeSelector } from "@/components/theme-toggle";
 import { formatPoints, pointsProgress, TARGET_POINTS } from "@/lib/points/rules";
 import { recentNotificationsAction } from "@/app/actions/notifications";
 import { LocalTime } from "@/components/local-time";
 import { BASE_PATH } from "@/lib/base-path";
+import { PAGE_CONTAINER_CLASS } from "@/components/page-container";
+import { ZikiMark } from "@/components/ziki-mark";
 
 const linkFocus =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue focus-visible:ring-offset-2";
@@ -71,7 +71,7 @@ function PlusIcon() {
 
 function TrophyIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
       <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
       <path d="M4 22h16" />
@@ -102,13 +102,93 @@ function AgentIcon() {
   );
 }
 
-function AlertIcon() {
+function NavIcon({ children }: { children: React.ReactNode }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z" />
-      <path d="M12 9v4" />
-      <path d="M12 17h.01" />
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+      {children}
     </svg>
+  );
+}
+
+function TopNavLink({
+  href,
+  active,
+  label,
+  count,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  label: string;
+  count?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      // Below lg this is a tab in the bottom strip: icon over a short label.
+      className={`relative inline-flex shrink-0 items-center whitespace-nowrap font-medium ${linkFocus} max-lg:min-w-16 max-lg:flex-1 max-lg:flex-col max-lg:gap-0.5 max-lg:rounded-xl max-lg:py-1.5 max-lg:text-[11px] lg:h-9 lg:gap-2 lg:rounded-full lg:px-2.5 lg:text-[13px] ${
+        active ? "text-zk-accent lg:bg-zk-tint" : "text-zk-text2 hover:text-zk-text lg:hover:bg-zk-chip"
+      }`}
+    >
+      <span className={`relative flex items-center justify-center max-lg:h-7 max-lg:w-12 max-lg:rounded-full ${active ? "max-lg:bg-zk-tint" : ""}`}>
+        {children}
+        {typeof count === "number" ? (
+          <span
+            aria-hidden="true"
+            className="rounded-full px-1.5 font-mono text-[10px] font-normal tabular-nums max-lg:absolute max-lg:-right-0.5 max-lg:-top-1 max-lg:bg-electric-blue-strong max-lg:text-white lg:hidden"
+          >
+            {count > 999 ? "999+" : count}
+          </span>
+        ) : null}
+      </span>
+      {label}
+      {typeof count === "number" ? (
+        <span
+          className={`rounded-full px-1.5 font-mono text-[11px] font-normal tabular-nums max-lg:sr-only ${
+            active ? "bg-zk-surface text-zk-accent" : "bg-zk-chip text-zk-muted"
+          }`}
+        >
+          {count > 999 ? "999+" : count}
+        </span>
+      ) : null}
+    </Link>
+  );
+}
+
+/** Dashboard, Issues and Workers: the workspace pages, formerly the sidebar. */
+function TopNav({ pathname, issueCount }: { pathname: string | null; issueCount?: number }) {
+  return (
+    <nav
+      aria-label="Workspace"
+      // Phones and tablets: a tab strip fixed to the bottom of the screen,
+      // clear of the home indicator. From lg it sits inline in the top bar.
+      className="flex items-center max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:justify-around max-lg:border-t max-lg:border-zk-border max-lg:bg-zk-surface max-lg:px-2 max-lg:pt-1.5 max-lg:pb-[max(0.375rem,env(safe-area-inset-bottom))] max-lg:shadow-[0_-1px_3px_rgba(0,0,0,0.04)] lg:gap-1"
+    >
+      <TopNavLink href="/dashboard" active={isNavItemActive(pathname, "/dashboard")} label="Dashboard">
+        <NavIcon>
+          <rect x="3" y="3" width="7" height="9" rx="1.5" />
+          <rect x="14" y="3" width="7" height="5" rx="1.5" />
+          <rect x="14" y="12" width="7" height="9" rx="1.5" />
+          <rect x="3" y="16" width="7" height="5" rx="1.5" />
+        </NavIcon>
+      </TopNavLink>
+      <TopNavLink href="/issues" active={isNavItemActive(pathname, "/issues")} label="Issues" count={issueCount}>
+        <NavIcon>
+          <circle cx="12" cy="12" r="9" />
+          <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+        </NavIcon>
+      </TopNavLink>
+      <TopNavLink href="/workers" active={isNavItemActive(pathname, "/workers")} label="Workers">
+        <NavIcon>
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M22 21v-2a4 4 0 0 0-3-3.9" />
+          <path d="M16 3.1a4 4 0 0 1 0 7.8" />
+        </NavIcon>
+      </TopNavLink>
+    </nav>
   );
 }
 
@@ -155,7 +235,7 @@ function NotificationsBell({ unreadCount, active }: { unreadCount: number; activ
         onClick={() => { loadPreview(); setOpen((value) => !value); }}
         aria-label={label}
         title={label}
-        className={`relative ${iconButton} ${linkFocus} ${active ? "border-electric-blue" : ""}`}
+        className={`relative ${iconButton} ${linkFocus} ${active ? "border-electric-blue" : ""} max-sm:h-9 max-sm:w-9 max-sm:border-0 max-sm:bg-transparent`}
       >
         <BellIcon />
         {unreadCount > 0 ? (
@@ -224,6 +304,7 @@ function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: She
   const buttonRef = useRef<HTMLButtonElement>(null);
   useDismiss(open, () => setOpen(false), containerRef, buttonRef);
   const current = (pathname ?? "").replace(/\/+$/, "");
+  const menuId = useId();
 
   return (
     <div ref={containerRef} className="relative">
@@ -232,23 +313,25 @@ function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: She
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-controls="agents-nav-menu"
+        aria-controls={menuId}
         onClick={() => setOpen((value) => !value)}
-        className={`inline-flex h-10 items-center gap-2 rounded-full border border-zk-border bg-zk-surface px-4 text-sm font-semibold text-zk-text ${linkFocus}`}
+        title="Agents"
+        // Phones: a plain icon, like the bell beside it.
+        className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-3.5 text-[13px] font-medium text-zk-text hover:bg-zk-chip max-sm:h-9 max-sm:w-9 max-sm:border-0 max-sm:bg-transparent max-sm:px-0 ${linkFocus}`}
       >
-        <span className="text-electric-blue">
+        <span className="text-electric-blue max-sm:text-zk-text">
           <AgentIcon />
         </span>
-        Agents
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+        <span className="max-sm:sr-only">Agents</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className="max-sm:hidden">
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
       {open ? (
         <div
-          id="agents-nav-menu"
+          id={menuId}
           role="menu"
-          className="absolute right-0 top-12 z-50 flex w-[260px] flex-col gap-0.5 rounded-2xl border border-zk-border bg-zk-surface p-2 shadow-[0_16px_40px_rgba(11,23,51,0.16)]"
+          className="absolute right-0 top-12 z-50 flex w-[260px] max-w-[calc(100vw-2rem)] flex-col gap-0.5 rounded-2xl border border-zk-border bg-zk-surface p-2 shadow-[0_16px_40px_rgba(11,23,51,0.16)]"
         >
           {agents.length > 0 ? (
             <span className="px-2.5 pb-1.5 pt-2 text-[11px] font-bold uppercase tracking-[0.06em] text-zk-muted">
@@ -297,36 +380,26 @@ function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: She
   );
 }
 
-function PointsChip({
+/** The points pill beside the name in the account chip, as in the redesign. */
+function PointsBadge({
   points,
   solvedTasks,
-  userId,
   targetPoints = TARGET_POINTS,
 }: {
   points: number;
   solvedTasks: number;
-  userId?: string | null;
   targetPoints?: number;
 }) {
-  if (!userId) return null;
   const progress = pointsProgress(points, solvedTasks, targetPoints);
-  const shown = formatPoints(points);
   return (
-    <Link
-      href={`/users/${userId}`}
-      className={`inline-flex h-10 items-center gap-1.5 rounded-full border border-zk-border px-3.5 text-sm text-zk-text ${linkFocus}`}
-    >
-      <span className="text-electric-blue">
-        <TrophyIcon />
-      </span>
-      <span className="font-extrabold tabular-nums">{shown}</span>
-      <span className="text-zk-muted">pts</span>
+    <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-zk-warn-bg px-[7px] text-[11.5px] font-medium text-zk-warn-fg">
+      <TrophyIcon />
+      <span className="tabular-nums">{formatPoints(points)}</span> pts
       <span className="sr-only">
         {" "}
-        of {targetPoints}, {solvedTasks} solved
+        of {targetPoints}, {solvedTasks} solved, {progress.pointsPercent}%
       </span>
-      <span className="sr-only">{progress.pointsPercent}%</span>
-    </Link>
+    </span>
   );
 }
 
@@ -344,9 +417,9 @@ export function AppHeader({
   points = 0,
   solvedTasks = 0,
   targetPoints = TARGET_POINTS,
-  rank = null,
   agents = [],
   reportFormUrl,
+  issueCount,
 }: {
   userName?: string | null;
   userImage?: string | null;
@@ -362,9 +435,10 @@ export function AppHeader({
   solvedTasks?: number;
   /** Platform points goal (hard-coded fallback when unset). */
   targetPoints?: number;
-  rank?: number | null;
   agents?: ShellAgent[];
   reportFormUrl?: string;
+  /** Unresolved issues in the workspace, shown on the Issues link. */
+  issueCount?: number;
 }) {
   const pathname = usePathname();
   const [accountOpen, setAccountOpen] = useState(false);
@@ -381,58 +455,38 @@ export function AppHeader({
 
   const items = headerNavItems(role, { pendingEscalations: pendingEscalationsCount });
   const showEscalations = items.some((item) => item.href === "/escalations");
-  const canSwitchRole = Boolean((isRealSuperAdmin || isRealAdmin) && role);
   const realRole = realRoleOf({ isRealSuperAdmin, isRealAdmin });
-  const onNewIssue =
-    pathname?.replace(/\/+$/, "") === "/issues/new" || pathname?.replace(/\/+$/, "") === "/bugs/new";
-  const effectiveRole: AppRole = role ?? "user";
-  const activeWorkspace = workspaces.find((workspace) => workspace.id === activeTenantId) ?? workspaces[0];
 
   return (
     // Sticky only from lg: on phones and tablets the toolbar wraps onto rows,
     // and a header that tall pinned to the top covers the page under it.
-    <header className="relative z-40 border-b border-zk-border bg-zk-surface lg:sticky lg:top-0">
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
-        <Link
-          href="/issues/new"
-          aria-current={onNewIssue ? "page" : undefined}
-          className={`inline-flex h-10 items-center gap-2 rounded-full bg-electric-blue-strong px-4 text-sm font-bold text-white shadow-[0_8px_20px_rgba(46,111,239,0.30)] ${linkFocus}`}
-        >
-          <PlusIcon />
-          New issue
-        </Link>
+    <header className="relative z-40 border-b border-zk-border bg-zk-surface shadow-[0_1px_3px_rgba(0,0,0,0.04)] lg:sticky lg:top-0">
+      <div className={`${PAGE_CONTAINER_CLASS} flex flex-wrap items-center gap-x-3 gap-y-2 py-3 max-sm:py-2 sm:px-6`}>
+        {/* Below lg the nav lives in the bottom strip, leaving one row here.
+            Phones show just the organisation name on the left, no logo. */}
+        <div className="flex min-w-0 items-center gap-2">
+          <Link href="/dashboard" aria-label="Ziki" className={`flex shrink-0 items-center gap-2 rounded-full max-sm:hidden ${linkFocus}`}>
+            <ZikiMark className="h-7 w-auto text-electric-blue-strong" />
+            <span aria-hidden="true" className="pr-1 text-[15px] font-semibold tracking-[-0.02em] text-zk-text">
+              ziki
+            </span>
+          </Link>
+          <span aria-hidden="true" className="h-[18px] w-px shrink-0 bg-zk-border max-sm:hidden" />
+          <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} tone="bar" className="min-w-0 max-sm:max-w-44" />
+        </div>
+
+        <TopNav pathname={pathname} issueCount={issueCount} />
 
         {/* Phones and tablets: min-w-0 lets the group narrow so its flex-wrap
             breaks the chips onto rows (no sideways scroll at 360px or 768px).
             From lg up it keeps shrink-0 so the account controls are never
             squeezed. */}
-        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-3 lg:shrink-0">
-          <PointsChip
-            points={points}
-            solvedTasks={solvedTasks}
-            userId={userId}
-            targetPoints={targetPoints}
-          />
-
-          {showEscalations ? (
-            <Link
-              href="/escalations"
-              aria-current={isNavItemActive(pathname, "/escalations") ? "page" : undefined}
-              className={`inline-flex h-10 items-center gap-2 rounded-full border border-zk-bad-bd bg-zk-bad-soft px-4 text-sm font-bold text-zk-bad-fg ${linkFocus}`}
-            >
-              <AlertIcon />
-              Escalation
-              {pendingEscalationsCount > 0 ? (
-                <span aria-label={`${pendingEscalationsCount} pending`} className="tabular-nums">
-                  {pendingEscalationsCount > 99 ? "99+" : pendingEscalationsCount}
-                </span>
-              ) : null}
-            </Link>
-          ) : null}
-
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 max-sm:gap-1 lg:shrink-0">
           <AgentsMenu pathname={pathname} agents={agents} />
-          <ThemeToggle />
-          <NotificationsBell key={`${userId}:${activeTenantId}:${pathname}`} unreadCount={unreadCount} active={isNavItemActive(pathname, "/notifications")} />
+          {/* Phones: the bell is a small icon at the far right. */}
+          <div className="max-sm:order-last">
+            <NotificationsBell key={`${userId}:${activeTenantId}:${pathname}`} unreadCount={unreadCount} active={isNavItemActive(pathname, "/notifications")} />
+          </div>
 
           <div ref={accountRef} className="relative">
             <button
@@ -442,11 +496,18 @@ export function AppHeader({
               aria-expanded={accountOpen}
               aria-controls="account-menu"
               onClick={() => setAccountOpen((open) => !open)}
-              className={`inline-flex h-11 items-center gap-1.5 rounded-full border border-zk-border py-0.5 pl-0.5 pr-2 text-zk-text ${linkFocus}`}
+              className={`inline-flex h-11 max-w-full items-center gap-2 rounded-full border border-zk-border bg-zk-surface py-[5px] pl-[5px] pr-3 text-zk-text hover:bg-zk-chip ${linkFocus}`}
             >
-              <span className="sr-only">Account menu for {userName}</span>
+              <span className="sr-only">Account menu for </span>
               <Avatar name={userName} image={userImage} size="md" variant="solid" />
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium">
+                {/* Phones show the avatar and points; the name is still read out. */}
+                <span className="max-w-40 truncate max-sm:sr-only">{userName}</span>
+                {userId ? (
+                  <PointsBadge points={points} solvedTasks={solvedTasks} targetPoints={targetPoints} />
+                ) : null}
+              </span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className="shrink-0 text-zk-muted max-sm:hidden">
                 <path d={accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"} />
               </svg>
             </button>
@@ -462,30 +523,23 @@ export function AppHeader({
                   userName={userName}
                   userImage={userImage}
                   realRole={realRole}
-                  points={points}
-                  rank={rank}
                 />
-                {canSwitchRole ? (
-                  <div className="border-t border-zk-divider px-2 py-2.5">
-                    <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
-                  </div>
-                ) : null}
+                <MenuLink href="/settings/profile" active={isNavItemActive(pathname, "/settings/profile")}>
+                  Profile
+                </MenuLink>
                 <AccountThemeSelector />
                 <div className="mx-2 h-px bg-zk-divider" />
-                <MenuLink href={SWITCH_TENANT_LINK.href} active={isNavItemActive(pathname, SWITCH_TENANT_LINK.href)}>
-                  <span className="flex-1">{SWITCH_TENANT_LINK.label}</span>
-                  {activeWorkspace ? (
-                    <span className="rounded-full bg-zk-chip px-2 py-0.5 text-xs font-bold text-zk-text2">
-                      {activeWorkspace.name}
-                    </span>
-                  ) : null}
-                </MenuLink>
-                <MenuLink href="/leaderboard" active={isNavItemActive(pathname, "/leaderboard")}>
-                  Leaderboard
-                </MenuLink>
-                {isAdmin(effectiveRole) ? (
-                  <MenuLink href="/admin/dashboard" active={isNavItemActive(pathname, "/admin/dashboard")}>
-                    Dashboard
+                {showEscalations ? (
+                  <MenuLink href="/escalations" active={isNavItemActive(pathname, "/escalations")}>
+                    <span className="flex-1">Escalations</span>
+                    {pendingEscalationsCount > 0 ? (
+                      <span
+                        aria-label={`${pendingEscalationsCount} pending`}
+                        className="rounded-full bg-zk-bad-soft px-2 py-0.5 text-xs font-bold tabular-nums text-zk-bad-fg"
+                      >
+                        {pendingEscalationsCount > 99 ? "99+" : pendingEscalationsCount}
+                      </span>
+                    ) : null}
                   </MenuLink>
                 ) : null}
                 {isSuperAdmin(role) ? (
@@ -493,14 +547,11 @@ export function AppHeader({
                     Admins
                   </MenuLink>
                 ) : null}
-                <MenuLink href="/settings/profile" active={isNavItemActive(pathname, "/settings/profile")}>
-                  Profile
-                </MenuLink>
                 <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")}>
                   Settings
                 </MenuLink>
                 <MenuLink href="/docs" active={isNavItemActive(pathname, "/docs")}>
-                  Docs & /llms.txt
+                  Documentation
                 </MenuLink>
                 {reportFormUrl ? (
                   <MenuLink href={reportFormUrl}>Report issue</MenuLink>
@@ -523,14 +574,10 @@ function AccountSummary({
   userName,
   userImage,
   realRole,
-  points,
-  rank,
 }: {
   userName?: string | null;
   userImage?: string | null;
   realRole: AppRole;
-  points: number;
-  rank: number | null;
 }) {
   const roleLabel = realRole === "user" ? "Member" : roleViewLabels[realRole];
   return (
@@ -540,9 +587,6 @@ function AccountSummary({
         <p className="truncate text-base font-extrabold text-zk-text">{userName}</p>
         <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
           <span className="rounded-full bg-zk-surface px-2 py-0.5 font-bold text-zk-text2">{roleLabel}</span>
-          <span className="font-semibold text-zk-accent">
-            {points} pts{rank ? ` · #${rank}` : ""}
-          </span>
         </p>
       </div>
     </div>

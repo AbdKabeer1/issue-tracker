@@ -22,7 +22,7 @@ vi.mock("@/lib/points/leaderboard", () => ({
   pointTotals: totals,
 }));
 
-import LeaderboardPage from "./page";
+import LeaderboardPage from "./leaderboard-panel";
 
 const row = (
   rank: number,
@@ -50,8 +50,8 @@ describe("leaderboard pagination", () => {
   it("sends a page past the end to the last page, keeping the page size", async () => {
     // 25 people at 10 a page: 3 pages, so page 99 has no rows.
     leaderboard.mockResolvedValue({ entries: [], total: 25, page: 99, limit: 10, totalPages: 3 });
-    await expect(render({ page: "99", limit: "10" })).rejects.toMatchObject({ url: "/leaderboard?page=3&limit=10" });
-    expect(redirect).toHaveBeenCalledWith("/leaderboard?page=3&limit=10");
+    await expect(render({ page: "99", limit: "10" })).rejects.toMatchObject({ url: "/workers?view=leaderboard&page=3&limit=10" });
+    expect(redirect).toHaveBeenCalledWith("/workers?view=leaderboard&page=3&limit=10");
   });
 
   it("keeps \"No points yet\" for a leaderboard that really is empty", async () => {
@@ -72,8 +72,8 @@ describe("leaderboard pagination", () => {
     const html = await render({ page: "2", limit: "10" });
     expect(html).toContain("Person 11");
     expect(html).toContain("Showing 11–20 of 25");
-    expect(html).toContain('href="/leaderboard?page=1&amp;limit=10"');
-    expect(html).toContain('href="/leaderboard?page=3&amp;limit=10"');
+    expect(html).toContain('href="/workers?view=leaderboard&amp;page=1&amp;limit=10"');
+    expect(html).toContain('href="/workers?view=leaderboard&amp;page=3&amp;limit=10"');
     expect(html).not.toContain("No points yet");
   });
 
@@ -108,7 +108,7 @@ describe("leaderboard redesign", () => {
     expect(html).toContain('aria-label="Sort by"');
     expect(html).toContain(">Points</a>");
     expect(html).toContain(">Solved</a>");
-    expect(html).toContain('href="/leaderboard?page=1&amp;limit=50&amp;sort=solved"');
+    expect(html).toContain('href="/workers?view=leaderboard&amp;page=1&amp;limit=50&amp;sort=solved"');
     expect(html).toContain("Ann");
     expect(html).toContain("Bo");
     expect(html).toContain("Cy");

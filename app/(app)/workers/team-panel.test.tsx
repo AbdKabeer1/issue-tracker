@@ -22,7 +22,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 import { prisma } from "@/lib/prisma";
-import TeamPage from "./page";
+import TeamPage from "./team-panel";
 
 beforeEach(() => {
   vi.clearAllMocks();

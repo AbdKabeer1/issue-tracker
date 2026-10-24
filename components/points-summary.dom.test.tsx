@@ -26,6 +26,6 @@ describe("PointsSummary (#428)", () => {
   it("links to the leaderboard", () => {
     render(<PointsSummary points={0} solvedTasks={1} />);
     expect(screen.getByText("1 solved task")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Leaderboard" })).toHaveAttribute("href", "/leaderboard");
+    expect(screen.getByRole("link", { name: "Leaderboard" })).toHaveAttribute("href", "/workers?view=leaderboard");
   });
 });
