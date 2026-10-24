@@ -1,16 +1,18 @@
 /* Scoped to the Issues list: the approved shell and Overview stay unchanged. */
 .issues-page {
   --issues-rule: var(--zk-divider);
-  border-radius: 28px;
+  border-radius: 12px;
   background: var(--zk-surface);
-  padding: 32px;
+  padding: 0 24px 24px;
   color: var(--zk-text);
 }
-.issues-page .issues-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px 12px; }
+/* A thin top row: breadcrumb on the left, tools on the far right, a line under it edge to edge. */
+.issues-page .issues-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px 8px; margin-inline: -24px; padding: 10px 24px; border-bottom: 1px solid var(--zk-divider); }
 .issues-heading > div:first-child { display: contents; }
 .issues-heading > div:first-child > div { grid-column: 1; grid-row: 1; }
 .issues-heading > div:first-child > p { grid-column: 1 / -1; grid-row: 2; font-size: 14px; line-height: 22px; }
-.issues-heading h1 { font-size: 25px; font-weight: 700; line-height: 34px; letter-spacing: -.035em; }
+.issues-breadcrumb { font-size: 14px; line-height: 20px; }
+.issues-heading h1 { font-size: 14px; font-weight: 600; line-height: 20px; letter-spacing: 0; }
 .issues-heading .issues-actions { grid-column: 3; grid-row: 1; align-self: center; flex-wrap: nowrap; }
 .issues-heading > .issues-filters { display: contents; }
 .issues-heading > .issues-filters > * { margin: 0; }
@@ -21,28 +23,28 @@
 .issues-heading .issues-active-filters > span:first-child { flex-shrink: 0; margin-right: 4px; }
 .issues-heading .issues-active-filters > span:not(:first-child) { min-height: 28px; }
 .issues-heading .issues-active-filters > button:last-child { min-height: 32px; }
-.issues-new { height: 44px; white-space: nowrap; box-shadow: none; }
+.issues-new { height: 32px; white-space: nowrap; box-shadow: none; }
 .issues-filters { position: relative; min-width: 152px; }
 .issues-filters > div:first-child { flex-wrap: nowrap; gap: 8px; }
-.issues-filters .issues-search { flex: 0 0 44px; width: 44px; }
-.issues-search [data-testid="search-box"] > div:first-child { position: relative; width: 44px; height: 44px; padding: 13px; }
+.issues-filters .issues-search { flex: 0 0 32px; width: 32px; }
+.issues-search [data-testid="search-box"] > div:first-child { position: relative; width: 32px; height: 32px; padding: 7px; border-radius: 8px; }
 .issues-search input, .issues-search kbd { visibility: hidden; width: 0; flex: none; padding: 0; }
-.issues-search-trigger { position: absolute; inset: 0; border-radius: 50%; cursor: pointer; }
+.issues-search-trigger { position: absolute; inset: 0; border-radius: 8px; cursor: pointer; }
 .issues-filters .issues-search-expanded { flex: 0 1 clamp(200px, 24vw, 320px); width: clamp(200px, 24vw, 320px); }
 .issues-search-expanded [data-testid="search-box"] > div:first-child { position: relative; width: 100%; padding: 0 12px 0 0; gap: 0; background: var(--zk-surface); border-color: var(--zk-accent); }
 .issues-search-expanded [data-testid="search-box"] > div:first-child > svg { display: none; }
 .issues-search-expanded [data-testid="search-box"] > div:first-child:focus-within { outline: 2px solid var(--zk-accent); outline-offset: 2px; }
 .issues-search-expanded input { visibility: visible; width: auto; flex: 1; }
-.issues-search-expanded .issues-search-trigger { position: static; display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 44px; }
-.issues-search [role="listbox"] { top: 48px; right: 0; left: auto; width: max(100%, 280px); max-width: calc(100vw - 64px); }
+.issues-search-expanded .issues-search-trigger { position: static; display: grid; place-items: center; width: 32px; height: 32px; flex: 0 0 32px; }
+.issues-search [role="listbox"] { top: 36px; right: 0; left: auto; width: max(100%, 280px); max-width: calc(100vw - 64px); }
 .issues-filters .issues-search-submit { display: none; }
-.issues-filters .issues-filter-trigger { width: 44px; height: 44px; padding: 0; justify-content: center; position: relative; }
+.issues-filters .issues-filter-trigger { width: 32px; height: 32px; padding: 0; justify-content: center; position: relative; border-radius: 8px; }
 .issues-filters .issues-filter-trigger > span:first-of-type,
 .issues-filters .issues-filter-trigger > svg:last-child { display: none; }
 .issues-filters .issues-filter-trigger > span[aria-hidden] { position: absolute; top: -4px; right: -4px; }
 .issues-filters > div:first-child > div.ml-auto { margin-left: 0; }
-.issues-sort { position: relative; display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 44px; border: 1px solid var(--zk-border); border-radius: 50%; color: var(--zk-text2); }
-.issues-sort-trigger { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; cursor: pointer; }
+.issues-sort { position: relative; display: grid; place-items: center; width: 32px; height: 32px; flex: 0 0 32px; border: 1px solid var(--zk-border); border-radius: 8px; color: var(--zk-text2); }
+.issues-sort-trigger { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 7px; cursor: pointer; }
 .issues-sort:has(.issues-sort-trigger[aria-expanded="true"]) { border-color: var(--zk-accent); background: var(--zk-tint); }
 .issues-sort-trigger:focus-visible { outline: 2px solid var(--zk-accent); outline-offset: 3px; }
 .issues-sort-popover { position: fixed; top: var(--issues-sort-top, 80px); left: var(--issues-sort-left, 16px); z-index: 35; width: 224px; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow-y: auto; padding: 8px; border: 1px solid var(--zk-border); border-radius: 16px; background: var(--zk-surface); color: var(--zk-text); box-shadow: 0 12px 32px #0b17331f; text-align: left; }
@@ -78,9 +80,9 @@
 /* Status tabs, after the redesign: a 3px pill track, 34px tabs, a 26px icon disc per status. */
 .issues-status-nav { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 .issues-status-nav::-webkit-scrollbar { display: none; }
-.issues-status-nav ul { display: inline-flex; width: max-content; align-items: center; gap: 2px; border: 1px solid var(--zk-divider); border-radius: 999px; padding: 3px; background: var(--zk-chip); }
+.issues-status-nav ul { display: inline-flex; width: max-content; align-items: center; gap: 2px; border: 1px solid var(--zk-divider); border-radius: 10px; padding: 3px; background: var(--zk-chip); }
 .issues-status-nav li { flex: none; }
-.issues-status-nav a { display: flex; height: 34px; align-items: center; gap: 4px; padding: 0 8px 0 4px; border-radius: 999px; white-space: nowrap; font-size: 13px; font-weight: 500; color: var(--zk-text2); }
+.issues-status-nav a { display: flex; height: 34px; align-items: center; gap: 4px; padding: 0 8px 0 4px; border-radius: 8px; white-space: nowrap; font-size: 13px; font-weight: 500; color: var(--zk-text2); }
 .issues-status-nav a:hover { background: var(--zk-surface); }
 .issues-status-nav a[aria-current] { background: var(--color-electric-blue-strong); color: white; }
 .issues-status-nav a:focus-visible { outline: 2px solid var(--zk-accent); outline-offset: 2px; }
@@ -96,7 +98,7 @@
 .issues-status-closed { --issues-status-icon: url('/icons/issues-status-closed.svg'); color: var(--zk-muted); background: var(--zk-surface); }
 .issues-status-escalated { --issues-status-icon: url('/icons/issues-status-escalated.svg'); color: var(--zk-bad-fg); background: var(--zk-bad-bg); }
 .issues-status-nav a[aria-current] .issues-status-dot { background: white; color: var(--color-electric-blue-strong); }
-.issues-table { border: 1px solid var(--zk-border); border-radius: 20px; overflow: hidden; }
+.issues-table { border: 1px solid var(--zk-border); border-radius: 10px; overflow: hidden; }
 .issues-table-heading { display: flex; align-items: center; gap: 20px; padding: 12px 18px; background: var(--zk-bg); border-bottom: 1px solid var(--issues-rule); font-size: 13px; line-height: 20px; color: var(--zk-muted); }
 .issues-row { min-height: 88px; gap: 20px; padding: 17px 18px; }
 .issues-row:hover { background: var(--zk-bg); }
@@ -140,13 +142,14 @@
 .issues-results-summary { order: 1; }
 .issues-results > nav { order: 2; }
 @media (max-width: 1279px) {
-  .issues-page { padding: 24px; }
+  .issues-page { padding: 0 20px 20px; }
+  .issues-page .issues-heading { margin-inline: -20px; padding: 10px 20px; }
   .issues-row, .issues-table-heading { gap: 14px; padding-left: 16px; padding-right: 16px; }
 }
 @media (max-width: 767px) {
   .issues-filters .issues-filter-dialog { position: fixed; left: 16px; right: 16px; top: 10vh; width: auto; max-width: none; max-height: 80vh; margin: 0; overflow-y: auto; z-index: 50; padding: 16px; }
-  .issues-page { padding: 14px 10px; border-radius: 16px; }
-  .issues-page .issues-heading { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 8px; padding: 0 4px; }
+  .issues-page { padding: 0 10px 12px; border-radius: 10px; }
+  .issues-page .issues-heading { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-inline: -10px; margin-bottom: 12px; padding: 8px 12px; }
   .issues-heading > div:first-child > div { grid-column: 1; grid-row: 1; }
   .issues-heading > .issues-filters > div:first-child { grid-column: 1 / -1; grid-row: 2; }
   /* The New issue + sits at the far right of the title row. */
@@ -155,13 +158,13 @@
   .issues-heading .issues-active-filters > button:last-child { margin-left: 0; }
   .issues-filters:has(.issues-search-expanded) { width: 100%; min-width: 0; }
   .issues-filters .issues-search-expanded { width: auto; flex: 1 1 0; max-width: none; }
-  .issues-heading .issues-new { width: 40px; height: 40px; padding: 0; }
+  .issues-heading .issues-new { width: 32px; height: 32px; padding: 0; }
   /* Search, filter, sort and platform sit behind the tools icon until it's opened (or a search is open). */
   .issues-heading:not([data-tools-open]):not(:has(.issues-search-expanded)) > .issues-filters > div:first-child { display: none; }
-  .issues-heading h1 { font-size: 24px; }
+  .issues-heading h1 { font-size: 15px; }
   .issues-heading > div:first-child > p { font-size: 13px; }
   .issues-type, .issues-priority, .issues-stage { display: none; }
-  .issues-table { border-radius: 14px; }
+  .issues-table { border-radius: 8px; }
   .issues-table-heading { padding: 8px 10px; gap: 10px; font-size: 12px; }
   .issues-row { min-height: 0; gap: 10px; padding: 12px 10px; }
   .issues-vote { width: 40px; }

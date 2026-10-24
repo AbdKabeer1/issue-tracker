@@ -95,6 +95,20 @@ export const metadata = { title: "Issues" };
 const ESCALATED_STATUS = "escalated";
 const ESCALATED_WHERE = { some: { answeredAt: null } } satisfies Prisma.AgentQuestionListRelationFilter;
 
+/** New issue as a 32px + button; the name is kept for screen readers and the tooltip. */
+function NewIssueButton({ className = "" }: { className?: string }) {
+  return (
+    <Link
+      href="/issues/new"
+      title="New issue"
+      className={`issues-new inline-flex w-8 items-center justify-center rounded-lg border border-zk-border bg-zk-surface text-zk-text hover:bg-zk-chip ${className}`}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+      <span className="sr-only">New issue</span>
+    </Link>
+  );
+}
+
 /** A bug with head, antennae, segmented body and three pairs of legs. */
 const BUG_ICON_PATH =
   "m8 2 1.88 1.88M14.12 3.88 16 2M9 7.13v-1a3 3 0 1 1 6 0v1M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6M12 20v-9M6.53 9C4.6 8.8 3 7.1 3 5M6 13H2M3 21c0-2.1 1.7-3.9 3.8-4M20.97 5c0 2.1-1.6 3.8-3.5 4M22 13h-4M17.2 17c2.1.1 3.8 1.9 3.8 4";
@@ -162,6 +176,10 @@ export default async function BugsPage({
   }
   const activeProject = tenantId && projectId
     ? await prisma.project.findFirst({ where: { id: projectId, tenantId }, select: { slug: true, name: true, goal: true } }).catch(() => null)
+    : null;
+  // The breadcrumb's first crumb ("Zedu › Issues").
+  const workspaceName = tenantId
+    ? await loadOrEmpty("workspace name", async () => (await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }))?.name ?? null, null)
     : null;
 
   // #641: a short checklist for a new workspace's owner or admin, until it's
@@ -619,34 +637,45 @@ export default async function BugsPage({
       ) : null}
       <div className="issues-heading flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-zk-text">
+          {/* A thin breadcrumb row, "Zedu › Issues", in place of a big title. */}
+          <nav aria-label="Breadcrumb" className="issues-breadcrumb flex min-w-0 flex-wrap items-center gap-2">
+            {workspaceName ? (
+              <>
+                <Link href="/dashboard" className="truncate text-zk-text2 hover:text-zk-text">{workspaceName}</Link>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-zk-muted"><path d="m9 18 6-6-6-6" /></svg>
+              </>
+            ) : null}
+            <h1 aria-current="page" className="text-zk-text">
               {isDeletedView ? "Deleted Issues" : "Issues"}
             </h1>
             {isDeletedView ? (
-              <span className="rounded-full bg-zk-bad-bg px-2.5 py-0.5 text-xs font-bold text-zk-bad-fg">Admin view</span>
+              <span className="rounded-md bg-zk-bad-bg px-2 py-0.5 text-[11px] font-bold text-zk-bad-fg">Admin view</span>
             ) : null}
             {allProjects && !isDeletedView ? (
-              <span className="rounded-full border border-zk-border bg-zk-tint px-2.5 py-0.5 text-xs font-bold text-zk-accent">All projects</span>
+              <span className="rounded-md border border-zk-border bg-zk-tint px-2 py-0.5 text-[11px] font-bold text-zk-accent">All projects</span>
             ) : null}
-          </div>
+          </nav>
         </div>
-        <Suspense fallback={<div className="h-11 w-36 rounded-full bg-zk-chip" />}>
+        <Suspense fallback={<div className="h-8 w-36 rounded-lg bg-zk-chip" />}>
           <IssueFilters compact tagTypes={tagTypes} platforms={platforms} milestones={milestones} areas={areas} shortcutsEnabled={shortcutsEnabled}
             stageCounts={isDeletedView ? undefined : { reported: reportedCount, confirmed: confirmedCount, ready: readyCount }}
             trailing={isFirstRun ? null : (
-              <PlatformMenu
-                compact
-                tabs={platformTabs.map((tab) => ({ ...tab, href: platformHref(tab.id) }))}
-                current={selectedPlatform}
-              />
+              <>
+                {/* Desktop: New issue is a + just left of the platform menu, which stays rightmost. */}
+                {!isDeletedView ? <NewIssueButton className="max-md:hidden" /> : null}
+                <PlatformMenu
+                  compact
+                  tabs={platformTabs.map((tab) => ({ ...tab, href: platformHref(tab.id) }))}
+                  current={selectedPlatform}
+                />
+              </>
             )} />
         </Suspense>
         <div className="issues-actions flex flex-wrap items-center gap-2 print:hidden">
           {canDelete ? (
             <Link
               href={isDeletedView ? "/issues" : "/issues?deleted=true"}
-              className={`inline-flex h-[42px] items-center justify-center rounded-full px-4 text-sm font-bold border transition ${
+              className={`inline-flex h-8 items-center justify-center rounded-lg px-3 text-[13px] font-semibold border transition ${
                 isDeletedView
                   ? "border-zk-border bg-zk-surface text-zk-text hover:bg-zk-chip"
                   : "border-zk-bad-bd bg-zk-bad-soft text-zk-bad-fg hover:bg-zk-bad-bg"
@@ -659,17 +688,9 @@ export default async function BugsPage({
           <IssuesToolsToggle
             active={Boolean(searchText || selectedPlatform || selectedTags.length > 0 || isSeverity(severityParam) || selectedMilestone)}
           />
-          {!isDeletedView ? (
-            <Link
-              href="/issues/new"
-              title="New issue"
-              className="issues-new inline-flex h-[42px] items-center justify-center gap-2 rounded-full border border-zk-border bg-zk-surface px-5 text-sm font-semibold text-zk-text hover:bg-zk-chip"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-              {/* Phones: a small + beside the title; the name stays for screen readers. */}
-              <span className="max-md:sr-only">New issue</span>
-            </Link>
-          ) : null}
+          {/* Phones: the + beside the title, since the tools row is collapsed there.
+              Desktop uses the one in the tools row, unless that row has no platform menu yet. */}
+          {!isDeletedView ? <NewIssueButton className={isFirstRun ? "" : "md:hidden"} /> : null}
         </div>
       </div>
 

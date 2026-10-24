@@ -68,8 +68,8 @@ export function PlatformMenu({
         aria-controls={menuId}
         onClick={() => setOpen((value) => !value)}
         title={compact ? `Platform: ${selected.name}` : undefined}
-        className={`relative inline-flex items-center gap-2 rounded-full border text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-electric-blue ${
-          compact ? "h-11 max-sm:w-11 max-sm:justify-center sm:px-4" : "h-10 px-4"
+        className={`relative inline-flex items-center gap-2 border text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-electric-blue ${
+          compact ? "h-8 rounded-lg text-[13px] max-sm:w-8 max-sm:justify-center sm:px-3" : "h-10 rounded-full px-4"
         } ${
           filtered
             ? "border-zk-accent bg-zk-tint text-zk-accent"

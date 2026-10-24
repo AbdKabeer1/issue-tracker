@@ -12,7 +12,7 @@ export default function PersonNotFound() {
       title="We couldn't find that person"
       actions={
         <Link href="/workers" className={primaryActionClass}>
-          Go to workers
+          Go to ranking
         </Link>
       }
     >
