@@ -168,6 +168,37 @@ describe("submitValidation: project confirmation count (#595)", () => {
   });
 });
 
+describe("submitValidation: readable issue references (#614)", () => {
+  it.each([
+    ["internal id", "bug1", { id: "bug1" }],
+    ["numeric issue number", "42", { number: 42 }],
+    ["prefixed issue number", "ZE-42", { number: 42 }],
+  ])("resolves an in-scope issue by %s before recording validation", async (_label, ref, where) => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ number: 42 }));
+
+    const result = await submitValidation(reviewer("r1", "rob"), ref, acceptReal);
+
+    expect(result).toMatchObject({ status: 201 });
+    expect(db.bug.findFirst).toHaveBeenCalledWith({
+      where: { ...where, tenantId: "tenant_zedu", isDeleted: false },
+      select: expect.any(Object),
+    });
+    expect(state.validations[0]).toMatchObject({ bugId: "bug1", agentId: "r1" });
+  });
+
+  it("keeps project-scoped keys inside their project when resolving a numeric reference", async () => {
+    const scopedReviewer = { ...reviewer("r1", "rob"), projectId: "project_mobile" };
+    db.bug.findFirst.mockResolvedValue(null);
+
+    expect(await submitValidation(scopedReviewer, "42", acceptReal)).toMatchObject({ status: 404, error: "not_found" });
+    expect(db.bug.findFirst).toHaveBeenCalledWith({
+      where: { number: 42, tenantId: "tenant_zedu", projectId: "project_mobile", isDeleted: false },
+      select: expect.any(Object),
+    });
+    expect(db.issueValidation.create).not.toHaveBeenCalled();
+  });
+});
+
 describe("recorded confirmation independence (#579)", () => {
   it.each(["beneficiaryUserId", "dispatcherUserId"] as const)("preserves reviews and clearance credited to a later claim's %s", async (claimRole) => {
     await submitValidation(reviewer("t1", "tia", "triager"), "bug1", { ...clearTriage, onBehalfOfUserId: "credited-triager" });

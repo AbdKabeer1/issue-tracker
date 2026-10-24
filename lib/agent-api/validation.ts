@@ -19,6 +19,7 @@ import { notifyClaimOffered } from "@/lib/agent-notifications";
 import { WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
 import { hasBlockingRedesign } from "@/lib/redesigns";
 import { workflowFor } from "@/lib/workflow";
+import { parseIssueRef } from "@/lib/issue-ref";
 
 /** Severity order for the reviewer agreement rule (#528). */
 const SEVERITY_RANK: Record<(typeof severities)[number], number> = {
@@ -464,8 +465,14 @@ export async function submitValidation(
     };
   }
 
+  const ref = parseIssueRef(bugId);
   const bug = await prisma.bug.findFirst({
-    where: { id: bugId, tenantId: agent.tenantId, isDeleted: false },
+    where: {
+      ...(ref.kind === "number" ? { number: ref.number } : { id: ref.id }),
+      tenantId: agent.tenantId,
+      ...(agent.projectId ? { projectId: agent.projectId } : {}),
+      isDeleted: false,
+    },
     select: reviewedBugSelect,
   });
   if (!bug) return { status: 404, error: "not_found", message: "No such issue in this agent's tenant." };
