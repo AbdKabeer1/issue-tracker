@@ -280,11 +280,6 @@ export default async function BugsPage({
     if (asNumber !== null) where.OR.push({ number: asNumber });
   }
 
-  // #1055: every tab counts what the other filters match, whatever platform
-  // is picked, so switching tabs never surprises.
-  const { categoryId: _platformClause, ...platformTabWhere } = where;
-  void _platformClause;
-
   let totalCount = 0;
   try {
     totalCount = await prisma.bug.count({ where });
@@ -330,6 +325,13 @@ export default async function BugsPage({
       }
     }
   }
+  // #1055: every tab counts what the other filters match, whatever platform
+  // is picked, so switching tabs never surprises. The snapshot is taken after
+  // the stage clause is applied (#626): a ?stage= page must count the same
+  // rows its result list shows — tabs, badges and the "Show N resolved" link
+  // all follow the stage filter, not the pre-stage row set.
+  const { categoryId: _platformClause, ...platformTabWhere } = where;
+  void _platformClause;
 
   const isResolvedView = statusParam === "resolved";
 

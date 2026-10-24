@@ -172,6 +172,34 @@ describe("issue list layout", () => {
     expect(listQuery.where.id).toEqual({ in: ["bug-1"] });
   });
 
+  it("counts platform-tab badges and the Show-N-resolved link inside the stage filter (#626)", async () => {
+    await renderList({ stage: "reported" });
+
+    // The platform tabs group off the post-stage snapshot: their where-clause
+    // must carry the stage's row ids. (The status-tabs groupBy drops them on
+    // purpose, so assert existence, not exclusivity.)
+    const stagedGroupBy = groupBy.mock.calls.filter(
+      ([args]) => Array.isArray((args?.where as { id?: { in?: unknown[] } })?.id?.in),
+    );
+    expect(stagedGroupBy.length).toBeGreaterThan(0);
+
+    // The "Show N resolved" link counts resolved rows within the stage too,
+    // so the destination matches the promised count.
+    const stagedResolvedCounts = count.mock.calls.filter(([args]) => {
+      const where = (args?.where ?? {}) as {
+        id?: { in?: unknown[] };
+        status?: { in?: unknown[] };
+      };
+      return (
+        Array.isArray(where.id?.in) &&
+        where.id.in.includes("bug-1") &&
+        Array.isArray(where.status?.in) &&
+        where.status.in.includes("resolved")
+      );
+    });
+    expect(stagedResolvedCounts.length).toBeGreaterThan(0);
+  });
+
   it("is one centred list column without the stats card (#1056)", async () => {
     const html = await renderList();
     expect(html).not.toContain("Total issues");
