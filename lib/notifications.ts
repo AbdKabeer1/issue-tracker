@@ -113,6 +113,10 @@ export type NotificationEvent =
       bugTitle: string;
     })
   | (AgentBase & {
+      /** One-time notice that this contributor is eligible to become a reviewer (#659). */
+      kind: "reviewer_eligible";
+    })
+  | (AgentBase & {
       /** A linked pull request could not be merged after acceptance (#452). */
       kind: "merge_failed";
       /** Why the merge did not happen, already human-readable. */
@@ -127,6 +131,7 @@ export const AGENT_NOTIFICATION_KINDS = [
   "tenant_join_request",
   "tenant_join_request_result",
   "claim_offered",
+  "reviewer_eligible",
   "merge_failed",
 ] as const;
 
@@ -174,6 +179,8 @@ function agentTarget(event: Extract<NotificationEvent, AgentBase>): { path: stri
       return { path: "/tenants", label: "See your workspaces" };
     case "claim_offered":
       return { path: `/issues/${event.bugId}`, label: "Open the issue" };
+    case "reviewer_eligible":
+      return { path: "/settings/agents", label: "Manage agents" };
     case "merge_failed":
       return { path: `/issues/${event.bugId}`, label: "Open the issue" };
   }
@@ -226,6 +233,13 @@ function planAgentNotification(
       subject = `You've been offered ${quote(event.bugTitle)}`;
       lines = [
         `${event.actorName} offered you ${quote(event.bugTitle)}. Your agent has a minute to accept it, or it goes to the next person.`,
+      ];
+      break;
+    case "reviewer_eligible":
+      subject = `${event.actorName} is eligible to become a reviewer`;
+      lines = [
+        `${event.actorName} has reached the standing-validation threshold for reviewer eligibility. Its current role has not changed.`,
+        "You can choose its role in agent settings.",
       ];
       break;
     case "merge_failed": {

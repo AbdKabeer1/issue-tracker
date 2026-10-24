@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
-  agent: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn() },
+  agent: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   issueValidation: { findMany: vi.fn() },
   issueClaim: { count: vi.fn() },
   agentAuditEvent: { create: vi.fn(), findMany: vi.fn() },
@@ -9,6 +9,9 @@ const db = vi.hoisted(() => ({
   project: { findUnique: vi.fn() },
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
+
+const notifications = vi.hoisted(() => ({ notifyReviewerEligible: vi.fn() }));
+vi.mock("@/lib/agent-notifications", () => notifications);
 
 const auth = vi.hoisted(() => ({ requireSuperAdmin: vi.fn() }));
 vi.mock("@/lib/auth-helpers", () => ({ requireSuperAdmin: auth.requireSuperAdmin }));
@@ -45,7 +48,16 @@ function validation(overrides: Record<string, unknown> = {}) {
 }
 
 function agentRow(overrides: Record<string, unknown> = {}) {
-  return { id: "a1", tenantId: "t1", level: "contributor", levelChangedAt: null, ...overrides };
+  return {
+    id: "a1",
+    tenantId: "t1",
+    ownerUserId: "owner-1",
+    name: "Agent A",
+    level: "contributor",
+    levelChangedAt: null,
+    reviewerEligibilityNotifiedAt: null,
+    ...overrides,
+  };
 }
 
 beforeEach(() => {
@@ -54,6 +66,7 @@ beforeEach(() => {
   db.agent.findUnique.mockResolvedValue(agentRow());
   db.agent.findMany.mockResolvedValue([]);
   db.agent.update.mockResolvedValue({});
+  db.agent.updateMany.mockResolvedValue({ count: 1 });
   db.issueValidation.findMany.mockResolvedValue([]);
   db.issueClaim.count.mockResolvedValue(0);
   db.agentAuditEvent.create.mockResolvedValue({});
@@ -155,7 +168,8 @@ describe("promoteEarnedReviewer (#451)", () => {
     expect(db.agent.update).not.toHaveBeenCalled();
   });
 
-  it("promotes a contributor to reviewer once at ten", async () => {
+  it("promotes an observer to reviewer once at ten", async () => {
+    db.agent.findUnique.mockResolvedValue(agentRow({ level: "observer" }));
     db.issueValidation.findMany.mockResolvedValue(
       Array.from({ length: EARNED_REVIEWER_VALIDATIONS }, () => validation()),
     );
@@ -168,10 +182,66 @@ describe("promoteEarnedReviewer (#451)", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           action: "agent.promoted",
-          payload: { from: "contributor", to: "reviewer", validations: 10 },
+          payload: { from: "observer", to: "reviewer", validations: 10 },
         }),
       }),
     );
+  });
+
+  it("keeps a contributor's role and tells its owner once it reaches ten (#659)", async () => {
+    db.issueValidation.findMany.mockResolvedValue(
+      Array.from({ length: EARNED_REVIEWER_VALIDATIONS }, () => validation()),
+    );
+
+    const result = await promoteEarnedReviewer("a1");
+
+    expect(result).toEqual({ ok: true, changed: false, standing: 10 });
+    expect(db.agent.update).not.toHaveBeenCalled();
+    expect(db.agent.updateMany).toHaveBeenCalledWith({
+      where: { id: "a1", level: "contributor", reviewerEligibilityNotifiedAt: null },
+      data: { reviewerEligibilityNotifiedAt: expect.any(Date) },
+    });
+    expect(db.agentAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "agent.reviewer_eligible",
+          target: "agent:a1",
+          payload: { validations: 10 },
+        }),
+      }),
+    );
+    expect(notifications.notifyReviewerEligible).toHaveBeenCalledWith({
+      agent: { name: "Agent A" },
+      ownerUserId: "owner-1",
+      tenantId: "t1",
+    });
+  });
+
+  it("does not promote or notify a contributor again after the owner resets its role", async () => {
+    db.agent.findUnique.mockResolvedValue(agentRow({ reviewerEligibilityNotifiedAt: new Date() }));
+    db.issueValidation.findMany.mockResolvedValue(
+      Array.from({ length: EARNED_REVIEWER_VALIDATIONS + 1 }, () => validation()),
+    );
+
+    const result = await promoteEarnedReviewer("a1");
+
+    expect(result).toEqual({ ok: true, changed: false, standing: 11 });
+    expect(db.agent.update).not.toHaveBeenCalled();
+    expect(db.agent.updateMany).not.toHaveBeenCalled();
+    expect(notifications.notifyReviewerEligible).not.toHaveBeenCalled();
+  });
+
+  it("does not notify when another call has already claimed the eligibility notice", async () => {
+    db.issueValidation.findMany.mockResolvedValue(
+      Array.from({ length: EARNED_REVIEWER_VALIDATIONS }, () => validation()),
+    );
+    db.agent.updateMany.mockResolvedValue({ count: 0 });
+
+    const result = await promoteEarnedReviewer("a1");
+
+    expect(result).toEqual({ ok: true, changed: false, standing: 10 });
+    expect(db.agent.update).not.toHaveBeenCalled();
+    expect(notifications.notifyReviewerEligible).not.toHaveBeenCalled();
   });
 
   it("never promotes a triager, however many validations it has (#542)", async () => {
