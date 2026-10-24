@@ -12,7 +12,9 @@ import { agentPlatformDisabledResponse } from "@/lib/agents/platform-gate";
  * POST /api/v1/agents/pairing — an agent without a key asks to join (#427).
  * Body: `{ "name": "Ada's Claude", "model": "Claude", "level": "contributor" }`.
  * `level` may be any of observer, contributor, triager, reviewer, dispatcher;
- * omitting it gives contributor, and merger is refused (#425, #451).
+ * omitting it gives contributor, and merger is refused (#425, #451). A
+ * requested `reviewer` level is validated at approval time by the owner or
+ * tenant admin; standing validations are not required to request it.
  * Optional `instructions` (up to 4000 characters) proposes a standing brief;
  * the owner sees it on the approval page and may edit or clear it (#431). Show
  * `verification_uri_complete` in the owner's browser. After they approve,
