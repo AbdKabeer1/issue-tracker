@@ -7,6 +7,7 @@ import { reviewerConflict, type ReviewedBug } from "@/lib/agents/independence";
 import type { AppRole } from "@/lib/roles";
 // requireSuperAdmin is imported lazily in runLevelPromotions to avoid pulling NextAuth into unit tests
 import { IssueApiError } from "@/lib/agent-api/issues";
+import { notifyReviewerEligible } from "@/lib/agent-notifications";
 
 /**
  * Moving agents between levels from their recorded work (#451).
@@ -157,25 +158,59 @@ export type DemotionResult =
   | { ok: false; error: string };
 
 /**
- * Earn `reviewer` from standing validations. Promotes an agent below reviewer
- * once it has `EARNED_REVIEWER_VALIDATIONS` standing validations, and only
- * once: an agent already at reviewer or above is left alone, and so is a
- * triager (#542).
+ * Earn `reviewer` from standing validations. Promotes an observer after it has
+ * `EARNED_REVIEWER_VALIDATIONS` standing validations. Contributors keep their
+ * working role and get a one-time notice so their owner can choose whether to
+ * promote them; triagers also keep their specialist role (#542, #659).
  */
 export async function promoteEarnedReviewer(agentId: string, db: Db = prisma): Promise<PromotionResult> {
   const agent = await db.agent.findUnique({
     where: { id: agentId },
-    select: { id: true, tenantId: true, level: true },
+    select: {
+      id: true,
+      tenantId: true,
+      level: true,
+      name: true,
+      ownerUserId: true,
+      reviewerEligibilityNotifiedAt: true,
+    },
   });
   if (!agent) return { ok: false, error: "Agent not found." };
   if (hasLevel(agent.level, "reviewer")) return { ok: true, changed: false, standing: 0 };
-  // #542: a triager is a role the owner chose, not a step below reviewer. Levels
-  // are roles now, so "promoting" it would take away duplicate checks, the one
-  // thing a triager is for. Leave it to the owner or an admin to change.
+  // Specialist roles are separate. Replacing a triager would remove duplicate
+  // checks (#542), and replacing a contributor would strand active claims by
+  // removing bid and heartbeat permissions (#659).
   if (agent.level === "triager") return { ok: true, changed: false, standing: 0 };
 
   const standing = await standingValidations(agentId, db);
   if (standing < EARNED_REVIEWER_VALIDATIONS) return { ok: true, changed: false, standing };
+
+  if (agent.level === "contributor") {
+    if (agent.reviewerEligibilityNotifiedAt) return { ok: true, changed: false, standing };
+
+    // Claim the one-time notice atomically so a validation and a sweep running
+    // together cannot send duplicate eligibility notifications. The condition
+    // also respects an owner changing the role while the count is calculated.
+    const marked = await db.agent.updateMany({
+      where: { id: agentId, level: "contributor", reviewerEligibilityNotifiedAt: null },
+      data: { reviewerEligibilityNotifiedAt: new Date() },
+    });
+    if (marked.count !== 1) return { ok: true, changed: false, standing };
+
+    await audit(
+      { agentId, tenantId: agent.tenantId },
+      "agent.reviewer_eligible",
+      `agent:${agentId}`,
+      { validations: standing },
+      { db },
+    );
+    notifyReviewerEligible({
+      agent: { name: agent.name },
+      ownerUserId: agent.ownerUserId,
+      tenantId: agent.tenantId,
+    });
+    return { ok: true, changed: false, standing };
+  }
 
   await db.agent.update({
     where: { id: agentId },

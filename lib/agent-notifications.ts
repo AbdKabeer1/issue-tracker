@@ -53,6 +53,13 @@ export type ClaimOfferInput = {
   beneficiaryUserId: string;
 };
 
+export type ReviewerEligibleInput = {
+  agent: Agent;
+  /** The person who owns the agent and chooses its role. */
+  ownerUserId: string;
+  tenantId: string;
+};
+
 export type MergeFailedInput = Issue & {
   /** The person the claim was for; the only one told (#452). */
   recipientId: string;
@@ -122,6 +129,16 @@ export function claimOfferedEvent(claim: ClaimOfferInput): NotificationEvent {
   };
 }
 
+export function reviewerEligibleEvent(input: ReviewerEligibleInput): NotificationEvent {
+  return {
+    kind: "reviewer_eligible",
+    actorId: null,
+    actorName: input.agent.name,
+    recipientId: input.ownerUserId,
+    tenantId: input.tenantId,
+  };
+}
+
 export function mergeFailedEvent(failure: MergeFailedInput): NotificationEvent {
   return {
     kind: "merge_failed",
@@ -164,6 +181,10 @@ export async function notifyTenantInvite(invite: {
 
 export function notifyClaimOffered(claim: ClaimOfferInput): void {
   notifyLater(claimOfferedEvent(claim));
+}
+
+export function notifyReviewerEligible(input: ReviewerEligibleInput): void {
+  notifyLater(reviewerEligibleEvent(input));
 }
 
 export function notifyMergeFailed(failure: MergeFailedInput): void {

@@ -5,6 +5,27 @@ const SITE = "https://ziki.dev";
 const base = { actorId: "alice", actorName: "Alice", bugId: "b1", bugTitle: "Login button does nothing" };
 
 describe("planNotifications (#151)", () => {
+  it("tells an agent owner when their contributor becomes reviewer-eligible (#659)", () => {
+    const [planned] = planNotifications(
+      {
+        kind: "reviewer_eligible",
+        actorId: null,
+        actorName: "Agent A",
+        recipientId: "owner-1",
+        tenantId: "tenant-1",
+      },
+      SITE,
+    );
+
+    expect(planned).toMatchObject({
+      userId: "owner-1",
+      kind: "reviewer_eligible",
+      url: "/settings/agents",
+    });
+    expect(planned?.subject).toContain("Agent A is eligible to become a reviewer");
+    expect(planned?.text).toContain("Its current role has not changed");
+  });
+
   it("emails each mentioned user once, never the author", () => {
     const event: NotificationEvent = {
       ...base,
