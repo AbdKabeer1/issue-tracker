@@ -1,0 +1,84 @@
+/* Team directory only. Shared agent components retain their other-route styles. */
+.team-page { max-width: 1200px; min-width: 0; }
+html:has(.team-page) { scrollbar-gutter: stable; }
+.team-page h1 { font-size: 30px; line-height: 40px; letter-spacing: -.025em; }
+.team-heading { padding: 24px; border-radius: 24px; background: var(--zk-surface); border: 1px solid var(--zk-border); }
+.team-heading-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.team-heading p { max-width: 850px; line-height: 22px; }
+.team-apply { flex-shrink: 0; cursor: pointer; }
+.team-activity-note { color: var(--zk-text2); font-size: 12px; line-height: 20px; }
+.team-activity-note summary { width: fit-content; min-height: 32px; cursor: pointer; color: var(--zk-accent); }
+.team-activity-note p { margin-top: 8px; }
+.team-filters { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding: 16px 20px; border: 1px solid var(--zk-border); border-radius: 20px; background: var(--zk-surface); }
+.team-filters fieldset { min-width: 0; max-width: 100%; }
+.team-filter-track { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; width: fit-content; max-width: 100%; padding: 5px; border-radius: 28px; background: var(--zk-chip); }
+.team-filter-pill { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 14px; border-radius: 999px; color: var(--zk-text2); font-size: 13px; font-weight: 600; cursor: pointer; }
+.team-filter-pill:hover { background: var(--zk-tint); }
+.team-filter-pill:has(input:checked) { background: var(--color-electric-blue-strong); color: white; }
+.team-filter-pill input { border-radius: 50%; accent-color: var(--color-electric-blue-strong); }
+.team-filter-pill:has(input:checked) input { accent-color: white; }
+.team-filter-track > a { padding: 8px 12px; font-size: 12px; }
+.team-page :is(a, button, summary, select, input, [tabindex]):focus-visible { outline: 2px solid var(--zk-accent); outline-offset: 3px; }
+.team-table-scroll { width: 100%; max-width: 100%; min-width: 0; max-height: min(560px, 65vh); overflow: auto; scrollbar-gutter: stable; overscroll-behavior: contain; border: 1px solid var(--zk-border); border-radius: 20px; background: var(--zk-surface); }
+.team-table-scroll { scrollbar-width: none; }
+.team-table-scroll::-webkit-scrollbar { display: none; }
+.team-table { width: 100%; min-width: 840px; border-collapse: collapse; table-layout: fixed; font-size: 14px; color: var(--zk-text); }
+.team-table > thead { background: var(--zk-chip); }
+.team-table > thead > tr > th, .team-table > tbody > tr > th, .team-table > tbody > tr > td { padding: 20px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--zk-divider); overflow-wrap: anywhere; }
+.team-table > thead > tr > th { position: sticky; top: 0; z-index: 1; background: var(--zk-chip); padding-block: 16px; color: var(--zk-text2); font-size: 12px; line-height: 18px; font-weight: 600; }
+.team-table > thead > tr > th > span { display: block; color: var(--zk-muted); font-weight: 400; }
+.team-table > thead > tr > th:nth-child(1) { width: 25%; }
+.team-table > thead > tr > th:nth-child(2) { width: 15%; }
+.team-table > thead > tr > th:nth-child(3) { width: 11%; }
+.team-table > thead > tr > th:nth-child(4) { width: 15%; }
+.team-table > thead > tr > th:nth-child(5) { width: 34%; }
+.team-table > tbody > tr:last-child > * { border-bottom: 0; }
+.team-table > tbody > .team-member-row:hover { background: var(--zk-tint); }
+.team-member { display: flex; align-items: center; gap: 12px; min-height: 40px; line-height: 22px; }
+.team-avatar { display: inline-flex; width: 40px; height: 40px; flex: 0 0 40px; align-items: center; justify-content: center; border-radius: 50%; background: var(--zk-tint); color: var(--zk-accent); font-size: 12px; font-weight: 700; }
+.team-table > tbody > .team-member-row > td:not(.team-agents-cell) { padding-top: 28px; }
+.team-number { font-variant-numeric: tabular-nums; font-weight: 600; }
+.team-limit { color: var(--zk-muted); font-weight: 400; }
+.team-role { display: inline-flex; padding: 3px 10px; border-radius: 999px; background: var(--zk-chip); color: var(--zk-text2); font-size: 12px; font-weight: 600; }
+.team-agents-toggle { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; width: 100%; min-height: 40px; border-radius: 10px; padding: 8px 12px; background: var(--zk-chip); color: var(--zk-text); text-align: left; font-size: 13px; font-weight: 600; cursor: pointer; }
+.team-agents-toggle:hover, .team-agents-toggle[aria-expanded="true"] { background: var(--zk-tint); }
+.team-online { color: var(--zk-muted); font-size: 12px; font-weight: 400; }
+.team-online.is-online { padding: 1px 8px; border-radius: 999px; background: var(--zk-ok-bg); color: var(--zk-ok-fg); }
+.team-agent-role { display: inline-flex; padding: 3px 10px; border-radius: 999px; background: var(--zk-chip); color: var(--zk-text2); font-size: 12px; font-weight: 600; }
+.team-toggle-label { margin-left: auto; color: var(--zk-accent); }
+.team-table > tbody > .team-detail-row > td { padding: 0; }
+.team-detail-row[hidden] { display: none; }
+.team-agent-panel { padding: 24px; background: var(--zk-tint); }
+.team-agent-panel-heading { margin-bottom: 16px; }
+.team-agent-panel-heading h2 { font-size: 14px; line-height: 22px; font-weight: 700; }
+.team-agent-panel-heading p { margin-top: 4px; color: var(--zk-text2); font-size: 12px; line-height: 20px; }
+.team-agent-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; border: 1px solid var(--zk-border); border-radius: 12px; overflow: hidden; background: var(--zk-surface); font-size: 13px; }
+.team-agent-table th, .team-agent-table td { padding: 16px; vertical-align: top; text-align: left; border-bottom: 1px solid var(--zk-divider); line-height: 22px; }
+.team-agent-table thead th { font-size: 12px; font-weight: 600; color: var(--zk-text2); background: var(--zk-chip); }
+.team-agent-table thead th:nth-child(1) { width: 23%; }
+.team-agent-table thead th:nth-child(2) { width: 11%; }
+.team-agent-table thead th:nth-child(3) { width: 20%; }
+.team-agent-table thead th:nth-child(4) { width: 12%; }
+.team-agent-table thead th:nth-child(5) { width: 34%; }
+.team-agent-table tbody tr:last-child > * { border-bottom: 0; }
+.team-agent-name { display: block; color: var(--zk-text); font-weight: 600; }
+.team-agent-model { display: block; margin-top: 4px; color: var(--zk-muted); font-size: 12px; font-weight: 400; }
+.team-agent-status { display: inline-flex; padding: 1px 8px; border-radius: 999px; background: var(--zk-chip); color: var(--zk-text2); font-size: 12px; white-space: nowrap; }
+.team-agent-status.is-online { background: var(--zk-ok-bg); color: var(--zk-ok-fg); }
+.team-agent-table label { display: flex; flex-wrap: wrap; color: var(--zk-text2); font-size: 12px; }
+.team-agent-table select { width: 100%; max-width: 100%; min-height: 40px; border-color: var(--zk-border); background: var(--zk-surface); color: var(--zk-text); font-size: 13px; }
+.team-work-list { display: flex; flex-direction: column; gap: 12px; }
+.team-work-list a { color: var(--zk-accent); text-decoration: underline; text-underline-offset: 3px; }
+.team-work-list li > span { display: block; margin-top: 2px; color: var(--zk-muted); font-size: 12px; }
+.team-empty { padding: 48px 24px; border: 1px solid var(--zk-border); border-radius: 24px; background: var(--zk-surface); text-align: center; }
+.team-empty h2 { font-size: 20px; line-height: 28px; font-weight: 700; color: var(--zk-text); }
+.team-empty p { margin: 12px auto 24px; max-width: 480px; color: var(--zk-text2); line-height: 24px; }
+.team-primary { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 12px 20px; border-radius: 999px; background: var(--color-electric-blue-strong); color: white; font-size: 14px; font-weight: 700; }
+.team-primary:hover { filter: brightness(1.05); }
+@media (max-width: 639px) {
+  .team-page h1 { font-size: 26px; line-height: 34px; }
+  .team-heading { padding: 20px 16px; }
+  .team-heading-main { flex-wrap: wrap; gap: 12px; }
+  .team-filter-track { border-radius: 20px; }
+  .team-empty { padding: 32px 20px; }
+}
