@@ -18,7 +18,7 @@ test.describe("not-found pages", () => {
   test("a person who doesn't exist", async ({ page }) => {
     await page.goto("/users/no-such-person-e2e");
     await expect(page.getByRole("heading", { name: "We couldn't find that person" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Go to team" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Go to ranking" })).toBeVisible();
   });
 
   test("a redesign proposal that doesn't exist", async ({ page }) => {
