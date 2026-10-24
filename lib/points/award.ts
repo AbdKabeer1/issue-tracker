@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient, Severity } from "@prisma/client";
-import { pointSourceKey, solverPoints, type PointRole } from "./rules";
+import { pointSourceKey, roundPoints, solverPoints, type PointRole } from "./rules";
 import { calculateSolverPoints, type ProjectRewardConfig } from "./project-rewards";
 import { getPlatformRewardConfig, getProjectRewardConfig } from "./platform-rewards";
 import { isPullRequestClosedUnmerged } from "@/lib/github/merge-pr";
@@ -26,7 +26,10 @@ export type PointAward = {
 
 /** Writes `entry` unless an entry with its `sourceKey` exists. True if it was written. */
 export async function award(db: Db, entry: PointAward): Promise<boolean> {
-  const { count } = await db.pointEntry.createMany({ data: [entry], skipDuplicates: true });
+  const { count } = await db.pointEntry.createMany({
+    data: [{ ...entry, points: roundPoints(entry.points) }],
+    skipDuplicates: true,
+  });
   return count > 0;
 }
 

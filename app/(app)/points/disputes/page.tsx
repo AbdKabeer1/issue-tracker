@@ -11,6 +11,7 @@ import {
   openDisputes,
   type DisputeView,
 } from "@/lib/points/disputes";
+import { formatPoints } from "@/lib/points/rules";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LocalTime } from "@/components/local-time";
@@ -57,7 +58,7 @@ function DisputeCard({ dispute, children }: { dispute: DisputeView; children?: R
       {dispute.entry ? (
         <p className="text-xs text-zk-text2">
           Entry: {dispute.entry.points > 0 ? "+" : ""}
-          {dispute.entry.points} pts ({dispute.entry.role}) · {dispute.entry.id}
+          {formatPoints(dispute.entry.points)} pts ({dispute.entry.role}) · {dispute.entry.id}
         </p>
       ) : null}
       <p className="text-sm text-zk-text2">{dispute.reason}</p>
@@ -176,7 +177,7 @@ export default async function PointsDisputesPage() {
               <li key={entry.id} className="flex flex-wrap items-center gap-2 px-4 py-3">
                 <span className="w-16 text-right text-sm font-semibold tabular-nums text-zk-text">
                   {entry.points > 0 ? "+" : ""}
-                  {entry.points}
+                  {formatPoints(entry.points)}
                 </span>
                 <Badge className="rounded-full bg-zk-chip text-zk-text2">{entry.role}</Badge>
                 {entry.bugNumber !== null ? (

@@ -31,20 +31,76 @@ export const TRIAGER_CLEAR_POINTS = 1;
 /** Triager points for marking a report as a duplicate of another issue. */
 export const DUPLICATE_MARKER_POINTS = 5;
 
+/** Ledger awards keep this many decimal places. */
+export const POINT_DECIMALS = 2;
+
+/**
+ * Each later reviewer receives this share of the previous award.
+ * A small step keeps the amounts close instead of falling off a cliff.
+ */
+export const REVIEWER_POINT_RATIO = 0.9;
+
+/**
+ * Smallest positive award. Backoff stops shrinking here so a later action
+ * still earns something instead of rounding down to zero.
+ */
+export const MIN_POINT_AWARD = 10 ** -POINT_DECIMALS;
+
+/** A point amount from the ledger: a number, or Prisma's Decimal. */
+export type PointAmount = number | { toNumber(): number };
+
+/** Round to the ledger's decimal places. Non-finite values become 0. */
+export function roundPoints(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const factor = 10 ** POINT_DECIMALS;
+  return Math.round(value * factor) / factor;
+}
+
+/** Read a ledger amount as a number, including sums that come back as Decimal. */
+export function pointsNumber(value: PointAmount | string | bigint | null | undefined): number {
+  if (value == null) return 0;
+  const raw =
+    typeof value === "number"
+      ? value
+      : typeof value === "bigint"
+        ? Number(value)
+        : typeof value === "string"
+          ? Number(value)
+          : value.toNumber();
+  return roundPoints(raw);
+}
+
+/** Display form: 10 stays "10", 0.5 stays "0.5", and float noise is trimmed. */
+export function formatPoints(value: number): string {
+  const rounded = roundPoints(value);
+  if (rounded === 0) return "0";
+  return rounded
+    .toFixed(POINT_DECIMALS)
+    .replace(/(\.\d*?)0+$/, "$1")
+    .replace(/\.$/, "");
+}
+
 /**
  * The next reviewer's award, given the previous reviewer's award.
- * Subtract log base 2 of the previous award, and never pay less than 1.
+ * Take 90% of the previous award, rounded to 2 decimal places.
+ * When rounding would leave the amount unchanged, step down by 0.01.
+ * The result never falls below 0.01, so every later action still earns points.
  * The first reviewer still receives the full base amount.
  */
 export function diminishedReviewerPoints(previous: number): number {
-  if (previous <= 1) return 1;
-  return Math.max(1, Math.round(previous - Math.log2(previous)));
+  if (!(previous > 0)) return 0;
+  const scaled = roundPoints(previous * REVIEWER_POINT_RATIO);
+  if (scaled > 0 && scaled < previous) return scaled;
+  const stepped = roundPoints(previous - MIN_POINT_AWARD);
+  if (stepped > 0 && stepped < previous) return stepped;
+  return MIN_POINT_AWARD;
 }
 
 /** Points for the reviewer at `index` (0 is the first), starting from `firstAward`. */
 export function reviewerPointsAt(index: number, firstAward: number): number {
-  if (index < 0 || firstAward < 1) return 0;
-  let points = Math.floor(firstAward);
+  if (index < 0 || !(firstAward > 0)) return 0;
+  let points = roundPoints(firstAward);
+  if (!(points > 0)) return 0;
   for (let step = 0; step < index; step += 1) {
     points = diminishedReviewerPoints(points);
   }

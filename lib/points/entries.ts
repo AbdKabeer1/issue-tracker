@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
+import { pointsNumber } from "./rules";
 
 const timestamp = z.string().datetime({ offset: true });
 const dateBound = z.union([timestamp, z.string().date()]);
@@ -51,13 +52,19 @@ export async function pointEntries(db: PrismaClient | Prisma.TransactionClient, 
   const page = rows.slice(0, query.limit);
   const last = page.at(-1);
   return {
-    items: page.map(row => ({
-      id: row.id, role: row.role, points: row.points, createdAt: row.createdAt.toISOString(),
-      source: entrySource(row.role, row.points, row.sourceKey),
-      issue: row.bug && !row.bug.isDeleted && row.bug.tenantId === scope.tenantId &&
-        (!scope.visibleProjectId || row.bug.projectId === scope.visibleProjectId)
-        ? { id: row.bug.id, number: row.bug.number, title: row.bug.title } : null,
-    })),
+    items: page.map(row => {
+      const points = pointsNumber(row.points);
+      return {
+        id: row.id,
+        role: row.role,
+        points,
+        createdAt: row.createdAt.toISOString(),
+        source: entrySource(row.role, points, row.sourceKey),
+        issue: row.bug && !row.bug.isDeleted && row.bug.tenantId === scope.tenantId &&
+          (!scope.visibleProjectId || row.bug.projectId === scope.visibleProjectId)
+          ? { id: row.bug.id, number: row.bug.number, title: row.bug.title } : null,
+      };
+    }),
     nextCursor: rows.length > query.limit && last
       ? Buffer.from(JSON.stringify({ at: last.createdAt.toISOString(), id: last.id })).toString("base64url") : null,
   };

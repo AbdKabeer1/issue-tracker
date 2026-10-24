@@ -4,8 +4,11 @@ import {
   CONFIRMATION_REVIEWER_POINTS,
   diminishedReviewerPoints,
   DUPLICATE_MARKER_POINTS,
+  formatPoints,
+  MIN_POINT_AWARD,
   TRIAGER_CLEAR_POINTS,
   pointSourceKey,
+  pointsNumber,
   pointsProgress,
   REPORTER_POINTS,
   REVIEWER_POINTS,
@@ -31,14 +34,40 @@ describe("point rules (#428)", () => {
     expect(TARGET_POINTS).toBe(500);
   });
 
-  it("pays every later reviewer less than the reviewer before them", () => {
-    expect(reviewerPointsAt(0, 5)).toBe(5);
+  it("pays every later reviewer a little less, and never stops paying", () => {
+    expect([0, 1, 2, 3, 4, 5].map((index) => reviewerPointsAt(index, 5))).toEqual([
+      5, 4.5, 4.05, 3.65, 3.29, 2.96,
+    ]);
     expect(reviewerPointsAt(1, 5)).toBe(diminishedReviewerPoints(5));
-    expect(reviewerPointsAt(1, 5)).toBe(3);
-    expect(reviewerPointsAt(2, 5)).toBe(1);
-    expect(reviewerPointsAt(8, 5)).toBe(1);
-    expect([10, 7, 4, 2, 1, 1]).toEqual([0, 1, 2, 3, 4, 5].map((index) => reviewerPointsAt(index, 10)));
-    expect(diminishedReviewerPoints(1)).toBe(1);
+    expect([0, 1, 2, 3, 4, 5].map((index) => reviewerPointsAt(index, 10))).toEqual([
+      10, 9, 8.1, 7.29, 6.56, 5.9,
+    ]);
+    expect([0, 1, 2, 3].map((index) => reviewerPointsAt(index, CONFIRMATION_REVIEWER_POINTS))).toEqual([
+      3, 2.7, 2.43, 2.19,
+    ]);
+    expect(diminishedReviewerPoints(1)).toBe(0.9);
+    expect(diminishedReviewerPoints(0.05)).toBe(0.04);
+    expect(diminishedReviewerPoints(MIN_POINT_AWARD)).toBe(MIN_POINT_AWARD);
+
+    const tail = Array.from({ length: 80 }, (_, index) => reviewerPointsAt(index, 5));
+    for (let index = 1; index < tail.length; index += 1) {
+      expect(tail[index]).toBeGreaterThan(0);
+      expect(tail[index]).toBeLessThanOrEqual(tail[index - 1]);
+    }
+    expect(tail[5]).toBeGreaterThan(2);
+    expect(tail.at(-1)).toBe(MIN_POINT_AWARD);
+    expect(reviewerPointsAt(-1, 5)).toBe(0);
+    expect(reviewerPointsAt(0, 0)).toBe(0);
+  });
+
+  it("formats decimal awards without trailing zeros", () => {
+    expect(formatPoints(10)).toBe("10");
+    expect(formatPoints(4.5)).toBe("4.5");
+    expect(formatPoints(8.1)).toBe("8.1");
+    expect(formatPoints(-5)).toBe("-5");
+    expect(formatPoints(0)).toBe("0");
+    expect(pointsNumber(null)).toBe(0);
+    expect(pointsNumber({ toNumber: () => 1.5 })).toBe(1.5);
   });
 
   it("builds one source key per role, issue and person", () => {

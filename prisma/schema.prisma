@@ -1348,8 +1348,8 @@ model PointEntry {
   userId      String
   bugId       String?
   role        PointRole
-  /// Negative for a correction.
-  points      Int
+  /// Negative for a correction. Reviewer backoff is rounded to 2 decimal places.
+  points      Decimal        @db.Decimal(16, 6)
   sourceKey   String         @unique
   /// Set when a later entry corrects this one (#436, #450). Never deleted.
   correctedAt DateTime?

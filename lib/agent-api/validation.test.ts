@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CONFIRMATION_REVIEWER_POINTS, reviewerPointsAt } from "@/lib/points/rules";
 
 type Row = {
   id: string;
@@ -557,7 +558,7 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
         userId: "rob",
         bugId: "bug1",
         role: "reviewer",
-        points: 3,
+        points: reviewerPointsAt(0, CONFIRMATION_REVIEWER_POINTS),
         sourceKey: "reviewer-confirm:bug1:rob",
       },
       {
@@ -565,7 +566,7 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
         userId: "sam",
         bugId: "bug1",
         role: "reviewer",
-        points: 1,
+        points: reviewerPointsAt(1, CONFIRMATION_REVIEWER_POINTS),
         sourceKey: "reviewer-confirm:bug1:sam",
       },
       {
@@ -578,14 +579,14 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
       },
     ]);
 
-    // A third accept keeps it confirmed and pays that reviewer 1 point.
+    // A third accept keeps it confirmed and pays that reviewer a smaller amount.
     const third = await submitValidation(reviewer("r3", "tia"), "bug1", acceptReal);
     expect(third).toMatchObject({ confirmed: true, newlyConfirmed: false });
     expect(db.pointEntry.createMany).toHaveBeenCalledTimes(5);
     expect(db.pointEntry.createMany.mock.calls[4][0].data[0]).toMatchObject({
       userId: "tia",
       role: "reviewer",
-      points: 1,
+      points: reviewerPointsAt(2, CONFIRMATION_REVIEWER_POINTS),
       sourceKey: "reviewer-confirm:bug1:tia",
     });
   });

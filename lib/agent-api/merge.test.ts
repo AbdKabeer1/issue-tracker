@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { REVIEWER_POINTS, reviewerPointsAt } from "@/lib/points/rules";
 
 type VerdictRow = {
   id: string;
@@ -479,9 +480,12 @@ describe("acceptFix: a successful accept (#434)", () => {
     const awards = db.pointEntry.createMany.mock.calls.map((call) => call[0].data[0]);
     const reviewerAwards = awards.filter((a) => a.role === "reviewer");
     expect(reviewerAwards).toHaveLength(3);
-    expect(reviewerAwards[0]).toMatchObject({ userId: "rob", points: 10, sourceKey: "reviewer:bug1:rob" });
-    expect(reviewerAwards[1]).toMatchObject({ userId: "sam", points: 7, sourceKey: "reviewer:bug1:sam" });
-    expect(reviewerAwards[2]).toMatchObject({ userId: "tia", points: 4, sourceKey: "reviewer:bug1:tia" });
+    expect(reviewerAwards[0]).toMatchObject({ userId: "rob", points: reviewerPointsAt(0, REVIEWER_POINTS), sourceKey: "reviewer:bug1:rob" });
+    expect(reviewerAwards[1]).toMatchObject({ userId: "sam", points: reviewerPointsAt(1, REVIEWER_POINTS), sourceKey: "reviewer:bug1:sam" });
+    expect(reviewerAwards[2]).toMatchObject({ userId: "tia", points: reviewerPointsAt(2, REVIEWER_POINTS), sourceKey: "reviewer:bug1:tia" });
+    expect(reviewerAwards[2].points).toBeLessThan(reviewerAwards[1].points);
+    expect(reviewerAwards[1].points).toBeLessThan(reviewerAwards[0].points);
+    expect(Number.isInteger(reviewerAwards[2].points)).toBe(false);
   });
 
   it("does not count or pay a verdict credited to the active claim beneficiary (#495)", async () => {

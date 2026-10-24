@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
+import { formatPoints } from "@/lib/points/rules";
 
 export function TeamMemberRow({ member, role, points, claims, limit, agentCount, onlineCount, children }: {
   member: { id: string; name: string };
@@ -22,7 +23,7 @@ export function TeamMemberRow({ member, role, points, claims, limit, agentCount,
         <Link href={`/users/${member.id}`} className="hover:text-zk-accent hover:underline">{member.name}</Link>
       </div></th>
       <td><span className="team-role">{role}</span></td>
-      <td className="team-number">{points}</td>
+      <td className="team-number">{formatPoints(points)}</td>
       <td className="team-number">{claims}<span className="team-limit"> / {limit}</span></td>
       <td className="team-agents-cell">{agentCount ? <button type="button" className="team-agents-toggle" aria-expanded={expanded} aria-controls={panelId} aria-label={`${expanded ? "Hide" : "View"} agents for ${member.name}`} onClick={() => setExpanded(!expanded)}>
         <span>{agentCount} {agentCount === 1 ? "agent" : "agents"}</span>

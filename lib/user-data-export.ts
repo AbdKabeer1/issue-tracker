@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { pointsNumber } from "@/lib/points/rules";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -144,6 +145,6 @@ export async function exportUserData(
     issues,
     comments,
     votes,
-    points,
+    points: points.map((row) => ({ ...row, points: pointsNumber(row.points) })),
   };
 }

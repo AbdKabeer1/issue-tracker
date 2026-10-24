@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { TARGET_POINTS } from "@/lib/points/rules";
+import { pointsNumber, TARGET_POINTS } from "@/lib/points/rules";
 
 /**
  * PointEntry history for the Overview "Your points" chart.
@@ -298,5 +298,5 @@ export async function loadPointHistory(
     select: { createdAt: true, points: true },
     orderBy: { createdAt: "asc" },
   });
-  return rows.map((row) => ({ createdAt: row.createdAt, points: row.points }));
+  return rows.map((row) => ({ createdAt: row.createdAt, points: pointsNumber(row.points) }));
 }

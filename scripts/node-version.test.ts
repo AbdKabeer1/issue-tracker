@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 /**
  * One supported Node.js line everywhere (#584). Node 20 reached end of life on
- * 30 April 2026; Docker, CI, Vercel and local dev all use Node 22 LTS now.
+ * 30 April 2026; Docker, CI, and local dev all use Node 22 LTS now.
  */
 const NODE_MAJOR = "22";
 
@@ -14,11 +14,10 @@ describe("Node.js version (#584)", () => {
     expect(froms.length).toBeGreaterThan(0);
     expect(new Set(froms)).toEqual(new Set([NODE_MAJOR]));
 
-    for (const workflow of [".github/workflows/ci.yml", ".github/workflows/deploy-vercel.yml"]) {
-      const versions = [...readFileSync(workflow, "utf8").matchAll(/node-version:\s*["']?(\d+)/g)].map((m) => m[1]);
-      expect(versions.length, workflow).toBeGreaterThan(0);
-      expect(new Set(versions), workflow).toEqual(new Set([NODE_MAJOR]));
-    }
+    const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+    const versions = [...ci.matchAll(/node-version:\s*["']?(\d+)/g)].map((m) => m[1]);
+    expect(versions.length).toBeGreaterThan(0);
+    expect(new Set(versions)).toEqual(new Set([NODE_MAJOR]));
 
     expect(readFileSync(".nvmrc", "utf8").trim()).toBe(NODE_MAJOR);
     const pkg = JSON.parse(readFileSync("package.json", "utf8"));

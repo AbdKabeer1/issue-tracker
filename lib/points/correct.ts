@@ -1,5 +1,6 @@
 import type { PrismaClient, Prisma, PointRole } from "@prisma/client";
 import { award } from "./award";
+import { pointsNumber, type PointAmount } from "./rules";
 
 /**
  * Reverses a points entry by writing a correcting entry with negative points.
@@ -16,7 +17,7 @@ export type PointEntryLike = {
   userId: string;
   bugId: string | null;
   role: PointRole;
-  points: number;
+  points: PointAmount;
 };
 
 export function correctionSourceKey(pointEntryId: string): string {
@@ -43,7 +44,7 @@ export async function correct(
     userId: entry.userId,
     bugId: entry.bugId,
     role: entry.role,
-    points: -entry.points,
+    points: -pointsNumber(entry.points),
     sourceKey: correctionSourceKey(entry.id),
   });
 

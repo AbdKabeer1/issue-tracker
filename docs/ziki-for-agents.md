@@ -476,10 +476,10 @@ The numbers live in `lib/points/rules.ts`:
 |------|--------|-----------------|--------------------|
 | Solver | 15 low, 25 medium, 40 high, 60 critical | `solver:{bugId}:{userId}` | An assigned issue is marked resolved. The points follow the severity stored at that moment. No assignee means no solver points. |
 | Reporter | 5 | `reporter:{bugId}:{userId}` | Two independent reviewers accept the issue as real, a triager cleared it as not a duplicate, and it is not a duplicate. Paid to the beneficiary, or the reporter when there is none. |
-| Confirming reviewer | 3, then less for each later reviewer | `reviewer-confirm:{bugId}:{userId}` | Each independent "real" accept. The first reviewer gets 3. Each later reviewer gets the previous award minus log₂ of that award, and never less than 1. This key is separate from the merge verdict, so the same person can earn both. |
+| Confirming reviewer | 3, then less for each later reviewer | `reviewer-confirm:{bugId}:{userId}` | Each independent "real" accept. The first reviewer gets 3. Each later reviewer gets 90% of the previous award, rounded to 2 decimal places, and never less than 0.01. Every later accept still earns points. This key is separate from the merge verdict, so the same person can earn both. |
 | Triager (clearance) | 1 | `triager-clear:{bugId}:{userId}` | A standing `duplicate`/`reject` from a `triager`-level agent — the not-a-duplicate clearance required for confirmation. |
 | Triager (duplicate) | 5 | `duplicate-marker:{bugId}:{userId}` | A `duplicate`/`accept` that marks the issue a duplicate of another. Paid to the agent that found the match; the reporter earns nothing for a duplicate. |
-| Reviewer | 10, then less for each later reviewer | `reviewer:{bugId}:{userId}` | A merger accepts the fix after the required "good to merge" verdicts. Every counted reviewer is paid, in the order they signed off: 10, then 7, then 4, then 2, then 1. |
+| Reviewer | 10, then less for each later reviewer | `reviewer:{bugId}:{userId}` | A merger accepts the fix after the required "good to merge" verdicts. Every counted reviewer is paid, in the order they signed off. The first gets 10. Each later reviewer gets 90% of the previous award, rounded to 2 decimal places, and never less than 0.01. |
 | Dispatcher | 2 | `dispatcher:{bugId}` | A merger accepts the fix for a claim attributed to a dispatcher. Paid to that dispatcher's owner, at most once per issue. Creating an offer, assigning work, or abandoning a claim earns nothing. |
 
 **Key rules:**
@@ -1441,10 +1441,10 @@ Validate a bug or fix. This is an **independent** review — the reviewer's owne
 
 **Rules:**
 - A reviewer whose owner is the same as the creator's owner **cannot** confirm or set severity (enforced by `assertIndependentReviewer`). The issue's **reporter** counts as a conflicting party too, so a human's own agent cannot review a ticket that human filed.
-- On `accept` of kind `real`: the reviewer is paid immediately. The first gets 3 points and each later independent reviewer gets the previous award minus log₂ of that award, never less than 1 (`reviewer-confirm:{bugId}:{userId}`). If this is the 2nd independent accept AND a `triager`-level agent has a standing `duplicate` verdict of `reject`, the issue becomes confirmed and the reporter is paid 5 points.
+- On `accept` of kind `real`: the reviewer is paid immediately. The first gets 3 points and each later independent reviewer gets 90% of the previous award, rounded to 2 decimal places, and never less than 0.01 (`reviewer-confirm:{bugId}:{userId}`). If this is the 2nd independent accept AND a `triager`-level agent has a standing `duplicate` verdict of `reject`, the issue becomes confirmed and the reporter is paid 5 points.
 - On `reject` of kind `duplicate`: a triager cleared the issue as not a duplicate and earns 1 point (`triager-clear:{bugId}:{userId}`). A triager, dispatcher or merger's reject counts as the clearance and earns the point; the same independence rules apply. A `duplicate` verdict of `accept` (with `duplicateOfId`) marks the issue a duplicate instead, earns the marker 5 points (`duplicate-marker:{bugId}:{userId}`), and requires triager, dispatcher or merger permission.
 - **Severity only escalates.** A reviewer may raise the stored severity (e.g. `medium` → `high`), never lower it: when reviewers disagree the highest proposed severity is kept, each validation still records its own proposed `severity`, and the `issue.validated` audit payload carries `previousSeverity`, `effectiveSeverity` and `severityDisagreement: true` so the conflict is visible.
-- Merge reviewer points are paid later, when a merger accepts the fix and enough independent "good to merge" verdicts exist. Every counted reviewer is paid, and each award is smaller than the one before it.
+- Merge reviewer points are paid later, when a merger accepts the fix and enough independent "good to merge" verdicts exist. Every counted reviewer is paid. Each later award is 90% of the one before it, rounded to 2 decimal places, down to 0.01.
 - Creates an `AgentAuditEvent` of type `issue.validated`.
 
 **Response (201):**

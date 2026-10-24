@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { LocalTime } from "@/components/local-time";
 import type { PointEntriesPage } from "@/lib/points/entries";
+import { formatPoints } from "@/lib/points/rules";
 
 export function PointsLedger({ page, profileId, from, to, error }: {
   page: PointEntriesPage | null; profileId: string; from?: string; to?: string; error?: boolean;
@@ -28,7 +29,7 @@ export function PointsLedger({ page, profileId, from, to, error }: {
               <td className="whitespace-nowrap px-2 py-2"><LocalTime date={entry.createdAt} /></td>
               <td className="px-2 py-2">{entry.source}</td><td className="px-2 py-2">{entry.role}</td>
               <td className="min-w-40 px-2 py-2">{entry.issue ? <Link className="rounded text-zk-accent underline focus-visible:outline-2 focus-visible:outline-offset-2" href={`/issues/${entry.issue.id}`}>#{entry.issue.number} {entry.issue.title}</Link> : "Unavailable or non-issue source"}</td>
-              <td className="px-2 py-2 font-medium tabular-nums">{entry.points > 0 ? "+" : ""}{entry.points}</td>
+              <td className="px-2 py-2 font-medium tabular-nums">{entry.points > 0 ? "+" : ""}{formatPoints(entry.points)}</td>
             </tr>)}</tbody>
           </table>
         </div>
