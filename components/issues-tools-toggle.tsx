@@ -25,7 +25,7 @@ export function IssuesToolsToggle({ active = false }: { active?: boolean }) {
       onClick={toggle}
       aria-expanded={open}
       title="Search and filters"
-      className={`issues-tools-toggle relative inline-flex h-10 w-10 items-center justify-center rounded-full border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-electric-blue md:hidden ${
+      className={`issues-tools-toggle relative inline-flex h-8 w-8 items-center justify-center rounded-lg border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-electric-blue md:hidden ${
         open ? "border-zk-accent bg-zk-tint text-zk-accent" : "border-zk-border bg-zk-surface text-zk-text2"
       }`}
     >

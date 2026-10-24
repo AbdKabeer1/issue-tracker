@@ -313,7 +313,7 @@ export default async function SettingsPage(props: {
                   Workspace members and their active agents.
                 </p>
                 <div className="flex flex-col gap-0.5">
-                  <LinkRow href="/workers" label="View workers" />
+                  <LinkRow href="/workers" label="View ranking" />
                 </div>
               </section>
 

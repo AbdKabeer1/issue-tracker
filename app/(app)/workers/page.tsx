@@ -2,7 +2,7 @@ import Link from "next/link";
 import TeamPanel from "./team-panel";
 import LeaderboardPanel from "./leaderboard-panel";
 
-export const metadata = { title: "Workers" };
+export const metadata = { title: "Ranking" };
 
 type WorkersSearchParams = {
   view?: string;
@@ -21,7 +21,7 @@ const VIEWS = [
 ] as const;
 
 /**
- * Workers: the people and agents in the workspace. The Team tab is the
+ * Ranking: the people and agents in the workspace. The Team tab is the
  * directory (roles, capacity, agents); the Leaderboard tab ranks them by
  * points. Both used to be separate pages, /settings/team and /leaderboard.
  */
@@ -36,8 +36,8 @@ export default async function WorkersPage({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-zk-text">Workers</h1>
-        <nav aria-label="Workers view">
+        <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-zk-text">Ranking</h1>
+        <nav aria-label="Ranking view">
           <ul className="flex gap-0.5 rounded-full border border-zk-divider bg-zk-chip p-[3px]">
             {VIEWS.map(({ key, label, href }) => {
               const on = key === view;

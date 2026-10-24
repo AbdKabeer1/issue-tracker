@@ -107,15 +107,28 @@ describe("notification preview (#615)", () => {
 
   it("lets Tab leave the preview and clears it when the workspace changes", async () => {
     const user = userEvent.setup();
-    const view = renderHeader();
+    // The bell is the last control in the bar, so Tab leaves the preview for
+    // the page content after the header, as on a real page.
+    const view = render(
+      <>
+        <AppHeader userName="Ada Lovelace" workspaces={[{ id: "t1", name: "Ziki", slug: "ziki" }]} activeTenantId="t1" />
+        <a href="#main">Page content</a>
+      </>,
+    );
     await user.click(screen.getByRole("button", { name: "Notifications" }));
     await screen.findByText("No notifications yet.");
     await user.tab();
     expect(document.activeElement).toBe(screen.getByRole("link", { name: "View all notifications" }));
     await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole("link", { name: "Page content" }));
     expect(screen.queryByRole("region", { name: "Recent notifications" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Notifications" }));
-    view.rerender(<AppHeader activeTenantId="t2" />);
+    view.rerender(
+      <>
+        <AppHeader activeTenantId="t2" />
+        <a href="#main">Page content</a>
+      </>,
+    );
     expect(screen.queryByRole("region", { name: "Recent notifications" })).toBeNull();
   });
 
@@ -174,7 +187,7 @@ describe("account menu role switch", () => {
     expect(switchRole).not.toHaveBeenCalled();
   });
 
-  it("puts Dashboard, Issues and Workers in the top bar", () => {
+  it("puts Dashboard, Issues and Ranking in the top bar", () => {
     renderHeader();
     const nav = screen.getByRole("navigation", { name: "Workspace" });
     expect(nav.closest("header")).not.toBeNull();
@@ -183,7 +196,7 @@ describe("account menu role switch", () => {
     expect(issues.getAttribute("href")).toBe("/issues");
     expect(issues.getAttribute("aria-current")).toBe("page");
     expect(issues.textContent).toContain("4");
-    expect(screen.getByRole("link", { name: "Workers" }).getAttribute("href")).toBe("/workers");
+    expect(screen.getByRole("link", { name: "Ranking" }).getAttribute("href")).toBe("/workers");
   });
 
   it("closes the Agents menu when a destination is chosen", async () => {

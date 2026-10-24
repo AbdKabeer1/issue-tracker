@@ -157,7 +157,7 @@ function TopNavLink({
   );
 }
 
-/** Dashboard, Issues and Workers: the workspace pages, formerly the sidebar. */
+/** Dashboard, Issues and Ranking: the workspace pages, formerly the sidebar. */
 function TopNav({ pathname, issueCount }: { pathname: string | null; issueCount?: number }) {
   return (
     <nav
@@ -180,20 +180,15 @@ function TopNav({ pathname, issueCount }: { pathname: string | null; issueCount?
           <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
         </NavIcon>
       </TopNavLink>
-      <TopNavLink href="/workers" active={isNavItemActive(pathname, "/workers")} label="Workers">
+      <TopNavLink href="/workers" active={isNavItemActive(pathname, "/workers")} label="Ranking">
         <NavIcon>
-          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-          <circle cx="9" cy="7" r="4" />
-          <path d="M22 21v-2a4 4 0 0 0-3-3.9" />
-          <path d="M16 3.1a4 4 0 0 1 0 7.8" />
+          <path d="M8 21V11H3v10M15 21V5H9v16M21 21v-7h-5v7" />
         </NavIcon>
       </TopNavLink>
     </nav>
   );
 }
 
-const iconButton =
-  "inline-flex h-10 w-10 items-center justify-center rounded-full border border-zk-border bg-zk-surface text-zk-text hover:bg-zk-chip";
 
 /** In-place notification preview; opening the bell never marks alerts read (#615). */
 function NotificationsBell({ unreadCount, active }: { unreadCount: number; active: boolean }) {
@@ -235,7 +230,8 @@ function NotificationsBell({ unreadCount, active }: { unreadCount: number; activ
         onClick={() => { loadPreview(); setOpen((value) => !value); }}
         aria-label={label}
         title={label}
-        className={`relative ${iconButton} ${linkFocus} ${active ? "border-electric-blue" : ""} max-sm:h-9 max-sm:w-9 max-sm:border-0 max-sm:bg-transparent`}
+        // A plain icon, no ring: the bell only needs to be findable, not prominent.
+        className={`relative inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-zk-chip ${linkFocus} ${active ? "text-zk-accent" : "text-zk-text"}`}
       >
         <BellIcon />
         {unreadCount > 0 ? (
@@ -483,10 +479,6 @@ export function AppHeader({
             squeezed. */}
         <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 max-sm:gap-1 lg:shrink-0">
           <AgentsMenu pathname={pathname} agents={agents} />
-          {/* Phones: the bell is a small icon at the far right. */}
-          <div className="max-sm:order-last">
-            <NotificationsBell key={`${userId}:${activeTenantId}:${pathname}`} unreadCount={unreadCount} active={isNavItemActive(pathname, "/notifications")} />
-          </div>
 
           <div ref={accountRef} className="relative">
             <button
@@ -564,6 +556,9 @@ export function AppHeader({
               </div>
             ) : null}
           </div>
+
+          {/* The bell sits last, after the account chip. */}
+          <NotificationsBell key={`${userId}:${activeTenantId}:${pathname}`} unreadCount={unreadCount} active={isNavItemActive(pathname, "/notifications")} />
         </div>
       </div>
     </header>
