@@ -9,7 +9,10 @@ import type { ReactElement } from "react";
 
 const count = vi.hoisted(() => vi.fn());
 const findMany = vi.hoisted(() => vi.fn());
-const groupBy = vi.hoisted(() => vi.fn(async () => []));
+const groupBy = vi.hoisted(() => vi.fn(async (_args: { by: string[]; where?: Record<string, unknown> }) => {
+  void _args;
+  return [];
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
@@ -172,10 +175,21 @@ describe("issue list layout", () => {
   it("is one centred list column without the stats card (#1056)", async () => {
     const html = await renderList();
     expect(html).not.toContain("Total issues");
-    expect(html).toMatch(/^<div class="mx-auto w-full max-w-6xl space-y-5">/);
+    expect(html).toMatch(/^<div class="issues-page mx-auto w-full max-w-6xl space-y-5">/);
     // The four stats counts are no longer queried.
     const statusOnly = count.mock.calls.filter(([args]) => args?.where?.status === "in_progress");
     expect(statusOnly).toHaveLength(0);
+  });
+
+  it("keeps search and scope when switching status, and resets paging and intake", async () => {
+    const html = await renderList({ q: "login", platform: "cat-web", mine: "assigned", stage: "reported", page: "2" });
+    const nav = html.match(/<nav aria-label="Issue status"[\s\S]*?<\/nav>/)?.[0] ?? "";
+    expect(nav).toContain('href="/issues?q=login&amp;platform=cat-web&amp;mine=assigned&amp;status=in_progress"');
+    expect(nav).not.toContain("page=");
+    expect(nav).not.toContain("stage=");
+    const statusCount = groupBy.mock.calls.find(([args]) => args?.by?.[0] === "status");
+    expect(statusCount?.[0].where).toMatchObject({ tenantId: "tenant-acme", projectId: "project-acme", categoryId: "cat-web" });
+    expect(statusCount?.[0].where).not.toHaveProperty("status");
   });
 
   it("puts platform tabs above the list, with counts (#1055)", async () => {
@@ -199,7 +213,7 @@ describe("issue list layout", () => {
     expect(nav).toContain("No platform");
 
     // The counts ignore the current platform, so every tab is honest.
-    const tabQuery = (groupBy.mock.calls as unknown as [{ where: Record<string, unknown> }][]).at(-1)![0];
+    const tabQuery = groupBy.mock.calls.find(([args]) => args.by[0] === "categoryId")![0];
     expect(tabQuery.where).not.toHaveProperty("categoryId");
     // The list itself is still narrowed to the chosen platform.
     expect(findMany.mock.calls.at(-1)![0].where.categoryId).toBe("cat-web");
