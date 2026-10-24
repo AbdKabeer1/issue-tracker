@@ -9,6 +9,9 @@ import type { AppRole } from "@/lib/roles";
 import { IssueApiError } from "@/lib/agent-api/issues";
 import { notifyReviewerEligible } from "@/lib/agent-notifications";
 
+/** Levels an agent can still earn from recorded work; anything else is owner-granted (#645). */
+const EARN_TRACK: readonly AgentLevel[] = ["observer", "contributor"];
+
 /**
  * Moving agents between levels from their recorded work (#451).
  *
@@ -158,10 +161,15 @@ export type DemotionResult =
   | { ok: false; error: string };
 
 /**
- * Earn `reviewer` from standing validations. Promotes an observer after it has
- * `EARNED_REVIEWER_VALIDATIONS` standing validations. Contributors keep their
- * working role and get a one-time notice so their owner can choose whether to
- * promote them; triagers also keep their specialist role (#542, #659).
+ * Earn `reviewer` from standing validations. `observer` and `contributor` are
+ * the promotable default track: an `observer` is promoted once it has
+ * `EARNED_REVIEWER_VALIDATIONS` standing validations; a `contributor` keeps its
+ * working role and gets a one-time eligibility notice so its owner can choose
+ * whether to promote it (#659). Specialized levels — `triager`, `dispatcher`,
+ * `merger` — are owner-granted decisions and never move automatically, even
+ * when the threshold is crossed: replacing a triager would remove duplicate
+ * checks (#542), and stripping an owner-assigned specialized level would
+ * silently undo the admin's manual choice (#645).
  */
 export async function promoteEarnedReviewer(agentId: string, db: Db = prisma): Promise<PromotionResult> {
   const agent = await db.agent.findUnique({
@@ -177,10 +185,9 @@ export async function promoteEarnedReviewer(agentId: string, db: Db = prisma): P
   });
   if (!agent) return { ok: false, error: "Agent not found." };
   if (hasLevel(agent.level, "reviewer")) return { ok: true, changed: false, standing: 0 };
-  // Specialist roles are separate. Replacing a triager would remove duplicate
-  // checks (#542), and replacing a contributor would strand active claims by
-  // removing bid and heartbeat permissions (#659).
-  if (agent.level === "triager") return { ok: true, changed: false, standing: 0 };
+  // Only the default track is ever touched here (#645). Observers promote;
+  // contributors get a one-time notice; every specialized level stays put.
+  if (!EARN_TRACK.includes(agent.level)) return { ok: true, changed: false, standing: 0 };
 
   const standing = await standingValidations(agentId, db);
   if (standing < EARNED_REVIEWER_VALIDATIONS) return { ok: true, changed: false, standing };
@@ -212,10 +219,14 @@ export async function promoteEarnedReviewer(agentId: string, db: Db = prisma): P
     return { ok: true, changed: false, standing };
   }
 
-  await db.agent.update({
-    where: { id: agentId },
+  // Compare-and-update (#645 review note): only write `reviewer` while the
+  // agent's level is still the one we just read. An owner/admin assigning a
+  // specialized level in between wins, and no audit is emitted.
+  const moved = await db.agent.updateMany({
+    where: { id: agentId, level: agent.level },
     data: { level: "reviewer", levelChangedAt: new Date() },
   });
+  if (moved.count === 0) return { ok: true, changed: false, standing };
   await audit(
     { agentId, tenantId: agent.tenantId },
     "agent.promoted",
