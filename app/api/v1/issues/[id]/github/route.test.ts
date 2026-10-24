@@ -54,8 +54,8 @@ const agent = {
 const params = { params: Promise.resolve({ id: "bug1" }) };
 const PR_URL = "https://github.com/zedu/web/pull/7";
 
-function request(body: unknown, key = true) {
-  return new NextRequest("http://localhost/api/v1/issues/bug1/github", {
+function request(body: unknown, key = true, issueId = "bug1") {
+  return new NextRequest(`http://localhost/api/v1/issues/${issueId}/github`, {
     method: "POST",
     headers: {
       ...(key ? { authorization: "Bearer test-key" } : {}),
@@ -132,6 +132,22 @@ describe("POST /api/v1/issues/[id]/github (#452)", () => {
     });
     expect(mocks.merge).toHaveBeenCalledWith(agent, "bug1");
     expect(mocks.budget).toHaveBeenCalledWith({ id: "c1", burst: false, burstUntil: null }, "write");
+  });
+
+  it.each(["42", "ZE-42"])("resolves issue reference %s before linking the pull request", async (issueId) => {
+    const response = await POST(request({ pullRequestUrl: PR_URL }, true, issueId), {
+      params: Promise.resolve({ id: issueId }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(db.bug.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { number: 42, tenantId: agent.tenantId, isDeleted: false },
+    }));
+    expect(db.issueClaim.findFirst).toHaveBeenCalledWith({
+      where: { bugId: "bug1", agentId: agent.agentId, status: "active", releasedAt: null },
+      select: { id: true },
+    });
+    expect(mocks.merge).toHaveBeenCalledWith(agent, "bug1");
   });
 
   it("refuses to link a pull request when this agent has no active claim", async () => {

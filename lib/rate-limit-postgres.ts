@@ -1,5 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   RATE_LIMIT_RETENTION_MS,
@@ -36,7 +37,11 @@ export function hashKey(key: string): string {
   return createHash("sha256").update(key).digest("hex");
 }
 
-async function hitMany(items: RateLimitItem[], now: number): Promise<RateLimitResult> {
+async function hitManyInTransaction(
+  tx: Prisma.TransactionClient,
+  items: RateLimitItem[],
+  now: number,
+): Promise<RateLimitResult> {
   if (items.length === 0) return { allowed: true, retryAfterMs: 0 };
 
   const prepared = items.map((item) => ({
@@ -48,54 +53,57 @@ async function hitMany(items: RateLimitItem[], now: number): Promise<RateLimitRe
   // Distinct hashed keys sorted lexicographically to guarantee consistent lock ordering (prevents deadlocks)
   const distinctHashed = Array.from(new Set(prepared.map((p) => p.hashed))).sort();
 
-  const result = await prisma.$transaction(async (tx) => {
-    for (const h of distinctHashed) {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${h}))`;
+  for (const h of distinctHashed) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${h}))`;
+  }
+
+  const blocked: RateLimitResult[] = [];
+  const hitsToAdd = new Map<string, number>();
+  // #646: what's left after this attempt, and when the window frees up,
+  // from the count this check reads anyway. The tightest item wins.
+  let remaining = Number.POSITIVE_INFINITY;
+  let resetAfterMs = 0;
+
+  for (const item of prepared) {
+    const addedSoFar = hitsToAdd.get(item.hashed) ?? 0;
+    const rows = await tx.$queryRaw<{ count: bigint; oldest: bigint | null }[]>`
+      SELECT count(*)::bigint AS count, min("at") AS oldest
+      FROM "RateLimitHit"
+      WHERE "key" = ${item.hashed} AND "at" > ${item.windowStart}`;
+    const count = Number(rows[0]?.count ?? 0) + addedSoFar;
+    if (count >= item.config.max) {
+      const oldest = rows[0]?.oldest != null ? Number(rows[0].oldest) : now;
+      blocked.push({
+        allowed: false,
+        retryAfterMs: Math.max(0, oldest + item.config.windowMs - now),
+      });
+    } else {
+      hitsToAdd.set(item.hashed, addedSoFar + 1);
+      remaining = Math.min(remaining, item.config.max - (count + 1));
+      const oldest = rows[0]?.oldest != null ? Number(rows[0].oldest) : now;
+      resetAfterMs = Math.max(resetAfterMs, Math.max(0, oldest + item.config.windowMs - now));
     }
+  }
 
-    const blocked: RateLimitResult[] = [];
-    const hitsToAdd = new Map<string, number>();
-    // #646: what's left after this attempt, and when the window frees up,
-    // from the count this check reads anyway. The tightest item wins.
-    let remaining = Number.POSITIVE_INFINITY;
-    let resetAfterMs = 0;
+  if (blocked.length > 0) {
+    const retryAfterMs = Math.max(...blocked.map((b) => b.retryAfterMs));
+    return { allowed: false, retryAfterMs, remaining: 0, resetAfterMs: retryAfterMs };
+  }
 
-    for (const item of prepared) {
-      const addedSoFar = hitsToAdd.get(item.hashed) ?? 0;
-      const rows = await tx.$queryRaw<{ count: bigint; oldest: bigint | null }[]>`
-        SELECT count(*)::bigint AS count, min("at") AS oldest
-        FROM "RateLimitHit"
-        WHERE "key" = ${item.hashed} AND "at" > ${item.windowStart}`;
-      const count = Number(rows[0]?.count ?? 0) + addedSoFar;
-      if (count >= item.config.max) {
-        const oldest = rows[0]?.oldest != null ? Number(rows[0].oldest) : now;
-        blocked.push({
-          allowed: false,
-          retryAfterMs: Math.max(0, oldest + item.config.windowMs - now),
-        });
-      } else {
-        hitsToAdd.set(item.hashed, addedSoFar + 1);
-        remaining = Math.min(remaining, item.config.max - (count + 1));
-        const oldest = rows[0]?.oldest != null ? Number(rows[0].oldest) : now;
-        resetAfterMs = Math.max(resetAfterMs, Math.max(0, oldest + item.config.windowMs - now));
-      }
-    }
+  for (const item of prepared) {
+    await tx.$executeRaw`INSERT INTO "RateLimitHit" ("key", "at") VALUES (${item.hashed}, ${BigInt(now)})`;
+  }
 
-    if (blocked.length > 0) {
-      const retryAfterMs = Math.max(...blocked.map((b) => b.retryAfterMs));
-      return { allowed: false, retryAfterMs, remaining: 0, resetAfterMs: retryAfterMs };
-    }
+  return {
+    allowed: true,
+    retryAfterMs: 0,
+    ...(Number.isFinite(remaining) ? { remaining, resetAfterMs } : {}),
+  };
+}
 
-    for (const item of prepared) {
-      await tx.$executeRaw`INSERT INTO "RateLimitHit" ("key", "at") VALUES (${item.hashed}, ${BigInt(now)})`;
-    }
-
-    return {
-      allowed: true,
-      retryAfterMs: 0,
-      ...(Number.isFinite(remaining) ? { remaining, resetAfterMs } : {}),
-    };
-  });
+async function hitMany(items: RateLimitItem[], now: number): Promise<RateLimitResult> {
+  if (items.length === 0) return { allowed: true, retryAfterMs: 0 };
+  const result = await prisma.$transaction((tx) => hitManyInTransaction(tx, items, now));
 
   if (Math.random() * CLEANUP_EVERY < 1) {
     const cutoff = BigInt(now - RATE_LIMIT_RETENTION_MS);
@@ -107,7 +115,8 @@ async function hitMany(items: RateLimitItem[], now: number): Promise<RateLimitRe
   return result;
 }
 
-async function hit(key: string, config: RateLimitConfig, now: number): Promise<RateLimitResult> {
+async function hit(key: string, config: RateLimitConfig, now: number, transaction?: unknown): Promise<RateLimitResult> {
+  if (transaction) return hitManyInTransaction(transaction as Prisma.TransactionClient, [{ key, config }], now);
   return hitMany([{ key, config }], now);
 }
 

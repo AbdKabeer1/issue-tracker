@@ -360,7 +360,7 @@ export type RateLimitResult = {
 };
 
 export type RateLimitStore = {
-  hit(key: string, config: RateLimitConfig, now: number): Promise<RateLimitResult>;
+  hit(key: string, config: RateLimitConfig, now: number, transaction?: unknown): Promise<RateLimitResult>;
   hitMany?(items: RateLimitItem[], now: number): Promise<RateLimitResult>;
 };
 
@@ -404,17 +404,21 @@ let lastStoreErrorAt: number | null = null;
 
 /**
  * Records one attempt against `key` in the shared store and says whether
- * it's allowed. If the store fails, the in-memory limiter answers instead.
+ * it's allowed. When given a database transaction, the hit joins that
+ * transaction. If the store fails, the in-memory limiter answers instead.
  */
 export async function consumeRateLimit(
   key: string,
   config: RateLimitConfig,
   now = Date.now(),
+  transaction?: unknown,
 ): Promise<RateLimitResult> {
   const store = await configuredStore();
   if (store === memoryStore) return checkRateLimit(key, config, now);
   try {
-    const result = await store.hit(key, config, now);
+    const result = transaction === undefined
+      ? await store.hit(key, config, now)
+      : await store.hit(key, config, now, transaction);
     if (typeof result?.allowed !== "boolean") throw new Error("rate-limit store returned no result");
     return result;
   } catch (error) {

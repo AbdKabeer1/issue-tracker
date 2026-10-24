@@ -168,6 +168,37 @@ describe("submitValidation: project confirmation count (#595)", () => {
   });
 });
 
+describe("submitValidation: readable issue references (#614)", () => {
+  it.each([
+    ["internal id", "bug1", { id: "bug1" }],
+    ["numeric issue number", "42", { number: 42 }],
+    ["prefixed issue number", "ZE-42", { number: 42 }],
+  ])("resolves an in-scope issue by %s before recording validation", async (_label, ref, where) => {
+    db.bug.findFirst.mockResolvedValue(bugRow({ number: 42 }));
+
+    const result = await submitValidation(reviewer("r1", "rob"), ref, acceptReal);
+
+    expect(result).toMatchObject({ status: 201 });
+    expect(db.bug.findFirst).toHaveBeenCalledWith({
+      where: { ...where, tenantId: "tenant_zedu", isDeleted: false },
+      select: expect.any(Object),
+    });
+    expect(state.validations[0]).toMatchObject({ bugId: "bug1", agentId: "r1" });
+  });
+
+  it("keeps project-scoped keys inside their project when resolving a numeric reference", async () => {
+    const scopedReviewer = { ...reviewer("r1", "rob"), projectId: "project_mobile" };
+    db.bug.findFirst.mockResolvedValue(null);
+
+    expect(await submitValidation(scopedReviewer, "42", acceptReal)).toMatchObject({ status: 404, error: "not_found" });
+    expect(db.bug.findFirst).toHaveBeenCalledWith({
+      where: { number: 42, tenantId: "tenant_zedu", projectId: "project_mobile", isDeleted: false },
+      select: expect.any(Object),
+    });
+    expect(db.issueValidation.create).not.toHaveBeenCalled();
+  });
+});
+
 describe("recorded confirmation independence (#579)", () => {
   it.each(["beneficiaryUserId", "dispatcherUserId"] as const)("preserves reviews and clearance credited to a later claim's %s", async (claimRole) => {
     await submitValidation(reviewer("t1", "tia", "triager"), "bug1", { ...clearTriage, onBehalfOfUserId: "credited-triager" });
@@ -250,6 +281,46 @@ describe("submitValidation: who may validate (#433)", () => {
     const result = await submitValidation(reviewer("c1", "cara", "contributor"), "bug1", acceptReal);
     expect(result).toMatchObject({ status: 403, error: "insufficient_level" });
     expect(db.bug.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("does not run the write-budget gate for permission refusals", async () => {
+    const budgetGate = vi.fn(async () => true);
+
+    expect(await submitValidation(reviewer("c1", "cara", "contributor"), "bug1", acceptReal, budgetGate))
+      .toMatchObject({ status: 403, error: "insufficient_level" });
+
+    db.bug.findFirst.mockResolvedValue(bugRow({ createdByAgentId: "r1" }));
+    expect(await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal, budgetGate))
+      .toMatchObject({ status: 403, error: "creator_cannot_validate" });
+
+    db.bug.findFirst.mockResolvedValue(bugRow());
+    expect(await submitValidation(reviewer("r2", "ada"), "bug1", acceptReal, budgetGate))
+      .toMatchObject({ status: 403, error: "not_independent" });
+    expect(budgetGate).not.toHaveBeenCalled();
+  });
+
+  it("charges only after the locked independence checks and stops before writing when over budget", async () => {
+    const overBudget = vi.fn(async () => false);
+    expect(await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal, overBudget))
+      .toMatchObject({ status: 429, error: "rate_limited" });
+    expect(overBudget).toHaveBeenCalledOnce();
+    expect(db.issueValidation.create).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+
+    const allowed = vi.fn(async () => true);
+    expect(await submitValidation(reviewer("r2", "sam"), "bug1", acceptReal, allowed))
+      .toMatchObject({ status: 201 });
+    expect(allowed).toHaveBeenCalledOnce();
+  });
+
+  it("does not charge when independence changes before the issue lock is acquired", async () => {
+    db.bug.findUnique.mockResolvedValueOnce(bugRow({ assigneeId: "rob" }));
+    const budgetGate = vi.fn(async () => true);
+
+    expect(await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal, budgetGate))
+      .toMatchObject({ status: 403, error: "not_independent" });
+    expect(budgetGate).not.toHaveBeenCalled();
+    expect(db.issueValidation.create).not.toHaveBeenCalled();
   });
 
   it("rejects the agent that filed the issue", async () => {

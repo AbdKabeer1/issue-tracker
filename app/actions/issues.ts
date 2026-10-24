@@ -98,7 +98,7 @@ import {
 import { publish } from "@/lib/agent-api/events";
 import { issueChangePayload, publishWebEvent } from "@/lib/agent-api/web-events";
 import { firstPullRequestLink, pullRequestAttachment } from "@/lib/github/pr-mention";
-import { standingAcceptance } from "@/lib/github/merge-pr";
+import { isPullRequestClosedUnmerged, standingAcceptance } from "@/lib/github/merge-pr";
 import {
   agentMentionNames,
   agentOwnerIds,
@@ -448,6 +448,7 @@ export async function updateBugAction(
       area: { select: { id: true, name: true } },
       type: { select: { id: true, name: true } },
       milestone: { select: { id: true, title: true } },
+      project: { select: { githubInstallationId: true } },
     },
   });
   if (!existing || existing.isDeleted) {
@@ -562,6 +563,21 @@ export async function updateBugAction(
   });
   if ("error" in parsedNote) return { error: parsedNote.error, field: "resolutionNote" };
   const resolutionNote = parsedNote.note;
+
+  // #642: a closed, unmerged pull request cannot resolve the issue.
+  if (
+    parsed.data.status === "resolved" &&
+    existing.status !== "resolved" &&
+    existing.pullRequestUrl
+  ) {
+    const isClosed = await isPullRequestClosedUnmerged(
+      existing.pullRequestUrl,
+      existing.project?.githubInstallationId,
+    );
+    if (isClosed) {
+      return { error: "The linked pull request is closed without being merged." };
+    }
+  }
 
   const data: {
     status?: typeof parsed.data.status;
@@ -824,6 +840,8 @@ export async function updateBugAction(
         await awardSolver(tx, {
           id: bugId,
           tenantId: existing.tenantId,
+          projectId: existing.projectId,
+          pullRequestUrl: existing.pullRequestUrl,
           severity: data.severity ?? existing.severity,
           assigneeId: data.assigneeId !== undefined ? data.assigneeId : existing.assigneeId,
         });
