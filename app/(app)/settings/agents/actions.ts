@@ -82,7 +82,7 @@ export async function setAgentLevelAction(agentId: unknown, level: unknown): Pro
   if (result.ok) {
     revalidatePath("/settings/agents");
     revalidatePath("/settings/team");
-    revalidatePath("/team");
+    revalidatePath("/workers");
     revalidatePath("/admin/users");
     revalidatePath("/users/[id]", "page");
   }

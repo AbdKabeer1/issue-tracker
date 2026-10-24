@@ -75,24 +75,27 @@
 .issues-filter-close { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; color: var(--zk-text); background: var(--zk-chip); }
 :root[data-theme="dark"] .issues-filter-close img { filter: invert(1); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .issues-filter-close img { filter: invert(1); } }
-.issues-status-nav { max-width: 100%; overflow-x: auto; scrollbar-width: thin; padding: 4px 0; }
-.issues-status-nav ul { display: inline-flex; width: max-content; align-items: center; gap: 4px; border: 1px solid var(--zk-divider); border-radius: 999px; padding: 4px; background: var(--zk-chip); }
+/* Status tabs, after the redesign: a 3px pill track, 34px tabs, a 26px icon disc per status. */
+.issues-status-nav { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.issues-status-nav::-webkit-scrollbar { display: none; }
+.issues-status-nav ul { display: inline-flex; width: max-content; align-items: center; gap: 2px; border: 1px solid var(--zk-divider); border-radius: 999px; padding: 3px; background: var(--zk-chip); }
 .issues-status-nav li { flex: none; }
-.issues-status-nav a { display: flex; min-height: 40px; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; border-radius: 999px; white-space: nowrap; font-size: 14px; font-weight: 500; color: var(--zk-text2); }
+.issues-status-nav a { display: flex; height: 34px; align-items: center; gap: 4px; padding: 0 8px 0 4px; border-radius: 999px; white-space: nowrap; font-size: 13px; font-weight: 500; color: var(--zk-text2); }
 .issues-status-nav a:hover { background: var(--zk-surface); }
 .issues-status-nav a[aria-current] { background: var(--color-electric-blue-strong); color: white; }
 .issues-status-nav a:focus-visible { outline: 2px solid var(--zk-accent); outline-offset: 2px; }
-.issues-status-count { font-size: 12px; color: var(--zk-muted); font-variant-numeric: tabular-nums; }
-.issues-status-nav a[aria-current] .issues-status-count { background: #00000029; color: white; padding: 1px 5px; border-radius: 999px; }
-.issues-status-dot { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; flex: 0 0 28px; background: var(--zk-tint); }
-.issues-status-dot::before { content: ""; display: block; width: 15px; height: 15px; background: currentColor; mask: var(--issues-status-icon) center / contain no-repeat; }
-.issues-status-all { --issues-status-icon: url('/icons/issues-status-all.svg'); color: var(--zk-accent); }
-.issues-status-open { --issues-status-icon: url('/icons/issues-status-open.svg'); color: var(--zk-accent); }
-.issues-status-in_progress { --issues-status-icon: url('/icons/issues-status-in_progress.svg'); color: var(--zk-accent); }
+.issues-status-count { padding: 1px 5px; border-radius: 999px; font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 11px; font-weight: 400; color: var(--zk-muted); font-variant-numeric: tabular-nums; }
+.issues-status-nav a[href*="status=escalated"] .issues-status-count { background: var(--zk-bad-bg); color: var(--zk-bad-fg); }
+.issues-status-nav a[aria-current] .issues-status-count { background: rgba(255, 255, 255, 0.22); color: white; }
+.issues-status-dot { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-right: 4px; border-radius: 50%; flex: 0 0 26px; background: var(--zk-chip); }
+.issues-status-dot::before { content: ""; display: block; width: 14px; height: 14px; background: currentColor; mask: var(--issues-status-icon) center / contain no-repeat; }
+.issues-status-all { --issues-status-icon: url('/icons/issues-status-all.svg'); color: var(--zk-accent); background: var(--zk-tint); }
+.issues-status-open { --issues-status-icon: url('/icons/issues-status-open.svg'); color: var(--zk-text2); background: var(--zk-surface); }
+.issues-status-in_progress { --issues-status-icon: url('/icons/issues-status-in_progress.svg'); color: var(--zk-accent); background: var(--zk-tint); }
 .issues-status-resolved { --issues-status-icon: url('/icons/issues-status-resolved.svg'); color: var(--zk-ok-fg); background: var(--zk-ok-bg); }
-.issues-status-closed { --issues-status-icon: url('/icons/issues-status-closed.svg'); color: var(--zk-bad-fg); background: var(--zk-bad-bg); }
-.issues-status-nav a[aria-current] { padding-left: 4px; padding-right: 12px; }
-.issues-status-nav a[aria-current] .issues-status-dot { background: white; color: var(--color-electric-blue-strong); width: 30px; height: 30px; flex-basis: 30px; }
+.issues-status-closed { --issues-status-icon: url('/icons/issues-status-closed.svg'); color: var(--zk-muted); background: var(--zk-surface); }
+.issues-status-escalated { --issues-status-icon: url('/icons/issues-status-escalated.svg'); color: var(--zk-bad-fg); background: var(--zk-bad-bg); }
+.issues-status-nav a[aria-current] .issues-status-dot { background: white; color: var(--color-electric-blue-strong); }
 .issues-table { border: 1px solid var(--zk-border); border-radius: 20px; overflow: hidden; }
 .issues-table-heading { display: flex; align-items: center; gap: 20px; padding: 12px 18px; background: var(--zk-bg); border-bottom: 1px solid var(--issues-rule); font-size: 13px; line-height: 20px; color: var(--zk-muted); }
 .issues-row { min-height: 88px; gap: 20px; padding: 17px 18px; }
@@ -113,17 +116,25 @@
 .issues-priority-bars i[data-active="true"] { background: var(--zk-text2); }
 .issues-row[data-severity="high"] .issues-priority-bars i[data-active="true"],
 .issues-row[data-severity="critical"] .issues-priority-bars i[data-active="true"] { background: var(--zk-bad-fg); }
-.issues-stage-track { display: flex; gap: 3px; }
-.issues-stage-track i { width: 10px; height: 4px; border-radius: 2px; background: var(--zk-divider); }
-.issues-stage-track i[data-filled="true"] { background: var(--zk-bad-fg); }
-.issues-stage-track i:nth-child(2)[data-filled="true"] { background: var(--zk-warn-fg); }
-.issues-stage-track i:nth-child(3)[data-filled="true"] { background: var(--zk-warn-bd); }
-.issues-stage-track i:nth-child(4)[data-filled="true"], .issues-stage-track i:nth-child(5)[data-filled="true"] { background: var(--zk-ok-fg); }
-.issues-vote button { width: 46px; min-height: 52px; border-width: 1.5px; border-color: var(--zk-warn-bd); background: var(--zk-surface); color: var(--zk-text2); box-shadow: none; font-size: 13px; font-weight: 500; }
+/* Stage bar, after the redesign: red, orange, amber, lime, green from Triage to Shipped. */
+.issues-stage-track { display: flex; gap: 2px; }
+.issues-stage-track i { width: 9px; height: 4px; border-radius: 2px; background: #ededf0; }
+.issues-stage-track i:nth-child(1)[data-filled="true"] { background: #f87171; }
+.issues-stage-track i:nth-child(2)[data-filled="true"] { background: #fb923c; }
+.issues-stage-track i:nth-child(3)[data-filled="true"] { background: #fbbf24; }
+.issues-stage-track i:nth-child(4)[data-filled="true"] { background: #a3d65c; }
+.issues-stage-track i:nth-child(5)[data-filled="true"] { background: #34c77b; }
+:root[data-theme="dark"] .issues-stage-track i:not([data-filled="true"]) { background: var(--zk-divider); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .issues-stage-track i:not([data-filled="true"]) { background: var(--zk-divider); } }
+.issues-vote button { width: 40px; min-width: 40px; height: 44px; min-height: 44px; padding: 0; gap: 1px; border-radius: 9px; border-width: 1.5px; border-color: var(--zk-warn-bd); background: var(--zk-surface); color: var(--zk-text2); box-shadow: none; font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 12px; font-weight: 500; }
+.issues-vote button:hover { background: var(--zk-surface); }
+.issues-vote button span { margin-top: 0; }
 .issues-row[data-severity="low"] .issues-vote button { border-color: var(--zk-ok-fg); }
 .issues-row[data-severity="high"] .issues-vote button,
 .issues-row[data-severity="critical"] .issues-vote button { border-color: var(--zk-bad-bd); }
-.issues-vote button[aria-pressed="true"] { border-color: var(--zk-accent); background: var(--zk-tint); color: var(--zk-accent); }
+/* Voted: no fill, the outline and arrow turn the accent colour. */
+.issues-vote button[aria-pressed="true"],
+.issues-row .issues-vote button[aria-pressed="true"] { border-color: var(--zk-accent); background: var(--zk-surface); color: var(--zk-accent); }
 .issues-selection { width: 16px; flex: 0 0 16px; }
 .issues-results-summary h2 { display: none; }
 .issues-results-summary { order: 1; }
@@ -134,24 +145,38 @@
 }
 @media (max-width: 767px) {
   .issues-filters .issues-filter-dialog { position: fixed; left: 16px; right: 16px; top: 10vh; width: auto; max-width: none; max-height: 80vh; margin: 0; overflow-y: auto; z-index: 50; padding: 16px; }
-  .issues-page { padding: 20px 16px; border-radius: 20px; }
-  .issues-page .issues-heading { grid-template-columns: minmax(0, 1fr) auto; gap: 12px 8px; }
-  .issues-heading > div:first-child > div { grid-column: 1 / -1; }
-  .issues-heading > .issues-filters > div:first-child { grid-column: 1; grid-row: 3; }
-  .issues-heading .issues-actions { grid-column: 2; grid-row: 3; justify-content: flex-end; flex-wrap: wrap; }
+  .issues-page { padding: 14px 10px; border-radius: 16px; }
+  .issues-page .issues-heading { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 8px; padding: 0 4px; }
+  .issues-heading > div:first-child > div { grid-column: 1; grid-row: 1; }
+  .issues-heading > .issues-filters > div:first-child { grid-column: 1 / -1; grid-row: 2; }
+  /* The New issue + sits at the far right of the title row. */
+  .issues-heading .issues-actions { grid-column: 2; grid-row: 1; justify-content: flex-end; flex-wrap: nowrap; }
   .issues-heading:has(.issues-search-expanded) > .issues-filters > div:first-child { grid-column: 1 / -1; }
-  .issues-heading:has(.issues-search-expanded) .issues-actions { grid-column: 1 / -1; grid-row: 4; justify-content: flex-start; }
   .issues-heading .issues-active-filters > button:last-child { margin-left: 0; }
   .issues-filters:has(.issues-search-expanded) { width: 100%; min-width: 0; }
   .issues-filters .issues-search-expanded { width: auto; flex: 1 1 0; max-width: none; }
+  .issues-heading .issues-new { width: 40px; height: 40px; padding: 0; }
+  /* Search, filter, sort and platform sit behind the tools icon until it's opened (or a search is open). */
+  .issues-heading:not([data-tools-open]):not(:has(.issues-search-expanded)) > .issues-filters > div:first-child { display: none; }
   .issues-heading h1 { font-size: 24px; }
   .issues-heading > div:first-child > p { font-size: 13px; }
   .issues-type, .issues-priority, .issues-stage { display: none; }
-  .issues-row { min-height: 88px; gap: 12px; padding: 16px 12px; }
+  .issues-table { border-radius: 14px; }
+  .issues-table-heading { padding: 8px 10px; gap: 10px; font-size: 12px; }
+  .issues-row { min-height: 0; gap: 10px; padding: 12px 10px; }
+  .issues-vote { width: 40px; }
+  .issues-vote button { width: 36px; min-width: 36px; height: 40px; min-height: 40px; }
   .issues-row-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-  .issues-row-meta { gap: 6px; }
+  .issues-row-meta { gap: 6px; flex-wrap: wrap; }
   .issues-row-meta time { white-space: nowrap; }
-  .issues-status-nav a { padding: 0 12px; }
+  /* Status tabs, compact like a mobile segmented bar: text only, the selected one a white pill. */
+  .issues-status-nav ul { gap: 2px; border: 0; padding: 3px; }
+  .issues-status-nav .issues-status-dot { display: none; }
+  .issues-status-nav a, .issues-status-nav a[aria-current] { height: 30px; gap: 5px; padding: 0 11px; font-size: 13px; }
+  .issues-status-nav a:hover { background: transparent; }
+  .issues-status-nav a[aria-current] { background: var(--zk-surface); color: var(--zk-text); font-weight: 600; box-shadow: 0 1px 3px rgba(21, 18, 31, 0.12); }
+  .issues-status-nav a[aria-current] .issues-status-count { background: var(--zk-chip); color: var(--zk-text2); }
+  .issues-status-count { padding: 0 4px; }
 }
 @media print {
   .issues-page { padding: 0; }

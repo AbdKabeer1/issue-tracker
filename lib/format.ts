@@ -38,20 +38,22 @@ export function formatRelativeTime(value: Date | string, now = new Date()): stri
 }
 
 /**
- * A row's little date (#1061): "now", "5m", "3h", "2d" for the last week,
- * then "Oct 12", with the year once it isn't this year's. The full date goes
- * in a tooltip and for screen readers; this is only the glance.
+ * A row's little date (#1061): "just now", "5 mins ago", "3 hours ago",
+ * "2 days ago" for the last week, then "Oct 12", with the year once it isn't
+ * this year's. The full date goes in a tooltip and for screen readers; this
+ * is only the glance.
  */
 export function formatShortAge(value: Date | string, now = new Date(), timeZone?: string): string {
   const date = typeof value === "string" ? new Date(value) : value;
   const seconds = Math.floor(Math.max(0, now.getTime() - date.getTime()) / 1000);
-  if (seconds < 60) return "now";
+  const ago = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"} ago`;
+  if (seconds < 60) return "just now";
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60) return ago(minutes, "min");
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
+  if (hours < 24) return ago(hours, "hour");
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
+  if (days < 7) return ago(days, "day");
   const tz = timeZone || getDefaultTimeZone();
   const yearOf = (d: Date) => new Intl.DateTimeFormat("en-US", { year: "numeric", timeZone: tz }).format(d);
   return new Intl.DateTimeFormat("en-US", {

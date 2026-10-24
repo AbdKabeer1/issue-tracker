@@ -52,7 +52,7 @@ test.describe("no sideways scroll", () => {
     });
   }
 
-  test("the sidebar stays on the page at phone and desktop widths", async ({ page }) => {
+  test("the top bar navigation stays on the page at phone and desktop widths", async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 900 });
     await page.goto("/issues");
     await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();

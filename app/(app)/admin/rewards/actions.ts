@@ -22,7 +22,7 @@ export async function savePlatformRewardsAction(
     const config = parsePlatformRewardConfigFromFormData(formData);
     await savePlatformRewardConfig(prisma, config, actor.id);
     revalidatePath("/admin/rewards");
-    revalidatePath("/leaderboard");
+    revalidatePath("/workers");
     revalidatePath("/projects");
     revalidatePath("/", "layout");
     return { message: "Platform point amounts saved. New awards use these values." };

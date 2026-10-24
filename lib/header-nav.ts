@@ -39,7 +39,7 @@ export function headerNavItems(
 
   const items: HeaderNavItem[] = [
     // Post-login landing: the workspace overview.
-    { href: "/dashboard", label: "Overview" },
+    { href: "/dashboard", label: "Dashboard" },
     { href: "/issues", label: "Issues" },
   ];
 

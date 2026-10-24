@@ -54,11 +54,14 @@ describe("formatRelativeTime", () => {
 describe("formatShortAge (#1061)", () => {
   const now = new Date("2026-10-21T12:00:00Z");
   it.each([
-    ["2026-10-21T11:59:30Z", "now"],
-    ["2026-10-21T11:55:00Z", "5m"],
-    ["2026-10-21T09:00:00Z", "3h"],
-    ["2026-10-19T12:00:00Z", "2d"],
-    ["2026-10-14T13:00:00Z", "6d"],
+    ["2026-10-21T11:59:30Z", "just now"],
+    ["2026-10-21T11:59:00Z", "1 min ago"],
+    ["2026-10-21T11:28:00Z", "32 mins ago"],
+    ["2026-10-21T11:00:00Z", "1 hour ago"],
+    ["2026-10-21T09:00:00Z", "3 hours ago"],
+    ["2026-10-20T12:00:00Z", "1 day ago"],
+    ["2026-10-19T12:00:00Z", "2 days ago"],
+    ["2026-10-14T13:00:00Z", "6 days ago"],
     ["2026-10-12T12:00:00Z", "Oct 12"],
     ["2025-12-30T12:00:00Z", "Dec 30, 2025"],
   ])("%s → %s", (when, expected) => {
@@ -66,6 +69,6 @@ describe("formatShortAge (#1061)", () => {
   });
 
   it("never shows a negative age for a clock a little ahead", () => {
-    expect(formatShortAge(new Date("2026-10-21T12:00:30Z"), now, "UTC")).toBe("now");
+    expect(formatShortAge(new Date("2026-10-21T12:00:30Z"), now, "UTC")).toBe("just now");
   });
 });

@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 
 /**
- * #423: Team moved under Settings. Legacy /team links (bookmarks, old
- * messages, docs) keep resolving by redirecting to the new location.
+ * #423: Team moved under Settings, and now lives on Workers. Legacy /team
+ * links (bookmarks, old messages, docs) keep resolving by redirecting there.
  */
 export default function LegacyTeamPage() {
-  redirect("/settings/team");
+  redirect("/workers");
 }

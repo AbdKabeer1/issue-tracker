@@ -32,7 +32,6 @@ import {
 import { Highlighted, SearchSnippet } from "@/components/search-highlight";
 import { formatIssueNumber, parseIssueNumberQuery } from "@/lib/issue-number";
 import {
-  SHOW_RESOLVED,
   SHOW_RESOLVED_PARAM,
   defaultStatusWhere,
   isDone,
@@ -80,7 +79,8 @@ import {
   platformChoices,
   platformFilterWhere,
 } from "@/lib/platform-filter";
-import { PlatformTabs, type PlatformTab } from "@/components/platform-tabs";
+import { PlatformMenu, type PlatformTab } from "@/components/platform-tabs";
+import { IssuesToolsToggle } from "@/components/issues-tools-toggle";
 import { LoadError } from "@/components/load-error";
 import { logLoadFailure } from "@/lib/load-error";
 import { AREA_PARAM, parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
@@ -90,6 +90,14 @@ import { PROJECT_ALL_PARAM, showsAllProjects } from "@/lib/issue-list-filters";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Issues" };
+
+/** `?status=escalated`: issues waiting on an answer to an agent's question. */
+const ESCALATED_STATUS = "escalated";
+const ESCALATED_WHERE = { some: { answeredAt: null } } satisfies Prisma.AgentQuestionListRelationFilter;
+
+/** A bug with head, antennae, segmented body and three pairs of legs. */
+const BUG_ICON_PATH =
+  "m8 2 1.88 1.88M14.12 3.88 16 2M9 7.13v-1a3 3 0 1 1 6 0v1M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6M12 20v-9M6.53 9C4.6 8.8 3 7.1 3 5M6 13H2M3 21c0-2.1 1.7-3.9 3.8-4M20.97 5c0 2.1-1.6 3.8-3.5 4M22 13h-4M17.2 17c2.1.1 3.8 1.9 3.8 4";
 
 type SearchParams = Promise<{
   q?: string | string[];
@@ -258,6 +266,12 @@ export default async function BugsPage({
   } else if (hidesResolved) {
     where.status = defaultStatusWhere(false);
   }
+  // The Escalated tab: live issues with an agent question nobody has
+  // answered, the same rule as the Escalations page.
+  const isEscalatedView = statusParam === ESCALATED_STATUS && !isDeletedView;
+  if (isEscalatedView) {
+    where.agentQuestions = ESCALATED_WHERE;
+  }
   if (isSeverity(severityParam)) {
     where.severity = severityParam;
   }
@@ -333,31 +347,16 @@ export default async function BugsPage({
   const { categoryId: _platformClause, ...platformTabWhere } = where;
   void _platformClause;
 
-  const isResolvedView = statusParam === "resolved";
-
   let platformTabs: PlatformTab[] = [];
   if (!isDeletedView) {
     try {
-      const { status: _tabStatus, ...baseTabWhere } = platformTabWhere;
-      void _tabStatus;
-      const liveTabWhere: Prisma.BugWhereInput = {
-        ...baseTabWhere,
-        status: defaultStatusWhere(false),
-      };
-
-      const [grouped, resolvedCount] = await Promise.all([
-        prisma.bug.groupBy({
-          by: ["categoryId"],
-          where: liveTabWhere,
-          _count: { _all: true },
-        }),
-        prisma.bug.count({
-          where: {
-            ...baseTabWhere,
-            status: "resolved",
-          },
-        }),
-      ]);
+      // The platform menu sits beside the status tabs, so it counts within
+      // the selected tab (Open, Resolved, Escalated, ...).
+      const grouped = await prisma.bug.groupBy({
+        by: ["categoryId"],
+        where: platformTabWhere,
+        _count: { _all: true },
+      });
 
       const counts = new Map(grouped.map((row) => [row.categoryId, row._count._all]));
       const all = grouped.reduce((sum, row) => sum + row._count._all, 0);
@@ -377,25 +376,6 @@ export default async function BugsPage({
             name: "No platform",
             count: counts.get(null) ?? 0,
           },
-          {
-            id: "resolved",
-            name: "Resolved",
-            count: resolvedCount,
-            icon: (
-              <svg
-                className="h-4 w-4 shrink-0 text-zk-ok-fg"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            ),
-          },
         ];
       }
     } catch (error) {
@@ -406,41 +386,13 @@ export default async function BugsPage({
     const next = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
       if (key === "page" || key === PLATFORM_PARAM) continue;
-      if (key === "status" && toSingleQueryParam(value) === "resolved") continue;
-      if (key === SHOW_RESOLVED_PARAM) continue;
       const single = toSingleQueryParam(value);
       if (single) next.set(key, single);
     }
-    if (id === "resolved") {
-      next.set("status", "resolved");
-    } else if (id) {
-      next.set(PLATFORM_PARAM, id);
-    }
+    if (id) next.set(PLATFORM_PARAM, id);
     const qs = next.toString();
     return qs ? `/issues?${qs}` : "/issues";
   };
-
-  // How many resolved/closed issues the default view hides (#1058).
-  let hiddenResolved = 0;
-  if (hidesResolved) {
-    try {
-      hiddenResolved = await prisma.bug.count({
-        where: { ...platformTabWhere, ...platformFilterWhere(selectedPlatform), status: { in: ["resolved", "closed"] } },
-      });
-    } catch (error) {
-      console.error("[bugs] resolved count failed", error);
-    }
-  }
-  const resolvedHref = (() => {
-    const next = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      const single = toSingleQueryParam(value);
-      if (single && key !== SHOW_RESOLVED_PARAM && key !== "page") next.set(key, single);
-    }
-    if (!showResolved) next.set(SHOW_RESOLVED_PARAM, SHOW_RESOLVED);
-    const qs = next.toString();
-    return qs ? `/issues?${qs}` : "/issues";
-  })();
 
   // How many the default view is hiding, so "Show duplicates" can say so.
   let hiddenDuplicates = 0;
@@ -618,14 +570,19 @@ export default async function BugsPage({
   const confirmedCount = [...stages.values()].filter((stage) => stage === "confirmed").length;
   const readyCount = [...stages.values()].filter((stage) => stage === "ready").length;
 
-  const scopeName = activeProject?.name ?? "this workspace";
   // Count the same tenant/project and search scope without the selected status.
-  const { status: _selectedStatus, id: _stageIds, ...statusTabWhere } = where;
+  const { status: _selectedStatus, id: _stageIds, agentQuestions: _escalated, ...statusTabWhere } = where;
   void _selectedStatus;
   void _stageIds;
-  const statusCounts = isDeletedView || !tenantId ? [] : await loadOrEmpty("status tabs", () => prisma.bug.groupBy({
-    by: ["status"], where: statusTabWhere, _count: { _all: true },
-  }), []);
+  void _escalated;
+  const [statusCounts, escalatedCount] = isDeletedView || !tenantId ? [[], 0] : await Promise.all([
+    loadOrEmpty("status tabs", () => prisma.bug.groupBy({
+      by: ["status"], where: statusTabWhere, _count: { _all: true },
+    }), []),
+    loadOrEmpty("escalated tab", () => prisma.bug.count({
+      where: { ...statusTabWhere, status: defaultStatusWhere(false), agentQuestions: ESCALATED_WHERE },
+    }), 0),
+  ]);
   const statusHref = (status: string | null) => {
     const next = new URLSearchParams(selectionKey);
     next.delete("page");
@@ -673,17 +630,17 @@ export default async function BugsPage({
               <span className="rounded-full border border-zk-border bg-zk-tint px-2.5 py-0.5 text-xs font-bold text-zk-accent">All projects</span>
             ) : null}
           </div>
-          {isDeletedView ? null : (
-            <p className="text-sm text-zk-muted">
-              {allProjects
-                ? "Every issue in this workspace, across all projects."
-                : `Every bug and security report for ${scopeName}, ranked by what the community votes up.`}
-            </p>
-          )}
         </div>
         <Suspense fallback={<div className="h-11 w-36 rounded-full bg-zk-chip" />}>
           <IssueFilters compact tagTypes={tagTypes} platforms={platforms} milestones={milestones} areas={areas} shortcutsEnabled={shortcutsEnabled}
-            stageCounts={isDeletedView ? undefined : { reported: reportedCount, confirmed: confirmedCount, ready: readyCount }} />
+            stageCounts={isDeletedView ? undefined : { reported: reportedCount, confirmed: confirmedCount, ready: readyCount }}
+            trailing={isFirstRun ? null : (
+              <PlatformMenu
+                compact
+                tabs={platformTabs.map((tab) => ({ ...tab, href: platformHref(tab.id) }))}
+                current={selectedPlatform}
+              />
+            )} />
         </Suspense>
         <div className="issues-actions flex flex-wrap items-center gap-2 print:hidden">
           {canDelete ? (
@@ -699,42 +656,40 @@ export default async function BugsPage({
             </Link>
           ) : null}
           {finishedWatched > 0 ? <UnwatchFinishedButton count={finishedWatched} /> : null}
+          <IssuesToolsToggle
+            active={Boolean(searchText || selectedPlatform || selectedTags.length > 0 || isSeverity(severityParam) || selectedMilestone)}
+          />
           {!isDeletedView ? (
             <Link
               href="/issues/new"
-              className="issues-new inline-flex h-[42px] items-center gap-2 rounded-full border border-zk-border bg-zk-surface px-5 text-sm font-semibold text-zk-text hover:bg-zk-chip"
+              title="New issue"
+              className="issues-new inline-flex h-[42px] items-center justify-center gap-2 rounded-full border border-zk-border bg-zk-surface px-5 text-sm font-semibold text-zk-text hover:bg-zk-chip"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-              New issue
+              {/* Phones: a small + beside the title; the name stays for screen readers. */}
+              <span className="max-md:sr-only">New issue</span>
             </Link>
           ) : null}
         </div>
       </div>
 
       <div className="space-y-4">
-        {!isDeletedView ? (
-          <nav aria-label="Issue status" className="issues-status-nav">
-            <ul>
-              {[{ value: null, label: "All issues" }, { value: "open", label: "Open" }, { value: "in_progress", label: "In progress" }, { value: "resolved", label: "Resolved" }, { value: "closed", label: "Closed" }].map(({ value, label }) => (
-                <li key={value ?? "all"}>
-                  <Link href={statusHref(value)} aria-current={(value === (statusParam ?? null)) ? "page" : undefined}>
-                    <span className={`issues-status-dot issues-status-${value ?? "all"}`} aria-hidden="true" />
-                    {label}<span className="issues-status-count">{value ? statusCounts.find((row) => row.status === value)?._count._all ?? 0 : statusCounts.filter((row) => showResolved || row.status === "open" || row.status === "in_progress").reduce((sum, row) => sum + row._count._all, 0)}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        ) : null}
-        {isFirstRun ? null : (
-          <div className="flex flex-wrap items-center gap-2.5">
-            <PlatformTabs
-              tabs={platformTabs}
-              current={isResolvedView ? "resolved" : selectedPlatform}
-              hrefFor={platformHref}
-            />
-          </div>
-        )}
+        <div className="issues-tabs-row flex flex-wrap items-center gap-2.5">
+          {!isDeletedView ? (
+            <nav aria-label="Issue status" className="issues-status-nav min-w-0">
+              <ul>
+                {[{ value: null, label: "All issues" }, { value: "open", label: "Open" }, { value: "in_progress", label: "In progress" }, { value: "resolved", label: "Resolved" }, { value: "closed", label: "Closed" }, { value: ESCALATED_STATUS, label: "Escalated" }].map(({ value, label }) => (
+                  <li key={value ?? "all"}>
+                    <Link href={statusHref(value)} aria-current={(value === (statusParam ?? null)) ? "page" : undefined}>
+                      <span className={`issues-status-dot issues-status-${value ?? "all"}`} aria-hidden="true" />
+                      {label}<span className="issues-status-count">{value === ESCALATED_STATUS ? escalatedCount : value ? statusCounts.find((row) => row.status === value)?._count._all ?? 0 : statusCounts.filter((row) => showResolved || row.status === "open" || row.status === "in_progress").reduce((sum, row) => sum + row._count._all, 0)}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ) : null}
+        </div>
 
         {milestoneSummary ? (
           <section aria-label={`Milestone ${milestoneSummary.title}`} className="rounded-[20px] border border-zk-border bg-zk-surface p-5">
@@ -778,19 +733,13 @@ export default async function BugsPage({
               <div className="flex flex-wrap items-baseline gap-2.5">
                 <h2 className="text-lg font-bold text-zk-text">All issues</h2>
                 <p role="status" aria-live="polite" className="text-[13px] text-zk-muted">
-                  {resultCountText(totalCount, statusWhere !== undefined ? statusParam ?? null : null)} · sorted by{" "}
-                  {bugSortDescriptions[currentSort]}
-                  {hiddenResolved > 0 || (showResolved && statusWhere === undefined && !isDeletedView) ? (
-                    <>
-                      {" · "}
-                      <Link href={resolvedHref} className="font-bold text-zk-accent hover:underline print:hidden">
-                        {showResolved ? "Hide resolved" : `Show ${hiddenResolved} resolved`}
-                      </Link>
-                    </>
-                  ) : null}
+                  {/* Not shown on screen (the tabs carry the counts), but still announced when the results change. */}
+                  <span className="sr-only">
+                    {resultCountText(totalCount, statusWhere !== undefined ? statusParam ?? null : null)}, sorted by{" "}
+                    {bugSortDescriptions[currentSort]}
+                  </span>
                   {hiddenDuplicates > 0 || showDuplicates ? (
                     <>
-                      {" · "}
                       <Link href={duplicatesHref} className="font-bold text-zk-accent hover:underline print:hidden">
                         {showDuplicates ? "Hide duplicates" : `Show ${hiddenDuplicates} duplicate${hiddenDuplicates === 1 ? "" : "s"}`}
                       </Link>
@@ -862,7 +811,7 @@ export default async function BugsPage({
                             {isSecurity ? (
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
                             ) : (
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20a6 6 0 0 0 6-6V10a6 6 0 0 0-12 0v4a6 6 0 0 0 6 6zM12 20v-9M4 13h2M18 13h2M5 7l2 2M19 7l-2 2" /></svg>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={BUG_ICON_PATH} /></svg>
                             )}
                           </span>
                           <span className="flex min-w-0 flex-col gap-0.5">
@@ -872,10 +821,6 @@ export default async function BugsPage({
                               ) : (
                                 bug.title
                               )}
-                            </span>
-                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-bold lg:hidden ${statusPillClass(bug.status)}`}>
-                              <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
-                              {statusLabels[bug.status]}
                             </span>
                             <span className="issues-row-meta flex items-center gap-2 text-xs text-zk-muted">
                               <span className="font-mono tabular-nums">{formatIssueNumber(bug.number)}</span>
@@ -894,13 +839,18 @@ export default async function BugsPage({
                               ) : null}
                               {bug.category ? <span>{bug.category.name}</span> : null}
                               <RowAge date={currentSort === "newest" ? bug.createdAt : bug.updatedAt} sort={currentSort === "newest" ? "newest" : "updated"} />
+                              {/* Below lg the status column is hidden, so the status rides at the end of this line. */}
+                              <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[11px] font-semibold lg:hidden ${statusPillClass(bug.status)}`}>
+                                <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
+                                {statusLabels[bug.status]}
+                              </span>
                             </span>
                             {snippets.has(bug.id) ? <SearchSnippet snippet={snippets.get(bug.id)!} /> : null}
                           </span>
                         </Link>
                         <span className="issues-type" title={typeName}>
                           <span className="sr-only">{typeName}</span>
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={isSecurity ? "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" : "M12 20a6 6 0 0 0 6-6V10a6 6 0 0 0-12 0v4a6 6 0 0 0 6 6zM12 20v-9M4 13h2M18 13h2M5 7l2 2M19 7l-2 2"} /></svg>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={isSecurity ? "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" : BUG_ICON_PATH} /></svg>
                         </span>
                         <span className="issues-priority" title={`${severityLabels[bug.severity]} priority`}>
                           <span className="sr-only">{severityLabels[bug.severity]} priority</span>

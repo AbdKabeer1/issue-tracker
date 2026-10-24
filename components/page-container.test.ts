@@ -15,13 +15,13 @@ describe("page container token (#415)", () => {
   it("aligns the signed-in header and main, and keeps the preview on the shared width", () => {
     const layout = read("app/(app)/layout.tsx");
     const header = read("components/app-header.tsx");
-    // The sidebar shell is full-bleed. Header and main share the same horizontal padding.
-    expect(layout).toContain("px-4 py-6");
-    expect(header).toContain("px-4");
+    // The header row and main are both centred on the shared width, so page
+    // content lines up with the nav bar's edges.
+    expect(header).toContain("${PAGE_CONTAINER_CLASS} flex flex-wrap");
+    expect(layout).toContain("${PAGE_CONTAINER_CLASS} min-w-0 flex-1");
     expect(layout).not.toContain("max-w-7xl");
     expect(header).not.toContain("max-w-7xl");
-    // Link-preview responses have no sidebar, so they still use the shared container.
-    expect(layout).toContain("PAGE_CONTAINER_CLASS");
+    expect(layout).not.toContain("AppSidebar");
   });
 
   it("leaves no ad-hoc page wrapper on the routes named in the ticket", () => {

@@ -11,8 +11,8 @@ export default function PersonNotFound() {
       code="404"
       title="We couldn't find that person"
       actions={
-        <Link href="/settings/team" className={primaryActionClass}>
-          Go to team
+        <Link href="/workers" className={primaryActionClass}>
+          Go to workers
         </Link>
       }
     >

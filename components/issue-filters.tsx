@@ -184,7 +184,10 @@ export function IssueFilters({
   shortcutsEnabled = true,
   stageCounts,
   compact = false,
+  trailing,
 }: {
+  /** Extra controls at the end of the search/filter/sort row (the platform menu). */
+  trailing?: ReactNode;
   tagTypes?: TagType[];
   platforms?: PlatformOption[];
   /** #289: open milestones first; closed ones stay selectable for history. */
@@ -725,6 +728,7 @@ export function IssueFilters({
         {compact ? (
           <IssuesSort value={currentSort} onChange={(value) => update("sort", value)} />
         ) : null}
+        {trailing}
       </div>
 
       {selectedTags.length > 0 ? (

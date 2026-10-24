@@ -3,7 +3,6 @@ import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import { isLinkPreviewBot } from "@/lib/link-preview";
 import { AppHeader } from "@/components/app-header";
-import { AppSidebar } from "@/components/app-sidebar";
 import { getUnreadCount } from "@/lib/lookups";
 import { REPORT_FORM_URL } from "@/lib/report-form";
 import { MAIN_CONTENT_ID, SkipLink } from "@/components/skip-link";
@@ -17,7 +16,7 @@ import { currentTenantIdFor } from "@/lib/tenant-context";
 import { tenantsForUser } from "@/lib/tenants";
 import { countPendingEscalations } from "@/lib/agent-questions";
 import { loadOwnAgents, loadSidebarCounts } from "@/lib/dashboard-overview";
-import { pointTotals, tenantRankFor } from "@/lib/points/leaderboard";
+import { pointTotals } from "@/lib/points/leaderboard";
 import { getPlatformRewardConfig } from "@/lib/points/platform-rewards";
 import { TARGET_POINTS } from "@/lib/points/rules";
 
@@ -75,7 +74,6 @@ export default async function AppLayout({
   let pendingEscalationsCount = 0;
   let points = 0;
   let solvedTasks = 0;
-  let rank: number | null = null;
   let issueCount = 0;
   let shellAgents: { id: string; name: string; level: string }[] = [];
   let targetPoints = TARGET_POINTS;
@@ -96,11 +94,6 @@ export default async function AppLayout({
       solvedTasks = totals.solvedTasks;
     } catch (error) {
       console.error("[layout] points failed", error);
-    }
-    try {
-      rank = (await tenantRankFor(prisma, tenantId, user.id))?.rank ?? null;
-    } catch (error) {
-      console.error("[layout] rank failed", error);
     }
     try {
       issueCount = (await loadSidebarCounts({ userId: user.id, tenantId })).unresolved;
@@ -128,13 +121,8 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-zk-bg lg:flex-row">
+    <div className="flex min-h-screen flex-col bg-zk-bg">
       <SkipLink />
-      <AppSidebar
-        issueCount={issueCount}
-        workspaces={workspaces}
-        activeTenantId={activeTenantId}
-      />
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader
           userName={user.name ?? user.email}
@@ -150,16 +138,17 @@ export default async function AppLayout({
           points={points}
           solvedTasks={solvedTasks}
           targetPoints={targetPoints}
-          rank={rank}
           agents={shellAgents}
           reportFormUrl={REPORT_FORM_URL}
+          issueCount={issueCount}
         />
         <main
           id={MAIN_CONTENT_ID}
           /* Focusable so the skip link and the route announcer can move focus
              here; -1 keeps it out of the normal tab order. */
           tabIndex={-1}
-          className="min-w-0 flex-1 overflow-x-clip px-4 py-6 outline-none sm:px-6 sm:py-8"
+          // Below lg the bottom nav strip covers the last ~4.5rem of the screen.
+          className={`${PAGE_CONTAINER_CLASS} min-w-0 flex-1 overflow-x-clip py-6 outline-none max-lg:pb-28 max-sm:px-2 max-sm:pt-2.5 sm:px-6 sm:py-8 max-lg:sm:pb-28`}
         >
           {children}
         </main>
