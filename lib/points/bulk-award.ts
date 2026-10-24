@@ -10,6 +10,8 @@ export function solverAwardForBulkChange(
   bug: {
     id: string;
     tenantId: string;
+    projectId?: string | null;
+    pullRequestUrl?: string | null;
     status: Status;
     severity: Severity;
     assigneeId: string | null;
@@ -21,5 +23,12 @@ export function solverAwardForBulkChange(
     ? change.assigneeId
     : bug.assigneeId;
   const severity = (typeof change.severity === "string" ? change.severity : bug.severity) as Severity;
-  return { id: bug.id, tenantId: bug.tenantId, severity, assigneeId };
+  return {
+    id: bug.id,
+    tenantId: bug.tenantId,
+    projectId: bug.projectId,
+    pullRequestUrl: bug.pullRequestUrl,
+    severity,
+    assigneeId,
+  };
 }

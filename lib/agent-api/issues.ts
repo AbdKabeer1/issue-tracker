@@ -61,7 +61,9 @@ export async function agentIssueRequest(
   request: NextRequest, action: string, level: AgentLevel | "comment", target: string | null,
   run: (agent: AgentContext) => Promise<Response>,
   // `write` charges an observer-level route that changes data (#515) to the write budget.
-  options: { budget?: "none" | "write" } = {},
+  // `heartbeat` charges the claim-keeping-ping budget instead of write (#556), so an
+  // agent at its write cap can still heartbeat the claims it's actively working.
+  options: { budget?: "none" | "write" | "heartbeat" } = {},
 ): Promise<Response> {
   let agent: AgentContext | undefined;
   let response: Response | undefined;
@@ -73,9 +75,12 @@ export async function agentIssueRequest(
       // Retired or non-working routes must not spend the caller's budget (#554).
       response = await run(agent);
     } else {
+      const budgetKind = options.budget === "heartbeat"
+        ? "heartbeat"
+        : level === "observer" && options.budget !== "write" ? "read" : "write";
       const budget = await consumeAgentBudget(
         { id: agent.agentId, burst: agent.burst, burstUntil: agent.burstUntil ?? null },
-        level === "observer" && options.budget !== "write" ? "read" : "write",
+        budgetKind,
       );
       quota = budget;
       response = budget.allowed ? await run(agent) : agentBudgetExceededResponse(budget.retryAfterSeconds, budget);
@@ -138,6 +143,12 @@ export const issueSelect = {
   createdByAgentId: true, projectId: true, areaId: true, createdAt: true, updatedAt: true, proofLinks: true,
   // #463: agents can see how close an idea is to the upvote gate.
   voteCount: true,
+  // #544: whether a fix is linked, and at which commit. Without these a
+  // reviewer cannot tell a linked fix from an unlinked one, and `proofLinks`
+  // is misleading because it is free text set at create/edit, not the field
+  // the verdict and merge gates read.
+  pullRequestUrl: true,
+  pullRequestHeadSha: true,
   area: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.BugSelect;
 

@@ -1,11 +1,13 @@
 import type { AgentLevel, Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
+import { hasLevel } from "@/lib/agents/levels";
 import { isTenantAdmin } from "@/lib/agents/membership";
 import { reviewerConflict, type ReviewedBug } from "@/lib/agents/independence";
 import type { AppRole } from "@/lib/roles";
 // requireSuperAdmin is imported lazily in runLevelPromotions to avoid pulling NextAuth into unit tests
 import { IssueApiError } from "@/lib/agent-api/issues";
+import { notifyReviewerEligible } from "@/lib/agent-notifications";
 
 /** Levels an agent can still earn from recorded work; anything else is owner-granted (#645). */
 const EARN_TRACK: readonly AgentLevel[] = ["observer", "contributor"];
@@ -46,9 +48,19 @@ const validationSelect = {
   bug: {
     select: {
       createdByAgentId: true,
+      reporterId: true,
+      assigneeId: true,
       beneficiaryUserId: true,
       createdByAgent: { select: { ownerUserId: true } },
-      claims: { select: { status: true, releasedAt: true, agent: { select: { ownerUserId: true } } } },
+      claims: {
+        select: {
+          status: true,
+          releasedAt: true,
+          beneficiaryUserId: true,
+          dispatcherUserId: true,
+          agent: { select: { ownerUserId: true } },
+        },
+      },
     },
   },
 } satisfies Prisma.IssueValidationSelect;
@@ -77,7 +89,10 @@ export async function standingValidations(agentId: string, db: Db = prisma): Pro
   const dbWithAudit = db as DbWithAudit;
   const [rows, undone] = await Promise.all([
     db.issueValidation.findMany({
-      where: { agentId },
+      // #590: only a judgement of whether an issue is real, or a duplicate, earns
+      // standing. A `format` row is written for an agent that merely structured
+      // an issue, so it must not count towards the promotion to reviewer.
+      where: { agentId, kind: { in: ["real", "duplicate", "fix"] } },
       select: validationSelect,
     }) as Promise<LoadedValidation[]>,
     typeof dbWithAudit.agentAuditEvent?.findMany === "function"
@@ -146,48 +161,80 @@ export type DemotionResult =
   | { ok: false; error: string };
 
 /**
- * Earn `reviewer` from standing validations. Promotes an agent on the default
- * track (`observer` or `contributor`) once it has
- * `EARNED_REVIEWER_VALIDATIONS` standing validations, and only once: an agent
- * already at reviewer or above is left alone (#451).
- *
- * An explicitly assigned `triager` is never auto-promoted (#645): the admin's
- * manual choice is the constraint, and the earned threshold applies only to
- * agents still sitting on default levels. Earning while specialized is left
- * visible via the `agent.promoted` audit trail, which is not written here.
+ * Earn `reviewer` from standing validations. `observer` and `contributor` are
+ * the promotable default track: an `observer` is promoted once it has
+ * `EARNED_REVIEWER_VALIDATIONS` standing validations; a `contributor` keeps its
+ * working role and gets a one-time eligibility notice so its owner can choose
+ * whether to promote it (#659). Specialized levels — `triager`, `dispatcher`,
+ * `merger` — are owner-granted decisions and never move automatically, even
+ * when the threshold is crossed: replacing a triager would remove duplicate
+ * checks (#542), and stripping an owner-assigned specialized level would
+ * silently undo the admin's manual choice (#645).
  */
 export async function promoteEarnedReviewer(agentId: string, db: Db = prisma): Promise<PromotionResult> {
   const agent = await db.agent.findUnique({
     where: { id: agentId },
-    select: { id: true, tenantId: true, level: true },
+    select: {
+      id: true,
+      tenantId: true,
+      level: true,
+      name: true,
+      ownerUserId: true,
+      reviewerEligibilityNotifiedAt: true,
+    },
   });
   if (!agent) return { ok: false, error: "Agent not found." };
-  if (EARN_TRACK.includes(agent.level)) {
-    const standing = await standingValidations(agentId, db);
-    if (standing < EARNED_REVIEWER_VALIDATIONS) return { ok: true, changed: false, standing };
+  if (hasLevel(agent.level, "reviewer")) return { ok: true, changed: false, standing: 0 };
+  // Only the default track is ever touched here (#645). Observers promote;
+  // contributors get a one-time notice; every specialized level stays put.
+  if (!EARN_TRACK.includes(agent.level)) return { ok: true, changed: false, standing: 0 };
 
-    // Compare-and-update (#645 review note): only write `reviewer` while the
-    // agent's level is still the one we just read. An owner/admin assigning a
-    // specialized level in between wins, and no audit is emitted.
-    const moved = await db.agent.updateMany({
-      where: { id: agentId, level: agent.level },
-      data: { level: "reviewer", levelChangedAt: new Date() },
+  const standing = await standingValidations(agentId, db);
+  if (standing < EARNED_REVIEWER_VALIDATIONS) return { ok: true, changed: false, standing };
+
+  if (agent.level === "contributor") {
+    if (agent.reviewerEligibilityNotifiedAt) return { ok: true, changed: false, standing };
+
+    // Claim the one-time notice atomically so a validation and a sweep running
+    // together cannot send duplicate eligibility notifications. The condition
+    // also respects an owner changing the role while the count is calculated.
+    const marked = await db.agent.updateMany({
+      where: { id: agentId, level: "contributor", reviewerEligibilityNotifiedAt: null },
+      data: { reviewerEligibilityNotifiedAt: new Date() },
     });
-    if (moved.count === 0) {
-      return { ok: true, changed: false, standing };
-    }
+    if (marked.count !== 1) return { ok: true, changed: false, standing };
+
     await audit(
       { agentId, tenantId: agent.tenantId },
-      "agent.promoted",
+      "agent.reviewer_eligible",
       `agent:${agentId}`,
-      { from: agent.level, to: "reviewer", validations: standing },
+      { validations: standing },
       { db },
     );
-    return { ok: true, changed: true, standing };
+    notifyReviewerEligible({
+      agent: { name: agent.name },
+      ownerUserId: agent.ownerUserId,
+      tenantId: agent.tenantId,
+    });
+    return { ok: true, changed: false, standing };
   }
-  // Specialized levels (triager/dispatcher/merger) are owner-granted decisions:
-  // they never move automatically, even when the threshold is crossed (#645).
-  return { ok: true, changed: false, standing: 0 };
+
+  // Compare-and-update (#645 review note): only write `reviewer` while the
+  // agent's level is still the one we just read. An owner/admin assigning a
+  // specialized level in between wins, and no audit is emitted.
+  const moved = await db.agent.updateMany({
+    where: { id: agentId, level: agent.level },
+    data: { level: "reviewer", levelChangedAt: new Date() },
+  });
+  if (moved.count === 0) return { ok: true, changed: false, standing };
+  await audit(
+    { agentId, tenantId: agent.tenantId },
+    "agent.promoted",
+    `agent:${agentId}`,
+    { from: agent.level, to: "reviewer", validations: standing },
+    { db },
+  );
+  return { ok: true, changed: true, standing };
 }
 
 /**

@@ -1,3 +1,4 @@
+import "./settings-design.css";
 import { ThemeSettings } from "@/components/theme-settings";
 import { parseTheme } from "@/lib/theme";
 import Link from "next/link";
@@ -7,7 +8,6 @@ import { NotificationSettings } from "@/components/notification-settings";
 import { WalletAddressForm } from "@/components/wallet-address-form";
 import { KeyboardShortcutSettings } from "@/components/keyboard-shortcut-settings";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
-import { ChangePasswordForm } from "@/components/change-password-form";
 import { AccountDataSettings } from "@/components/account-data-settings";
 import { DisplayNameForm } from "@/components/display-name-form";
 
@@ -94,7 +94,6 @@ export default async function SettingsPage(props: {
     notifyAssignments?: boolean;
     notifyStatusChanges?: boolean;
     keyboardShortcuts?: boolean;
-    passwordHash?: string | null;
   } | null = null;
 
   try {
@@ -110,7 +109,6 @@ export default async function SettingsPage(props: {
         notifyAssignments: true,
         notifyStatusChanges: true,
         keyboardShortcuts: true,
-        passwordHash: true,
       },
     });
   } catch (error) {
@@ -135,7 +133,7 @@ export default async function SettingsPage(props: {
   const displayName = settings?.name ?? user.name ?? "";
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-1 pb-10 sm:px-0">
+    <div className="settings-page settings-design mx-auto flex w-full max-w-5xl flex-col gap-6 pb-10">
       <div className="flex flex-col gap-2.5">
         <Link
           href="/issues"
@@ -150,10 +148,10 @@ export default async function SettingsPage(props: {
         <p className="m-0 text-sm text-zk-muted">Manage your profile, preferences, agents and data.</p>
       </div>
 
-      <div className="flex flex-wrap items-start gap-6">
+      <div className="settings-layout">
         <nav
           aria-label="Settings sections"
-          className="flex w-full min-w-0 flex-col gap-1 rounded-[20px] border border-zk-border bg-zk-surface p-2.5 sm:max-w-[280px] sm:flex-1"
+          className="settings-navigation"
         >
           {SECTIONS.map((item) => {
             const on = section === item.id;
@@ -184,7 +182,7 @@ export default async function SettingsPage(props: {
           })}
         </nav>
 
-        <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-4">
+        <div className="settings-content flex min-w-0 flex-col gap-5">
           {section === "account" ? (
             <div className="flex flex-col gap-4">
               <section className={card}>
@@ -211,18 +209,6 @@ export default async function SettingsPage(props: {
                   </Link>
                 </p>
               </section>
-
-              {settings?.passwordHash ? (
-                <section className={card}>
-                  <div className="flex flex-col gap-1">
-                    <h2 className="m-0 text-lg font-bold text-zk-text">Password</h2>
-                    <span className="text-[13px] text-zk-muted">
-                      Changing your password signs out all active sessions.
-                    </span>
-                  </div>
-                  <ChangePasswordForm />
-                </section>
-              ) : null}
 
               <section className={card}>
                 <WalletAddressForm initialAddress={settings?.walletAddress ?? ""} />

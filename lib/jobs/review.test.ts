@@ -5,10 +5,11 @@ const publish = vi.hoisted(() => vi.fn());
 const award = vi.hoisted(() => vi.fn());
 
 const db = vi.hoisted(() => ({
-  jobSubmission: { findUnique: vi.fn(), update: vi.fn() },
+  jobSubmission: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn() },
   jobReview: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn() },
-  jobReviewOffer: { findFirst: vi.fn(), update: vi.fn(), findUnique: vi.fn(), groupBy: vi.fn(), create: vi.fn() },
+  jobReviewOffer: { findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn(), groupBy: vi.fn(), create: vi.fn() },
   membership: { findMany: vi.fn() },
+  $queryRaw: vi.fn(),
   $transaction: vi.fn(),
 }));
 
@@ -17,7 +18,14 @@ vi.mock("@/lib/agents/audit", () => ({ audit }));
 vi.mock("@/lib/agent-api/events", () => ({ publish }));
 vi.mock("@/lib/points/award", () => ({ award }));
 
-import { reviewJobSubmission } from "./review";
+import {
+  acceptJobReviewOffer,
+  createJobReviewOffers,
+  ensureJobReviewOffers,
+  expireJobReviewOffer,
+  reviewJobSubmission,
+  sweepJobReviewOffers,
+} from "./review";
 
 const agent = {
   agentId: "reviewer1",
@@ -51,8 +59,142 @@ beforeEach(() => {
   db.jobReview.create.mockResolvedValue({ id: "review1", verdict: "accept" });
   db.jobReview.findMany.mockResolvedValue([{ beneficiaryUserId: "owner-bob" }]);
   db.jobReviewOffer.update.mockResolvedValue({});
+  db.jobReviewOffer.updateMany.mockResolvedValue({ count: 1 });
+  db.jobReviewOffer.findMany.mockResolvedValue([]);
+  db.jobSubmission.findMany.mockResolvedValue([]);
+  db.$queryRaw.mockResolvedValue([{ id: "sub1" }]);
+  db.membership.findMany.mockResolvedValue([]);
+  db.jobReviewOffer.groupBy.mockResolvedValue([]);
   db.jobSubmission.update.mockImplementation(async ({ data }: { data: object }) => ({ ...submission, ...data }));
   award.mockResolvedValue(false);
+});
+
+describe("job review offer recovery (#616)", () => {
+  const pendingSubmission = {
+    ...submission,
+    job: { id: "job1", tenantId: "tenant1", projectId: "project1", pointsPerAccepted: 10 },
+  };
+
+  it("preserves the review quorum when no one can review yet", async () => {
+    const job = { id: "job1", tenantId: "tenant1", projectId: "project1", pointsPerAccepted: 10 };
+    const result = await createJobReviewOffers(
+      db as never,
+      { agentId: "submitter", tenantId: "tenant1" },
+      job,
+      submission,
+    );
+
+    expect(result).toBe(2);
+    expect(db.jobReviewOffer.create).not.toHaveBeenCalled();
+  });
+
+  it("creates offers when reviewers become eligible after submission", async () => {
+    db.jobSubmission.findUnique.mockResolvedValue(pendingSubmission);
+    db.membership.findMany.mockResolvedValue([
+      { userId: "owner-carol", user: { agents: [{ id: "reviewer-carol" }] } },
+    ]);
+    db.jobReviewOffer.create.mockResolvedValue({ id: "offer-carol", offeredAt: new Date() });
+
+    const offered = await ensureJobReviewOffers("sub1");
+
+    expect(offered).toBe(1);
+    expect(db.jobReviewOffer.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        submissionId: "sub1",
+        agentId: "reviewer-carol",
+        beneficiaryUserId: "owner-carol",
+        status: "offered",
+      }),
+    });
+    expect(publish).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ type: "job.review.requested", tenantId: "tenant1" }),
+    );
+  });
+
+  it("expires due offers durably and re-offers to an eligible reviewer", async () => {
+    db.jobReviewOffer.findMany
+      .mockResolvedValueOnce([{ id: "offer-bob" }])
+      .mockResolvedValueOnce([{ beneficiaryUserId: "owner-bob", status: "expired" }])
+      .mockResolvedValueOnce([
+        { beneficiaryUserId: "owner-bob", status: "expired" },
+        { beneficiaryUserId: "owner-carol", status: "offered" },
+      ]);
+    db.jobReviewOffer.findUnique.mockResolvedValue({
+      id: "offer-bob",
+      submissionId: "sub1",
+      status: "offered",
+      offeredAt: new Date(Date.now() - 61_000),
+      deadlineAt: null,
+    });
+    db.jobSubmission.findMany.mockResolvedValue([{ id: "sub1" }]);
+    db.jobSubmission.findUnique.mockResolvedValue(pendingSubmission);
+    db.jobReview.findMany.mockResolvedValue([]);
+    db.membership.findMany.mockResolvedValue([
+      { userId: "owner-carol", user: { agents: [{ id: "reviewer-carol" }] } },
+    ]);
+    db.jobReviewOffer.create.mockResolvedValue({ id: "offer-carol", offeredAt: new Date() });
+
+    const result = await sweepJobReviewOffers();
+
+    expect(result).toEqual({ expired: 1, offered: 1 });
+    expect(db.jobReviewOffer.updateMany).toHaveBeenCalledWith({
+      where: { id: "offer-bob", status: "offered" },
+      data: expect.objectContaining({ status: "expired", expiredAt: expect.any(Date) }),
+    });
+    expect(db.jobReviewOffer.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ beneficiaryUserId: "owner-carol", status: "offered" }),
+    });
+  });
+
+  it("expires an accepted review after its deadline", async () => {
+    db.jobReviewOffer.findUnique.mockResolvedValue({
+      id: "offer-bob",
+      submissionId: "sub1",
+      status: "accepted",
+      offeredAt: new Date(Date.now() - 31 * 60_000),
+      deadlineAt: new Date(Date.now() - 1),
+    });
+    db.jobSubmission.findUnique.mockResolvedValue(pendingSubmission);
+    db.jobReviewOffer.findMany.mockResolvedValue([
+      { beneficiaryUserId: "owner-bob", status: "expired" },
+    ]);
+    db.jobReview.findMany.mockResolvedValue([]);
+
+    await expect(expireJobReviewOffer("offer-bob")).resolves.toBe("sub1");
+    expect(db.jobReviewOffer.updateMany).toHaveBeenCalledWith({
+      where: { id: "offer-bob", status: "accepted" },
+      data: expect.objectContaining({ status: "expired", expiredAt: expect.any(Date) }),
+    });
+  });
+
+  it("commits an expired accept before returning 410 and triggers recovery", async () => {
+    db.jobReviewOffer.findUnique.mockResolvedValue({
+      id: "offer-bob",
+      submissionId: "sub1",
+      agentId: "reviewer1",
+      status: "offered",
+      offeredAt: new Date(Date.now() - 61_000),
+      submission: { id: "sub1", job: { tenantId: "tenant1" } },
+    });
+    db.jobSubmission.findUnique.mockResolvedValue(pendingSubmission);
+
+    await expect(acceptJobReviewOffer(agent, "offer-bob")).rejects.toMatchObject({ status: 410 });
+
+    expect(db.jobReviewOffer.updateMany).toHaveBeenCalledWith({
+      where: { id: "offer-bob", status: "offered" },
+      data: expect.objectContaining({ status: "expired", expiredAt: expect.any(Date) }),
+    });
+    expect(db.jobReviewOffer.findMany).toHaveBeenCalled();
+  });
+
+  it("does not replace an offer for a decided submission", async () => {
+    db.$queryRaw.mockResolvedValue([{ id: "sub1" }]);
+    db.jobSubmission.findUnique.mockResolvedValue({ ...pendingSubmission, status: "accepted" });
+
+    await expect(ensureJobReviewOffers("sub1")).resolves.toBe(0);
+    expect(db.jobReviewOffer.create).not.toHaveBeenCalled();
+  });
 });
 
 describe("reviewJobSubmission (#617)", () => {

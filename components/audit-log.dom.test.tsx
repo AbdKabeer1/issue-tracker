@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuditLog, type AuditLogRow } from "./audit-log";
+import { ToastProvider } from "@/components/ui/toast";
 
 const row = (overrides: Partial<AuditLogRow>): AuditLogRow => ({
   id: "event-1",
@@ -68,6 +69,26 @@ describe("AuditLog (#447)", () => {
   it("marks an undone event", () => {
     render(<AuditLog rows={[row({ undoneAt: "2026-10-19T11:00:00Z" })]} />);
     expect(screen.getByText("Undone")).toBeInTheDocument();
+  });
+
+  it("shows the server's message when the undo is refused", async () => {
+    const user = userEvent.setup();
+    const onUndo = vi.fn().mockResolvedValue({
+      ok: false,
+      error: "You can't undo an action performed by your own agent.",
+    });
+    render(
+      <ToastProvider>
+        <AuditLog rows={[row({})]} isTenantAdmin onUndo={onUndo} />
+      </ToastProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+
+    expect(
+      await screen.findByText("You can't undo an action performed by your own agent."),
+    ).toBeInTheDocument();
+    expect(onUndo).toHaveBeenCalledTimes(1);
   });
 
   it("says when there is nothing to show", () => {

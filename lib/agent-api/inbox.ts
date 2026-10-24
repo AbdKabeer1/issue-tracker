@@ -89,6 +89,10 @@ export async function inboxRecipients(db: Db, event: InboxEvent): Promise<InboxD
       const agentId = text(payload.agentId);
       return agentId ? [{ agentId, kind: "offer" }] : [];
     }
+    case "job.review.requested": {
+      const agentId = text(payload.agentId);
+      return agentId ? [{ agentId, kind: "offer" }] : [];
+    }
     case "claim.released": {
       if (SELF_RELEASE_REASONS.has(String(payload.reason))) return [];
       const agentId = await claimAgentId(db, payload.claimId);

@@ -23,6 +23,8 @@ type VoteButtonProps = {
   showReadinessGate?: boolean;
   /** Deleted issues: show the count, but it can't be changed. */
   readOnly?: boolean;
+  /** Reference-style compact vote control, used only by the Issues list. */
+  chevron?: boolean;
 };
 
 function ThumbsUp({ filled, className = "h-4 w-4" }: { filled: boolean; className?: string }) {
@@ -69,6 +71,7 @@ export function VoteButton({
   showAvatars = false,
   showReadinessGate = true,
   readOnly = false,
+  chevron = false,
 }: VoteButtonProps) {
   const initialVote = typeof userVote === "number" ? userVote : voted ? 1 : 0;
   const [upvoted, setUpvoted] = useState(initialVote === 1);
@@ -107,15 +110,16 @@ export function VoteButton({
   // does not contain that phrase, which is the issue-page axe failure.
   const voteWord = count === 1 ? "vote" : "votes";
   const label = isMd
-    ? upvoted
-      ? `Upvoted ${count} ${voteWord}, click to remove your vote`
-      : `Upvote ${count} ${voteWord}`
-    : upvoted
-      ? `Upvoted, ${count} ${voteWord}, click to remove your vote`
-      : `Upvote this issue, ${count} ${voteWord}`;
-  // The large button shows "Upvote 2" / "Upvoted 3", so its name has to start
-  // with that text (WCAG 2.5.3, axe label-content-name-mismatch).
-  const mdLabel = `${upvoted ? "Upvoted" : "Upvote"} ${count} ${voteWord}${upvoted ? ", click to remove your vote" : ""}`;
+    ? `${upvoted ? "Upvoted" : "Upvote"} ${count} ${voteWord}${
+        readOnly ? ", voting unavailable" : upvoted ? ", click to remove your vote" : ""
+      }`
+    : `${count} ${voteWord}${
+        readOnly
+          ? `${upvoted ? ", upvoted" : ""}, voting unavailable`
+          : upvoted
+            ? ", upvoted, click to remove"
+            : ", click to upvote"
+      }`;
   const tone = upvoted
     ? "border-electric-blue-strong bg-electric-blue-strong text-white hover:border-electric-blue-strong hover:bg-electric-blue-strong"
     : "border-zk-border bg-zk-surface text-zk-text hover:border-zk-border hover:bg-zk-chip";
@@ -139,7 +143,7 @@ export function VoteButton({
             type="button"
             disabled={pending || readOnly}
             aria-pressed={upvoted}
-            aria-label={mdLabel}
+            aria-label={label}
             title={upvoted ? "Remove your upvote" : "Upvote"}
             aria-describedby={error ? errorId : undefined}
             onClick={handleVote}
@@ -187,7 +191,9 @@ export function VoteButton({
         onClick={handleVote}
         className={`group inline-flex min-w-[2.75rem] flex-col items-center justify-center rounded-lg border px-2 py-1 text-xs font-semibold shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50 ${tone}`}
       >
-        <ThumbsUp filled={upvoted} className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
+        {chevron ? (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6" /></svg>
+        ) : <ThumbsUp filled={upvoted} className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />}
         <span className="mt-0.5 tabular-nums leading-tight">{count}</span>
       </button>
       {errorLine}

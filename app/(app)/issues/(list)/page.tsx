@@ -1,4 +1,6 @@
 import Link from "next/link";
+import "./issues.css";
+import { Avatar } from "@/components/avatar";
 import { Suspense } from "react";
 import type { Prisma, Severity } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -11,8 +13,6 @@ import { IssueFilters } from "@/components/issue-filters";
 import {
   RowAge,
   RowAssignee,
-  severityPillClass,
-  stagePillClass,
   statusPillClass,
 } from "@/components/issue-row-meta";
 import { VoteButton } from "@/components/vote-button";
@@ -617,6 +617,22 @@ export default async function BugsPage({
   const readyCount = [...stages.values()].filter((stage) => stage === "ready").length;
 
   const scopeName = activeProject?.name ?? "this workspace";
+  // Count the same tenant/project and search scope without the selected status.
+  const { status: _selectedStatus, id: _stageIds, ...statusTabWhere } = where;
+  void _selectedStatus;
+  void _stageIds;
+  const statusCounts = isDeletedView || !tenantId ? [] : await loadOrEmpty("status tabs", () => prisma.bug.groupBy({
+    by: ["status"], where: statusTabWhere, _count: { _all: true },
+  }), []);
+  const statusHref = (status: string | null) => {
+    const next = new URLSearchParams(selectionKey);
+    next.delete("page");
+    next.delete("stage");
+    next.delete(SHOW_RESOLVED_PARAM);
+    if (status) next.set("status", status);
+    else next.delete("status");
+    return `/issues${next.size ? `?${next}` : ""}`;
+  };
   const emptyPlatform =
     Boolean(selectedPlatform) &&
     !isWatchingView &&
@@ -629,7 +645,7 @@ export default async function BugsPage({
     !stageView;
 
   const page = (
-    <div className="mx-auto w-full max-w-6xl space-y-5">
+    <div className="issues-page mx-auto w-full max-w-6xl space-y-5">
       {gettingStarted ? <GettingStarted {...gettingStarted} /> : null}
       {activeProject?.goal ? (
         <section aria-labelledby="project-goal-heading" className="rounded-[20px] border border-zk-border bg-zk-surface px-5 py-4">
@@ -642,7 +658,7 @@ export default async function BugsPage({
           <RichText content={activeProject.goal} className="mt-1 text-sm text-zk-text2" />
         </section>
       ) : null}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="issues-heading flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-zk-text">
@@ -656,14 +672,18 @@ export default async function BugsPage({
             ) : null}
           </div>
           {isDeletedView ? null : (
-            <p className="max-w-xl text-sm text-zk-muted">
+            <p className="text-sm text-zk-muted">
               {allProjects
                 ? "Every issue in this workspace, across all projects."
                 : `Every bug and security report for ${scopeName}, ranked by what the community votes up.`}
             </p>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2 print:hidden">
+        <Suspense fallback={<div className="h-11 w-36 rounded-full bg-zk-chip" />}>
+          <IssueFilters compact tagTypes={tagTypes} platforms={platforms} milestones={milestones} areas={areas} shortcutsEnabled={shortcutsEnabled}
+            stageCounts={isDeletedView ? undefined : { reported: reportedCount, confirmed: confirmedCount, ready: readyCount }} />
+        </Suspense>
+        <div className="issues-actions flex flex-wrap items-center gap-2 print:hidden">
           {canDelete ? (
             <Link
               href={isDeletedView ? "/issues" : "/issues?deleted=true"}
@@ -680,7 +700,7 @@ export default async function BugsPage({
           {!isDeletedView ? (
             <Link
               href="/issues/new"
-              className="inline-flex h-[42px] items-center gap-2 rounded-full border-0 bg-electric-blue-strong px-5 text-sm font-bold text-white shadow-[0_8px_20px_rgba(46,111,239,0.35)] hover:brightness-105"
+              className="issues-new inline-flex h-[42px] items-center gap-2 rounded-full border border-zk-border bg-zk-surface px-5 text-sm font-semibold text-zk-text hover:bg-zk-chip"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
               New issue
@@ -690,6 +710,20 @@ export default async function BugsPage({
       </div>
 
       <div className="space-y-4">
+        {!isDeletedView ? (
+          <nav aria-label="Issue status" className="issues-status-nav">
+            <ul>
+              {[{ value: null, label: "All issues" }, { value: "open", label: "Open" }, { value: "in_progress", label: "In progress" }, { value: "resolved", label: "Resolved" }, { value: "closed", label: "Closed" }].map(({ value, label }) => (
+                <li key={value ?? "all"}>
+                  <Link href={statusHref(value)} aria-current={(value === (statusParam ?? null)) ? "page" : undefined}>
+                    <span className={`issues-status-dot issues-status-${value ?? "all"}`} aria-hidden="true" />
+                    {label}<span className="issues-status-count">{value ? statusCounts.find((row) => row.status === value)?._count._all ?? 0 : statusCounts.filter((row) => showResolved || row.status === "open" || row.status === "in_progress").reduce((sum, row) => sum + row._count._all, 0)}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        ) : null}
         {isFirstRun ? null : (
           <div className="flex flex-wrap items-center gap-2.5">
             <PlatformTabs
@@ -697,18 +731,6 @@ export default async function BugsPage({
               current={isResolvedView ? "resolved" : selectedPlatform}
               hrefFor={platformHref}
             />
-            <div className="min-w-0 flex-1 basis-[280px]">
-              <Suspense fallback={<div className="h-[42px] animate-pulse rounded-full bg-zk-chip" />}>
-                <IssueFilters
-                  tagTypes={tagTypes}
-                  platforms={platforms}
-                  milestones={milestones}
-                  areas={areas}
-                  shortcutsEnabled={shortcutsEnabled}
-                  stageCounts={isDeletedView ? undefined : { reported: reportedCount, confirmed: confirmedCount, ready: readyCount }}
-                />
-              </Suspense>
-            </div>
           </div>
         )}
 
@@ -749,8 +771,8 @@ export default async function BugsPage({
             </div>
           </div>
         ) : (
-          <section className="flex flex-col gap-3.5 rounded-[20px] border border-zk-border bg-zk-surface p-5">
-            <div className="flex flex-wrap items-baseline justify-between gap-2.5">
+          <section className="issues-results flex flex-col gap-3.5">
+            <div className="issues-results-summary flex flex-wrap items-baseline justify-between gap-2.5">
               <div className="flex flex-wrap items-baseline gap-2.5">
                 <h2 className="text-lg font-bold text-zk-text">All issues</h2>
                 <p role="status" aria-live="polite" className="text-[13px] text-zk-muted">
@@ -776,16 +798,15 @@ export default async function BugsPage({
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <div className="min-w-[860px]">
-                <div className="flex items-center gap-4 rounded-full bg-zk-tint px-4 py-3.5 text-xs font-bold uppercase tracking-[0.05em] text-zk-accent">
+            <div className="issues-table relative">
+              <div>
+                <div className="issues-table-heading">
+                  {canDelete && !isDeletedView ? <span className="issues-selection" aria-hidden="true" /> : null}
                   <span className="w-[52px]">Votes</span>
                   <span className="min-w-0 flex-1">Issue</span>
-                  <span className="w-[92px]">Type</span>
-                  <span className="w-24">Priority</span>
-                  <span className="w-[76px]">Status</span>
-                  <span className="w-[104px]">Stage</span>
-                  <span className="w-[84px]">Reported</span>
+                  <span className="issues-type">Type</span>
+                  <span className="issues-priority">Priority</span>
+                  <span className="issues-stage">Stage</span>
                   <span className="w-10" aria-hidden="true" />
                 </div>
                 <ul>
@@ -803,31 +824,34 @@ export default async function BugsPage({
                     return (
                       <li
                         key={bug.id}
-                        className={`flex items-center gap-4 px-4 py-3.5 ${
+                        data-severity={bug.severity}
+                        className={`issues-row flex items-center gap-2 px-2 py-3.5 lg:gap-4 lg:px-4 ${
                           index < bugs.length - 1 ? "border-b border-zk-divider" : ""
                         }`}
                       >
                         {canDelete && !isDeletedView ? (
-                          <div className="shrink-0">
+                          <div className="issues-selection shrink-0">
                             <BulkCheckbox id={bug.id} title={bug.title} />
                           </div>
                         ) : null}
-                        <div className="w-[52px] shrink-0">
+                        <div className="issues-vote w-[52px] shrink-0">
                           <VoteButton
                             bugId={bug.id}
                             voteCount={bug.voteCount}
                             userVote={userVote}
                             likeCount={voterSummary.likes.count}
                             size="sm"
+                            chevron
                             readOnly={isDeletedView}
                           />
                         </div>
                         <Link
                           href={issuePath(bug.number)}
                           data-issue-link=""
-                          className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-electric-blue"
+                          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md text-left [touch-action:manipulation] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-electric-blue"
                         >
                           <span
+                            data-issue-type-icon=""
                             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
                               isSecurity ? "bg-zk-bad-bg text-zk-bad-fg" : "bg-zk-tint text-zk-accent"
                             }`}
@@ -840,14 +864,18 @@ export default async function BugsPage({
                             )}
                           </span>
                           <span className="flex min-w-0 flex-col gap-0.5">
-                            <span className={`text-sm font-semibold leading-snug ${isDone(bug.status) ? "text-zk-muted" : "text-zk-text"}`}>
+                            <span className={`issues-row-title text-sm font-semibold leading-snug ${isDone(bug.status) ? "text-zk-muted" : "text-zk-text"}`}>
                               {searchText ? (
                                 <Highlighted segments={highlightSegments(bug.title, searchText)} />
                               ) : (
                                 bug.title
                               )}
                             </span>
-                            <span className="flex items-center gap-2 text-xs text-zk-muted">
+                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-bold lg:hidden ${statusPillClass(bug.status)}`}>
+                              <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
+                              {statusLabels[bug.status]}
+                            </span>
+                            <span className="issues-row-meta flex items-center gap-2 text-xs text-zk-muted">
                               <span className="font-mono tabular-nums">{formatIssueNumber(bug.number)}</span>
                               {(bug._count?.comments ?? 0) > 0 ? (
                                 <span className="inline-flex items-center gap-1" title={`Conversation: ${bug._count?.comments}`}>
@@ -862,44 +890,47 @@ export default async function BugsPage({
                               {bug.duplicateOf ? (
                                 <span>Duplicate of {formatIssueNumber(bug.duplicateOf.number)}</span>
                               ) : null}
+                              {bug.category ? <span>{bug.category.name}</span> : null}
+                              <RowAge date={currentSort === "newest" ? bug.createdAt : bug.updatedAt} sort={currentSort === "newest" ? "newest" : "updated"} />
                             </span>
                             {snippets.has(bug.id) ? <SearchSnippet snippet={snippets.get(bug.id)!} /> : null}
                           </span>
                         </Link>
-                        <span className="w-[92px] shrink-0 text-[13px] text-zk-text2">{typeName}</span>
-                        <span className="w-24 shrink-0">
-                          <span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-bold ${severityPillClass(bug.severity)}`}>
-                            {severityLabels[bug.severity]}
-                          </span>
+                        <span className="issues-type" title={typeName}>
+                          <span className="sr-only">{typeName}</span>
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={isSecurity ? "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" : "M12 20a6 6 0 0 0 6-6V10a6 6 0 0 0-12 0v4a6 6 0 0 0 6 6zM12 20v-9M4 13h2M18 13h2M5 7l2 2M19 7l-2 2"} /></svg>
                         </span>
-                        <span className="w-[76px] shrink-0">
-                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold ${statusPillClass(bug.status)}`}>
-                            <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
-                            {statusLabels[bug.status]}
-                          </span>
+                        <span className="issues-priority" title={`${severityLabels[bug.severity]} priority`}>
+                          <span className="sr-only">{severityLabels[bug.severity]} priority</span>
+                          <span className="issues-priority-bars" aria-hidden="true">{[0, 1, 2].map((bar) => <i key={bar} data-active={bar < ({ low: 1, medium: 2, high: 3, critical: 3 }[bug.severity])} />)}</span>
                         </span>
-                        <span className="w-[104px] shrink-0">
+                        <span className="issues-stage" title={`${statusLabels[bug.status]}${stage ? ` · ${issueStageLabels[stage]}` : ""}`}>
+                          <span className="issues-stage-track" aria-hidden="true">{[0, 1, 2, 3, 4].map((step) => <i key={step} data-filled={step < (bug.status === "closed" ? 5 : bug.status === "resolved" ? 4 : bug.status === "in_progress" ? 3 : stage === "ready" ? 2 : 1)} />)}</span>
+                          <span className="sr-only">{statusLabels[bug.status]}</span>
                           {stage ? (
                             <span
                               title={intakeDetail(stage, bug.voteCount)}
-                              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold ${stagePillClass(stage)}`}
+                              className="sr-only"
                             >
                               <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
                               {issueStageLabels[stage]}
                             </span>
-                          ) : (
-                            <span className="text-[13px] text-zk-muted">—</span>
-                          )}
+                          ) : null}
                         </span>
-                        <span className="w-[84px] shrink-0 text-[13px] text-zk-text2">
-                          <RowAge
-                            date={currentSort === "newest" ? bug.createdAt : bug.updatedAt}
-                            sort={currentSort === "newest" ? "newest" : "updated"}
-                          />
-                        </span>
-                        <span className="flex w-10 shrink-0 items-center justify-end gap-2">
+                        <span
+                          className={`w-10 shrink-0 items-center justify-end gap-2 ${
+                            isWatchingView && !bug.isDeleted ? "flex" : "hidden lg:flex"
+                          }`}
+                        >
                           {bug.assignee ? (
-                            <RowAssignee name={bug.assignee.name} image={bug.assignee.image} />
+                            <span className="hidden lg:inline-flex">
+                              <RowAssignee name={bug.assignee.name} image={bug.assignee.image} />
+                            </span>
+                          ) : bug.reporter ? (
+                            <span className="hidden lg:inline-flex" title={`Reported by ${bug.reporter.name}`}>
+                              <Avatar name={bug.reporter.name} image={bug.reporter.image} size="sm" />
+                              <span className="sr-only">Reported by {bug.reporter.name}</span>
+                            </span>
                           ) : null}
                           {isWatchingView && !bug.isDeleted ? (
                             <UnwatchButton bugId={bug.id} label={`${formatIssueNumber(bug.number)} ${bug.title}`} />
@@ -967,16 +998,16 @@ function FirstRunWelcome({
 }) {
   if (!hasTenant) {
     return (
-      <section className="rounded-[20px] border border-zk-warn-bd bg-zk-warn-bg px-5 py-8 text-center">
-        <h2 className="text-lg font-bold text-zk-text">No workspace yet</h2>
-        <p className="mx-auto mt-2 max-w-md text-sm text-zk-text2">
+      <section aria-labelledby="issues-workspace-heading" className="issues-workspace-empty rounded-[20px] border border-zk-border bg-zk-bg px-6 py-10 text-center sm:px-8">
+        <h2 id="issues-workspace-heading" className="text-xl font-bold leading-7 text-zk-text">No workspace yet</h2>
+        <p className="mx-auto mt-3 max-w-lg text-base leading-7 text-zk-text2">
           You are not currently a member of any workspace. Join a workspace via an invite from your team,
           or create your own workspace to start filing issues.
         </p>
-        <div className="mt-5">
+        <div className="mt-6">
           <Link
             href="/tenants"
-            className="inline-flex h-[42px] items-center justify-center rounded-full bg-electric-blue-strong px-5 text-sm font-bold text-white"
+            className="inline-flex min-h-12 max-w-full items-center justify-center rounded-full bg-electric-blue-strong px-6 py-3 text-sm font-bold leading-5 text-white transition-colors hover:bg-blue-slate focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-zk-accent"
           >
             Create or join a workspace
           </Link>

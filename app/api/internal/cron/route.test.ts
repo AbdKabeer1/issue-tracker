@@ -53,6 +53,7 @@ describe("app/api/internal/cron/route (#647)", () => {
       timestamp: "2026-10-20T19:00:00.000Z",
       sweeps: {
         offers: { status: "ok", expired: 1 },
+        jobReviewOffers: { status: "ok", expired: 0, offered: 0 },
         claims: { status: "ok", released: 0, offered: 0 },
         promotions: { status: "ok", promoted: 0, demoted: 0 },
         deliveries: { status: "ok", processed: 2 },
@@ -76,6 +77,7 @@ describe("app/api/internal/cron/route (#647)", () => {
       timestamp: "2026-10-20T19:00:00.000Z",
       sweeps: {
         offers: { status: "ok", expired: 0 },
+        jobReviewOffers: { status: "ok", expired: 0, offered: 0 },
         claims: { status: "ok", released: 1, offered: 1 },
         promotions: { status: "ok", promoted: 1, demoted: 0 },
         deliveries: { status: "ok", processed: 0 },

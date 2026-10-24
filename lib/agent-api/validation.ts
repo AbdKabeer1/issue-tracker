@@ -19,6 +19,7 @@ import { notifyClaimOffered } from "@/lib/agent-notifications";
 import { WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
 import { hasBlockingRedesign } from "@/lib/redesigns";
 import { workflowFor } from "@/lib/workflow";
+import { parseIssueRef } from "@/lib/issue-ref";
 
 /** Severity order for the reviewer agreement rule (#528). */
 const SEVERITY_RANK: Record<(typeof severities)[number], number> = {
@@ -156,6 +157,16 @@ async function latestRevisionAt(db: Db, bug: LoadedBug): Promise<Date | null> {
 }
 
 /**
+ * Claim/assignment independence is enforced at submission under the issue
+ * lock (#579). Do not reapply those mutable relationships to accepted
+ * validations: a later award must not undo an earlier independent review.
+ * Reporter/beneficiary checks, undone audits and revision checks still apply.
+ */
+function recordedReviewBug(bug: LoadedBug): ReviewedBug {
+  return { ...bug, assigneeId: null, claims: [] };
+}
+
+/**
  * This agent's validation of `kind` on `bug`, when it was made before the
  * issue's latest edit and so no longer counts (#493). Null otherwise.
  */
@@ -200,12 +211,12 @@ async function countedConfirmationReviewers(db: Db, bug: LoadedBug): Promise<str
     },
   });
   const undone = await undoneValidationIds(db, bug);
-  const reviewed: ReviewedBug = bug;
+  const reviewed = recordedReviewBug(bug);
   const owners = new Set<string>();
   const credited: string[] = [];
   for (const { id, onBehalfOfUserId, agent } of accepts) {
-    // Checked again now, not only when submitted: a claim taken since can
-    // make an earlier reviewer no longer independent.
+    // Retain report-side independence without invalidating a review after
+    // its owner subsequently becomes the solver.
     if (agent.id === bug.createdByAgentId) continue;
     if (reviewerConflict({ id: agent.id, ownerUserId: agent.ownerUserId }, reviewed)) continue;
     if (reviewerCreditConflict(onBehalfOfUserId, reviewed)) continue;
@@ -249,7 +260,7 @@ async function isTriageCleared(db: Db, bug: LoadedBug): Promise<boolean> {
   });
   if (clears.length === 0) return false;
   const undone = await undoneValidationIds(db, bug);
-  const reviewed: ReviewedBug = bug;
+  const reviewed = recordedReviewBug(bug);
   for (const { id, onBehalfOfUserId, agent } of clears as Array<{
     id: string;
     onBehalfOfUserId: string;
@@ -339,7 +350,7 @@ export async function standingValidationAwards(db: Db, bugId: string): Promise<P
 
   const latestRevision = await latestRevisionAt(db, bug);
   const undone = await undoneValidationIds(db, bug);
-  const reviewed: ReviewedBug = bug;
+  const reviewed = recordedReviewBug(bug);
   const verdicts = await db.issueValidation.findMany({
     where: {
       bugId,
@@ -367,6 +378,9 @@ export async function standingValidationAwards(db: Db, bugId: string): Promise<P
     if (undone.has(v.id)) continue;
     if (v.agent.id === bug.createdByAgentId) continue;
     if (reviewerConflict({ id: v.agent.id, ownerUserId: v.agent.ownerUserId }, reviewed)) continue;
+    // Duplicates pay the credited person nothing when that person is the
+    // reporter or beneficiary (#422, #579).
+    if (reviewerCreditConflict(v.onBehalfOfUserId, reviewed)) continue;
     const key = `${v.verdict}:${v.onBehalfOfUserId}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -412,7 +426,8 @@ export type SubmitValidationResult =
   | { status: 400; error: "invalid_request"; message: string; field?: string }
   | { status: 403; error: "insufficient_level" | "creator_cannot_validate" | "not_independent"; message: string }
   | { status: 404; error: "not_found"; message: string }
-  | { status: 409; error: "already_validated"; message: string };
+  | { status: 409; error: "already_validated"; message: string }
+  | { status: 429; error: "rate_limited" };
 
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
@@ -422,6 +437,7 @@ export async function submitValidation(
   agent: AgentContext,
   bugId: string,
   rawBody: unknown,
+  beforeWrite?: (tx: Prisma.TransactionClient) => Promise<boolean>,
 ): Promise<SubmitValidationResult> {
   const parsed = validationBodySchema.safeParse(rawBody ?? {});
   if (!parsed.success) {
@@ -449,8 +465,14 @@ export async function submitValidation(
     };
   }
 
+  const ref = parseIssueRef(bugId);
   const bug = await prisma.bug.findFirst({
-    where: { id: bugId, tenantId: agent.tenantId, isDeleted: false },
+    where: {
+      ...(ref.kind === "number" ? { number: ref.number } : { id: ref.id }),
+      tenantId: agent.tenantId,
+      ...(agent.projectId ? { projectId: agent.projectId } : {}),
+      isDeleted: false,
+    },
     select: reviewedBugSelect,
   });
   if (!bug) return { status: 404, error: "not_found", message: "No such issue in this agent's tenant." };
@@ -530,6 +552,37 @@ export async function submitValidation(
       // Two reviewers can confirm at the same moment. Lock the issue so the
       // second transaction sees the first accept and still pays the reporter.
       await tx.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${bug.id} FOR UPDATE`;
+      // Awarding a bid also locks this row. Recheck after acquiring the lock
+      // so an award between preflight and insertion cannot admit a conflicted
+      // validation that the historical confirmation count would then trust.
+      const currentBug = await tx.bug.findUnique({
+        where: { id: bug.id },
+        select: { ...reviewedBugSelect, isDeleted: true },
+      });
+      if (!currentBug || currentBug.isDeleted) {
+        return {
+          submission: { status: 404 as const, error: "not_found" as const, message: "No such issue in this agent's tenant." },
+          automaticOffer: null,
+        };
+      }
+      if (
+        reviewerConflict({ id: agent.agentId, ownerUserId: agent.ownerId }, currentBug) ||
+        reviewerCreditConflict(onBehalfOfUserId, currentBug)
+      ) {
+        return {
+          submission: { status: 403 as const, error: "not_independent" as const, message: "The reviewer and credited person must be independent when the validation is recorded." },
+          automaticOffer: null,
+        };
+      }
+      // Rate limiting is part of this transaction, so expected permission and
+      // independence refusals do not spend a write. A rejected budget gate
+      // also commits no validation or rate-limit hit.
+      if (beforeWrite && !(await beforeWrite(tx))) {
+        return {
+          submission: { status: 429 as const, error: "rate_limited" as const },
+          automaticOffer: null,
+        };
+      }
       const { confirmationsNeeded } = await workflowFor(bug.projectId, tx);
       const wasConfirmed =
         (await countedConfirmations(tx, bug)) >= confirmationsNeeded &&

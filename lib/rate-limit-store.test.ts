@@ -90,6 +90,16 @@ describe("consumeRateLimit with a shared store", () => {
     expect((await consumeRateLimit("k", config, 103)).allowed).toBe(false);
   });
 
+  it("uses a caller's transaction for an atomic write", async () => {
+    const hit = vi.fn(async () => ({ allowed: true, retryAfterMs: 0 }));
+    const store: RateLimitStore = { hit };
+    const transaction = {};
+    setRateLimitStore(store);
+
+    expect(await consumeRateLimit("k", config, 100, transaction)).toMatchObject({ allowed: true });
+    expect(hit).toHaveBeenCalledWith("k", config, 100, transaction);
+  });
+
   it("falls back to this instance's memory when the store fails — never blocks everyone", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     setRateLimitStore({ hit: async () => Promise.reject(new Error("db down")) });

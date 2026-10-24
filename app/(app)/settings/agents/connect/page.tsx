@@ -6,16 +6,29 @@ import { projectContextFor } from "@/lib/project-context";
 import { getSiteUrl } from "@/lib/site-url";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
 import { getAgentTemplates } from "@/lib/agents/templates";
+import { findPendingPairing } from "@/lib/agents/pairing";
+import { AGENT_INSTRUCTIONS_MAX } from "@/lib/agent-messages";
 import { ConnectAgentView } from "./connect-agent-view";
-import { agentsLink, agentsMutedClass, agentsPrimaryBtn, agentsSurface } from "../agents-ui";
+import { PairForm } from "../pair/pair-form";
+import {
+  agentsLink,
+  agentsMutedClass,
+  agentsPrimaryBtn,
+  agentsSurface,
+  formatPairingCode,
+} from "../agents-ui";
 
 export const metadata = { title: "Connect your agent" };
 
 /**
- * Connect your agent onboarding page (#610).
+ * Connect your agent onboarding page and approve pairings in one place (#628).
  * Ready-to-paste setups for Claude, ChatGPT, and Node/Python pollers.
  */
-export default async function ConnectAgentPage() {
+export default async function ConnectAgentPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ code?: string | string[] }>;
+}) {
   const user = await requireUser();
 
   if (!isAgentPlatformEnabled()) {
@@ -31,6 +44,10 @@ export default async function ConnectAgentPage() {
 
   const tenantId = await currentTenantIdFor(user.id);
   const context = await projectContextFor(prisma, tenantId);
+  const { code } = await searchParams;
+  const rawCode = typeof code === "string" ? code.slice(0, 20) : "";
+  const initialCode = formatPairingCode(rawCode);
+  const pendingPairing = initialCode ? await findPendingPairing(initialCode) : null;
 
   const activeProject =
     context.projects.find((p) => p.id === context.activeProjectId) ?? context.projects[0] ?? null;
@@ -71,9 +88,6 @@ export default async function ConnectAgentPage() {
               pairing request and test your connection.
             </p>
           </div>
-          <Link href="/settings/agents/pair" className={`shrink-0 text-sm ${agentsLink}`}>
-            Approve a pairing code →
-          </Link>
         </div>
       </div>
 
@@ -87,14 +101,43 @@ export default async function ConnectAgentPage() {
           </div>
         </div>
       ) : (
-        <ConnectAgentView
-          templates={templates}
-          siteUrl={siteUrl}
-          projectId={projectId}
-          projectName={projectName}
-          initialConnected={Boolean(initialKey?.lastUsedAt)}
-          initialAgentName={initialKey?.agent?.name ?? null}
-        />
+        <>
+          <ConnectAgentView
+            templates={templates}
+            siteUrl={siteUrl}
+            projectId={projectId}
+            projectName={projectName}
+            initialConnected={Boolean(initialKey?.lastUsedAt)}
+            initialAgentName={initialKey?.agent?.name ?? null}
+          />
+          <section className="space-y-2 border-t border-zk-border pt-6" aria-labelledby="approve-agent-heading">
+            <div className="space-y-1">
+              <h2 id="approve-agent-heading" className="text-xl font-extrabold text-zk-text">
+                Approve a pairing request
+              </h2>
+              <p className="text-sm text-zk-text2">
+                Enter the code from an agent, then check its name and requested access before approving it.
+              </p>
+            </div>
+            <PairForm
+              initialCode={initialCode}
+              pending={
+                pendingPairing
+                  ? {
+                      name: pendingPairing.proposedName,
+                      model: pendingPairing.proposedModel,
+                      level: pendingPairing.proposedLevel,
+                      instructions: pendingPairing.proposedInstructions,
+                    }
+                  : null
+              }
+              unknownCode={Boolean(initialCode) && !pendingPairing}
+              projects={context.projects}
+              activeProjectId={context.activeProjectId}
+              instructionsMaxLength={AGENT_INSTRUCTIONS_MAX}
+            />
+          </section>
+        </>
       )}
     </div>
   );

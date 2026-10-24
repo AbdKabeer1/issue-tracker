@@ -19,17 +19,28 @@ export { agentBudgetHeaders, withAgentBudgetHeaders, type AgentBudgetQuota } fro
 
 const HOUR = 60 * 60 * 1000;
 
-/** What a request costs: writes change the board, reads only look at it. */
-export type AgentBudgetKind = "read" | "write";
+/**
+ * What a request costs: writes change the board, reads only look at it.
+ * `heartbeat` is its own small budget (#556) — a claim must be heartbeated
+ * at least every 15 minutes just to stay held, so charging that to the
+ * same 30/hr write budget as real work can starve an agent that is
+ * otherwise idle, releasing its claim as silent even while it's working.
+ */
+export type AgentBudgetKind = "read" | "write" | "heartbeat";
 
 export const AGENT_RATE_BUDGETS = {
   standard: {
     write: { max: 30, windowMs: HOUR },
     read: { max: 600, windowMs: HOUR },
+    // Up to 2 concurrent claims (the default active-claims cap) heartbeated
+    // every 5 minutes is 24/hr; 120 leaves generous headroom without being
+    // effectively unlimited.
+    heartbeat: { max: 120, windowMs: HOUR },
   },
   burst: {
     write: { max: 400, windowMs: HOUR },
     read: { max: 4000, windowMs: HOUR },
+    heartbeat: { max: 120, windowMs: HOUR },
   },
 } as const satisfies Record<"standard" | "burst", Record<AgentBudgetKind, RateLimitConfig>>;
 
@@ -75,19 +86,22 @@ export function agentBudget(
 }
 
 /**
- * Charges one request to the agent's read or write budget. Writes are create,
- * comment, bid, offer accept, validate and test verdict; reads are list,
- * get, feed and the event poll. Webhook delivery is not charged.
+ * Charges one request to the agent's read, write or heartbeat budget. Writes
+ * are create, comment, bid, offer accept, validate and test verdict; reads
+ * are list, get, feed and the event poll; heartbeat is its own budget (#556)
+ * so a claim-keeping ping never competes with real work. Webhook delivery
+ * is not charged.
  */
 export async function consumeAgentBudget(
   agent: BudgetedAgent,
   kind: AgentBudgetKind,
   now = Date.now(),
+  transaction?: unknown,
 ): Promise<AgentBudgetResult> {
   // Expiry is evaluated from the same clock as the charge, so a grant that
   // lapsed between authentication and this line cannot be used.
   const config = agentBudget(agent, kind, now);
-  const result = await consumeRateLimit(agentBudgetKey(agent.id, kind), config, now);
+  const result = await consumeRateLimit(agentBudgetKey(agent.id, kind), config, now, transaction);
   const quota: AgentBudgetQuota = {
     kind,
     limit: config.max,

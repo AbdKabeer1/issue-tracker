@@ -1,4 +1,5 @@
 import Link from "next/link";
+import "./create-issue.css";
 import type { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
@@ -77,8 +78,8 @@ export default async function NewBugPage() {
   }, null);
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 pb-10">
-      <div className="space-y-2">
+    <div className="create-issue-page mx-auto w-full space-y-6 pb-10">
+      <div className="create-issue-heading space-y-2">
         <Link
           href="/issues"
           className="inline-flex min-h-8 items-center gap-1.5 text-sm font-semibold text-zk-accent hover:underline"
@@ -94,7 +95,7 @@ export default async function NewBugPage() {
           can triage quickly.
         </p>
       </div>
-      <div className="rounded-[20px] border border-zk-border bg-zk-surface p-5 sm:p-6">
+      <div className="create-issue-card border border-zk-border bg-zk-surface">
         <CreateIssueForm
           users={users}
           assigneeUsers={assigneeUsers}

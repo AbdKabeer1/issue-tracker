@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { agentIssueRequest, issueJson } from "@/lib/agent-api/issues";
 import { linkPullRequest } from "@/lib/github/link-pr";
+import { parseIssueRef } from "@/lib/issue-ref";
 import {
   clientForInstallation,
   mergeAcceptedFix,
@@ -42,8 +43,13 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       return NextResponse.json({ error: "That is not a GitHub pull request URL." }, { status: 400 });
     }
 
+    const issueRef = parseIssueRef(id);
     const bug = await prisma.bug.findFirst({
-      where: { id, tenantId: agent.tenantId, isDeleted: false },
+      where: {
+        ...(issueRef.kind === "number" ? { number: issueRef.number } : { id: issueRef.id }),
+        tenantId: agent.tenantId,
+        isDeleted: false,
+      },
       select: {
         id: true,
         projectId: true,
@@ -117,7 +123,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       actorUserId: agent.ownerId,
     });
 
-    const result = await mergeAcceptedFix(agent, id);
+    const result = await mergeAcceptedFix(agent, bug.id);
     if (result.status === 200) {
       return NextResponse.json({ linked: true, merged: true, mergeCommitSha: result.mergeCommitSha });
     }

@@ -1,3 +1,4 @@
+import "../settings-design.css";
 import Link from "next/link";
 import { DisplayNameForm } from "@/components/display-name-form";
 import { requireUser } from "@/lib/auth-helpers";
@@ -8,7 +9,7 @@ export default async function ProfilePage() {
   const user = await requireUser();
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 pb-10">
+    <div className="profile-page settings-design mx-auto flex w-full flex-col gap-6 pb-10">
       <div className="flex flex-col gap-2.5">
         <Link
           href="/settings?section=account"

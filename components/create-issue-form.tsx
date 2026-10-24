@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CharacterCounter } from "@/components/ui/character-counter";
 import { AttachmentPicker } from "@/components/attachment-picker";
 import { SimilarIssues } from "@/components/similar-issues";
+import { isIssueCreatedRedirect } from "@/lib/issue-created-redirect";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { useFormDraft } from "@/components/use-form-draft";
 import { buildDraftKey } from "@/lib/form-drafts";
@@ -126,7 +127,7 @@ export function CreateIssueForm({
   return (
     <form
       ref={formRef}
-      className="space-y-4"
+      className="create-issue-form space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
         if (pending || isUploading) return;
@@ -162,6 +163,7 @@ export function CreateIssueForm({
               clearDraft();
             }
           } catch (error) {
+            if (isIssueCreatedRedirect(error)) clearDraft();
             unstable_rethrow(error);
             setError(submitFailureMessage(navigator.onLine));
             setCanRetry(true);
@@ -176,10 +178,11 @@ export function CreateIssueForm({
         />
       ) : null}
 
-      <div className="flex border-b border-slate-200">
+      <div className="create-mode-switch flex border-b border-zk-border" role="group" aria-label="Reporting mode">
         <button
           type="button"
           onClick={() => setMode("report")}
+          aria-pressed={mode === "report"}
           className={`border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
             mode === "report"
               ? "border-teal-600 text-teal-700"
@@ -191,6 +194,7 @@ export function CreateIssueForm({
         <button
           type="button"
           onClick={() => setMode("detailed")}
+          aria-pressed={mode === "detailed"}
           className={`border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
             mode === "detailed"
               ? "border-teal-600 text-teal-700"
@@ -212,8 +216,8 @@ export function CreateIssueForm({
 
       <ErrorSummary errors={errs.fieldErrors} labels={FIELD_LABELS} />
 
-      <div className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+      <div className="create-fields space-y-4">
+        <div className="create-title-fields grid gap-4">
           <div className="space-y-1.5">
             <label htmlFor="title" className="text-sm font-medium text-slate-700">
               Title
@@ -290,7 +294,7 @@ export function CreateIssueForm({
             <FieldError formId={errs.formId} field="categoryId" errors={errs.fieldErrors} />
           </div>
         ) : null}
-        <div className="space-y-1.5">
+        <div className="create-description space-y-1.5">
           <label
             id="description-label"
             htmlFor="description"
@@ -353,7 +357,7 @@ export function CreateIssueForm({
           </div>
         ) : null}
 
-        <fieldset className="space-y-1.5">
+        <fieldset className="create-attachments space-y-1.5">
           <legend className="text-sm font-medium text-slate-700">
             Screenshots and files
           </legend>
@@ -412,7 +416,7 @@ export function CreateIssueForm({
           </div>
         </div>
       ) : currentUserId ? (
-        <div className="flex items-center gap-2 pt-1">
+        <div className="create-self-assignment flex items-center gap-2 pt-1">
           <input
             type="checkbox"
             id="assignToMe"
@@ -443,7 +447,7 @@ export function CreateIssueForm({
           ) : null}
         </div>
       ) : null}
-      <Button type="submit" disabled={pending || isUploading}>
+      <Button className="create-submit" type="submit" disabled={pending || isUploading}>
         {pending ? "Creating…" : isUploading ? "Uploading…" : "Create issue"}
       </Button>
     </form>

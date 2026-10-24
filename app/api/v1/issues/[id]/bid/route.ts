@@ -36,7 +36,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       return NextResponse.json({
         bid_id: bid.id,
         status: "open",
-        issue_id: id,
+        issue_id: bid.bugId,
         beneficiary_user_id: bid.beneficiaryUserId,
       }, { status: 201 });
     } catch (error) {

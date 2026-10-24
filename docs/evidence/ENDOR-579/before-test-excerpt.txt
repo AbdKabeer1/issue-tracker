@@ -1,0 +1,10 @@
+ FAIL  validation-before.test.ts > recorded confirmation independence (#579) > preserves reviews and clearance credited to a later claim's beneficiaryUserId
+ FAIL  validation-before.test.ts > recorded confirmation independence (#579) > preserves reviews and clearance credited to a later claim's dispatcherUserId
+ FAIL  validation-before.test.ts > submitValidation: who may validate (#433) > rejects a raced real accept when the owner or credited person becomes the solver (#579)
+ FAIL  validation-before.test.ts > submitValidation: who may validate (#433) > rejects a raced triage clearance when the owner or credited person becomes the solver (#579)
+ FAIL  validation-before.test.ts > confirmation: the two-reviewer rule (#433) > keeps a reviewer's accept after their owner's agent later claims the issue (#579)
+ FAIL  validation-before.test.ts > confirmation: the triage clearance (triager) > keeps a triager's clear after the clearing owner wins the bid (#579)
+ Test Files  1 failed (1)
+      Tests  6 failed | 42 skipped (48)
+   Start at  23:33:42
+   Duration  6.00s (transform 2.32s, setup 0ms, collect 4.30s, tests 160ms, environment 1ms, prepare 395ms)

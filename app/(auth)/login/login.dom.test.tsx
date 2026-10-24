@@ -85,18 +85,19 @@ describe("LoginPage OAuth error a11y (#653)", () => {
     expect(alert).toHaveTextContent("Authentication failed. Please try again.");
   });
 
-  it("includes diagnostic reason when provided", async () => {
+  it("never renders ?reason= text, so a crafted link cannot put words in the alert (#118, #558)", async () => {
     const element = await LoginPage({
       searchParams: Promise.resolve({
         error: "OAuthCallbackError",
-        reason: "redirect_uri_mismatch",
-      }),
+        reason: "Your account is locked. Call +1 555 0100 to unlock it.",
+      } as { error: string }),
     });
     render(element);
 
     const alert = screen.getByRole("alert");
-    expect(alert).toBeInTheDocument();
-    expect(alert).toHaveTextContent("Diagnostic: redirect_uri_mismatch");
+    expect(alert).toHaveTextContent("Unable to complete Google sign-in. Please try again.");
+    expect(alert.textContent).not.toContain("locked");
+    expect(alert.textContent).not.toContain("Diagnostic");
   });
 
   it("renders no alert when there is no error", async () => {

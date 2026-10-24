@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), unstable_cache: vi.fn((fn) => fn) }));
 vi.mock("@/lib/auth-helpers", () => ({ requireUser: vi.fn() }));
 vi.mock("@/lib/tenant-context", () => ({
   currentTenantIdFor: vi.fn(),
