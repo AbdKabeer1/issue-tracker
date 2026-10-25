@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+
+const emptySubscribe = () => () => {};
 
 /** "45s", "12m", "2h 14m", "3d 4h". */
 export function formatElapsed(ms: number): string {
@@ -21,12 +23,16 @@ export function formatElapsed(ms: number): string {
 export function ElapsedTime({ since }: { since: Date | string }) {
   const start = typeof since === "string" ? new Date(since) : since;
   const [now, setNow] = useState(() => Date.now());
+  // The tooltip is only filled in the browser, so it shows the viewer's local
+  // time, never the server's time zone (same approach as LocalTime).
+  const isClient = useSyncExternalStore(emptySubscribe, () => true, () => false);
+  const title = isClient ? `Working since ${start.toLocaleString()}` : undefined;
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => window.clearInterval(id);
   }, []);
   return (
-    <time dateTime={start.toISOString()} title={`Working since ${start.toLocaleString()}`} suppressHydrationWarning>
+    <time dateTime={start.toISOString()} title={title} suppressHydrationWarning>
       {formatElapsed(now - start.getTime())}
     </time>
   );

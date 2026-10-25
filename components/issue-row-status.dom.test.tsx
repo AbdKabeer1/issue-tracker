@@ -3,7 +3,8 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { IssueRowStatus } from "./issue-row-status";
-import { formatElapsed } from "./elapsed-time";
+import { ElapsedTime, formatElapsed } from "./elapsed-time";
+import { renderToString } from "react-dom/server";
 
 afterEach(() => cleanup());
 
@@ -61,5 +62,18 @@ describe("formatElapsed", () => {
     [-5_000, "0s"],
   ])("%d ms → %s", (ms, expected) => {
     expect(formatElapsed(ms)).toBe(expected);
+  });
+});
+
+describe("ElapsedTime tooltip", () => {
+  const since = new Date("2026-10-20T10:00:00Z");
+
+  it("leaves the tooltip out of the server render, so no server time zone leaks in", () => {
+    expect(renderToString(<ElapsedTime since={since} />)).not.toContain("title=");
+  });
+
+  it("fills it in the browser with the viewer's local time", () => {
+    const { container } = render(<ElapsedTime since={since} />);
+    expect(container.querySelector("time")).toHaveAttribute("title", `Working since ${since.toLocaleString()}`);
   });
 });

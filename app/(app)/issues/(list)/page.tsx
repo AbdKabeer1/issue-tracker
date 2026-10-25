@@ -888,8 +888,8 @@ export default async function BugsPage({
                               ) : null}
                               {bug.category ? <span>{bug.category.name}</span> : null}
                               <RowAge date={currentSort === "newest" ? bug.createdAt : bug.updatedAt} sort={currentSort === "newest" ? "newest" : "updated"} />
-                              {/* Below lg the status column is hidden, so the status rides at the end of this line. */}
-                              <span className="inline-flex min-w-0 lg:sr-only">{rowStatus}</span>
+                              {/* Below md (768px) the status column is hidden, so the status rides at the end of this line. */}
+                              <span className="inline-flex min-w-0 md:sr-only">{rowStatus}</span>
                             </span>
                             {snippets.has(bug.id) ? <SearchSnippet snippet={snippets.get(bug.id)!} /> : null}
                           </span>
