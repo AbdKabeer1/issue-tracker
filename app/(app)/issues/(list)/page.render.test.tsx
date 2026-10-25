@@ -273,6 +273,8 @@ describe("issue list layout", () => {
     expect(inbox).toMatch(/<a [^>]*href="\/issues"/);
     expect(inbox).toContain('aria-current="page"');
     expect(inbox).toMatch(/Inbox<span[^>]*>2<\/span>/);
+    // Still red while selected, since issues are waiting.
+    expect(inbox).toMatch(/<span class="[^"]*bg-zk-bad-bg[^"]*">2<\/span>/);
     expect(findMany.mock.calls.at(-1)![0].where.agentQuestions).toEqual({ some: { answeredAt: null } });
   });
 
@@ -385,6 +387,14 @@ describe("issue list layout", () => {
     html = await renderList({ status: "duplicate" });
     expect(findMany.mock.calls.at(-1)![0].where.duplicateOfId).toEqual({ not: null });
     expect(html).toContain('aria-label="Filter all issues"');
+  });
+
+  it("keeps the hidden duplicates out of tab counts, even on the Duplicates filter", async () => {
+    await renderList({ status: "duplicate" });
+    const statusCount = groupBy.mock.calls.find(([args]) => args?.by?.[0] === "status");
+    expect(statusCount?.[0]?.where?.duplicateOfId).toBeNull();
+    const duplicateCount = count.mock.calls.find(([args]) => (args?.where?.duplicateOfId as { not?: unknown } | undefined)?.not === null);
+    expect(duplicateCount).toBeTruthy();
   });
 
   it("hides the Filter by row on Open, In progress and Done", async () => {

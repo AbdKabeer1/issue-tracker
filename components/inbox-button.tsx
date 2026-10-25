@@ -3,7 +3,8 @@ import Link from "next/link";
 /**
  * Inbox, at the left of the Issues tab row. It works like a status tab:
  * selecting it lists the escalated issues (an agent question nobody has
- * answered yet) below, and it carries their count.
+ * answered yet) below, and it carries their count: red whenever any are
+ * waiting, selected or not.
  */
 export function InboxButton({ href, active, count }: { href: string; active: boolean; count: number }) {
   return (
@@ -23,7 +24,7 @@ export function InboxButton({ href, active, count }: { href: string; active: boo
       Inbox
       <span
         className={`min-w-5 rounded-full px-1.5 text-center font-mono text-[11px] font-normal tabular-nums ${
-          active ? "bg-white/25 text-white" : count > 0 ? "bg-zk-bad-bg text-zk-bad-fg" : "text-zk-muted"
+          count > 0 ? "bg-zk-bad-bg text-zk-bad-fg" : active ? "bg-white/25 text-white" : "text-zk-muted"
         }`}
       >
         {count}

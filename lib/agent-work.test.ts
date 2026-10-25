@@ -23,6 +23,10 @@ describe("agentWorkDone", () => {
     expect(validations).toHaveBeenCalledWith(expect.objectContaining({
       where: { agentId: { in: ["a1", "a2", "a3"] }, kind: "real", createdAt: { gte: new Date("2026-09-25T00:00:00Z") } },
     }));
+    const since = new Date("2026-09-25T00:00:00Z");
+    expect(verdicts).toHaveBeenCalledWith(expect.objectContaining({
+      where: { agentId: { in: ["a1", "a2", "a3"] }, OR: [{ createdAt: { gte: since } }, { changedAt: { gte: since } }] },
+    }));
   });
 
   it("reads nothing for no agents", async () => {

@@ -18,7 +18,8 @@ export async function agentWorkDone(agentIds: string[], now = new Date()): Promi
     }),
     prisma.testVerdict.groupBy({
       by: ["agentId"],
-      where: { agentId: { in: agentIds }, createdAt: { gte: since } },
+      // A verdict changed recently counts as recent work, however old the row (#529).
+      where: { agentId: { in: agentIds }, OR: [{ createdAt: { gte: since } }, { changedAt: { gte: since } }] },
       _count: { _all: true },
     }),
   ]);

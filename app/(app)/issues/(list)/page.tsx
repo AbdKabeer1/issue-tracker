@@ -652,8 +652,11 @@ export default async function BugsPage({
     validations: _rejected,
     duplicateOfId: _duplicate,
     redesigns: _design,
-    ...statusTabWhere
+    ...tabScope
   } = where;
+  // Put the default duplicate scope back: the Duplicates filter's override is
+  // dropped, but tabs and counts still leave out the duplicates the list hides.
+  const statusTabWhere: Prisma.BugWhereInput = { ...tabScope, ...duplicatesWhere(showDuplicates) };
   void _design;
   void _selectedStatus;
   void _stageIds;
