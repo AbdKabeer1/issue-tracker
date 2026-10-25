@@ -254,14 +254,27 @@ describe("issue list layout", () => {
     expect(nav).toContain('href="/issues?status=resolved&amp;platform=cat-web"');
   });
 
-  it("adds an Escalated tab after Closed that lists issues with an unanswered agent question", async () => {
+  it("puts Inbox at the left of the tab row: it lists the escalated issues, like a tab, with the tabs on the right", async () => {
     count.mockResolvedValue(2 as never);
     const html = await renderList({ status: "escalated" });
-    const status = html.match(/<nav aria-label="Issue status"[\s\S]*?<\/nav>/)?.[0] ?? "";
+    const row = html.match(/<div class="issues-tabs-row[\s\S]*?<\/nav>/)?.[0] ?? "";
+    const status = row.slice(row.indexOf('<nav aria-label="Issue status"'));
     const labels = [...status.matchAll(/<\/span>([A-Za-z ]+)<span class="issues-status-count">/g)].map((m) => m[1]);
-    expect(labels).toEqual(["All issues", "Open", "In progress", "Resolved", "Closed", "Escalated"]);
-    expect(status).toMatch(/aria-current="page" href="\/issues\?status=escalated"/);
+    expect(labels).toEqual(["All issues", "Open", "In progress", "Done", "Closed"]);
+    expect(row).toMatch(/class="issues-status-nav ml-auto/);
+    const inbox = row.slice(0, row.indexOf('<nav aria-label="Issue status"'));
+    expect(inbox).toMatch(/<a [^>]*href="\/issues\?status=escalated"/);
+    expect(inbox).toContain('aria-current="page"');
+    expect(inbox).toMatch(/Inbox<span[^>]*>2<\/span>/);
     expect(findMany.mock.calls.at(-1)![0].where.agentQuestions).toEqual({ some: { answeredAt: null } });
+  });
+
+  it("leaves Inbox unselected on the other tabs", async () => {
+    const html = await renderList();
+    const row = html.match(/<div class="issues-tabs-row[\s\S]*?<\/nav>/)?.[0] ?? "";
+    const inbox = row.slice(0, row.indexOf('<nav aria-label="Issue status"'));
+    expect(inbox).toContain(">Inbox<");
+    expect(inbox).not.toContain('aria-current="page"');
   });
 
   it("shows no tabs when the project has no platforms to choose between (#1055)", async () => {

@@ -8,6 +8,7 @@ import { getIssueTypes, getPlatforms } from "@/lib/lookups";
 import { activeBulkOptions, loadBulkAssignees } from "@/lib/admin-list-lookups";
 import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
+import { InboxButton } from "@/components/inbox-button";
 import type { AppRole } from "@/lib/roles";
 import { IssueFilters } from "@/components/issue-filters";
 import {
@@ -695,15 +696,20 @@ export default async function BugsPage({
       </div>
 
       <div className="space-y-4">
-        <div className="issues-tabs-row flex flex-wrap items-center gap-2.5">
+        {/* Inbox on the left (the escalated issues, formerly the Escalated tab);
+            the status tabs sit at the right of the same row. */}
+        <div className="issues-tabs-row flex items-center gap-2.5">
           {!isDeletedView ? (
-            <nav aria-label="Issue status" className="issues-status-nav min-w-0">
+            <InboxButton href={statusHref(ESCALATED_STATUS)} active={statusParam === ESCALATED_STATUS} count={escalatedCount} />
+          ) : null}
+          {!isDeletedView ? (
+            <nav aria-label="Issue status" className="issues-status-nav ml-auto min-w-0">
               <ul>
-                {[{ value: null, label: "All issues" }, { value: "open", label: "Open" }, { value: "in_progress", label: "In progress" }, { value: "resolved", label: "Resolved" }, { value: "closed", label: "Closed" }, { value: ESCALATED_STATUS, label: "Escalated" }].map(({ value, label }) => (
+                {[{ value: null, label: "All issues" }, { value: "open", label: "Open" }, { value: "in_progress", label: "In progress" }, { value: "resolved", label: "Done" }, { value: "closed", label: "Closed" }].map(({ value, label }) => (
                   <li key={value ?? "all"}>
                     <Link href={statusHref(value)} aria-current={(value === (statusParam ?? null)) ? "page" : undefined}>
                       <span className={`issues-status-dot issues-status-${value ?? "all"}`} aria-hidden="true" />
-                      {label}<span className="issues-status-count">{value === ESCALATED_STATUS ? escalatedCount : value ? statusCounts.find((row) => row.status === value)?._count._all ?? 0 : statusCounts.filter((row) => showResolved || row.status === "open" || row.status === "in_progress").reduce((sum, row) => sum + row._count._all, 0)}</span>
+                      {label}<span className="issues-status-count">{value ? statusCounts.find((row) => row.status === value)?._count._all ?? 0 : statusCounts.filter((row) => showResolved || row.status === "open" || row.status === "in_progress").reduce((sum, row) => sum + row._count._all, 0)}</span>
                     </Link>
                   </li>
                 ))}
