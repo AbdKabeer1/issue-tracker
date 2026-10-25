@@ -8,6 +8,10 @@ import { getIssueTypes, getPlatforms } from "@/lib/lookups";
 import { activeBulkOptions, loadBulkAssignees } from "@/lib/admin-list-lookups";
 import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
+import { InboxButton } from "@/components/inbox-button";
+import { InboxAgents } from "@/components/inbox-agents";
+import { loadOwnAgents, type DashboardAgent } from "@/lib/dashboard-overview";
+import { agentWorkDone, describeWorkDone, type AgentWorkDone } from "@/lib/agent-work";
 import type { AppRole } from "@/lib/roles";
 import { IssueFilters } from "@/components/issue-filters";
 import { RowAge, RowAssignee } from "@/components/issue-row-meta";
@@ -85,9 +89,40 @@ import { PROJECT_ALL_PARAM, showsAllProjects } from "@/lib/issue-list-filters";
 /* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Issues" };
 
-/** `?status=escalated`: issues waiting on an answer to an agent's question. */
+/** `?status=all`: every issue. With no `?status=` the page opens on the Inbox. */
+const ALL_STATUS = "all";
+/** `?status=escalated`: the Inbox; kept so older links still open it. */
 const ESCALATED_STATUS = "escalated";
 const ESCALATED_WHERE = { some: { answeredAt: null } } satisfies Prisma.AgentQuestionListRelationFilter;
+
+/**
+ * The Inbox's three lists, picked with `?inbox=` on the escalated view:
+ * agent questions waiting on someone (the default), redesign proposals
+ * waiting on a decision, and new ideas (reported, not yet confirmed).
+ */
+const INBOX_PARAM = "inbox";
+type InboxView = "input" | "design" | "ideas";
+const INBOX_TABS: { view: InboxView; label: string }[] = [
+  { view: "input", label: "Need your input" },
+  { view: "design", label: "Design feedback needed" },
+  { view: "ideas", label: "New ideas" },
+];
+const DESIGN_WHERE = { some: { status: "proposed" } } satisfies Prisma.RedesignProposalListRelationFilter;
+const AGENT_ORDER = { waiting: 0, working: 1, idle: 2, offline: 3 } as const;
+
+/** `?status=rejected`: a reviewer agent found the issue isn't real (#1122). */
+const REJECTED_STATUS = "rejected";
+const REJECTED_WHERE = { some: { kind: "real", verdict: "reject" } } satisfies Prisma.IssueValidationListRelationFilter;
+/** `?status=duplicate`: marked as a duplicate of another issue. */
+const DUPLICATE_STATUS = "duplicate";
+
+/** The filters under the All tab. Open, In progress and Done have tabs of their own. */
+const ALL_FILTERS = [
+  { value: ALL_STATUS, label: "All" },
+  { value: "closed", label: "Closed" },
+  { value: REJECTED_STATUS, label: "Rejected" },
+  { value: DUPLICATE_STATUS, label: "Duplicates" },
+] as const;
 
 /** New issue as a 32px + button; the name is kept for screen readers and the tooltip. */
 function NewIssueButton({ className = "" }: { className?: string }) {
@@ -201,7 +236,11 @@ export default async function BugsPage({
   const canDelete = canDeleteTicket(effectiveRole, membershipRole);
   const params = await searchParams;
   const qParam = toSingleQueryParam(params.q);
-  const statusParam = toSingleQueryParam(params.status);
+  // No ?status= opens the Inbox (the escalated view); ?status=all is the All tab.
+  // A search with no tab picked looks across All, so any issue can be found.
+  const statusParam =
+    toSingleQueryParam(params.status) ??
+    (toSingleQueryParam(params.deleted) === "true" ? undefined : toSingleQueryParam(params.q)?.trim() ? ALL_STATUS : ESCALATED_STATUS);
   const severityParam = toSingleQueryParam(params.severity);
   const sortParam = toSingleQueryParam(params.sort);
   const pageParam = toSingleQueryParam(params.page);
@@ -273,10 +312,11 @@ export default async function BugsPage({
   const tagsParam = serializeTags(selectedTags.map((t) => t.name));
 
   const statusWhere = statusFilterWhere(statusParam);
-  // #1058: with no status filter, only live work shows unless resolved
-  // issues were asked for. The deleted view keeps showing everything.
+  // With no status filter the All tab shows every issue, finished ones too;
+  // Open, In progress and Done are tabs of their own. Inbox (escalated) keeps
+  // to live work unless resolved issues were asked for (#1058).
   const showResolved = parseShowResolved(params[SHOW_RESOLVED_PARAM]);
-  const hidesResolved = statusWhere === undefined && !isDeletedView && !showResolved;
+  const hidesResolved = statusParam === ESCALATED_STATUS && !isDeletedView && !showResolved;
   if (statusWhere !== undefined) {
     where.status = statusWhere;
   } else if (hidesResolved) {
@@ -285,8 +325,22 @@ export default async function BugsPage({
   // The Escalated tab: live issues with an agent question nobody has
   // answered, the same rule as the Escalations page.
   const isEscalatedView = statusParam === ESCALATED_STATUS && !isDeletedView;
-  if (isEscalatedView) {
+  const inboxParam = toSingleQueryParam(params[INBOX_PARAM]);
+  const inboxView: InboxView | null = !isEscalatedView
+    ? null
+    : inboxParam === "design" || inboxParam === "ideas"
+      ? inboxParam
+      : "input";
+  if (inboxView === "input") {
     where.agentQuestions = ESCALATED_WHERE;
+  } else if (inboxView === "design") {
+    where.redesigns = DESIGN_WHERE;
+  }
+  if (statusParam === REJECTED_STATUS && !isDeletedView) {
+    where.validations = REJECTED_WHERE;
+  }
+  if (statusParam === DUPLICATE_STATUS && !isDeletedView) {
+    where.duplicateOfId = { not: null };
   }
   if (isSeverity(severityParam)) {
     where.severity = severityParam;
@@ -336,7 +390,12 @@ export default async function BugsPage({
     }
   }
 
-  const stageView = isDeletedView ? null : parseIssueStageView(toSingleQueryParam(params.stage));
+  // New ideas in the Inbox are the issues still at the reported stage.
+  const stageView: IssueStage | null = isDeletedView
+    ? null
+    : inboxView === "ideas"
+      ? "reported"
+      : parseIssueStageView(toSingleQueryParam(params.stage));
   let stages = new Map<string, IssueStage>();
   if (!isDeletedView) {
     try {
@@ -602,23 +661,74 @@ export default async function BugsPage({
   const readyCount = [...stages.values()].filter((stage) => stage === "ready").length;
 
   // Count the same tenant/project and search scope without the selected status.
-  const { status: _selectedStatus, id: _stageIds, agentQuestions: _escalated, ...statusTabWhere } = where;
+  const {
+    status: _selectedStatus,
+    id: _stageIds,
+    agentQuestions: _escalated,
+    validations: _rejected,
+    duplicateOfId: _duplicate,
+    redesigns: _design,
+    ...tabScope
+  } = where;
+  // Put the default duplicate scope back: the Duplicates filter's override is
+  // dropped, but tabs and counts still leave out the duplicates the list hides.
+  const statusTabWhere: Prisma.BugWhereInput = { ...tabScope, ...duplicatesWhere(showDuplicates) };
+  void _design;
   void _selectedStatus;
   void _stageIds;
   void _escalated;
-  const [statusCounts, escalatedCount] = isDeletedView || !tenantId ? [[], 0] : await Promise.all([
+  void _rejected;
+  void _duplicate;
+  const [statusCounts, escalatedCount, rejectedCount, duplicateCount] = isDeletedView || !tenantId ? [[], 0, 0, 0] : await Promise.all([
     loadOrEmpty("status tabs", () => prisma.bug.groupBy({
       by: ["status"], where: statusTabWhere, _count: { _all: true },
     }), []),
     loadOrEmpty("escalated tab", () => prisma.bug.count({
       where: { ...statusTabWhere, status: defaultStatusWhere(false), agentQuestions: ESCALATED_WHERE },
     }), 0),
+    loadOrEmpty("rejected filter", () => prisma.bug.count({
+      where: { ...statusTabWhere, validations: REJECTED_WHERE },
+    }), 0),
+    loadOrEmpty("duplicate filter", () => prisma.bug.count({
+      where: { ...statusTabWhere, duplicateOfId: { not: null } },
+    }), 0),
   ]);
+  const countForStatus = (status: string) => statusCounts.find((row) => row.status === status)?._count._all ?? 0;
+  const allCount = statusCounts.reduce((sum, row) => sum + row._count._all, 0);
+  const allFilterCount = (value: string) =>
+    value === ALL_STATUS ? allCount : value === REJECTED_STATUS ? rejectedCount : value === DUPLICATE_STATUS ? duplicateCount : countForStatus(value);
+  // The Inbox's other two lists, counted only while it is open.
+  const liveTabWhere = { ...statusTabWhere, status: defaultStatusWhere(false) };
+  const [designCount, ideasCount] = inboxView && tenantId ? await Promise.all([
+    loadOrEmpty("design inbox", () => prisma.bug.count({ where: { ...liveTabWhere, redesigns: DESIGN_WHERE } }), 0),
+    loadOrEmpty(
+      "ideas inbox",
+      async () => [...(await openIssueStages(prisma, liveTabWhere)).values()].filter((stage) => stage === "reported").length,
+      0,
+    ),
+  ]) : [0, 0];
+  const inboxCounts: Record<InboxView, number> = { input: escalatedCount, design: designCount, ideas: ideasCount };
+  // Your agents and what they've done, for the right half of the Inbox's top box.
+  let inboxAgents: DashboardAgent[] = [];
+  let inboxWork = new Map<string, AgentWorkDone>();
+  if (inboxView && userId && tenantId) {
+    inboxAgents = await loadOrEmpty("inbox agents", () => loadOwnAgents({ userId, tenantId }), [] as DashboardAgent[]);
+    inboxWork = await loadOrEmpty("inbox agent work", () => agentWorkDone(inboxAgents.map((agent) => agent.id)), new Map<string, AgentWorkDone>());
+  }
+  const inboxHref = (view: InboxView) => {
+    // The Inbox is the page with no ?status=.
+    const next = new URLSearchParams(statusHref(null).split("?")[1] ?? "");
+    if (view !== "input") next.set(INBOX_PARAM, view);
+    return `/issues${next.size ? `?${next}` : ""}`;
+  };
+  // The All tab stays selected on its own filters (Closed, Rejected, Duplicates).
+  const allSelected = ALL_FILTERS.some((filter) => filter.value === statusParam);
   const statusHref = (status: string | null) => {
     const next = new URLSearchParams(selectionKey);
     next.delete("page");
     next.delete("stage");
     next.delete(SHOW_RESOLVED_PARAM);
+    next.delete(INBOX_PARAM);
     if (status) next.set("status", status);
     else next.delete("status");
     return `/issues${next.size ? `?${next}` : ""}`;
@@ -708,15 +818,20 @@ export default async function BugsPage({
       </div>
 
       <div className="space-y-4">
-        <div className="issues-tabs-row flex flex-wrap items-center gap-2.5">
+        {/* Inbox on the left (the escalated issues, formerly the Escalated tab);
+            the status tabs sit at the right of the same row. */}
+        <div className="issues-tabs-row flex items-center gap-2.5">
           {!isDeletedView ? (
-            <nav aria-label="Issue status" className="issues-status-nav min-w-0">
+            <InboxButton href={statusHref(null)} active={isEscalatedView} count={escalatedCount} />
+          ) : null}
+          {!isDeletedView ? (
+            <nav aria-label="Issue status" className="issues-status-nav ml-auto min-w-0">
               <ul>
-                {[{ value: null, label: "All issues" }, { value: "open", label: "Open" }, { value: "in_progress", label: "In progress" }, { value: "resolved", label: "Resolved" }, { value: "closed", label: "Closed" }, { value: ESCALATED_STATUS, label: "Escalated" }].map(({ value, label }) => (
-                  <li key={value ?? "all"}>
-                    <Link href={statusHref(value)} aria-current={(value === (statusParam ?? null)) ? "page" : undefined}>
-                      <span className={`issues-status-dot issues-status-${value ?? "all"}`} aria-hidden="true" />
-                      {label}<span className="issues-status-count">{value === ESCALATED_STATUS ? escalatedCount : value ? statusCounts.find((row) => row.status === value)?._count._all ?? 0 : statusCounts.filter((row) => showResolved || row.status === "open" || row.status === "in_progress").reduce((sum, row) => sum + row._count._all, 0)}</span>
+                {[{ value: "open", label: "Open" }, { value: "in_progress", label: "In progress" }, { value: "resolved", label: "Done" }, { value: ALL_STATUS, label: "All" }].map(({ value, label }) => (
+                  <li key={value}>
+                    <Link href={statusHref(value)} aria-current={(value === ALL_STATUS ? allSelected : value === statusParam) ? "page" : undefined}>
+                      <span className={`issues-status-dot issues-status-${value}`} aria-hidden="true" />
+                      {label}<span className="issues-status-count">{value === ALL_STATUS ? allCount : countForStatus(value)}</span>
                     </Link>
                   </li>
                 ))}
@@ -724,6 +839,92 @@ export default async function BugsPage({
             </nav>
           ) : null}
         </div>
+
+        {inboxView ? (
+          <>
+            {/* How the Inbox works, above its three lists. */}
+            {/* One box in two halves: how the Inbox works, and your agents with what they've done. */}
+            <section aria-label="How the Inbox works" className="grid overflow-hidden rounded-[14px] border border-zk-border bg-zk-surface md:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="flex items-start gap-3 p-4">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zk-tint text-zk-accent" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+                    <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z" />
+                  </svg>
+                </span>
+                <div className="min-w-0">
+                  <h2 className="text-sm font-bold text-zk-text">How the Inbox works</h2>
+                  <p className="mt-0.5 text-[13px] leading-relaxed text-zk-text2">
+                    Agents work through issues on their own and stop here when they need a person: to answer a question, give feedback on a design, or weigh in on a new idea.
+                  </p>
+                </div>
+              </div>
+              <div aria-label="Your agents" role="group" className="flex flex-col gap-2 border-zk-divider p-3 max-md:border-t md:border-l">
+                <h2 className="text-xs font-bold uppercase tracking-[0.06em] text-zk-muted">Your agents</h2>
+                <InboxAgents
+                  // Agents waiting on you, then working ones, come first.
+                  agents={[...inboxAgents].sort((a, b) => AGENT_ORDER[a.status] - AGENT_ORDER[b.status]).map((agent) => {
+                    const done = describeWorkDone(inboxWork.get(agent.id));
+                    return {
+                      id: agent.id,
+                      name: agent.name,
+                      status: agent.status,
+                      activity: agent.activity,
+                      done: done ? `Last 30 days: ${done}` : "Nothing done in the last 30 days",
+                    };
+                  })}
+                />
+              </div>
+            </section>
+            <nav aria-label="Inbox lists" className="issues-inbox-tabs overflow-x-auto">
+              <ul className="flex w-max gap-1 border-b border-zk-divider">
+                {INBOX_TABS.map(({ view, label }) => {
+                  const on = inboxView === view;
+                  return (
+                    <li key={view}>
+                      <Link
+                        href={inboxHref(view)}
+                        aria-current={on ? "page" : undefined}
+                        className={`-mb-px inline-flex h-10 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zk-accent ${
+                          on ? "border-electric-blue-strong font-semibold text-zk-text" : "border-transparent font-medium text-zk-text2 hover:text-zk-text"
+                        }`}
+                      >
+                        {label}
+                        <span className={`rounded-full px-1.5 font-mono text-[11px] tabular-nums ${on ? "bg-zk-tint text-zk-accent" : "bg-zk-chip text-zk-muted"}`}>
+                          {inboxCounts[view]}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </nav>
+          </>
+        ) : null}
+
+        {!isDeletedView && allSelected ? (
+          <nav aria-label="Filter all issues" className="issues-all-filters flex flex-wrap items-center justify-end gap-1.5">
+            <span className="mr-1 text-[13px] font-medium text-zk-muted">Filter by:</span>
+            {ALL_FILTERS.map(({ value, label }) => {
+              const on = statusParam === value;
+              return (
+                <Link
+                  key={value}
+                  href={statusHref(value)}
+                  aria-current={on ? "page" : undefined}
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zk-accent ${
+                    on
+                      ? "border-electric-blue-strong bg-electric-blue-strong text-white"
+                      : "border-zk-border bg-zk-surface text-zk-text2 hover:text-zk-text"
+                  }`}
+                >
+                  {label}
+                  <span className={`font-mono text-[11px] tabular-nums ${on ? "text-white/80" : "text-zk-muted"}`}>{allFilterCount(value)}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        ) : null}
 
         {milestoneSummary ? (
           <section aria-label={`Milestone ${milestoneSummary.title}`} className="rounded-[20px] border border-zk-border bg-zk-surface p-5">
@@ -744,14 +945,22 @@ export default async function BugsPage({
         ) : bugs.length === 0 ? (
           <div className="rounded-[20px] border border-zk-border bg-zk-surface px-4 py-12 text-center">
             <p className="font-bold text-zk-text">
-              {isWatchingView && !qParam && !statusParam && !severityParam && !tagsParam && !selectedPlatform && !selectedMilestone
+              {inboxView
+                ? "Nothing here right now."
+                : isWatchingView && !qParam && !statusParam && !severityParam && !tagsParam && !selectedPlatform && !selectedMilestone
                 ? "You're not watching any issues."
                 : emptyPlatform
                   ? "No issues on this platform"
                   : "No issues match these filters."}
             </p>
             <p className="mt-1.5 text-sm text-zk-muted">
-              {isWatchingView
+              {inboxView === "input"
+                ? "No agent is waiting on an answer."
+                : inboxView === "design"
+                  ? "No redesign proposals are waiting for a decision."
+                  : inboxView === "ideas"
+                    ? "Newly reported issues show up here until they're confirmed."
+                    : isWatchingView
                 ? "You watch issues you report, are assigned to or comment on, and any you choose to watch from the issue page."
                 : emptyPlatform
                   ? "Issues tagged for this platform will show up here."
