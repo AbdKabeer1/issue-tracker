@@ -2,6 +2,7 @@
 
 import { useId, useState, type CSSProperties } from "react";
 import { severityLabel } from "@/lib/labels";
+import { avatarTone } from "@/lib/avatar";
 import {
   IssueAgentActivity,
   timeOf,
@@ -28,22 +29,6 @@ function shortSaying(decision: AgentDecision): string {
     case "accepted":
       return "Accepted the fix";
   }
-}
-
-// A fixed palette so each bot keeps the same avatar color everywhere.
-const avatarTones = [
-  "bg-sky-100 text-sky-700",
-  "bg-violet-100 text-violet-700",
-  "bg-amber-100 text-amber-700",
-  "bg-emerald-100 text-emerald-700",
-  "bg-rose-100 text-rose-700",
-  "bg-indigo-100 text-indigo-700",
-];
-
-function avatarTone(name: string): string {
-  let hash = 0;
-  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return avatarTones[hash % avatarTones.length];
 }
 
 function BotAvatar({ decision }: { decision: AgentDecision }) {
@@ -212,7 +197,10 @@ export function AgentDecisionsSummary({
             }`}
             inert={!open}
           >
-            <div className="overflow-hidden">
+            {/* overflow-clip, not overflow-hidden: it clips without being a scroll
+                container, so scrolling to a decision mid-animation can't leave the
+                top of the timeline scrolled out of reach. min-h-0 lets the 0fr row collapse. */}
+            <div className="min-h-0 overflow-clip">
               <div className="px-1 pb-1 pt-3">
                 <IssueAgentActivity decisions={decisions} bare highlightId={highlightId} />
               </div>

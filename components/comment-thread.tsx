@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { LocalTime } from "@/components/local-time";
 import {
   MAX_COMMENT_DEPTH,
@@ -170,7 +170,11 @@ function CommentEditForm({
   );
 }
 
-/** Small pencil button that opens Edit/Delete, showing only what the viewer may do. */
+/**
+ * Small pencil button that opens Edit/Delete, showing only what the viewer may
+ * do. A disclosure, not an ARIA menu: Tab moves through the two buttons, and
+ * Escape closes it and puts focus back on the pencil.
+ */
 function CommentActionsMenu({
   canEdit,
   canDelete,
@@ -186,6 +190,8 @@ function CommentActionsMenu({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -193,7 +199,10 @@ function CommentActionsMenu({
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      // Focus inside the popup would fall to the page once it unmounts.
+      if (rootRef.current?.contains(document.activeElement)) triggerRef.current?.focus();
+      setOpen(false);
     };
     document.addEventListener("pointerdown", onPointer);
     document.addEventListener("keydown", onKey);
@@ -209,10 +218,11 @@ function CommentActionsMenu({
   return (
     <span ref={rootRef} className="relative inline-flex">
       <button
+        ref={triggerRef}
         type="button"
         aria-label="Comment actions"
-        aria-haspopup="menu"
         aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((value) => !value)}
         className="inline-flex h-6 w-6 items-center justify-center rounded-md text-zk-muted hover:bg-zk-chip hover:text-zk-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue-strong"
       >
@@ -222,13 +232,12 @@ function CommentActionsMenu({
       </button>
       {open ? (
         <span
-          role="menu"
+          id={panelId}
           className="absolute right-0 top-7 z-20 min-w-28 overflow-hidden rounded-lg border border-zk-border bg-zk-surface py-1 shadow-lg"
         >
           {canEdit ? (
             <button
               type="button"
-              role="menuitem"
               className={`${itemClass} text-zk-text`}
               onClick={() => {
                 setOpen(false);
@@ -241,7 +250,6 @@ function CommentActionsMenu({
           {canDelete ? (
             <button
               type="button"
-              role="menuitem"
               disabled={deleting}
               className={`${itemClass} text-zk-bad-fg`}
               onClick={() => {
