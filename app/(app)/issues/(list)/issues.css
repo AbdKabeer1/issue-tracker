@@ -99,17 +99,18 @@
 .issues-status-escalated { --issues-status-icon: url('/icons/issues-status-escalated.svg'); color: var(--zk-bad-fg); background: var(--zk-bad-bg); }
 .issues-status-nav a[aria-current] .issues-status-dot { background: white; color: var(--color-electric-blue-strong); }
 .issues-table { border: 1px solid var(--zk-border); border-radius: 10px; overflow: hidden; }
-.issues-table-heading { display: flex; align-items: center; gap: 20px; padding: 12px 18px; background: var(--zk-bg); border-bottom: 1px solid var(--issues-rule); font-size: 13px; line-height: 20px; color: var(--zk-muted); }
-.issues-row { min-height: 88px; gap: 20px; padding: 17px 18px; }
+.issues-table-heading { display: flex; align-items: center; gap: 16px; padding: 9px 18px; background: var(--zk-bg); border-bottom: 1px solid var(--issues-rule); font-size: 13px; line-height: 20px; color: var(--zk-muted); }
+/* Compact rows: about 60px, down from 88px. */
+.issues-row { min-height: 60px; gap: 16px; padding: 9px 18px; }
 .issues-row:hover { background: var(--zk-bg); }
 .issues-row [data-issue-link] { min-width: 0; }
 .issues-row [data-issue-type-icon] { display: none; }
-.issues-row-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; line-height: 22px; }
-.issues-row-meta { margin-top: 2px; line-height: 18px; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+.issues-row-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; line-height: 20px; }
+.issues-row-meta { margin-top: 1px; line-height: 16px; flex-wrap: wrap; gap: 8px; font-size: 12px; }
 .issues-row-meta .font-mono { font-family: inherit; }
-.issues-type { display: flex; width: 44px; flex: 0 0 44px; align-items: center; color: var(--zk-muted); }
+/* Status: Idea, Confirmed (bots), Ready for bids, or who is working and for how long. */
+.issues-status-cell { display: flex; width: 176px; flex: 0 0 176px; align-items: center; font-size: 12px; line-height: 16px; }
 .issues-priority { display: block; width: 62px; flex: 0 0 62px; }
-.issues-stage { display: block; width: 66px; flex: 0 0 66px; }
 .issues-priority-bars { display: inline-flex; height: 16px; align-items: flex-end; gap: 2px; }
 .issues-priority-bars i { width: 3px; background: var(--zk-divider); }
 .issues-priority-bars i:nth-child(1) { height: 6px; }
@@ -118,17 +119,7 @@
 .issues-priority-bars i[data-active="true"] { background: var(--zk-text2); }
 .issues-row[data-severity="high"] .issues-priority-bars i[data-active="true"],
 .issues-row[data-severity="critical"] .issues-priority-bars i[data-active="true"] { background: var(--zk-bad-fg); }
-/* Stage bar, after the redesign: red, orange, amber, lime, green from Triage to Shipped. */
-.issues-stage-track { display: flex; gap: 2px; }
-.issues-stage-track i { width: 9px; height: 4px; border-radius: 2px; background: #ededf0; }
-.issues-stage-track i:nth-child(1)[data-filled="true"] { background: #f87171; }
-.issues-stage-track i:nth-child(2)[data-filled="true"] { background: #fb923c; }
-.issues-stage-track i:nth-child(3)[data-filled="true"] { background: #fbbf24; }
-.issues-stage-track i:nth-child(4)[data-filled="true"] { background: #a3d65c; }
-.issues-stage-track i:nth-child(5)[data-filled="true"] { background: #34c77b; }
-:root[data-theme="dark"] .issues-stage-track i:not([data-filled="true"]) { background: var(--zk-divider); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .issues-stage-track i:not([data-filled="true"]) { background: var(--zk-divider); } }
-.issues-vote button { width: 40px; min-width: 40px; height: 44px; min-height: 44px; padding: 0; gap: 1px; border-radius: 9px; border-width: 1.5px; border-color: var(--zk-warn-bd); background: var(--zk-surface); color: var(--zk-text2); box-shadow: none; font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 12px; font-weight: 500; }
+.issues-vote button { width: 38px; min-width: 38px; height: 40px; min-height: 40px; padding: 0; gap: 1px; border-radius: 9px; border-width: 1.5px; border-color: var(--zk-warn-bd); background: var(--zk-surface); color: var(--zk-text2); box-shadow: none; font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 12px; font-weight: 500; }
 .issues-vote button:hover { background: var(--zk-surface); }
 .issues-vote button span { margin-top: 0; }
 .issues-row[data-severity="low"] .issues-vote button { border-color: var(--zk-ok-fg); }
@@ -163,7 +154,7 @@
   .issues-heading:not([data-tools-open]):not(:has(.issues-search-expanded)) > .issues-filters > div:first-child { display: none; }
   .issues-heading h1 { font-size: 15px; }
   .issues-heading > div:first-child > p { font-size: 13px; }
-  .issues-type, .issues-priority, .issues-stage { display: none; }
+  .issues-status-cell, .issues-priority { display: none; }
   .issues-table { border-radius: 8px; }
   .issues-table-heading { padding: 8px 10px; gap: 10px; font-size: 12px; }
   .issues-row { min-height: 0; gap: 10px; padding: 12px 10px; }
@@ -184,4 +175,16 @@
 @media print {
   .issues-page { padding: 0; }
   .issues-actions, .issues-status-nav { display: none; }
+}
+
+/* Someone is working on it: a hammer that taps, pivoting at the handle. */
+.hammering-head { transform-origin: 5px 19px; animation: issues-hammer 0.9s ease-in-out infinite; }
+@keyframes issues-hammer {
+  0%, 100% { transform: rotate(-28deg); }
+  45% { transform: rotate(-28deg); }
+  60% { transform: rotate(8deg); }
+  70% { transform: rotate(0deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hammering-head { animation: none; transform: none; }
 }

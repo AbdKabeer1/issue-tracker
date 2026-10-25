@@ -10,16 +10,9 @@ import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import type { AppRole } from "@/lib/roles";
 import { IssueFilters } from "@/components/issue-filters";
-import {
-  RowAge,
-  RowAssignee,
-  statusPillClass,
-} from "@/components/issue-row-meta";
+import { RowAge, RowAssignee } from "@/components/issue-row-meta";
 import { VoteButton } from "@/components/vote-button";
-import {
-  severityLabels,
-  statusLabels,
-} from "@/lib/labels";
+import { severityLabels } from "@/lib/labels";
 import { severities } from "@/lib/validations/issue";
 import { boundSearchTerm, escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
 import {
@@ -80,11 +73,12 @@ import {
   platformFilterWhere,
 } from "@/lib/platform-filter";
 import { PlatformMenu, type PlatformTab } from "@/components/platform-tabs";
+import { IssueRowStatus } from "@/components/issue-row-status";
 import { IssuesToolsToggle } from "@/components/issues-tools-toggle";
 import { LoadError } from "@/components/load-error";
 import { logLoadFailure } from "@/lib/load-error";
 import { AREA_PARAM, parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
-import { intakeDetail, issueStageLabels, openIssueStages, parseIssueStageView, type IssueStage } from "@/lib/issue-stage";
+import { openIssueStages, parseIssueStageView, type IssueStage } from "@/lib/issue-stage";
 import { issuePath } from "@/lib/issue-ref";
 import { PROJECT_ALL_PARAM, showsAllProjects } from "@/lib/issue-list-filters";
 
@@ -112,6 +106,10 @@ function NewIssueButton({ className = "" }: { className?: string }) {
 /** A bug with head, antennae, segmented body and three pairs of legs. */
 const BUG_ICON_PATH =
   "m8 2 1.88 1.88M14.12 3.88 16 2M9 7.13v-1a3 3 0 1 1 6 0v1M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6M12 20v-9M6.53 9C4.6 8.8 3 7.1 3 5M6 13H2M3 21c0-2.1 1.7-3.9 3.8-4M20.97 5c0 2.1-1.6 3.8-3.5 4M22 13h-4M17.2 17c2.1.1 3.8 1.9 3.8 4";
+
+/** A sparkle, for feature and improvement types. */
+const FEATURE_ICON_PATH =
+  "m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3ZM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16Z";
 
 type SearchParams = Promise<{
   q?: string | string[];
@@ -459,6 +457,12 @@ export default async function BugsPage({
         type: { select: { name: true } },
         reporter: { select: { name: true, role: true, image: true } },
         assignee: { select: { name: true, role: true, image: true } },
+        // Who is working on it and since when, for the status column.
+        claims: {
+          where: { status: "active", releasedAt: null },
+          select: { claimedAt: true, createdAt: true, beneficiary: { select: { name: true } } },
+          take: 1,
+        },
         category: { select: { id: true, name: true } },
         area: { select: { id: true, name: true } },
         votes: userId
@@ -511,6 +515,15 @@ export default async function BugsPage({
   }
 
   const bugIds = bugs.map((bug) => bug.id);
+
+  // "Confirmed (3)": how many bots (reviewer agents) accepted each issue as real.
+  const botConfirmations = new Map(
+    (bugIds.length === 0 ? [] : await loadOrEmpty("bot confirmations", () => prisma.issueValidation.groupBy({
+      by: ["bugId"],
+      where: { bugId: { in: bugIds }, kind: "real", verdict: "accept" },
+      _count: { _all: true },
+    }), [])).map((row) => [row.bugId, row._count._all] as const),
+  );
 
   // #289: filtering on one milestone shows its progress above the list.
   let milestoneSummary: Awaited<ReturnType<typeof loadMilestoneSummaries>>[number] | null = null;
@@ -776,9 +789,8 @@ export default async function BugsPage({
                   {canDelete && !isDeletedView ? <span className="issues-selection" aria-hidden="true" /> : null}
                   <span className="w-[52px]">Votes</span>
                   <span className="min-w-0 flex-1">Issue</span>
-                  <span className="issues-type">Type</span>
+                  <span className="issues-status-cell">Status</span>
                   <span className="issues-priority">Priority</span>
-                  <span className="issues-stage">Stage</span>
                   <span className="w-10" aria-hidden="true" />
                 </div>
                 <ul>
@@ -792,6 +804,15 @@ export default async function BugsPage({
                     const stage = stages.get(bug.id);
                     const typeName = bug.type?.name ?? "—";
                     const isSecurity = /security/i.test(typeName);
+                    const isFeature = !isSecurity && /feature|improve|enhance|request|idea/i.test(typeName);
+                    const claim = bug.claims?.[0];
+                    // Someone is on it: an active claim, or the issue was moved to in progress.
+                    const work = claim || bug.status === "in_progress"
+                      ? { person: claim?.beneficiary?.name ?? bug.assignee?.name ?? null, since: claim ? (claim.claimedAt ?? claim.createdAt) : null }
+                      : null;
+                    const rowStatus = (
+                      <IssueRowStatus status={bug.status} stage={stage} botConfirmations={botConfirmations.get(bug.id) ?? 0} votes={bug.voteCount} work={work} />
+                    );
 
                     return (
                       <li
@@ -845,6 +866,13 @@ export default async function BugsPage({
                             </span>
                             <span className="issues-row-meta flex items-center gap-2 text-xs text-zk-muted">
                               <span className="font-mono tabular-nums">{formatIssueNumber(bug.number)}</span>
+                              {/* The type, as a small icon: bug, feature or security. */}
+                              <span className="inline-flex items-center" title={typeName}>
+                                <span className="sr-only">{typeName}</span>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  <path d={isSecurity ? "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" : isFeature ? FEATURE_ICON_PATH : BUG_ICON_PATH} />
+                                </svg>
+                              </span>
                               {(bug._count?.comments ?? 0) > 0 ? (
                                 <span className="inline-flex items-center gap-1" title={`Conversation: ${bug._count?.comments}`}>
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
@@ -861,34 +889,15 @@ export default async function BugsPage({
                               {bug.category ? <span>{bug.category.name}</span> : null}
                               <RowAge date={currentSort === "newest" ? bug.createdAt : bug.updatedAt} sort={currentSort === "newest" ? "newest" : "updated"} />
                               {/* Below lg the status column is hidden, so the status rides at the end of this line. */}
-                              <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[11px] font-semibold lg:hidden ${statusPillClass(bug.status)}`}>
-                                <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
-                                {statusLabels[bug.status]}
-                              </span>
+                              <span className="inline-flex min-w-0 lg:sr-only">{rowStatus}</span>
                             </span>
                             {snippets.has(bug.id) ? <SearchSnippet snippet={snippets.get(bug.id)!} /> : null}
                           </span>
                         </Link>
-                        <span className="issues-type" title={typeName}>
-                          <span className="sr-only">{typeName}</span>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={isSecurity ? "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" : BUG_ICON_PATH} /></svg>
-                        </span>
+                        <span className="issues-status-cell" aria-hidden="true">{rowStatus}</span>
                         <span className="issues-priority" title={`${severityLabels[bug.severity]} priority`}>
                           <span className="sr-only">{severityLabels[bug.severity]} priority</span>
                           <span className="issues-priority-bars" aria-hidden="true">{[0, 1, 2].map((bar) => <i key={bar} data-active={bar < ({ low: 1, medium: 2, high: 3, critical: 3 }[bug.severity])} />)}</span>
-                        </span>
-                        <span className="issues-stage" title={`${statusLabels[bug.status]}${stage ? ` · ${issueStageLabels[stage]}` : ""}`}>
-                          <span className="issues-stage-track" aria-hidden="true">{[0, 1, 2, 3, 4].map((step) => <i key={step} data-filled={step < (bug.status === "closed" ? 5 : bug.status === "resolved" ? 4 : bug.status === "in_progress" ? 3 : stage === "ready" ? 2 : 1)} />)}</span>
-                          <span className="sr-only">{statusLabels[bug.status]}</span>
-                          {stage ? (
-                            <span
-                              title={intakeDetail(stage, bug.voteCount)}
-                              className="sr-only"
-                            >
-                              <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
-                              {issueStageLabels[stage]}
-                            </span>
-                          ) : null}
                         </span>
                         <span
                           className={`w-10 shrink-0 items-center justify-end gap-2 ${
