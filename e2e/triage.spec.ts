@@ -19,6 +19,7 @@ test("triage changes stick after saving and reloading", async ({ page, uniq, me 
   await page.reload();
   await expect(page.locator("#status")).toHaveValue("in_progress");
   await expect(page.locator("#severity")).toHaveValue("high");
-  await expect(page.getByText("In progress").first()).toBeVisible();
+  // The status chip lives in the side rail's Status box.
+  await expect(page.getByRole("region", { name: "Status" }).getByText("In progress")).toBeVisible();
   await expect(page.getByText(me).filter({ visible: true }).first()).toBeVisible();
 });
