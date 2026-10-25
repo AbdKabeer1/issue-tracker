@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDate, formatRelativeTime, formatShortAge } from "./format";
+import { formatCompactDate, formatDate, formatRelativeTime, formatShortAge } from "./format";
 
 describe("formatDate", () => {
   it("formats dates with custom timezone", () => {
@@ -20,6 +20,18 @@ describe("formatDate", () => {
   it("handles string date inputs", () => {
     const formatted = formatDate("2026-10-15T18:30:00Z", "Africa/Lagos");
     expect(formatted).toBe("Oct 15, 2026, 7:30 PM");
+  });
+});
+
+describe("formatCompactDate", () => {
+  const now = new Date("2026-10-20T12:00:00Z");
+
+  it("drops the year for dates in the current year", () => {
+    expect(formatCompactDate("2026-10-15T18:30:00Z", "Africa/Lagos", now)).toBe("Oct 15, 7:30 PM");
+  });
+
+  it("drops the time for dates in an earlier year", () => {
+    expect(formatCompactDate("2025-03-02T09:00:00Z", "UTC", now)).toBe("Mar 2, 2025");
   });
 });
 

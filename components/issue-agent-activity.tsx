@@ -43,7 +43,7 @@ export type AgentDecision =
   | { id: string; at: Date | string; kind: "verdict"; agentName: string; personName: string; goodToMerge: boolean }
   | { id: string; at: Date | string; kind: "accepted"; agentName: string };
 
-function timeOf(decision: AgentDecision): number {
+export function timeOf(decision: AgentDecision): number {
   return new Date(decision.at).getTime();
 }
 
@@ -53,7 +53,7 @@ type VerdictVisual = {
   iconWrap: string;
 };
 
-function verdictVisual(decision: AgentDecision): VerdictVisual {
+export function verdictVisual(decision: AgentDecision): VerdictVisual {
   switch (decision.kind) {
     case "rejected":
       return {
@@ -94,7 +94,7 @@ function verdictVisual(decision: AgentDecision): VerdictVisual {
   }
 }
 
-function VerdictGlyph({ kind, goodToMerge }: { kind: AgentDecision["kind"]; goodToMerge?: boolean }) {
+export function VerdictGlyph({ kind, goodToMerge }: { kind: AgentDecision["kind"]; goodToMerge?: boolean }) {
   const common = "h-[15px] w-[15px]";
   if (kind === "rejected") {
     return (
@@ -197,23 +197,34 @@ function sentence(decision: AgentDecision) {
  * The agent decisions on an issue, oldest first. Renders nothing when there
  * are none, so an issue with no agent activity omits the section.
  */
-export function IssueAgentActivity({ decisions }: { decisions: ReadonlyArray<AgentDecision> }) {
+export function IssueAgentActivity({
+  decisions,
+  bare = false,
+  highlightId = null,
+}: {
+  decisions: ReadonlyArray<AgentDecision>;
+  /** Just the timeline, without its own box (inside the summary's "Show all"). */
+  bare?: boolean;
+  /** The decision a summary card was clicked for; its entry is tinted. */
+  highlightId?: string | null;
+}) {
   if (decisions.length === 0) return null;
 
   const ordered = [...decisions].sort((a, b) => timeOf(a) - timeOf(b) || a.id.localeCompare(b.id));
 
-  return (
-    <section
-      aria-label="Agent decisions"
-      className="rounded-[20px] border border-zk-border bg-zk-surface p-5 sm:p-[22px]"
-    >
-      <h2 className="sr-only">Agent decisions</h2>
+  const timeline = (
       <ol className="flex flex-col gap-1">
         {ordered.map((decision, index) => {
           const visual = verdictVisual(decision);
           const isLast = index === ordered.length - 1;
           return (
-            <li key={decision.id} className="flex gap-3.5">
+            <li
+              key={decision.id}
+              id={`agent-decision-${decision.id}`}
+              className={`flex gap-3.5 rounded-xl motion-safe:transition-colors ${
+                highlightId === decision.id ? "-mx-2 bg-zk-tint px-2 pt-2" : ""
+              }`}
+            >
               <div className="flex flex-col items-center">
                 <span
                   className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${visual.iconWrap}`}
@@ -233,7 +244,7 @@ export function IssueAgentActivity({ decisions }: { decisions: ReadonlyArray<Age
                   <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-extrabold ${visual.chip}`}>
                     {visual.label}
                   </span>
-                  <LocalTime className="text-xs text-zk-muted" date={decision.at} />
+                  <LocalTime compact className="text-xs text-zk-muted" date={decision.at} />
                 </div>
                 <p className="mt-1.5 text-sm leading-snug text-zk-text2">{sentence(decision)}</p>
                 {decision.kind === "rejected" && decision.notes ? (
@@ -248,6 +259,16 @@ export function IssueAgentActivity({ decisions }: { decisions: ReadonlyArray<Age
           );
         })}
       </ol>
+  );
+
+  if (bare) return timeline;
+  return (
+    <section
+      aria-label="Agent decisions"
+      className="rounded-[20px] border border-zk-border bg-zk-surface p-5 sm:p-[22px]"
+    >
+      <h2 className="sr-only">Agent decisions</h2>
+      {timeline}
     </section>
   );
 }

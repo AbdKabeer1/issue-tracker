@@ -68,7 +68,7 @@ export function UserNameWithBadges({
           </span>
         </span>
       ) : null}
-      {showAuthor ? <Badge className={authorBadgeClass}>Author</Badge> : null}
+      {showAuthor ? <Badge className={authorBadgeClass}>Creator</Badge> : null}
       {isOrganizationAdmin(organizationRole, role) ? <AdminBadge /> : null}
     </span>
   );

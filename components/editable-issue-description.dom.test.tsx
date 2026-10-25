@@ -27,44 +27,26 @@ const base = {
   users: [],
 };
 
-const createdAt = new Date("2026-10-21T18:37:00Z");
-
-describe("EditableIssueDescription created date (#422)", () => {
-  it("renders the created date on the heading row", () => {
-    const { container } = render(
-      <EditableIssueDescription {...base} createdAt={createdAt} />,
-    );
-
-    const headingRow = container.querySelector("section > div");
-    const time = headingRow?.querySelector("time");
-
-    expect(time).not.toBeNull();
-    expect(time).toHaveAttribute("datetime", createdAt.toISOString());
-  });
-
-  it("labels the date for screen readers", () => {
-    const { getByText } = render(
-      <EditableIssueDescription {...base} createdAt={createdAt} />,
-    );
-
-    expect(getByText(/Created/)).toHaveClass("sr-only");
-  });
-
-  it("does not render a date when none is supplied", () => {
+describe("EditableIssueDescription heading row", () => {
+  it("shows no date; the opened date is in the Status box", () => {
     const { container } = render(<EditableIssueDescription {...base} />);
 
     expect(container.querySelector("time")).toBeNull();
   });
 
-  it("keeps the edit action and the date on the same row", () => {
-    const { container, getByRole } = render(
-      <EditableIssueDescription {...base} createdAt={createdAt} />,
-    );
+  it("offers editing as an icon button on the heading row", () => {
+    const { container, getByRole } = render(<EditableIssueDescription {...base} />);
 
     const headingRow = container.querySelector("section > div");
-    const actionRow = getByRole("button", { name: "Edit" }).parentElement;
+    const edit = getByRole("button", { name: "Edit description" });
 
-    expect(headingRow).toContainElement(actionRow);
-    expect(actionRow).toContainElement(container.querySelector("time"));
+    expect(headingRow).toContainElement(edit);
+    expect(edit).toHaveTextContent("");
+  });
+
+  it("hides the edit button from people who can't edit", () => {
+    const { queryByRole } = render(<EditableIssueDescription {...base} canEdit={false} />);
+
+    expect(queryByRole("button", { name: "Edit description" })).toBeNull();
   });
 });

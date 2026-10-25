@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest";
 const pageSource = readFileSync(path.resolve(__dirname, "page.tsx"), "utf8");
 
 describe("Bug detail header responsive layout (#698)", () => {
-  it("renders a compact mobile action row pinned directly under the title before badges and votes", () => {
+  it("renders a compact mobile action row pinned directly under the title before the votes", () => {
     expect(pageSource).toMatch(
-      /<h1[\s\S]*?<\/h1>[\s\S]*?data-testid="mobile-actions-row"[\s\S]*?Badge[\s\S]*?<VoteButton/
+      /<h1[\s\S]*?<\/h1>[\s\S]*?data-testid="mobile-actions-row"[\s\S]*?<VoteButton/
     );
 
     const mobileRowMatch = pageSource.match(
@@ -27,23 +27,13 @@ describe("Bug detail header responsive layout (#698)", () => {
     );
   });
 
-  it("keeps status and severity visible at every width, folding only supplementary workflow badges into +N", () => {
-    expect(pageSource).toMatch(
-      /issueStatusChipClass\[bug\.status\][\s\S]*?issueSeverityChipClass\[bug\.severity\]/
-    );
-
-    expect(pageSource).toMatch(
-      /<details className="group sm:contents">[\s\S]*?<summary[\s\S]*?\+\{extraBadgeCount\}[\s\S]*?<\/summary>/
-    );
-    expect(pageSource).toMatch(
-      /const extraBadgeCount =[\s\S]*?isBoosted[\s\S]*?volunteerCount/
-    );
-
-    const contentsSpan = pageSource.match(
-      /<span className="contents">([\s\S]*?)<\/span>\s*<\/details>/
-    );
-    expect(contentsSpan).toBeTruthy();
-    expect(contentsSpan![1]).not.toMatch(/bug\.type|bug\.category|voteCount/);
+  it("shows status, severity, stage and the opened date together in the rail's Status box", () => {
+    const rail = pageSource.slice(pageSource.indexOf("{/* SIDE RAIL */}"));
+    const statusBox = rail.slice(rail.indexOf('aria-label="Status"'), rail.indexOf(">People<"));
+    expect(statusBox).toContain("issueStatusChipClass[bug.status]");
+    expect(statusBox).toContain("issueSeverityChipClass[bug.severity]");
+    expect(statusBox).toContain("issueStageLabels[intakeStage]");
+    expect(statusBox).toMatch(/Opened[\s\S]*?<LocalTime compact date=\{bug\.createdAt\}/);
   });
 
   it("anchors the desktop action cluster to the title's top edge (#687, #451)", () => {
@@ -63,10 +53,10 @@ describe("Bug detail header responsive layout (#698)", () => {
 });
 
 describe("Bug detail header hierarchy (#687)", () => {
-  it("keeps workflow badges and taxonomy on separate rows", () => {
-    expect(pageSource).toMatch(
-      /flex flex-wrap items-center gap-2[\s\S]*?issueSeverityChipClass\[bug\.severity\][\s\S]*?<\/div>[\s\S]*?text-xs text-zk-muted[\s\S]*?bug\.type\.name[\s\S]*?bug\.category\.name/
-    );
+  it("keeps the taxonomy chips in the header, away from the workflow badges", () => {
+    const header = pageSource.slice(0, pageSource.indexOf("{/* SIDE RAIL */}"));
+    expect(header).toMatch(/bug\.type\.name[\s\S]*?bug\.category\.name/);
+    expect(header).not.toContain("issueSeverityChipClass[bug.severity]");
   });
 
   it("drops the redundant score pill so only VoteButton shows the vote total", () => {
@@ -77,6 +67,11 @@ describe("Bug detail header hierarchy (#687)", () => {
   it("uses a main column and side rail layout", () => {
     expect(pageSource).toContain("flex-[999_1_600px]");
     expect(pageSource).toContain("flex-[1_1_340px]");
-    expect(pageSource).toContain("IssueSectionTabs");
+    // Agent decisions are summarized in the main column; the GitHub PR box sits in the rail under People.
+    expect(pageSource).toContain("<AgentDecisionsSummary");
+    const rail = pageSource.slice(pageSource.indexOf("{/* SIDE RAIL */}"));
+    expect(rail.indexOf(">People<")).toBeGreaterThan(-1);
+    expect(rail.indexOf("<EditableProofLinks")).toBeGreaterThan(rail.indexOf(">People<"));
+    expect(pageSource).not.toContain("IssueSectionTabs");
   });
 });

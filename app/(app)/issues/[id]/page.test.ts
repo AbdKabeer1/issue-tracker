@@ -192,8 +192,10 @@ describe("BugDetailPage conditional user query (#349)", () => {
     );
     expect(pageSourceFresh).toContain('id="conversation"');
     expect(pageSourceFresh).toContain('id="comments"');
-    expect(pageSourceFresh).toContain("Conversation ({comments.visibleCount})");
-    expect(pageSourceFresh).toContain("IssueSectionTabs");
+    expect(pageSourceFresh).toMatch(/Conversation\s*<span[^>]*>\{comments\.visibleCount\}<\/span>/);
+    // New comments go through the Add comment modal, not a form under the thread.
+    expect(pageSourceFresh).toContain("<AddCommentDialog");
+    expect(pageSourceFresh).toContain("inlineComposer={false}");
   });
 
   describe("runtime execution", () => {

@@ -1,11 +1,13 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { formatDate, getDefaultTimeZone } from "@/lib/format";
+import { formatCompactDate, formatDate, getDefaultTimeZone } from "@/lib/format";
 
 type LocalTimeProps = {
   date: Date | string;
   className?: string;
+  /** "Oct 24, 5:27 PM" instead of "Oct 24, 2026, 5:27 PM"; the full stamp stays in the tooltip. */
+  compact?: boolean;
 };
 
 export function getClientTimeZone(): string {
@@ -22,7 +24,7 @@ export function getServerTimeZone(): string {
 
 const emptySubscribe = () => () => {};
 
-export function LocalTime({ date, className }: LocalTimeProps) {
+export function LocalTime({ date, className, compact = false }: LocalTimeProps) {
   const isClient = useSyncExternalStore(
     emptySubscribe,
     () => true,
@@ -40,7 +42,7 @@ export function LocalTime({ date, className }: LocalTimeProps) {
 
   return (
     <time dateTime={iso} className={className} title={`${formatted} (${timeZone})`}>
-      {formatted}
+      {compact ? formatCompactDate(date, timeZone) : formatted}
     </time>
   );
 }

@@ -18,6 +18,10 @@ vi.mock("@/app/actions/issues", () => ({
   addCommentAction: vi.fn(),
 }));
 
+vi.mock("@/app/(app)/points/disputes/actions", () => ({
+  openDisputeAction: vi.fn(),
+}));
+
 const mockedAddComment = vi.mocked(addCommentAction);
 
 // Set by tests that defer the mocked action's resolution; always released in
