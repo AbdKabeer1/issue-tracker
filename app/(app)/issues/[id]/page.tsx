@@ -37,7 +37,8 @@ import {
   statusLabels,
 } from "@/lib/labels";
 import { ActivityTimeline, type ActivityEntry } from "@/components/activity-timeline";
-import { IssueAgentActivity, type AgentDecision } from "@/components/issue-agent-activity";
+import { type AgentDecision } from "@/components/issue-agent-activity";
+import { AgentDecisionsSummary } from "@/components/agent-decisions-summary";
 import { IssueEscalations, type TicketEscalation } from "@/components/issue-escalations";
 import { listBugEscalations } from "@/lib/agent-questions";
 import { IssueBids } from "@/components/issue-bids";
@@ -46,6 +47,8 @@ import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { UpdateIssueForm } from "@/components/update-issue-form";
 import { CommentThread } from "@/components/comment-thread";
+import { AddCommentDialog } from "@/components/add-comment-dialog";
+import type { DisputeRole } from "@/components/comment-form";
 import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
 import { ChooseRedesignButton } from "@/components/choose-redesign-button";
 import { IssueApprovalBanner } from "@/components/issue-approval-banner";
@@ -73,7 +76,6 @@ import { canAssignTicket } from "@/lib/ticket-assignment";
 import { SelfAssignButton } from "@/components/self-assign-button";
 import { EditableIssueDescription } from "@/components/editable-issue-description";
 import { EditableProofLinks } from "@/components/editable-proof-links";
-import { IssuePullRequest } from "@/components/issue-pull-request";
 import { withCurrentOption } from "@/lib/triage-options";
 import { issueTenantHintFor } from "@/lib/issue-tenant-hint";
 import { IssueTenantSwitch } from "@/components/issue-tenant-hint";
@@ -81,7 +83,6 @@ import { tenantMemberWhere } from "@/lib/tenant-mentions";
 import { readAgentResolution } from "@/lib/agent-resolution";
 import { AgentResolvedNotice } from "@/components/agent-resolved-notice";
 import { issueStageLabels } from "@/lib/issue-stage";
-import { IssueSectionTabs } from "./issue-section-tabs";
 import {
   issueChipBaseClass,
   issueSeverityChipClass,
@@ -657,11 +658,13 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   const agentResolution =
     bug.status === "resolved" && !bug.isDeleted ? readAgentResolution(latestStatusChange?.metadata) : null;
 
-  // Workflow badges that are always visible: status and severity. Anything
-  // else (boost, volunteers) is supplementary and folds into the mobile +N
-  // control, so status/severity never hide behind it (#687).
-  const extraBadgeCount =
-    (bug.isBoosted && !bug.isDeleted ? 1 : 0) + (volunteerCount > 0 ? 1 : 0);
+  // "Dispute award" is a type in the Add comment form, for the issue's reporter and assignee.
+  const disputeRoles: DisputeRole[] = bug.isDeleted
+    ? []
+    : [
+        ...(userId && bug.assigneeId === userId ? (["solver"] as const) : []),
+        ...(userId && bug.reporterId === userId ? (["reporter"] as const) : []),
+      ];
 
   const headerActions = (
     <>
@@ -674,15 +677,6 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
       ) : null}
       {canTriage && !bug.isDeleted && !bug.duplicateOf ? (
         <MarkDuplicateButton bugId={bug.id} />
-      ) : null}
-      {!bug.isDeleted && userId && (bug.reporterId === userId || bug.assigneeId === userId) ? (
-        <Link
-          href={`/points/disputes/new?bug=${bug.number}`}
-          className="inline-flex min-h-10 items-center text-xs font-bold text-zk-accent hover:underline"
-          title="Say your points award for this issue is missing or wrong"
-        >
-          Dispute award
-        </Link>
       ) : null}
     </>
   );
@@ -824,20 +818,19 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
 
       {/* Header: number + title, status language, vote */}
       <div className="flex flex-col gap-3.5">
-        <Link
-          href="/issues"
-          aria-label="Back to issues"
-          className="inline-flex min-h-8 w-fit items-center gap-1.5 text-sm font-semibold text-zk-accent hover:underline print:hidden"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M19 12H5M12 19l-7-7 7-7" />
-          </svg>
-          Back to issues
-        </Link>
-
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 flex-[1_1_600px] space-y-3">
             <div className="flex items-start gap-2">
+              <Link
+                href="/issues"
+                aria-label="Back to issues"
+                title="Back to issues"
+                className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zk-accent hover:bg-zk-chip print:hidden"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M19 12H5M12 19l-7-7 7-7" />
+                </svg>
+              </Link>
               <h1 className="min-w-0 break-words text-[28px] font-extrabold leading-tight tracking-[-0.02em] text-zk-text">
                 <span className="font-bold tabular-nums text-zk-muted">
                   {formatIssueNumber(bug.number)}
@@ -846,17 +839,6 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
               </h1>
             </div>
 
-            {intakeStage ? (
-              <p
-                className={`rounded-xl border px-3 py-2 text-sm ${
-                  intakeStage === "ready"
-                    ? "border-zk-border bg-zk-ok-bg text-zk-ok-fg"
-                    : "border-zk-warn-bd bg-zk-warn-bg text-zk-warn-fg"
-                }`}
-              >
-                {intakeDetail(intakeStage, bug.voteCount)}
-              </p>
-            ) : null}
             {agentResolution ? (
               <AgentResolvedNotice bugId={bug.id} resolution={agentResolution} canReopen={canUpdateStatus} />
             ) : null}
@@ -869,53 +851,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
               {headerActions}
             </div>
 
-            {/* Row 1 — workflow state (#687). Status and severity stay visible. */}
-            <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
-              {bug.isDeleted ? (
-                <span className={`${issueChipBaseClass} bg-zk-bad-bg text-zk-bad-fg`}>
-                  Deleted
-                </span>
-              ) : null}
-              <Badge className={`${issueChipBaseClass} ${issueStatusChipClass[bug.status]}`}>
-                <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
-                {statusLabels[bug.status]}
-              </Badge>
-              <Badge className={`${issueChipBaseClass} ${issueSeverityChipClass[bug.severity]}`}>
-                {severityLabels[bug.severity]}
-              </Badge>
-              {intakeStage ? (
-                <Badge className={`${issueChipBaseClass} ${issueStageChipClass[intakeStage]}`}>
-                  {issueStageLabels[intakeStage]}
-                </Badge>
-              ) : null}
-              {bug.isBoosted && !bug.isDeleted ? (
-                <span className={`${issueChipBaseClass} border border-zk-warn-bd bg-zk-warn-bg text-zk-warn-fg`}>
-                  Boosted
-                </span>
-              ) : null}
-              {extraBadgeCount > 0 ? (
-                <details className="group sm:contents">
-                  <summary
-                    aria-label={`${extraBadgeCount} more details`}
-                    className="inline-flex cursor-pointer list-none select-none items-center gap-1 rounded-full border border-zk-border bg-zk-chip px-2 py-0.5 text-xs font-medium text-zk-text2 hover:bg-zk-seg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue-strong sm:hidden"
-                  >
-                    +{extraBadgeCount}
-                  </summary>
-                  <span className="contents">
-                    {volunteerCount > 0 ? (
-                      <span className={`${issueChipBaseClass} bg-zk-info-bg text-zk-info-fg`}>
-                        {volunteerCount} {volunteerCount === 1 ? "agent volunteered" : "agents volunteered"}
-                      </span>
-                    ) : null}
-                  </span>
-                </details>
-              ) : null}
-              <span className="font-medium text-zk-muted">
-                Opened <LocalTime date={bug.createdAt} /> by {bug.reporter.name}
-              </span>
-            </div>
-
-            {/* Row 2 — taxonomy (#687). */}
+            {/* Taxonomy (#687). Status, severity, stage and the opened date are in the Status box. */}
             {bug.type || bug.category ? (
               <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-zk-muted">
                 {bug.type ? (
@@ -954,7 +890,6 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             initialDescription={bug.description}
             canEdit={canEdit}
             users={users}
-            createdAt={bug.createdAt}
             lastEditedAt={lastRevision?.editedAt ?? null}
             historyHref={issuePath(bug.number, "/history")}
           >
@@ -990,11 +925,14 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             </section>
           ) : null}
 
-          <EditableProofLinks
-            bugId={bug.id}
-            initialLinks={proofLinks}
-            linkedPullRequestUrl={bug.pullRequestUrl}
-            canEdit={(canEdit || isAssignee) && !bug.isDeleted}
+          {/* Agent decisions, summarized, in the spot the GitHub PR box had (that moved under People). */}
+          <AgentDecisionsSummary
+            decisions={agentDecisions}
+            passed={
+              intakeStage === "confirmed" ||
+              intakeStage === "ready" ||
+              agentDecisions.some((decision) => decision.kind === "accepted")
+            }
           />
 
           {canUpdateStatus && !bug.isDeleted ? (
@@ -1026,18 +964,26 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             <GoalBudgetSection tenantId={bug.tenantId} projectId={bug.projectId} bugId={bug.id} />
           </Suspense>
 
-          <IssueSectionTabs
-            conversationCount={comments.visibleCount}
-            decisionsCount={agentDecisions.length}
-            conversation={
               <section
                 id="conversation"
                 className="scroll-mt-24 rounded-[20px] border border-zk-border bg-zk-surface p-5 sm:p-[22px]"
               >
                 <span id="comments" className="sr-only" aria-hidden="true" />
-                <h2 className="sr-only">
-                  Conversation ({comments.visibleCount})
-                </h2>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.08em] text-zk-muted">
+                    Conversation
+                    <span className="font-mono font-normal normal-case tracking-normal">{comments.visibleCount}</span>
+                  </h2>
+                  {bug.isDeleted ? null : (
+                    <AddCommentDialog
+                      bugId={bug.id}
+                      users={commentMentionUsers}
+                      viewerId={user.id}
+                      bugNumber={bug.number}
+                      disputeRoles={disputeRoles}
+                    />
+                  )}
+                </div>
                 {comments.hiddenThreads > 0 ? (
                   <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-zk-chip px-3 py-2 text-sm text-zk-text2 print:hidden">
                     <span>
@@ -1077,23 +1023,9 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                   currentUserRole={user.role}
                   tenantAdmin={access.admin}
                   readOnly={bug.isDeleted}
+                  inlineComposer={false}
                 />
               </section>
-            }
-            decisions={
-              agentDecisions.length > 0 ? (
-                <IssueAgentActivity decisions={agentDecisions} />
-              ) : (
-                <section
-                  aria-label="Agent decisions"
-                  className="rounded-[20px] border border-dashed border-zk-border bg-zk-surface p-8 text-center text-sm text-zk-muted"
-                >
-                  <h2 className="sr-only">Agent decisions</h2>
-                  No agent decisions yet.
-                </section>
-              )
-            }
-          />
 
           {canDelete && !bug.isDeleted ? (
             <section className="rounded-[20px] border border-zk-bad-bd bg-zk-bad-soft/60 p-4 sm:p-6 print:hidden">
@@ -1119,10 +1051,47 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
 
         {/* SIDE RAIL */}
         <aside className="flex min-w-0 flex-[1_1_340px] flex-col gap-4">
-          <section className="flex flex-col gap-3.5 rounded-[20px] border border-zk-border bg-zk-surface p-5">
+          {/* Status: workflow state, when it was opened, and whether it is an idea or an issue (#687). */}
+          <section aria-label="Status" className="flex flex-col gap-2.5 rounded-[20px] border border-zk-border bg-zk-surface px-4 py-3.5">
+            <h2 className="text-xs font-bold uppercase tracking-[0.08em] text-zk-muted">Status</h2>
+            <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
+              {bug.isDeleted ? (
+                <span className={`${issueChipBaseClass} bg-zk-bad-bg text-zk-bad-fg`}>Deleted</span>
+              ) : null}
+              <Badge className={`${issueChipBaseClass} ${issueStatusChipClass[bug.status]}`}>
+                <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+                {statusLabels[bug.status]}
+              </Badge>
+              <Badge className={`${issueChipBaseClass} ${issueSeverityChipClass[bug.severity]}`}>
+                {severityLabels[bug.severity]}
+              </Badge>
+              {intakeStage ? (
+                // What the stage means stays one hover away now the note under the chips is gone.
+                <span title={intakeDetail(intakeStage, bug.voteCount)} className="inline-flex">
+                  <Badge className={`${issueChipBaseClass} ${issueStageChipClass[intakeStage]}`}>
+                    {issueStageLabels[intakeStage]}
+                  </Badge>
+                </span>
+              ) : null}
+              {bug.isBoosted && !bug.isDeleted ? (
+                <span className={`${issueChipBaseClass} border border-zk-warn-bd bg-zk-warn-bg text-zk-warn-fg`}>Boosted</span>
+              ) : null}
+              {volunteerCount > 0 ? (
+                <span className={`${issueChipBaseClass} bg-zk-info-bg text-zk-info-fg`}>
+                  {volunteerCount} {volunteerCount === 1 ? "agent volunteered" : "agents volunteered"}
+                </span>
+              ) : null}
+            </div>
+            <p className="text-xs text-zk-muted">
+              Opened <LocalTime compact date={bug.createdAt} /> by {bug.reporter.name}
+            </p>
+          </section>
+
+          {/* People, compact: one row each, label on the left. */}
+          <section className="flex flex-col gap-2 rounded-[20px] border border-zk-border bg-zk-surface px-4 py-3.5">
             <span className="text-xs font-bold uppercase tracking-[0.08em] text-zk-muted">People</span>
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs text-zk-muted">Reporter</span>
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="w-16 shrink-0 text-xs text-zk-muted">Reporter</span>
               <UserNameWithBadges
                 name={bug.reporter.name}
                 role={bug.reporter.role}
@@ -1134,10 +1103,9 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                 showAuthor
               />
             </div>
-            <div className="h-px bg-zk-divider" />
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs text-zk-muted">Assignee</span>
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="w-16 shrink-0 text-xs text-zk-muted">Assignee</span>
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
                 {bug.assignee ? (
                   <UserNameWithBadges
                     name={bug.assignee.name}
@@ -1162,7 +1130,13 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             </div>
           </section>
 
-          <IssuePullRequest pullRequestUrl={bug.pullRequestUrl} />
+          {/* GitHub PR, under People. It lists the linked PR too, so the separate PR box is gone. */}
+          <EditableProofLinks
+            bugId={bug.id}
+            initialLinks={proofLinks}
+            linkedPullRequestUrl={bug.pullRequestUrl}
+            canEdit={(canEdit || isAssignee) && !bug.isDeleted}
+          />
 
           <IssueBids
             bids={bidList}

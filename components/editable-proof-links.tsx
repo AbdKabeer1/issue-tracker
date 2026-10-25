@@ -77,9 +77,9 @@ export function EditableProofLinks({ bugId, initialLinks, linkedPullRequestUrl, 
   };
 
   return (
-    <section className="rounded-xl border border-zk-border bg-zk-surface p-4 sm:p-6">
+    <section className="rounded-[20px] border border-zk-border bg-zk-surface px-4 py-3.5">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zk-muted">
+        <h2 className="text-xs font-bold uppercase tracking-[0.08em] text-zk-muted">
           GitHub PR
         </h2>
         {canEdit && !isEditing ? (

@@ -6,8 +6,12 @@ test("comments on an issue and replies to the comment", async ({ page, uniq }) =
   // The comments themselves, not the activity log that quotes them.
   const thread = page.locator("[id^='comment-']");
   const comment = `Same here on Firefox ${Date.now()}`;
-  await page.locator("textarea#body").fill(comment);
-  await page.getByRole("button", { name: /Post to conversation|Post comment/ }).click();
+  // The comment form opens in a dialog from "Add comment".
+  await page.getByRole("button", { name: "Add comment" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add comment" });
+  await dialog.locator("textarea#body").fill(comment);
+  await dialog.getByRole("button", { name: /Post to conversation|Post comment/ }).click();
+  await expect(dialog).toBeHidden();
   await expect(thread.getByText(comment).first()).toBeVisible();
 
   const reply = `Fixed by clearing the cache ${Date.now()}`;

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { addCommentAction } from "@/app/actions/issues";
+import { openDisputeAction } from "@/app/(app)/points/disputes/actions";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
   MarkdownEditor,
@@ -15,6 +17,12 @@ import type { CommentType } from "@/lib/validations/issue";
 
 type UserOption = { id: string; name: string };
 
+/** An award the viewer may dispute on this issue: "reporter" for its reporter, "solver" for its assignee. */
+export type DisputeRole = "solver" | "reporter";
+
+/** Comment types, plus "dispute": a points dispute filed from the same form (reviewed by admins, not posted). */
+type FormType = CommentType | "dispute";
+
 type CommentFormProps = {
   bugId: string;
   users: UserOption[];
@@ -24,6 +32,10 @@ type CommentFormProps = {
   parentAuthorName?: string;
   onCancel?: () => void;
   onSuccess?: () => void;
+  /** The issue number, for disputes. */
+  bugNumber?: number;
+  /** Awards the viewer may dispute; empty or missing hides the "Dispute award" type. */
+  disputeRoles?: DisputeRole[];
 };
 
 export function CommentForm({
@@ -34,6 +46,8 @@ export function CommentForm({
   parentAuthorName,
   onCancel,
   onSuccess,
+  bugNumber,
+  disputeRoles = [],
 }: CommentFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const editorRef = useRef<MarkdownEditorHandle>(null);
@@ -43,7 +57,9 @@ export function CommentForm({
   // Remounts the file picker after a successful post, clearing it (#215).
   const [pickerKey, setPickerKey] = useState(0);
   const toast = useToast();
-  const [commentType, setCommentType] = useState<CommentType>("comment");
+  const [commentType, setCommentType] = useState<FormType>("comment");
+  const isDispute = commentType === "dispute";
+  const canDispute = !parentId && bugNumber !== undefined && disputeRoles.length > 0;
   const [statusMessage, setStatusMessage] = useState("");
   const [isSettling, setIsSettling] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -101,6 +117,30 @@ export function CommentForm({
         setIsSettling(true);
         startTransition(async () => {
           try {
+            if (isDispute) {
+              const dispute = new FormData();
+              dispute.set("bugNumber", String(bugNumber));
+              dispute.set("kind", "missing");
+              dispute.set("role", String(formData.get("disputeRole") ?? disputeRoles[0]));
+              dispute.set("reason", body);
+              const result = await openDisputeAction(undefined, dispute);
+              if (!result.ok) {
+                setError(result.error);
+                if (result.field === "reason") {
+                  setBodyInvalid(true);
+                  document.getElementById(bodyId)?.focus();
+                }
+                return;
+              }
+              setBody("");
+              setRestored(false);
+              clearDraft(localStorage, key);
+              setCommentType("comment");
+              setStatusMessage(result.message);
+              toast(result.message);
+              onSuccess?.();
+              return;
+            }
             const result = await addCommentAction(bugId, formData);
             if (result.error) {
               setError(result.error);
@@ -165,7 +205,7 @@ export function CommentForm({
               id="comment-type-select"
               name="type"
               value={commentType}
-              onChange={(e) => setCommentType(e.target.value as CommentType)}
+              onChange={(e) => setCommentType(e.target.value as FormType)}
               className="h-[38px] rounded-full border border-zk-border bg-zk-surface px-3 text-[13px] font-bold text-zk-text shadow-xs focus:border-electric-blue-strong focus:outline-none focus:ring-1 focus:ring-electric-blue-strong"
             >
               <option value="comment">Comment</option>
@@ -173,10 +213,41 @@ export function CommentForm({
               <option value="review">Review</option>
               <option value="delivery">Delivery</option>
               <option value="request_to_merge">Merge request</option>
+              {canDispute ? <option value="dispute">Dispute award</option> : null}
             </select>
           </label>
         </div>
       )}
+      {isDispute ? (
+        <div className="flex flex-col gap-2 rounded-xl border border-zk-warn-bd bg-zk-warn-bg px-3 py-2.5 text-[13px] text-zk-warn-fg">
+          <p>
+            Say your points award for this issue is missing. A workspace admin reviews it; it isn&apos;t posted to
+            the conversation. For a wrong points entry, use the{" "}
+            <Link href={`/points/disputes/new?bug=${bugNumber}`} className="font-bold underline">
+              disputes page
+            </Link>
+            .
+          </p>
+          {disputeRoles.length > 1 ? (
+            <label className="inline-flex items-center gap-2 font-semibold">
+              Missing award
+              <select
+                name="disputeRole"
+                defaultValue={disputeRoles[0]}
+                className="h-8 rounded-lg border border-zk-border bg-zk-surface px-2 text-[13px] text-zk-text"
+              >
+                {disputeRoles.map((role) => (
+                  <option key={role} value={role}>
+                    {role === "solver" ? "Solver award" : "Reporter award"}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <input type="hidden" name="disputeRole" value={disputeRoles[0]} />
+          )}
+        </div>
+      ) : null}
       <label
         id={`${parentId ? `body-${parentId}` : "body"}-label`}
         htmlFor={parentId ? `body-${parentId}` : "body"}
@@ -193,7 +264,7 @@ export function CommentForm({
         name="body"
         required
         rows={isReply ? 3 : 4}
-        maxLength={2000}
+        maxLength={isDispute ? 1000 : 2000}
         disabled={pending}
         value={body}
         onChange={update}
@@ -204,20 +275,26 @@ export function CommentForm({
         placeholder={
           isReply
             ? "Write your reply… Type @ to mention someone (they get notified)"
-            : "Add to the conversation… Type @ to mention someone (they get notified)"
+            : isDispute
+              ? "What's missing? e.g. I resolved this on Tuesday but no solver points appeared."
+              : "Add to the conversation… Type @ to mention someone (they get notified)"
         }
         footer={
-          <p className="text-xs text-zk-muted">
-            Markdown is supported. People you @mention get an email and an
-            in-app notification (they can turn these off in Settings).
-          </p>
+          isDispute ? undefined : (
+            <p className="text-xs text-zk-muted">
+              Markdown is supported. People you @mention get an email and an
+              in-app notification (they can turn these off in Settings).
+            </p>
+          )
         }
       />
-      <AttachmentPicker
-        key={pickerKey}
-        disabled={pending}
-        onUploadingChange={setPickerUploading}
-      />
+      {isDispute ? null : (
+        <AttachmentPicker
+          key={pickerKey}
+          disabled={pending}
+          onUploadingChange={setPickerUploading}
+        />
+      )}
       {error ? (
         <p id={errorId} className="text-sm text-zk-bad-fg" role="alert">
           {error}
@@ -250,7 +327,9 @@ export function CommentForm({
               ? "Uploading…"
               : isReply
                 ? "Post reply"
-                : "Post to conversation"}
+                : isDispute
+                  ? "Open dispute"
+                  : "Post to conversation"}
         </Button>
         {onCancel ? (
           <Button

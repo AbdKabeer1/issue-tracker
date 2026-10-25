@@ -18,6 +18,23 @@ export function formatDate(value: Date | string, timeZone?: string) {
   }).format(date);
 }
 
+/**
+ * A shorter stamp for dense lists: "Oct 24, 5:27 PM" this year, "Oct 24, 2025"
+ * for older dates. The full stamp from formatDate stays available as a tooltip.
+ */
+export function formatCompactDate(value: Date | string, timeZone?: string, now = new Date()) {
+  const date = typeof value === "string" ? new Date(value) : value;
+  const zone = timeZone || getDefaultTimeZone();
+  const yearOf = (d: Date) => new Intl.DateTimeFormat("en-US", { year: "numeric", timeZone: zone }).format(d);
+  const sameYear = yearOf(date) === yearOf(now);
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? { hour: "numeric", minute: "2-digit", hour12: true } : { year: "numeric" }),
+    timeZone: zone,
+  }).format(date);
+}
+
 export function formatRelativeTime(value: Date | string, now = new Date()): string {
   const date = typeof value === "string" ? new Date(value) : value;
   const elapsedMs = Math.max(0, now.getTime() - date.getTime());

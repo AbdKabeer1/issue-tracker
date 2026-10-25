@@ -93,19 +93,20 @@ export function ActivityTimeline({
                 <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
                   {typeLabel[entry.type]}
                 </span>
-                <LocalTime
+                <LocalTime compact
                   className="text-xs text-zk-muted"
                   date={entry.createdAt}
                 />
               </div>
-              <p className="mt-1 text-sm text-zk-text2">
+              {/* A div, not a p: ExpandableText renders a div, which can't sit inside a p (hydration error). */}
+              <div className="mt-1 text-sm text-zk-text2">
                 <span className="font-bold text-zk-text">
                   {entry.actor.name}
                 </span>{" "}
                 <ExpandableText maxLines={2} expandText="View more" collapseText="View less">
                   {entry.summary}
                 </ExpandableText>
-              </p>
+              </div>
               {entry.type === "status_changed" && activityNote(entry.metadata) ? (
                 <ExpandableText maxLines={3} expandText="View more" collapseText="View less">
                   <blockquote className="mt-1 whitespace-pre-wrap break-words border-l-[3px] border-zk-ok-fg/40 bg-zk-chip pl-3 text-sm text-zk-text2">

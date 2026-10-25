@@ -22,8 +22,6 @@ export type EditableIssueDescriptionProps = {
   /** When the title or description was last edited (#303); null if never. */
   lastEditedAt?: Date | null;
   historyHref?: string;
-  /** When the issue was created (#422); shown on the heading row. */
-  createdAt?: Date | string | null;
 };
 
 export function EditableIssueDescription({
@@ -35,7 +33,6 @@ export function EditableIssueDescription({
   children,
   lastEditedAt = null,
   historyHref,
-  createdAt = null,
 }: EditableIssueDescriptionProps) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
@@ -97,23 +94,20 @@ export function EditableIssueDescription({
             </p>
           ) : null}
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          {!isEditing && createdAt ? (
-            <p className="text-xs text-zk-muted">
-              <span className="sr-only">Created </span>
-              <LocalTime date={createdAt} />
-            </p>
-          ) : null}
-          {canEdit && !isEditing ? (
-            <Button
-              variant="ghost"
-              className="min-h-8 px-2.5 py-1 text-xs font-bold text-zk-accent hover:text-zk-accent"
-              onClick={handleStartEdit}
-            >
-              Edit
-            </Button>
-          ) : null}
-        </div>
+        {/* The opened date lives in the Status box, so the heading row only carries the edit action. */}
+        {canEdit && !isEditing ? (
+          <button
+            type="button"
+            aria-label="Edit description"
+            title="Edit description"
+            onClick={handleStartEdit}
+            className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-zk-muted hover:bg-zk-chip hover:text-zk-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue-strong"
+          >
+            <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11.2 2.3a1.6 1.6 0 0 1 2.3 2.3L5.4 12.7l-3 .8.8-3z" />
+            </svg>
+          </button>
+        ) : null}
       </div>
 
       {isEditing ? (

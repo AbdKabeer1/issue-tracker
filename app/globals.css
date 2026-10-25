@@ -114,6 +114,39 @@ body:has([data-app-shell]) {
   }
 }
 
+/* Agent decisions strip: the track holds the cards twice, so sliding it by
+   half loops seamlessly, right to left. Hover or focus pauses it; with
+   reduced motion the strip is a plain horizontal scroller instead. */
+@keyframes zk-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.zk-marquee-track {
+  animation: zk-marquee var(--zk-marquee-duration, 30s) linear infinite;
+}
+
+.zk-marquee:hover .zk-marquee-track,
+.zk-marquee:focus-within .zk-marquee-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zk-marquee {
+    overflow-x: auto;
+  }
+  .zk-marquee-track {
+    animation: none;
+  }
+  .zk-marquee-copy {
+    display: none;
+  }
+}
+
 /*
  * Print (#300). Paper has no use for controls, so rather than tagging every
  * component, interactive chrome is hidden structurally: the app header, the

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { LocalTime } from "@/components/local-time";
 import {
   MAX_COMMENT_DEPTH,
@@ -36,36 +36,31 @@ type UserOption = { id: string; name: string };
 
 const commentTypeVisual: Record<
   CommentType,
-  { label: string; chip: string; accent: string; filterOn: string }
+  { label: string; chip: string; filterOn: string }
 > = {
   comment: {
     label: "Comment",
     chip: "bg-zk-chip text-zk-text2",
-    accent: "border-l-zk-border",
     filterOn: "border-transparent bg-zk-chip text-zk-text2",
   },
   bid: {
     label: "Bid",
     chip: "bg-zk-warn-bg text-zk-warn-fg",
-    accent: "border-l-zk-warn-fg",
     filterOn: "border-transparent bg-zk-warn-bg text-zk-warn-fg",
   },
   review: {
     label: "Review",
     chip: "bg-zk-info-bg text-zk-info-fg",
-    accent: "border-l-zk-info-fg",
     filterOn: "border-transparent bg-zk-info-bg text-zk-info-fg",
   },
   delivery: {
     label: "Delivery",
     chip: "bg-zk-ok-bg text-zk-ok-fg",
-    accent: "border-l-zk-ok-fg",
     filterOn: "border-transparent bg-zk-ok-bg text-zk-ok-fg",
   },
   request_to_merge: {
     label: "Merge request",
     chip: "bg-[var(--issue-sec-bg,#FDECEF)] text-[var(--issue-sec-fg,#B4233F)]",
-    accent: "border-l-[var(--issue-sec-fg,#B4233F)]",
     filterOn: "border-transparent bg-[var(--issue-sec-bg,#FDECEF)] text-[var(--issue-sec-fg,#B4233F)]",
   },
 };
@@ -110,11 +105,6 @@ function CommentConfidence({ metadata }: { metadata?: unknown }) {
       {typeof confidenceReason === "string" && confidenceReason.trim() ? ` — ${confidenceReason}` : null}
     </div>
   );
-}
-
-function commentCardStyle(type?: CommentType | null): string {
-  const resolved: CommentType = type && type in commentTypeVisual ? type : "comment";
-  return `border-zk-border bg-zk-surface border-l-4 ${commentTypeVisual[resolved].accent}`;
 }
 
 function CommentEditForm({
@@ -177,6 +167,102 @@ function CommentEditForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Small pencil button that opens Edit/Delete, showing only what the viewer may
+ * do. A disclosure, not an ARIA menu: Tab moves through the two buttons, and
+ * Escape closes it and puts focus back on the pencil.
+ */
+function CommentActionsMenu({
+  canEdit,
+  canDelete,
+  deleting,
+  onEdit,
+  onDelete,
+}: {
+  canEdit: boolean;
+  canDelete: boolean;
+  deleting: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLSpanElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      // Focus inside the popup would fall to the page once it unmounts.
+      if (rootRef.current?.contains(document.activeElement)) triggerRef.current?.focus();
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const itemClass =
+    "block w-full px-3 py-1.5 text-left text-[13px] hover:bg-zk-chip focus-visible:bg-zk-chip focus-visible:outline-none disabled:opacity-50";
+
+  return (
+    <span ref={rootRef} className="relative inline-flex">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-label="Comment actions"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        onClick={() => setOpen((value) => !value)}
+        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-zk-muted hover:bg-zk-chip hover:text-zk-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue-strong"
+      >
+        <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M11.2 2.3a1.6 1.6 0 0 1 2.3 2.3L5.4 12.7l-3 .8.8-3z" />
+        </svg>
+      </button>
+      {open ? (
+        <span
+          id={panelId}
+          className="absolute right-0 top-7 z-20 min-w-28 overflow-hidden rounded-lg border border-zk-border bg-zk-surface py-1 shadow-lg"
+        >
+          {canEdit ? (
+            <button
+              type="button"
+              className={`${itemClass} text-zk-text`}
+              onClick={() => {
+                setOpen(false);
+                onEdit();
+              }}
+            >
+              Edit
+            </button>
+          ) : null}
+          {canDelete ? (
+            <button
+              type="button"
+              disabled={deleting}
+              className={`${itemClass} text-zk-bad-fg`}
+              onClick={() => {
+                setOpen(false);
+                onDelete();
+              }}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
+          ) : null}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -246,9 +332,8 @@ function CommentItem({
       // break-inside keeps a comment whole across printed pages (#300).
       className="group/comment scroll-mt-24 space-y-3 break-inside-avoid"
     >
-      <article
-        className={`flex flex-col gap-3 rounded-2xl border px-4 py-[18px] sm:px-5 group-target/comment:border-zk-accent group-target/comment:bg-zk-tint group-target/comment:ring-2 group-target/comment:ring-electric-blue/40 motion-safe:transition-colors ${commentCardStyle(comment.type)}`}
-      >
+      {/* One thin border per comment; no coloured type stripe (that read as a double border). */}
+      <article className="flex flex-col gap-2.5 rounded-xl border border-zk-border bg-zk-surface px-4 py-3 group-target/comment:border-zk-accent group-target/comment:bg-zk-tint group-target/comment:ring-2 group-target/comment:ring-electric-blue/40 motion-safe:transition-colors">
         {isDeleted ? (
           <p className="text-sm italic text-zk-muted">This comment was deleted.</p>
         ) : (
@@ -273,7 +358,7 @@ function CommentItem({
                   href={`#comment-${comment.id}`}
                   className="hover:text-zk-text hover:underline"
                 >
-                  <LocalTime date={comment.createdAt} />
+                  <LocalTime compact date={comment.createdAt} />
                 </a>
                 <CopyLinkButton
                   url={`${issueUrl}#comment-${comment.id}`}
@@ -282,6 +367,15 @@ function CommentItem({
                 />
                 {comment.editedAt ? (
                   <span title="This comment was edited">· edited</span>
+                ) : null}
+                {!editing && (canEdit || canDelete) ? (
+                  <CommentActionsMenu
+                    canEdit={canEdit}
+                    canDelete={canDelete}
+                    deleting={pending}
+                    onEdit={() => setEditing(true)}
+                    onDelete={handleDelete}
+                  />
                 ) : null}
               </span>
             </div>
@@ -318,8 +412,8 @@ function CommentItem({
           </>
         )}
 
-        {!editing && (canReply || canEdit || canDelete) ? (
-          <div className="mt-2">
+        {!editing && canReply ? (
+          <div>
             {replying ? (
               <CommentForm
                 bugId={bugId}
@@ -331,46 +425,22 @@ function CommentItem({
                 onSuccess={() => setReplying(false)}
               />
             ) : (
-              <div className="flex flex-wrap items-center gap-1">
-                {canReply ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="min-h-8 px-2 py-1 text-[13px] font-bold text-zk-accent hover:text-zk-accent"
-                    onClick={() => setReplying(true)}
-                  >
-                    Reply
-                  </Button>
-                ) : null}
-                {canEdit ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="min-h-8 px-2 py-1 text-[13px] font-semibold text-zk-muted hover:text-zk-text"
-                    onClick={() => setEditing(true)}
-                  >
-                    Edit
-                  </Button>
-                ) : null}
-                {canDelete ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    disabled={pending}
-                    className="min-h-8 px-2 py-1 text-[13px] font-semibold text-zk-muted hover:text-zk-bad-fg"
-                    onClick={handleDelete}
-                  >
-                    {pending ? "Deleting…" : "Delete"}
-                  </Button>
-                ) : null}
-              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                className="-ml-2 min-h-8 px-2 py-1 text-[13px] font-bold text-zk-accent hover:text-zk-accent"
+                onClick={() => setReplying(true)}
+              >
+                Reply
+              </Button>
             )}
-            {error ? (
-              <p className="mt-1 text-xs text-zk-bad-fg" role="alert">
-                {error}
-              </p>
-            ) : null}
           </div>
+        ) : null}
+        {/* Outside the Reply block: a delete can fail on a comment that can't take replies. */}
+        {error ? (
+          <p className="text-xs text-zk-bad-fg" role="alert">
+            {error}
+          </p>
         ) : null}
       </article>
 
@@ -410,12 +480,15 @@ export function CommentThread({
   attachmentsByComment = {},
   organizationRoles = {},
   readOnly = false,
+  inlineComposer = true,
 }: {
   bugId: string;
   issueUrl: string;
   reporterId: string;
   comments: CommentNode[];
   users: UserOption[];
+  /** False when the page offers an "Add comment" modal instead of a form under the thread. */
+  inlineComposer?: boolean;
   /** Files attached to each comment, by comment id (#215). */
   attachmentsByComment?: AttachmentsByComment;
   organizationRoles?: OrganizationRoles;
@@ -427,6 +500,10 @@ export function CommentThread({
     const cType = comment.type || "comment";
     return cType === typeFilter;
   });
+
+  // Counted the same way the filter works: by top-level comment type.
+  const countFor = (id: string) =>
+    id === "all" ? comments.length : comments.filter((comment) => (comment.type || "comment") === id).length;
 
   const filters: { id: string; label: string; type?: CommentType }[] = [
     { id: "all", label: "All" },
@@ -440,7 +517,7 @@ export function CommentThread({
   return (
     <div className="issue-detail-scope mt-0 space-y-4">
       {comments.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           {filters.map((tab) => {
             const on = typeFilter === tab.id;
             const typeStyle = tab.type ? commentTypeVisual[tab.type].filterOn : null;
@@ -450,13 +527,20 @@ export function CommentThread({
                 type="button"
                 aria-pressed={on}
                 onClick={() => setTypeFilter(tab.id)}
-                className={`inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue-strong ${
+                className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue-strong ${
                   on
                     ? typeStyle ?? "border-electric-blue-strong bg-electric-blue-strong text-white"
                     : "border-zk-border bg-zk-surface text-zk-text2 hover:text-zk-text"
                 }`}
               >
                 {tab.label}
+                <span
+                  className={`min-w-5 rounded-full px-1.5 text-center text-[11px] font-semibold tabular-nums ${
+                    on ? "bg-white/25" : "bg-zk-chip text-zk-muted"
+                  }`}
+                >
+                  {countFor(tab.id)}
+                </span>
               </button>
             );
           })}
@@ -470,7 +554,9 @@ export function CommentThread({
             Agents and reviewers haven’t posted any updates here yet.
           </p>
           <p className="mt-2 text-sm text-zk-text2">
-            Start the conversation below with a question, helpful context, or a proposed solution.
+            {inlineComposer
+              ? "Start the conversation below with a question, helpful context, or a proposed solution."
+              : "Use Add comment to ask a question, add context, or propose a solution."}
           </p>
         </div>
       ) : filteredComments.length === 0 ? (
@@ -480,7 +566,7 @@ export function CommentThread({
             : "No conversation."}
         </div>
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-3">
           {filteredComments.map((comment) => (
             <CommentItem
               key={comment.id}
@@ -499,7 +585,7 @@ export function CommentThread({
           ))}
         </ul>
       )}
-      {readOnly ? null : (
+      {readOnly || !inlineComposer ? null : (
         <CommentForm bugId={bugId} users={users} viewerId={currentUserId} />
       )}
     </div>

@@ -17,6 +17,10 @@ vi.mock("@/app/actions/issues", () => ({
   toggleVoteAction: vi.fn(),
 }));
 
+vi.mock("@/app/(app)/points/disputes/actions", () => ({
+  openDisputeAction: vi.fn(),
+}));
+
 vi.mock("@/app/(app)/questions/actions", () => ({
   answerQuestionAction: vi.fn(),
 }));

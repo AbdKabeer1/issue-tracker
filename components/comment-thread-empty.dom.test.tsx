@@ -56,10 +56,10 @@ describe("conversation empty state (#450)", () => {
 
   it("distinguishes an empty filter from an empty conversation", () => {
     render(<CommentThread {...props} comments={[comment]} />);
-    fireEvent.click(screen.getByRole("button", { name: "Reviews" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Reviews/ }));
     expect(screen.getByText("No timeline entries match this filter.")).toBeInTheDocument();
     expect(screen.queryByText("No comments yet.")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    fireEvent.click(screen.getByRole("button", { name: /^All/ }));
     expect(screen.getByText(comment.body)).toBeInTheDocument();
   });
 
