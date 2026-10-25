@@ -365,6 +365,15 @@ describe("issue list layout", () => {
     expect(status).toMatch(/aria-current="page" href="\/issues\?q=login&amp;status=all"/);
   });
 
+  it("searches across All when no tab is picked, so a just-reported issue can be found", async () => {
+    const html = await renderList({ q: "login" });
+    const where = findMany.mock.calls.at(-1)![0].where;
+    expect(where).not.toHaveProperty("agentQuestions");
+    expect(where).not.toHaveProperty("status");
+    const status = html.match(/<nav aria-label="Issue status"[\s\S]*?<\/nav>/)?.[0] ?? "";
+    expect(status).toMatch(/aria-current="page" href="\/issues\?q=login&amp;status=all"/);
+  });
+
   it("shows a Filter by row under All: All, Closed, Rejected and Duplicates", async () => {
     const html = await renderList({ status: "all" });
     const filters = html.match(/<nav aria-label="Filter all issues"[\s\S]*?<\/nav>/)?.[0] ?? "";

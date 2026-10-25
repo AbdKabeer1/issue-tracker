@@ -239,7 +239,10 @@ export default async function BugsPage({
   const params = await searchParams;
   const qParam = toSingleQueryParam(params.q);
   // No ?status= opens the Inbox (the escalated view); ?status=all is the All tab.
-  const statusParam = toSingleQueryParam(params.status) ?? (toSingleQueryParam(params.deleted) === "true" ? undefined : ESCALATED_STATUS);
+  // A search with no tab picked looks across All, so any issue can be found.
+  const statusParam =
+    toSingleQueryParam(params.status) ??
+    (toSingleQueryParam(params.deleted) === "true" ? undefined : toSingleQueryParam(params.q)?.trim() ? ALL_STATUS : ESCALATED_STATUS);
   const severityParam = toSingleQueryParam(params.severity);
   const sortParam = toSingleQueryParam(params.sort);
   const pageParam = toSingleQueryParam(params.page);
