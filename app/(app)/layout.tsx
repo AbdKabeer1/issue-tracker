@@ -15,7 +15,7 @@ import { prisma } from "@/lib/prisma";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { tenantsForUser } from "@/lib/tenants";
 import { countPendingEscalations } from "@/lib/agent-questions";
-import { loadOwnAgents, loadSidebarCounts } from "@/lib/dashboard-overview";
+import { loadOwnAgents } from "@/lib/dashboard-overview";
 import { pointTotals } from "@/lib/points/leaderboard";
 import { getPlatformRewardConfig } from "@/lib/points/platform-rewards";
 import { TARGET_POINTS } from "@/lib/points/rules";
@@ -74,7 +74,6 @@ export default async function AppLayout({
   let pendingEscalationsCount = 0;
   let points = 0;
   let solvedTasks = 0;
-  let issueCount = 0;
   let shellAgents: { id: string; name: string; level: string }[] = [];
   let targetPoints = TARGET_POINTS;
   try {
@@ -94,11 +93,6 @@ export default async function AppLayout({
       solvedTasks = totals.solvedTasks;
     } catch (error) {
       console.error("[layout] points failed", error);
-    }
-    try {
-      issueCount = (await loadSidebarCounts({ userId: user.id, tenantId })).unresolved;
-    } catch (error) {
-      console.error("[layout] issue count failed", error);
     }
     try {
       const agents = await loadOwnAgents({ userId: user.id, tenantId });
@@ -141,7 +135,6 @@ export default async function AppLayout({
           targetPoints={targetPoints}
           agents={shellAgents}
           reportFormUrl={REPORT_FORM_URL}
-          issueCount={issueCount}
         />
         <main
           id={MAIN_CONTENT_ID}

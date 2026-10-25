@@ -1,0 +1,610 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import "./team.css";
+import { requireUser } from "@/lib/auth-helpers";
+import { prisma } from "@/lib/prisma";
+import { currentTenantIdFor } from "@/lib/tenant-context";
+import {
+  paginatedTenantLeaderboard,
+  pointTotals,
+  tenantRankFor,
+  DEFAULT_LEADERBOARD_LIMIT,
+  type LeaderboardEntry,
+} from "@/lib/points/leaderboard";
+import { getPlatformRewardConfig } from "@/lib/points/platform-rewards";
+import { formatPoints, pointsNumber } from "@/lib/points/rules";
+import { Avatar } from "@/components/avatar";
+import {
+  StatusPage,
+  primaryActionClass,
+  secondaryActionClass,
+} from "@/components/status-page";
+import { databaseErrorReason } from "@/lib/db-error";
+import { workflowFor } from "@/lib/workflow";
+import { DEFAULT_PROJECT_WORKFLOW } from "@/lib/workflow-config";
+import { projectContextFor } from "@/lib/project-context";
+import { teamAgentsForMembers, teamMetricSince, type TeamAgent } from "@/lib/team-directory";
+import { isTenantAdminRole } from "@/lib/agents/membership";
+import { settableLevels } from "@/lib/agents/levels";
+import { TeamAgentTable } from "./team-agent-table";
+import { RankingRow } from "./ranking-row";
+
+type SortKey = "points" | "solved";
+
+export type RankingSearchParams = {
+  page?: string;
+  limit?: string;
+  sort?: string;
+  q?: string;
+  online?: string;
+  capacity?: string;
+};
+
+const PODIUM_MEDALS = [
+  { fg: "#E0A100", bg: "rgba(224,161,0,0.16)" },
+  { fg: "#94A3B8", bg: "rgba(148,163,184,0.18)" },
+  { fg: "#C2703D", bg: "rgba(194,112,61,0.16)" },
+] as const;
+
+/** One shape for every Ranking link, so the redirect, filters and Previous/Next agree. */
+export function rankingHref(opts: {
+  page: number;
+  limit: number;
+  sort?: SortKey;
+  q?: string;
+  online?: boolean;
+  capacity?: boolean;
+}): string {
+  const params = new URLSearchParams();
+  params.set("page", String(opts.page));
+  params.set("limit", String(opts.limit));
+  if (opts.sort && opts.sort !== "points") params.set("sort", opts.sort);
+  if (opts.q?.trim()) params.set("q", opts.q.trim());
+  if (opts.online) params.set("online", "1");
+  if (opts.capacity) params.set("capacity", "1");
+  return `/workers?${params.toString()}`;
+}
+
+function progressPct(points: number, target: number): number {
+  const goal = target > 0 ? target : 1;
+  return Math.min(100, Math.max(0, Math.round((points / goal) * 100)));
+}
+
+function parseSort(raw: string | undefined): SortKey {
+  return raw === "solved" ? "solved" : "points";
+}
+
+/** Every ranked member: the list below joins them with the whole team, so it needs them all. */
+async function loadAllEntries(tenantId: string): Promise<LeaderboardEntry[]> {
+  const first = await paginatedTenantLeaderboard(prisma, tenantId, { page: 1, limit: 100 });
+  if (first.totalPages <= 1) return first.entries;
+  const rest = await Promise.all(
+    Array.from({ length: first.totalPages - 1 }, (_, i) =>
+      paginatedTenantLeaderboard(prisma, tenantId, { page: i + 2, limit: 100 }),
+    ),
+  );
+  return [first.entries, ...rest.map((r) => r.entries)].flat();
+}
+
+/** A workspace member with their leaderboard standing and their Team details. */
+type RankedMember = {
+  userId: string;
+  name: string;
+  image: string | null;
+  /** Null for members with no points yet; they list after everyone ranked. */
+  rank: number | null;
+  points: number;
+  solvedTasks: number;
+  /** Points in the last 30 days. */
+  recentPoints: number;
+  role: "Owner" | "Admin" | "Member";
+  claims: number;
+  agents: TeamAgent[];
+};
+
+function sortMembers(members: RankedMember[], sort: SortKey): RankedMember[] {
+  return [...members].sort((a, b) => {
+    if (sort === "solved") {
+      return b.solvedTasks - a.solvedTasks || b.points - a.points || a.name.localeCompare(b.name);
+    }
+    if (a.rank !== null && b.rank !== null) return a.rank - b.rank;
+    if (a.rank !== null) return -1;
+    if (b.rank !== null) return 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+/**
+ * Ranking: the leaderboard's podium and your standing on top, then every
+ * member of the workspace with their points, plus the Team details (role,
+ * active claims, recent points and agents) the leaderboard didn't show (#428, #657).
+ */
+export default async function RankingPanel({
+  searchParams,
+}: {
+  searchParams?: Promise<RankingSearchParams>;
+}) {
+  const params = searchParams ? await searchParams : {};
+  const page = Math.max(1, parseInt(params.page ?? "1", 10) || 1);
+  const limit = Math.min(
+    100,
+    Math.max(10, parseInt(params.limit ?? String(DEFAULT_LEADERBOARD_LIMIT), 10) || DEFAULT_LEADERBOARD_LIMIT),
+  );
+  const sort = parseSort(params.sort);
+  const q = (params.q ?? "").trim();
+  const showOnlineOnly = params.online === "1";
+  const showCapacityOnly = params.capacity === "1";
+
+  const user = await requireUser();
+  const tenantId = await currentTenantIdFor(user.id);
+  if (!tenantId) {
+    return (
+      <section className="team-empty">
+        <h2>No workspace yet</h2>
+        <p>Join or create a workspace to see its ranking and team.</p>
+        <Link href="/tenants" className="team-primary">Create or join a workspace</Link>
+      </section>
+    );
+  }
+
+  let standing: Awaited<ReturnType<typeof tenantRankFor>>;
+  let myTotals: { points: number; solvedTasks: number };
+  let ranked: LeaderboardEntry[];
+  let targetPoints: number;
+  let members;
+  let agentsMap;
+  let recentPoints;
+  let activeClaims;
+  let maxActiveClaims: number;
+  let activeProjectId: string | null;
+  try {
+    const context = await projectContextFor(prisma, tenantId);
+    activeProjectId = context.activeProjectId;
+    members = await prisma.membership.findMany({
+      where: { tenantId },
+      orderBy: { user: { name: "asc" } },
+      select: { role: true, user: { select: { id: true, name: true, image: true } } },
+    });
+    const memberIds = members.map(({ user: member }) => member.id);
+    const since = teamMetricSince();
+    [standing, myTotals, ranked, targetPoints, agentsMap, recentPoints, activeClaims] = await Promise.all([
+      tenantRankFor(prisma, tenantId, user.id),
+      pointTotals(prisma, tenantId, user.id),
+      loadAllEntries(tenantId),
+      getPlatformRewardConfig(prisma).then((config) => config.target),
+      teamAgentsForMembers(prisma, tenantId, memberIds),
+      prisma.pointEntry.groupBy({
+        by: ["userId"],
+        where: { tenantId, createdAt: { gte: since } },
+        _sum: { points: true },
+      }),
+      prisma.issueClaim.groupBy({
+        by: ["beneficiaryUserId"],
+        where: {
+          beneficiaryUserId: { in: memberIds },
+          status: "active",
+          releasedAt: null,
+          bug: { tenantId, ...(activeProjectId ? { projectId: activeProjectId } : {}) },
+        },
+        _count: { _all: true },
+      }),
+    ]);
+    maxActiveClaims = activeProjectId
+      ? (await workflowFor(activeProjectId)).maxActiveClaims
+      : DEFAULT_PROJECT_WORKFLOW.maxActiveClaims;
+  } catch (error) {
+    console.error("[ranking] load failed", error);
+    const reason = databaseErrorReason(error) ?? "The ranking could not be read.";
+    return (
+      <StatusPage
+        title="This page didn't load"
+        actions={
+          <>
+            <Link href="/workers" className={primaryActionClass}>
+              Try again
+            </Link>
+            <Link href="/issues" className={secondaryActionClass}>
+              Go to issues
+            </Link>
+          </>
+        }
+      >
+        <p>{reason}</p>
+      </StatusPage>
+    );
+  }
+
+  const viewerMembership = members.find((membership) => membership.user.id === user.id);
+  const manageLevels = isTenantAdminRole(viewerMembership?.role, user.role)
+    ? settableLevels({ isOwner: false, isTenantAdmin: true })
+    : null;
+  const capacityScope = activeProjectId ? "selected project" : "workspace";
+  const rankedById = new Map(ranked.map((entry) => [entry.userId, entry]));
+  const recentById = new Map(recentPoints.map((row) => [row.userId, pointsNumber(row._sum.points)]));
+  const claimsById = new Map(activeClaims.map((row) => [row.beneficiaryUserId, row._count._all]));
+
+  const everyone: RankedMember[] = members.map(({ role, user: member }) => {
+    const entry = rankedById.get(member.id);
+    return {
+      userId: member.id,
+      name: member.name,
+      image: entry?.image ?? member.image ?? null,
+      rank: entry?.rank ?? null,
+      points: entry?.points ?? 0,
+      solvedTasks: entry?.solvedTasks ?? 0,
+      recentPoints: recentById.get(member.id) ?? 0,
+      role: role === "owner" ? "Owner" : role === "admin" ? "Admin" : "Member",
+      claims: claimsById.get(member.id) ?? 0,
+      agents: agentsMap.get(member.id) ?? [],
+    };
+  });
+
+  const matching = everyone.flatMap((member) => {
+    if (q && !member.name.toLowerCase().includes(q.toLowerCase())) return [];
+    const onlineAgents = member.agents.filter((agent) => agent.online);
+    if (showOnlineOnly && onlineAgents.length === 0) return [];
+    if (showCapacityOnly && (member.agents.length === 0 || member.claims >= maxActiveClaims)) return [];
+    return [{ ...member, agents: showOnlineOnly ? onlineAgents : member.agents }];
+  });
+  const sorted = sortMembers(matching, sort);
+  const total = sorted.length;
+  const totalPages = Math.ceil(total / limit) || 1;
+
+  // A page past the end (an old link, a hand-edited URL) would otherwise show
+  // an empty list. Send it to the last page.
+  if (total > 0 && page > totalPages) {
+    redirect(rankingHref({ page: totalPages, limit, sort, q, online: showOnlineOnly, capacity: showCapacityOnly }));
+  }
+  const offset = (page - 1) * limit;
+  const rows = sorted.slice(offset, offset + limit);
+  const startIdx = total === 0 ? 0 : offset + 1;
+  const endIdx = Math.min(page * limit, total);
+  const filtered = Boolean(q) || showOnlineOnly || showCapacityOnly;
+  const linkFor = (overrides: Partial<Parameters<typeof rankingHref>[0]>) =>
+    rankingHref({ page: 1, limit, sort, q, online: showOnlineOnly, capacity: showCapacityOnly, ...overrides });
+
+  const podium = ranked.slice(0, 3);
+  const secondPlacePoints = ranked[1]?.points ?? null;
+  const goalMet = myTotals.points >= targetPoints;
+  const myPct = progressPct(myTotals.points, targetPoints);
+  const standingDetail =
+    standing?.rank === 1 && secondPlacePoints != null
+      ? `${formatPoints(Math.max(0, myTotals.points - secondPlacePoints))} pts ahead of #2 · ${myTotals.solvedTasks} issues solved`
+      : `${myTotals.solvedTasks} issues solved`;
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <p className="max-w-xl text-sm leading-relaxed text-zk-muted">
+          Points for solving, reporting and reviewing issues. The goal is {targetPoints} points.
+        </p>
+        <Link
+          href="/points/disputes"
+          className="inline-flex h-[42px] items-center gap-2 rounded-full border border-zk-border bg-zk-surface px-[18px] text-sm font-bold text-zk-text transition-colors hover:bg-zk-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m16 16 3-8 3 8c-.9.7-1.9 1-3 1s-2.1-.3-3-1zM2 16l3-8 3 8c-.9.7-1.9 1-3 1s-2.1-.3-3-1zM7 21h10M12 3v18M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2" />
+          </svg>
+          Disputes
+        </Link>
+      </div>
+
+      {podium.length === 0 ? (
+        <p className="rounded-[20px] border border-zk-border bg-zk-surface p-6 text-sm text-zk-text2">
+          No points yet. Resolve an assigned issue to earn the first ones.
+        </p>
+      ) : (
+        <div className="flex flex-wrap items-stretch gap-4">
+          <div className="grid min-w-0 flex-[999_1_640px] grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
+            {podium.map((entry, i) => {
+              const medal = PODIUM_MEDALS[i] ?? PODIUM_MEDALS[2];
+              const pct = progressPct(entry.points, targetPoints);
+              const met = entry.points >= targetPoints;
+              return (
+                <div
+                  key={entry.userId}
+                  className="zk-motion group relative flex flex-col gap-4 overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface p-5 motion-safe:animate-[leaderboard-in_0.5s_cubic-bezier(0.2,0.7,0.2,1)_both] motion-safe:transition-[transform,box-shadow,border-color] motion-safe:duration-250 hover:border-[#BFD6FB] hover:shadow-[0_18px_40px_rgba(11,23,51,0.10),0_2px_6px_rgba(57,120,246,0.10)] motion-safe:hover:-translate-y-1 dark:hover:border-electric-blue-strong dark:hover:shadow-[0_18px_40px_rgba(0,0,0,0.45),0_0_0_1px_rgba(57,120,246,0.25)]"
+                  style={{ animationDelay: `${i * 70}ms` }}
+                >
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-0 top-0 h-[3px] origin-left scale-x-0 bg-gradient-to-r from-electric-blue to-sky-tint motion-safe:transition-transform motion-safe:duration-350 group-hover:scale-x-100"
+                  />
+                  <div className="flex items-center justify-between">
+                    <span
+                      className="flex h-9 w-9 items-center justify-center rounded-xl"
+                      style={{ background: medal.bg, color: medal.fg }}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.7V17c0 .6-.5 1-1 1.2-1.2.5-2 2-2 3.8M14 14.7V17c0 .6.5 1 1 1.2 1.2.5 2 2 2 3.8M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+                      </svg>
+                    </span>
+                    <span className="text-[13px] font-extrabold text-zk-muted">#{entry.rank}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="inline-flex rounded-full"
+                      style={{ boxShadow: `0 0 0 3px var(--zk-surface), 0 0 0 5px ${medal.fg}` }}
+                    >
+                      <Avatar name={entry.name} image={entry.image} size="lg" className="!h-12 !w-12 text-base font-extrabold" />
+                    </span>
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <Link
+                        href={`/users/${entry.userId}`}
+                        className="truncate text-base font-bold text-zk-text hover:underline"
+                      >
+                        {entry.name}
+                        {entry.userId === user.id ? (
+                          <span className="ml-1 text-sm font-normal text-zk-muted">(you)</span>
+                        ) : null}
+                      </Link>
+                      <span className="text-[13px] text-zk-muted">{entry.solvedTasks} solved</span>
+                    </div>
+                  </div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-[32px] font-extrabold leading-none text-zk-text motion-safe:transition-colors group-hover:text-zk-accent">
+                      {formatPoints(entry.points)}
+                    </span>
+                    <span className="text-sm font-semibold text-zk-muted">pts</span>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <div className="h-2 overflow-hidden rounded-full bg-zk-tint">
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${pct}%`, background: met ? "#2E6FEF" : "#8FC9FF" }}
+                      />
+                    </div>
+                    <span className={`text-xs font-bold ${met ? "text-zk-ok-fg" : "text-zk-muted"}`}>
+                      {met
+                        ? `Goal reached · +${formatPoints(entry.points - targetPoints)}`
+                        : `${formatPoints(targetPoints - entry.points)} pts to goal`}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="relative flex min-w-0 flex-[1_1_300px] flex-col gap-4 overflow-hidden rounded-[20px] bg-deep-ocean p-[22px] text-white">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -right-[90px] -top-[90px] h-60 w-60 rounded-full"
+              style={{ background: "radial-gradient(circle, rgba(57,120,246,0.45), rgba(57,120,246,0) 70%)" }}
+            />
+            <span className="relative text-xs font-bold uppercase tracking-[0.08em] text-[#A9BCDF]">
+              Your standing
+            </span>
+            <div className="relative flex items-baseline gap-2.5">
+              <span className="text-[44px] font-extrabold leading-none">
+                {standing ? `#${standing.rank}` : "—"}
+              </span>
+              <span className="text-sm text-[#C9D6EF]">
+                of {standing?.total ?? ranked.length} {(standing?.total ?? ranked.length) === 1 ? "person" : "people"}
+              </span>
+            </div>
+            <div className="relative flex flex-col gap-2">
+              <div className="flex justify-between text-[13px]">
+                <span className="text-[#C9D6EF]">
+                  {formatPoints(myTotals.points)} / {targetPoints} pts
+                </span>
+                {goalMet ? (
+                  <span className="rounded-full bg-[#0F3326] px-2 py-px font-bold text-[#6EE7A8]">
+                    Goal reached · +{formatPoints(myTotals.points - targetPoints)}
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-blue-slate px-2 py-px font-bold text-[#C9D6EF]">
+                    {formatPoints(targetPoints - myTotals.points)} to goal
+                  </span>
+                )}
+              </div>
+              <div className="h-2.5 overflow-hidden rounded-full bg-blue-slate">
+                <div className="h-full rounded-full bg-electric-blue" style={{ width: `${myPct}%` }} />
+              </div>
+            </div>
+            <span className="relative text-[13px] text-[#C9D6EF]">{standingDetail}</span>
+          </div>
+        </div>
+      )}
+
+      <section aria-label="Team" className="flex flex-col gap-3.5 rounded-[20px] border border-zk-border bg-zk-surface p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-baseline gap-2.5">
+            <h2 className="text-lg font-bold text-zk-text">Team</h2>
+            <span className="text-[13px] text-zk-muted">
+              {filtered ? `${total} of ${everyone.length} people` : `${total} people`}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <form
+              action="/workers"
+              method="get"
+              className="flex h-10 w-60 max-w-full items-center gap-2 rounded-full border border-zk-border bg-zk-surface px-3.5"
+            >
+              <input type="hidden" name="limit" value={limit} />
+              {sort !== "points" ? <input type="hidden" name="sort" value={sort} /> : null}
+              {showOnlineOnly ? <input type="hidden" name="online" value="1" /> : null}
+              {showCapacityOnly ? <input type="hidden" name="capacity" value="1" /> : null}
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-zk-muted">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <label className="sr-only" htmlFor="ranking-search">
+                Search people
+              </label>
+              <input
+                id="ranking-search"
+                type="search"
+                name="q"
+                defaultValue={q}
+                placeholder="Search people"
+                className="min-w-0 flex-1 border-0 bg-transparent text-sm text-zk-text outline-none placeholder:text-zk-muted"
+              />
+            </form>
+            {/* Team's filters, as toggles: each link flips one and keeps the rest. */}
+            <div className="flex gap-1" aria-label="Filter team" role="group">
+              {(
+                [
+                  ["online", "Online now", showOnlineOnly],
+                  ["capacity", "Has capacity", showCapacityOnly],
+                ] as const
+              ).map(([key, label, on]) => (
+                <Link
+                  key={key}
+                  href={linkFor({ [key]: !on })}
+                  aria-current={on ? "true" : undefined}
+                  className={`inline-flex min-h-8 items-center rounded-full border px-3 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue ${
+                    on
+                      ? "border-electric-blue-strong bg-electric-blue-strong font-bold text-white"
+                      : "border-zk-border bg-zk-surface font-medium text-zk-text2 hover:text-zk-text"
+                  }`}
+                >
+                  {label}
+                </Link>
+              ))}
+            </div>
+            <div role="tablist" aria-label="Sort by" className="flex gap-0.5 rounded-full bg-zk-seg p-1">
+              {(
+                [
+                  ["points", "Points"],
+                  ["solved", "Solved"],
+                ] as const
+              ).map(([key, label]) => {
+                const on = sort === key;
+                return (
+                  <Link
+                    key={key}
+                    href={linkFor({ sort: key })}
+                    role="tab"
+                    aria-selected={on}
+                    className={`inline-flex min-h-8 items-center rounded-full px-3.5 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue ${
+                      on
+                        ? "bg-zk-surface font-bold text-zk-text shadow-[0_1px_3px_rgba(21,18,31,0.12)]"
+                        : "font-medium text-zk-text2 hover:text-zk-text"
+                    }`}
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <details className="team-activity-note">
+          <summary>How activity and permissions work</summary>
+          <p className="text-sm text-zk-muted">
+            Online means an agent has used the API, claimed an issue or sent a claim heartbeat in the last 15 minutes.
+            Recent points and accepted fixes cover the last 30 days; active claims count the {capacityScope}.
+            {manageLevels ? " As an admin you can change anyone's agent role here, including dispatcher and merger." : ""}
+          </p>
+        </details>
+
+        {rows.length === 0 ? (
+          <p className="px-1 py-6 text-sm text-zk-muted">
+            {everyone.length === 0 ? "This workspace has no members yet." : "No people match these filters."}
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <div className="min-w-[980px]">
+              <div className="flex items-center gap-4 rounded-full bg-zk-tint px-4 py-3.5 text-xs font-bold uppercase tracking-[0.05em] text-zk-accent">
+                <span className="w-10">#</span>
+                <span className="min-w-0 flex-1">Person</span>
+                <span className="w-[200px]">Progress to {targetPoints}</span>
+                <span className="w-[70px] text-right">Solved</span>
+                <span className="w-[110px] text-right">Points</span>
+                <span className="w-[90px] text-right" title={`Active claims in the ${capacityScope}`}>Claims</span>
+                <span className="w-[190px]">Agents</span>
+              </div>
+              <ul>
+                {rows.map((row, i) => {
+                  const medal = row.rank !== null && row.rank <= 3 ? PODIUM_MEDALS[row.rank - 1]?.fg : undefined;
+                  return (
+                    <RankingRow
+                      key={row.userId}
+                      member={{ id: row.userId, name: row.name, image: row.image }}
+                      rank={row.rank}
+                      medal={medal}
+                      isYou={row.userId === user.id}
+                      role={row.role}
+                      pct={progressPct(row.points, targetPoints)}
+                      goalMet={row.points >= targetPoints}
+                      solved={row.solvedTasks}
+                      points={row.points}
+                      recentPoints={row.recentPoints}
+                      claims={row.claims}
+                      claimLimit={maxActiveClaims}
+                      agentCount={row.agents.length}
+                      onlineCount={row.agents.filter((agent) => agent.online).length}
+                      last={i === rows.length - 1}
+                    >
+                      <TeamAgentTable agents={row.agents} manageLevels={manageLevels} memberName={row.name} />
+                    </RankingRow>
+                  );
+                })}
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-1 text-sm text-zk-text2">
+            <div>
+              Showing {startIdx}–{endIdx} of {total}
+            </div>
+            <div className="flex items-center gap-2">
+              {page > 1 ? (
+                <Link
+                  href={linkFor({ page: page - 1 })}
+                  className="rounded-full border border-zk-border bg-zk-surface px-3.5 py-1.5 text-sm font-medium text-zk-text hover:bg-zk-chip"
+                >
+                  Previous
+                </Link>
+              ) : (
+                <span
+                  aria-disabled="true"
+                  className="cursor-not-allowed rounded-full border border-zk-border bg-zk-chip px-3.5 py-1.5 text-sm font-medium text-zk-muted"
+                >
+                  Previous
+                </span>
+              )}
+              <span className="text-sm text-zk-text2">
+                Page {page} of {totalPages}
+              </span>
+              {page < totalPages ? (
+                <Link
+                  href={linkFor({ page: page + 1 })}
+                  className="rounded-full border border-zk-border bg-zk-surface px-3.5 py-1.5 text-sm font-medium text-zk-text hover:bg-zk-chip"
+                >
+                  Next
+                </Link>
+              ) : (
+                <span
+                  aria-disabled="true"
+                  className="cursor-not-allowed rounded-full border border-zk-border bg-zk-chip px-3.5 py-1.5 text-sm font-medium text-zk-muted"
+                >
+                  Next
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      <style>{`
+        @keyframes leaderboard-in {
+          from { opacity: 0; transform: translateY(12px); }
+          to { opacity: 1; transform: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .zk-motion, .zk-motion * {
+            animation: none !important;
+            transition: none !important;
+          }
+          .zk-motion:hover {
+            transform: none !important;
+          }
+        }
+      `}</style>
+    </div>
+  );
+}

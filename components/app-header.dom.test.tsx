@@ -157,7 +157,6 @@ function renderHeader(props?: Partial<Parameters<typeof AppHeader>[0]>) {
     isRealAdmin: true,
     workspaces: [{ id: "t1", name: "Ziki", slug: "ziki" }],
     activeTenantId: "t1",
-    issueCount: 4,
     ...props,
   };
   return render(<AppHeader {...shared} />);
@@ -187,16 +186,17 @@ describe("account menu role switch", () => {
     expect(switchRole).not.toHaveBeenCalled();
   });
 
-  it("puts Dashboard, Issues and Ranking in the top bar", () => {
+  it("puts Product, Marketing and Security in the top bar; the logo goes to the Dashboard", () => {
     renderHeader();
     const nav = screen.getByRole("navigation", { name: "Workspace" });
     expect(nav.closest("header")).not.toBeNull();
-    expect(screen.getByRole("link", { name: "Dashboard" }).getAttribute("href")).toBe("/dashboard");
-    const issues = screen.getByRole("link", { name: /^Issues/ });
-    expect(issues.getAttribute("href")).toBe("/issues");
-    expect(issues.getAttribute("aria-current")).toBe("page");
-    expect(issues.textContent).toContain("4");
-    expect(screen.getByRole("link", { name: "Ranking" }).getAttribute("href")).toBe("/workers");
+    expect([...nav.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual(["/issues", "/marketing", "/security"]);
+    const product = screen.getByRole("link", { name: "Product" });
+    expect(product.getAttribute("href")).toBe("/issues");
+    expect(product.getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("link", { name: "Marketing" }).getAttribute("href")).toBe("/marketing");
+    expect(screen.getByRole("link", { name: "Security" }).getAttribute("href")).toBe("/security");
+    expect(screen.getByRole("link", { name: "Ziki" }).getAttribute("href")).toBe("/dashboard");
   });
 
   it("closes the Agents menu when a destination is chosen", async () => {
@@ -230,13 +230,15 @@ describe("account menu role switch", () => {
     expect(screen.queryByRole("link", { name: "Workspace" })).toBeNull();
   });
 
-  it("shows this person's name and points together in the account chip", () => {
-    renderHeader({ userId: "ada", points: 128, solvedTasks: 4 });
-    const account = screen.getByRole("button", {
-      name: /account menu for ada lovelace 128 pts of 500, 4 solved/i,
-    });
-    expect(account.textContent).toContain("Ada Lovelace");
-    expect(account.textContent).toContain("128");
+  it("shows the points beside the bell, opening Ranking, and keeps them off the account chip", () => {
+    const { container } = renderHeader({ userId: "ada", points: 128, solvedTasks: 4 });
+    const account = screen.getByRole("button", { name: /account menu for ada lovelace/i });
+    expect(account.textContent).not.toContain("128");
+    const points = screen.getByRole("link", { name: /128 pts of 500, 4 solved.*open ranking/i });
+    expect(points.getAttribute("href")).toBe("/workers");
+    const bell = screen.getByRole("button", { name: /notifications/i });
+    const controls = [...container.querySelectorAll("header a, header button")];
+    expect(controls.indexOf(bell)).toBe(controls.indexOf(points) + 1);
   });
 
   it("keeps each control's visible text inside its accessible name", () => {
@@ -305,7 +307,7 @@ describe("account menu role switch", () => {
     expect(screen.getByRole("link", { name: "Documentation" }).getAttribute("href")).toBe("/docs");
     expect(links).not.toContain("Dashboard");
     expect(links.some((text) => text?.startsWith("Switch workspace"))).toBe(false);
-    // Points are on the chip, and the menu shows no points or rank.
+    // Points are beside the bell, and the menu shows no points or rank.
     expect(menu.textContent).not.toContain("128 pts");
     expect(menu.textContent).not.toMatch(/Rank #/);
   });

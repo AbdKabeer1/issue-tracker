@@ -71,7 +71,7 @@ function PlusIcon() {
 
 function TrophyIcon() {
   return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
       <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
       <path d="M4 22h16" />
@@ -114,13 +114,11 @@ function TopNavLink({
   href,
   active,
   label,
-  count,
   children,
 }: {
   href: string;
   active: boolean;
   label: string;
-  count?: number;
   children: React.ReactNode;
 }) {
   return (
@@ -134,31 +132,17 @@ function TopNavLink({
     >
       <span className={`relative flex items-center justify-center max-lg:h-7 max-lg:w-12 max-lg:rounded-full ${active ? "max-lg:bg-zk-tint" : ""}`}>
         {children}
-        {typeof count === "number" ? (
-          <span
-            aria-hidden="true"
-            className="rounded-full px-1.5 font-mono text-[10px] font-normal tabular-nums max-lg:absolute max-lg:-right-0.5 max-lg:-top-1 max-lg:bg-electric-blue-strong max-lg:text-white lg:hidden"
-          >
-            {count > 999 ? "999+" : count}
-          </span>
-        ) : null}
       </span>
       {label}
-      {typeof count === "number" ? (
-        <span
-          className={`rounded-full px-1.5 font-mono text-[11px] font-normal tabular-nums max-lg:sr-only ${
-            active ? "bg-zk-surface text-zk-accent" : "bg-zk-chip text-zk-muted"
-          }`}
-        >
-          {count > 999 ? "999+" : count}
-        </span>
-      ) : null}
     </Link>
   );
 }
 
-/** Dashboard, Issues and Ranking: the workspace pages, formerly the sidebar. */
-function TopNav({ pathname, issueCount }: { pathname: string | null; issueCount?: number }) {
+/**
+ * The workspace areas: Product (the issue tracker), Marketing and Security.
+ * The logo goes to the Dashboard; the points pill opens Ranking.
+ */
+function TopNav({ pathname }: { pathname: string | null }) {
   return (
     <nav
       aria-label="Workspace"
@@ -166,29 +150,27 @@ function TopNav({ pathname, issueCount }: { pathname: string | null; issueCount?
       // clear of the home indicator. From lg it sits inline in the top bar.
       className="flex items-center max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:justify-around max-lg:border-t max-lg:border-zk-border max-lg:bg-zk-surface max-lg:px-2 max-lg:pt-1.5 max-lg:pb-[max(0.375rem,env(safe-area-inset-bottom))] max-lg:shadow-[0_-1px_3px_rgba(0,0,0,0.04)] lg:gap-1"
     >
-      <TopNavLink href="/dashboard" active={isNavItemActive(pathname, "/dashboard")} label="Dashboard">
-        <NavIcon>
-          <rect x="3" y="3" width="7" height="9" rx="1.5" />
-          <rect x="14" y="3" width="7" height="5" rx="1.5" />
-          <rect x="14" y="12" width="7" height="9" rx="1.5" />
-          <rect x="3" y="16" width="7" height="5" rx="1.5" />
-        </NavIcon>
-      </TopNavLink>
-      <TopNavLink href="/issues" active={isNavItemActive(pathname, "/issues")} label="Issues" count={issueCount}>
+      <TopNavLink href="/issues" active={isNavItemActive(pathname, "/issues")} label="Product">
         <NavIcon>
           <circle cx="12" cy="12" r="9" />
           <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
         </NavIcon>
       </TopNavLink>
-      <TopNavLink href="/workers" active={isNavItemActive(pathname, "/workers")} label="Ranking">
+      <TopNavLink href="/marketing" active={isNavItemActive(pathname, "/marketing")} label="Marketing">
         <NavIcon>
-          <path d="M8 21V11H3v10M15 21V5H9v16M21 21v-7h-5v7" />
+          <path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1Z" />
+          <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" />
+        </NavIcon>
+      </TopNavLink>
+      <TopNavLink href="/security" active={isNavItemActive(pathname, "/security")} label="Security">
+        <NavIcon>
+          <path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6l-8-3Z" />
+          <path d="m9 12 2 2 4-4" />
         </NavIcon>
       </TopNavLink>
     </nav>
   );
 }
-
 
 /** In-place notification preview; opening the bell never marks alerts read (#615). */
 function NotificationsBell({ unreadCount, active }: { unreadCount: number; active: boolean }) {
@@ -376,26 +358,37 @@ function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: She
   );
 }
 
-/** The points pill beside the name in the account chip, as in the redesign. */
-function PointsBadge({
+/** The viewer's points, beside the bell. It is the way into Ranking, which left the nav. */
+function PointsLink({
   points,
   solvedTasks,
   targetPoints = TARGET_POINTS,
+  active,
 }: {
   points: number;
   solvedTasks: number;
   targetPoints?: number;
+  active: boolean;
 }) {
   const progress = pointsProgress(points, solvedTasks, targetPoints);
   return (
-    <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-zk-warn-bg px-[7px] text-[11.5px] font-medium text-zk-warn-fg">
+    <Link
+      href="/workers"
+      aria-current={active ? "page" : undefined}
+      title="Ranking"
+      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-semibold ${linkFocus} ${
+        active
+          ? "bg-zk-warn-fg text-zk-surface"
+          : "bg-zk-warn-bg text-zk-warn-fg hover:brightness-95"
+      }`}
+    >
       <TrophyIcon />
       <span className="tabular-nums">{formatPoints(points)}</span> pts
       <span className="sr-only">
         {" "}
-        of {targetPoints}, {solvedTasks} solved, {progress.pointsPercent}%
+        of {targetPoints}, {solvedTasks} solved, {progress.pointsPercent}%. Open Ranking
       </span>
-    </span>
+    </Link>
   );
 }
 
@@ -415,7 +408,6 @@ export function AppHeader({
   targetPoints = TARGET_POINTS,
   agents = [],
   reportFormUrl,
-  issueCount,
 }: {
   userName?: string | null;
   userImage?: string | null;
@@ -433,8 +425,6 @@ export function AppHeader({
   targetPoints?: number;
   agents?: ShellAgent[];
   reportFormUrl?: string;
-  /** Unresolved issues in the workspace, shown on the Issues link. */
-  issueCount?: number;
 }) {
   const pathname = usePathname();
   const [accountOpen, setAccountOpen] = useState(false);
@@ -459,11 +449,11 @@ export function AppHeader({
     <header className="relative z-40 border-b border-zk-border bg-zk-surface shadow-[0_1px_3px_rgba(0,0,0,0.04)] lg:sticky lg:top-0">
       <div className={`${PAGE_CONTAINER_CLASS} flex flex-wrap items-center gap-x-3 gap-y-2 py-3 max-sm:py-2 sm:px-6`}>
         {/* Below lg the nav lives in the bottom strip, leaving one row here.
-            Phones show just the organisation name on the left, no logo. */}
+            The logo is the way to the Dashboard; phones show just its mark. */}
         <div className="flex min-w-0 items-center gap-2">
-          <Link href="/dashboard" aria-label="Ziki" className={`flex shrink-0 items-center gap-2 rounded-full max-sm:hidden ${linkFocus}`}>
-            <ZikiMark className="h-7 w-auto text-electric-blue-strong" />
-            <span aria-hidden="true" className="pr-1 text-[15px] font-semibold tracking-[-0.02em] text-zk-text">
+          <Link href="/dashboard" aria-label="Ziki" className={`flex shrink-0 items-center gap-2 rounded-full ${linkFocus}`}>
+            <ZikiMark className="h-7 w-auto text-electric-blue-strong max-sm:h-6" />
+            <span aria-hidden="true" className="pr-1 text-[15px] font-semibold tracking-[-0.02em] text-zk-text max-sm:hidden">
               ziki
             </span>
           </Link>
@@ -471,7 +461,7 @@ export function AppHeader({
           <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} tone="bar" className="min-w-0 max-sm:max-w-44" />
         </div>
 
-        <TopNav pathname={pathname} issueCount={issueCount} />
+        <TopNav pathname={pathname} />
 
         {/* Phones and tablets: min-w-0 lets the group narrow so its flex-wrap
             breaks the chips onto rows (no sideways scroll at 360px or 768px).
@@ -492,13 +482,8 @@ export function AppHeader({
             >
               <span className="sr-only">Account menu for </span>
               <Avatar name={userName} image={userImage} size="md" variant="solid" />
-              <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium">
-                {/* Phones show the avatar and points; the name is still read out. */}
-                <span className="max-w-40 truncate max-sm:sr-only">{userName}</span>
-                {userId ? (
-                  <PointsBadge points={points} solvedTasks={solvedTasks} targetPoints={targetPoints} />
-                ) : null}
-              </span>
+              {/* Phones show just the avatar; the name is still read out. */}
+              <span className="max-w-40 truncate text-[13px] font-medium max-sm:sr-only">{userName}</span>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className="shrink-0 text-zk-muted max-sm:hidden">
                 <path d={accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"} />
               </svg>
@@ -557,7 +542,16 @@ export function AppHeader({
             ) : null}
           </div>
 
-          {/* The bell sits last, after the account chip. */}
+          {userId ? (
+            <PointsLink
+              points={points}
+              solvedTasks={solvedTasks}
+              targetPoints={targetPoints}
+              active={isNavItemActive(pathname, "/workers")}
+            />
+          ) : null}
+
+          {/* The bell sits last, right after the points. */}
           <NotificationsBell key={`${userId}:${activeTenantId}:${pathname}`} unreadCount={unreadCount} active={isNavItemActive(pathname, "/notifications")} />
         </div>
       </div>
