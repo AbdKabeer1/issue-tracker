@@ -121,7 +121,8 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-zk-bg">
+    // data-app-shell switches the page (and its dialogs and toasts) to Inter; see globals.css.
+    <div data-app-shell="" className="flex min-h-screen flex-col bg-zk-bg">
       <SkipLink />
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader

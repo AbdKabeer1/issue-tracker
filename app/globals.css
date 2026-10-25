@@ -87,6 +87,13 @@ body {
   font-family: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
 }
 
+/* The signed-in app (Dashboard, Issues, ...) uses Inter. Set on <body> so the
+   dialogs and toasts portalled there match; public pages keep Manrope. */
+body:has([data-app-shell]) {
+  --font-sans: var(--font-inter);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .zk-motion,
   .zk-motion * {
