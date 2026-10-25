@@ -54,7 +54,7 @@ function buildStats(input: {
     {
       label: "Points",
       value: formatPoints(overview.points.points),
-      href: "/workers?view=leaderboard",
+      href: "/workers",
       chip: weekPoints >= TARGET_POINTS ? "Goal met" : `${formatPoints(toGo)} to go`,
       chipTone: weekPoints >= TARGET_POINTS ? "ok" : "tint",
       note: "500 required this week",
