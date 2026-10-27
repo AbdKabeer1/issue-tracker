@@ -1,6 +1,6 @@
 # Signal Board Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use the subagent-driven-development or executing-plans workflow to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the signed-in dashboard with an enterprise Signal Board that shows the full issue line, the agent/bot workforce, real approval decisions, and the automation operation — with no points or ranking.
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Next.js 16 App Router, React 19, TypeScript, Tailwind CSS 4, Prisma, Auth.js v5, Vitest, Playwright.
 
-**Spec:** `docs/superpowers/specs/2026-10-27-signal-board-design.md`
+**Spec:** `docs/signal-board/design.md`
 
 ## Global Constraints
 
@@ -560,9 +560,60 @@ git commit -m "docs(signal): finish signal board design and handoff"
 
 ---
 
+### Task 12: Deploy to Vercel
+
+**Files:**
+- Modify: `vercel.json` if the build command or cron schedule changed
+- Modify: `handoff/RUNBOOK.md`
+
+**Interfaces:**
+- Consumes: a green build and the Vercel project `aboki2/issue-tracker`.
+- Produces: the live production URL.
+
+- [ ] **Step 1: Confirm the build command and cron limits**
+
+`vercel.json` must use `"buildCommand": "prisma generate && next build --webpack"`. Migrations are run separately against `DATABASE_URL_UNPOOLED`; the build must not run `prisma migrate deploy`. Cron schedules must be daily (`0 0 * * *`) for the Hobby plan.
+
+- [ ] **Step 2: Run the local verification**
+
+```bash
+pnpm exec tsc --noEmit
+NODE_OPTIONS=--no-experimental-webstorage pnpm exec vitest run --exclude '.worktrees/**' components/signal-board components/signal-lamp.dom.test.tsx components/signal-stage-track.dom.test.tsx components/signal-handoff-chain.dom.test.tsx components/workforce-roster.dom.test.tsx 'app/(board)/dashboard/page.test.tsx' 'app/(app)/issues/(list)/page.test.ts'
+pnpm build
+```
+
+Expected: all pass. If `pnpm build` needs the Neon env, source `.env.local` first.
+
+- [ ] **Step 3: Apply migrations to the Neon database**
+
+```bash
+export $(grep -E '^(DATABASE_URL_UNPOOLED|DATABASE_URL)=' .env.local | xargs)
+DATABASE_URL="$DATABASE_URL_UNPOOLED" DIRECT_URL="$DATABASE_URL_UNPOOLED" pnpm exec prisma migrate deploy
+```
+
+- [ ] **Step 4: Deploy and verify**
+
+```bash
+vercel --prod --yes --archive=tgz
+```
+
+Expected: `"status": "ok"` and `Production: https://issue-tracker-nu-nine.vercel.app`. Open the URL, log in with the demo account, and verify `/dashboard`, `/issues?status=all&project=all`, `/issues/1`, and `/workers`.
+
+- [ ] **Step 5: Update the runbook and commit**
+
+Record the live URL and the deploy command in `handoff/RUNBOOK.md`. Commit.
+
+```bash
+git add vercel.json handoff/RUNBOOK.md
+git commit -m "chore(deploy): signal board Vercel runbook"
+```
+
+---
+
 ## Self-Review
 
 - **Spec coverage:** Intent, goals, non-goals, enterprise positioning, no points, full-bleed home, all-issues tabs, handoff chain, decision queue, down recovery, full manifest, detail, workforce, login, new issue, dark mode, reduced motion, and accessibility each map to a task.
 - **Type consistency:** `SignalStage`, `SignalState`, `SignalView`, `SignalChannel`, `SignalDecision`, `SignalWorkforce`, and `OperationsBrief` are defined in Task 1 and consumed by name in Tasks 2–9. `signalStageFor`, `chainStageFor`, `workerStateFor`, `parseSignalView`, `loadSignalChannels`, `loadSignalDecisions`, `loadSignalWorkforce`, and `loadSignalBrief` are defined before use.
 - **Review Focus tests:** Tenant/project scope in Tasks 6–7; stage consistency in Tasks 1 and 8; rejection copy in Task 5; offline recovery in Tasks 5 and 9; dark/reduced-motion in Task 10.
 - **No placeholders:** Every task names files, interfaces, test behavior, commands, and a commit.
+- **Deployment:** Task 12 pins the Vercel project, build command, Neon migration step, and live URL.
