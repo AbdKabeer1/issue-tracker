@@ -2,14 +2,14 @@
 .team-activity-note { color: var(--zk-text2); font-size: 12px; line-height: 20px; }
 .team-activity-note summary { width: fit-content; min-height: 32px; cursor: pointer; color: var(--zk-accent); }
 .team-activity-note p { margin-top: 8px; }
-.team-online { color: var(--zk-muted); font-size: 12px; font-weight: 400; }
-.team-online.is-online { padding: 1px 8px; border-radius: 999px; background: var(--zk-ok-bg); color: var(--zk-ok-fg); }
-.team-agent-role { display: inline-flex; padding: 3px 10px; border-radius: 999px; background: var(--zk-chip); color: var(--zk-text2); font-size: 12px; font-weight: 600; }
-.team-agent-panel { padding: 24px; background: var(--zk-tint); }
+.team-online { color: var(--zk-text2); font-size: 12px; font-weight: 400; }
+.team-online.is-online { padding: 1px 8px; border-radius: 3px; background: var(--zk-ok-bg); color: var(--zk-ok-fg); }
+.team-agent-role { display: inline-flex; padding: 3px 10px; border-radius: 3px; background: var(--zk-chip); color: var(--zk-text2); font-size: 12px; font-weight: 600; }
+.team-agent-panel { padding: 24px; background: var(--zk-surface); }
 .team-agent-panel-heading { margin-bottom: 16px; }
 .team-agent-panel-heading h3 { font-size: 14px; line-height: 22px; font-weight: 700; }
 .team-agent-panel-heading p { margin-top: 4px; color: var(--zk-text2); font-size: 12px; line-height: 20px; }
-.team-agent-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; border: 1px solid var(--zk-border); border-radius: 12px; overflow: hidden; background: var(--zk-surface); font-size: 13px; }
+.team-agent-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; border: 1px solid var(--zk-border); border-radius: 3px; overflow: hidden; background: var(--zk-surface); font-size: 13px; }
 .team-agent-table th, .team-agent-table td { padding: 16px; vertical-align: top; text-align: left; border-bottom: 1px solid var(--zk-divider); line-height: 22px; }
 .team-agent-table thead th { font-size: 12px; font-weight: 600; color: var(--zk-text2); background: var(--zk-chip); }
 .team-agent-table thead th:nth-child(1) { width: 23%; }
@@ -20,17 +20,17 @@
 .team-agent-table tbody tr:last-child > * { border-bottom: 0; }
 .team-agent-name { display: block; color: var(--zk-text); font-weight: 600; }
 .team-agent-model { display: block; margin-top: 4px; color: var(--zk-muted); font-size: 12px; font-weight: 400; }
-.team-agent-status { display: inline-flex; padding: 1px 8px; border-radius: 999px; background: var(--zk-chip); color: var(--zk-text2); font-size: 12px; white-space: nowrap; }
+.team-agent-status { display: inline-flex; padding: 1px 8px; border-radius: 3px; background: var(--zk-chip); color: var(--zk-text2); font-size: 12px; white-space: nowrap; }
 .team-agent-status.is-online { background: var(--zk-ok-bg); color: var(--zk-ok-fg); }
 .team-agent-table label { display: flex; flex-wrap: wrap; color: var(--zk-text2); font-size: 12px; }
 .team-agent-table select { width: 100%; max-width: 100%; min-height: 40px; border-color: var(--zk-border); background: var(--zk-surface); color: var(--zk-text); font-size: 13px; }
 .team-work-list { display: flex; flex-direction: column; gap: 12px; }
 .team-work-list a { color: var(--zk-accent); text-decoration: underline; text-underline-offset: 3px; }
 .team-work-list li > span { display: block; margin-top: 2px; color: var(--zk-muted); font-size: 12px; }
-.team-empty { padding: 48px 24px; border: 1px solid var(--zk-border); border-radius: 24px; background: var(--zk-surface); text-align: center; }
+.team-empty { padding: 48px 24px; border: 1px solid var(--zk-border); border-radius: 3px; background: var(--zk-surface); text-align: center; }
 .team-empty h2 { font-size: 20px; line-height: 28px; font-weight: 700; color: var(--zk-text); }
 .team-empty p { margin: 12px auto 24px; max-width: 480px; color: var(--zk-text2); line-height: 24px; }
-.team-primary { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 12px 20px; border-radius: 999px; background: var(--color-electric-blue-strong); color: white; font-size: 14px; font-weight: 700; }
+.team-primary { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 12px 20px; border-radius: 3px; background: var(--zk-accent); color: white; font-size: 14px; font-weight: 700; }
 .team-primary:hover { filter: brightness(1.05); }
 @media (max-width: 639px) {
   .team-empty { padding: 32px 20px; }

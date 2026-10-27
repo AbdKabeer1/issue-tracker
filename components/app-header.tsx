@@ -126,8 +126,8 @@ function TopNavLink({
       href={href}
       aria-current={active ? "page" : undefined}
       // Below lg this is a tab in the bottom strip: icon over a short label.
-      className={`relative inline-flex shrink-0 items-center whitespace-nowrap font-medium ${linkFocus} max-lg:min-w-16 max-lg:flex-1 max-lg:flex-col max-lg:gap-0.5 max-lg:rounded-xl max-lg:py-1.5 max-lg:text-[11px] lg:h-9 lg:gap-2 lg:rounded-full lg:px-2.5 lg:text-[13px] ${
-        active ? "text-zk-accent lg:bg-zk-tint" : "text-zk-text2 hover:text-zk-text lg:hover:bg-zk-chip"
+      className={`relative inline-flex shrink-0 items-center whitespace-nowrap font-medium ${linkFocus} max-lg:min-w-16 max-lg:flex-1 max-lg:flex-col max-lg:gap-0.5 max-lg:rounded-[3px] max-lg:py-1.5 max-lg:text-[11px] lg:h-9 lg:gap-2 lg:rounded-[3px] lg:px-2.5 lg:text-[13px] ${
+        active ? "text-zk-accent lg:bg-zk-chip" : "text-zk-text2 hover:text-zk-text lg:hover:bg-zk-surface"
       }`}
     >
       <span className={`relative flex items-center justify-center max-lg:h-7 max-lg:w-12 max-lg:rounded-full ${active ? "max-lg:bg-zk-tint" : ""}`}>
@@ -148,7 +148,7 @@ function TopNav({ pathname }: { pathname: string | null }) {
       aria-label="Workspace"
       // Phones and tablets: a tab strip fixed to the bottom of the screen,
       // clear of the home indicator. From lg it sits inline in the top bar.
-      className="flex items-center max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:justify-around max-lg:border-t max-lg:border-zk-border max-lg:bg-zk-surface max-lg:px-2 max-lg:pt-1.5 max-lg:pb-[max(0.375rem,env(safe-area-inset-bottom))] max-lg:shadow-[0_-1px_3px_rgba(0,0,0,0.04)] lg:gap-1"
+      className="flex items-center max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:justify-around max-lg:border-y max-lg:border-zk-border max-lg:bg-zk-bg max-lg:px-2 max-lg:pt-1.5 max-lg:pb-[max(0.375rem,env(safe-area-inset-bottom))] max-lg:shadow-[0_-1px_3px_rgba(35,32,25,0.04)] lg:gap-1"
     >
       <TopNavLink href="/issues" active={isNavItemActive(pathname, "/issues")} label="Product">
         <NavIcon>
@@ -376,10 +376,10 @@ function PointsLink({
       href="/workers"
       aria-current={active ? "page" : undefined}
       title="Ranking"
-      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-semibold ${linkFocus} ${
+      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[3px] px-2.5 text-[12.5px] font-semibold ${linkFocus} ${
         active
-          ? "bg-zk-warn-fg text-zk-surface"
-          : "bg-zk-warn-bg text-zk-warn-fg hover:brightness-95"
+          ? "text-zk-accent bg-zk-chip"
+          : "text-zk-text2 hover:text-zk-text lg:hover:bg-zk-surface"
       }`}
     >
       <TrophyIcon />
@@ -478,7 +478,7 @@ export function AppHeader({
               aria-expanded={accountOpen}
               aria-controls="account-menu"
               onClick={() => setAccountOpen((open) => !open)}
-              className={`inline-flex h-11 max-w-full items-center gap-2 rounded-full border border-zk-border bg-zk-surface py-[5px] pl-[5px] pr-3 text-zk-text hover:bg-zk-chip ${linkFocus}`}
+              className={`inline-flex h-11 max-w-full items-center gap-2 rounded-[3px] border border-zk-border bg-zk-surface py-[5px] pl-[5px] pr-3 text-zk-text hover:bg-zk-chip ${linkFocus}`}
             >
               <span className="sr-only">Account menu for </span>
               <Avatar name={userName} image={userImage} size="md" variant="solid" />

@@ -280,7 +280,7 @@ export default async function RankingPanel({
         </p>
         <Link
           href="/points/disputes"
-          className="inline-flex h-[42px] items-center gap-2 rounded-full border border-zk-border bg-zk-surface px-[18px] text-sm font-bold text-zk-text transition-colors hover:bg-zk-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue"
+          className="inline-flex h-[42px] items-center gap-2 rounded-[3px] border border-zk-border bg-zk-surface px-[18px] text-sm font-bold text-zk-text transition-colors hover:bg-zk-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="m16 16 3-8 3 8c-.9.7-1.9 1-3 1s-2.1-.3-3-1zM2 16l3-8 3 8c-.9.7-1.9 1-3 1s-2.1-.3-3-1zM7 21h10M12 3v18M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2" />
@@ -297,19 +297,18 @@ export default async function RankingPanel({
         <div className="flex flex-wrap items-stretch gap-4">
           <div className="grid min-w-0 flex-[999_1_640px] grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
             {podium.map((entry, i) => {
-              const medal = PODIUM_MEDALS[i] ?? PODIUM_MEDALS[2];
               const pct = progressPct(entry.points, targetPoints);
               const met = entry.points >= targetPoints;
               return (
                 <div
                   key={entry.userId}
-                  className="zk-motion group relative flex flex-col gap-4 overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface p-5 motion-safe:animate-[leaderboard-in_0.5s_cubic-bezier(0.2,0.7,0.2,1)_both] motion-safe:transition-[transform,box-shadow,border-color] motion-safe:duration-250 hover:border-[#BFD6FB] hover:shadow-[0_18px_40px_rgba(11,23,51,0.10),0_2px_6px_rgba(57,120,246,0.10)] motion-safe:hover:-translate-y-1 dark:hover:border-electric-blue-strong dark:hover:shadow-[0_18px_40px_rgba(0,0,0,0.45),0_0_0_1px_rgba(57,120,246,0.25)]"
+                  className="zk-motion group relative flex flex-col gap-4 overflow-hidden rounded-[3px] border border-zk-border bg-zk-surface p-5 motion-safe:animate-[leaderboard-in_0.5s_cubic-bezier(0.2,0.7,0.2,1)_both] motion-safe:transition-[transform,box-shadow,border-color] motion-safe:duration-250 hover:border-zk-chip motion-safe:hover:shadow-[0_18px_40px_rgba(35,32,25,0.10),0_2px_6px_rgba(35,32,25,0.10)] motion-safe:hover:-translate-y-1 group-hover:translate-y-[-2px]"
                   style={{ animationDelay: `${i * 70}ms` }}
                 >
                   <div
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-0 top-0 h-[3px] origin-left scale-x-0 bg-gradient-to-r from-electric-blue to-sky-tint motion-safe:transition-transform motion-safe:duration-350 group-hover:scale-x-100"
-                  />
+                    className="pointer-events-none absolute inset-x-0 top-0 h-[3px] origin-left scale-x-0 bg-gradient-to-r from-zk-accent to-zk-chip motion-safe:transition-transform motion-safe:duration-350 group-hover:scale-x-100"
+                />
                   <div className="flex items-center justify-between">
                     <span
                       className="flex h-9 w-9 items-center justify-center rounded-xl"

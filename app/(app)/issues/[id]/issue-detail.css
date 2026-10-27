@@ -17,3 +17,56 @@
     --issue-sec-fg: #f9a8c0;
   }
 }
+
+/* Specimen plate framing for issue detail */
+.issue-detail-scope {
+  background: var(--zk-bg);
+  background-image:
+    radial-gradient(rgba(0,0,0,0.03) 0.5px, transparent 0.5px),
+    radial-gradient(rgba(0,0,0,0.02) 0.5px, transparent 0.5px);
+  background-size: 24px 24px, 48px 48px;
+  background-position: 0 0, 12px 12px;
+  color: var(--zk-text);
+  border: 1px solid var(--zk-border);
+  border-radius: 12px;
+  position: relative;
+}
+
+.issue-detail-scope h1 {
+  font-family: var(--font-serif), Georgia, serif;
+  font-weight: 700;
+  border-bottom: 1px solid var(--zk-divider);
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+/* Ruled paper background for long content blocks */
+.issue-detail-scope > section,
+.issue-detail-scope > div > section {
+  background-image: repeating-linear-gradient(to bottom, transparent, transparent 28px, rgba(0,0,0,0.04) 28px, rgba(0,0,0,0.04) 29px);
+}
+
+/* Plate header label in monospace */
+.issue-detail-scope [class*="text-sm"] {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* Ensure ink text contrast */
+.issue-detail-scope {
+  --ink: var(--zk-text);
+}
+.issue-detail-scope a {
+  color: var(--zk-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .issue-detail-scope * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

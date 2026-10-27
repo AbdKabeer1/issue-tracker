@@ -2,7 +2,12 @@
 .issues-page {
   --issues-rule: var(--zk-divider);
   border-radius: 12px;
-  background: var(--zk-surface);
+  background: var(--zk-bg);
+  background-image:
+    radial-gradient(rgba(0,0,0,0.03) 0.5px, transparent 0.5px),
+    radial-gradient(rgba(0,0,0,0.02) 0.5px, transparent 0.5px);
+  background-size: 24px 24px, 48px 48px;
+  background-position: 0 0, 12px 12px;
   padding: 0 24px 24px;
   color: var(--zk-text);
 }
@@ -97,16 +102,16 @@
 .issues-status-closed { --issues-status-icon: url('/icons/issues-status-closed.svg'); color: var(--zk-muted); background: var(--zk-surface); }
 .issues-status-escalated { --issues-status-icon: url('/icons/issues-status-escalated.svg'); color: var(--zk-bad-fg); background: var(--zk-bad-bg); }
 .issues-status-nav a[aria-current] .issues-status-dot { background: white; color: var(--color-electric-blue-strong); }
-.issues-table { border: 1px solid var(--zk-border); border-radius: 10px; overflow: hidden; }
+.issues-table { border: 1px solid var(--zk-border); border-radius: 10px; overflow: hidden; background: var(--zk-surface); background-image: repeating-linear-gradient(to bottom, transparent, transparent 58px, rgba(0,0,0,0.06) 58px, rgba(0,0,0,0.06) 59px); }
 .issues-table-heading { display: flex; align-items: center; gap: 16px; padding: 9px 18px; background: var(--zk-bg); border-bottom: 1px solid var(--issues-rule); font-size: 13px; line-height: 20px; color: var(--zk-muted); }
 /* Compact rows: about 60px, down from 88px. */
 .issues-row { min-height: 60px; gap: 16px; padding: 9px 18px; }
 .issues-row:hover { background: var(--zk-bg); }
 .issues-row [data-issue-link] { min-width: 0; }
 .issues-row [data-issue-type-icon] { display: none; }
-.issues-row-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; line-height: 20px; }
-.issues-row-meta { margin-top: 1px; line-height: 16px; flex-wrap: wrap; gap: 8px; font-size: 12px; }
-.issues-row-meta .font-mono { font-family: inherit; }
+.issues-row-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-serif), Georgia, serif; font-size: 14px; font-weight: 500; line-height: 20px; }
+.issues-row-meta { margin-top: 1px; line-height: 16px; flex-wrap: wrap; gap: 8px; font-size: 12px; font-variant-caps: small-caps; letter-spacing: 0.03em; text-transform: uppercase; }
+.issues-row-meta .font-mono { font-family: var(--font-mono), ui-monospace, monospace; font-variant-numeric: tabular-nums; font-variant-caps: normal; text-transform: none; }
 /* Status: Idea, Confirmed (bots), Ready for bids, or who is working and for how long. */
 .issues-status-cell { display: flex; width: 176px; flex: 0 0 176px; align-items: center; font-size: 12px; line-height: 16px; }
 .issues-priority { display: block; width: 62px; flex: 0 0 62px; }
@@ -174,6 +179,22 @@
 @media print {
   .issues-page { padding: 0; }
   .issues-actions, .issues-status-nav { display: none; }
+}
+
+/* Specimen plate stamp styling for status */
+.issue-row-status {
+  border: 1px solid currentColor;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transform: rotate(-0.5deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .issue-row-status { transform: none; }
 }
 
 /* Someone is working on it: a hammer that taps, pivoting at the handle. */

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Manrope, Geist_Mono } from "next/font/google";
+import { Inter, Manrope, Geist_Mono, Fraunces } from "next/font/google";
 import { getSiteUrl } from "@/lib/site-url";
 import { SHARE_IMAGE } from "@/lib/share-image";
 import { ConfirmProvider } from "@/components/ui/confirm-dialog";
@@ -21,6 +21,18 @@ const manrope = Manrope({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+/* Field Guide: the catalogue serif, for headings and issue titles. The optical
+   size axis lets a 32px plate title and an 18px row title each pick their own
+   drawing; SOFT rounds the strokes like letterpress ink spread, and WONK
+   makes the display sizes genuinely wonky — a field guide is hand-set, not
+   machine-perfect, and the type should say so. */
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
+  subsets: ["latin"],
+  axes: ["opsz", "SOFT", "WONK"],
+  display: "swap",
 });
 
 // The signed-in app's typeface (globals.css switches to it under the app
@@ -84,7 +96,7 @@ export default async function RootLayout({
         <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Integration Documentation" />
       </head>
       <body
-        className={`${manrope.variable} ${geistMono.variable} ${inter.variable} min-h-screen overflow-x-clip antialiased`}
+        className={`${manrope.variable} ${geistMono.variable} ${inter.variable} ${fraunces.variable} min-h-screen overflow-x-clip antialiased`}
       >
         {/*
           Both live at the root rather than in (app) so every route — including

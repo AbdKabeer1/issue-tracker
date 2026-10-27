@@ -46,6 +46,7 @@ import { GoalBudgetSection } from "@/components/goal-budgets";
 import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { UpdateIssueForm } from "@/components/update-issue-form";
+import { AgentSummonPad } from "@/components/agent-summon-pad";
 import { CommentThread } from "@/components/comment-thread";
 import { AddCommentDialog } from "@/components/add-comment-dialog";
 import type { DisputeRole } from "@/components/comment-form";
@@ -957,6 +958,8 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
               canEditTriage={canTriage}
             />
           ) : null}
+
+          <AgentSummonPad bugId={bug.id} />
 
           <IssueEscalations escalations={escalations} />
 

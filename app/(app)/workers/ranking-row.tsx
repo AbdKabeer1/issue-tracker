@@ -52,11 +52,11 @@ export function RankingRow({
   return (
     <li className={last ? "" : "border-b border-zk-divider"}>
       <div
-        className={`flex items-center gap-4 rounded-2xl px-4 py-3 ${
-          isYou ? "bg-[#F3F8FF] shadow-[inset_3px_0_0_#2E6FEF] dark:bg-[#13254A]" : ""
+        className={`flex items-center gap-4 rounded-[3px] px-4 py-3 ${
+          isYou ? "bg-zk-surface shadow-[inset_1px_0_0_#2a4d80] dark:bg-zk-surface" : ""
         }`}
       >
-        <span className="w-10 text-sm font-extrabold" style={{ color: medal }}>
+        <span className="w-10 text-sm font-extrabold" style={{ color: "var(--zk-text)" }}>
           <span className={medal ? "" : "text-zk-muted"}>{rank ?? "—"}</span>
         </span>
         <span className="flex min-w-0 flex-1 items-center gap-3">
@@ -65,7 +65,7 @@ export function RankingRow({
             {member.name}
           </Link>
           {isYou ? (
-            <span className="rounded-full bg-electric-blue-strong px-2 py-0.5 text-[11px] font-extrabold text-white">You</span>
+            <span className="rounded-full bg-zk-chip px-2 py-0.5 text-[11px] font-semibold text-zk-text2">You</span>
           ) : null}
           {role !== "Member" ? (
             <span className="rounded-full bg-zk-chip px-2 py-0.5 text-[11px] font-semibold text-zk-text2">{role}</span>
@@ -103,7 +103,7 @@ export function RankingRow({
               aria-controls={panelId}
               aria-label={`${expanded ? "Hide" : "View"} agents for ${member.name}`}
               onClick={() => setExpanded(!expanded)}
-              className="flex w-full items-center gap-2 rounded-lg bg-zk-chip px-2.5 py-1.5 text-left text-[13px] font-semibold text-zk-text hover:bg-zk-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue aria-expanded:bg-zk-tint"
+              className="flex w-full items-center gap-2 rounded-[3px] bg-zk-chip px-2.5 py-1.5 text-left text-[13px] font-semibold text-zk-text hover:bg-zk-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue aria-expanded:bg-zk-surface"
             >
               <span>
                 {agentCount} {agentCount === 1 ? "agent" : "agents"}
@@ -126,7 +126,7 @@ export function RankingRow({
         </span>
       </div>
       {agentCount > 0 ? (
-        <section id={panelId} hidden={!expanded} aria-label={`Agents for ${member.name}`} className="team-agent-panel mb-3 rounded-2xl">
+        <section id={panelId} hidden={!expanded} aria-label={`Agents for ${member.name}`} className="team-agent-panel mb-3 rounded-[3px]">
           <div className="team-agent-panel-heading">
             <h3>Agents for {member.name}</h3>
             <p>Agent activity and accepted fixes over the last 30 days.</p>
