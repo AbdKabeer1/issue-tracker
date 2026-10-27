@@ -78,6 +78,7 @@ import {
 } from "@/lib/platform-filter";
 import { PlatformMenu, type PlatformTab } from "@/components/platform-tabs";
 import { IssueRowStatus } from "@/components/issue-row-status";
+import { SignalLamp } from "@/components/signal-lamp";
 import { IssuesToolsToggle } from "@/components/issues-tools-toggle";
 import { LoadError } from "@/components/load-error";
 import { logLoadFailure } from "@/lib/load-error";
@@ -519,7 +520,12 @@ export default async function BugsPage({
         // Who is working on it and since when, for the status column.
         claims: {
           where: { status: "active", releasedAt: null },
-          select: { claimedAt: true, createdAt: true, beneficiary: { select: { name: true } } },
+          select: {
+            claimedAt: true,
+            createdAt: true,
+            beneficiary: { select: { name: true } },
+            agent: { select: { name: true, level: true } },
+          },
           take: 1,
         },
         category: { select: { id: true, name: true } },
@@ -996,8 +1002,10 @@ export default async function BugsPage({
               <div>
                 <div className="issues-table-heading">
                   {canDelete && !isDeletedView ? <span className="issues-selection" aria-hidden="true" /> : null}
+                  <span className="issues-signal">Signal</span>
                   <span className="w-[52px]">Votes</span>
                   <span className="min-w-0 flex-1">Issue</span>
+                  <span className="issues-worker">Worker</span>
                   <span className="issues-status-cell">Status</span>
                   <span className="issues-priority">Priority</span>
                   <span className="w-10" aria-hidden="true" />
@@ -1019,6 +1027,15 @@ export default async function BugsPage({
                     const work = claim || bug.status === "in_progress"
                       ? { person: claim?.beneficiary?.name ?? bug.assignee?.name ?? null, since: claim ? (claim.claimedAt ?? claim.createdAt) : null }
                       : null;
+                    const workerName = claim?.agent?.name ?? bug.assignee?.name ?? null;
+                    const workerKind = claim?.agent
+                      ? claim.agent.level === "contributor" || claim.agent.level === "observer"
+                        ? "bot"
+                        : "agent"
+                      : bug.assignee
+                        ? "person"
+                        : null;
+                    const signalState = work ? ("working" as const) : ("idle" as const);
                     const rowStatus = (
                       <IssueRowStatus status={bug.status} stage={stage} botConfirmations={botConfirmations.get(bug.id) ?? 0} votes={bug.voteCount} work={work} />
                     );
@@ -1036,6 +1053,9 @@ export default async function BugsPage({
                             <BulkCheckbox id={bug.id} title={bug.title} />
                           </div>
                         ) : null}
+                        <div className="issues-signal">
+                          <SignalLamp state={signalState} />
+                        </div>
                         <div className="issues-vote w-[52px] shrink-0">
                           <VoteButton
                             bugId={bug.id}
@@ -1103,6 +1123,18 @@ export default async function BugsPage({
                             {snippets.has(bug.id) ? <SearchSnippet snippet={snippets.get(bug.id)!} /> : null}
                           </span>
                         </Link>
+                        <span className="issues-worker items-center gap-1.5">
+                          {workerName ? (
+                            <>
+                              <span className="truncate text-xs font-semibold text-zk-text">{workerName}</span>
+                              {workerKind ? (
+                                <span className="shrink-0 text-[10px] uppercase tracking-[0.08em] text-zk-muted">{workerKind}</span>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span className="text-xs text-zk-muted">unassigned</span>
+                          )}
+                        </span>
                         <span className="issues-status-cell" aria-hidden="true">{rowStatus}</span>
                         <span className="issues-priority" title={`${severityLabels[bug.severity]} priority`}>
                           <span className="sr-only">{severityLabels[bug.severity]} priority</span>
