@@ -53,6 +53,9 @@ import type { DisputeRole } from "@/components/comment-form";
 import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
 import { ChooseRedesignButton } from "@/components/choose-redesign-button";
 import { IssueApprovalBanner } from "@/components/issue-approval-banner";
+import { SignalStageTrack } from "@/components/signal-stage-track";
+import { SignalHandoffChain } from "@/components/signal-handoff-chain";
+import { signalStageFor, type SignalState } from "@/lib/signal-board";
 import { isTenantAdminRole } from "@/lib/agents/membership";
 import type { OrganizationRole } from "@/lib/organization-role";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
@@ -695,6 +698,28 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
   // What a delete keeps, shown the same way in every delete/restore message (#692).
   const keptCounts = deletionCounts(comments.visibleCount, voterSummary);
 
+  const activeClaim = agentDecisions.find((decision) => decision.kind === "claimed");
+  const hasTestVerdict = agentDecisions.some((decision) => decision.kind === "verdict");
+  const signalWorker = activeClaim
+    ? { id: activeClaim.id, name: activeClaim.agentName, kind: "agent" as const }
+    : bug.assignee
+      ? { id: bug.assignee.id, name: bug.assignee.name, kind: "person" as const }
+      : null;
+  const signalState: SignalState = pendingApproval
+    ? "waiting"
+    : activeClaim || bug.status === "in_progress"
+      ? "working"
+      : "idle";
+  const signalStage = signalStageFor({
+    status: bug.status as "open" | "in_progress" | "resolved" | "closed",
+    intakeStage: intakeStage ?? null,
+    hasActiveClaim: Boolean(activeClaim),
+    hasAssignee: Boolean(bug.assigneeId),
+    hasPullRequest: Boolean(bug.pullRequestUrl),
+    hasTestVerdict,
+    hasPendingMergeApproval: pendingApproval?.stage === "before_merge",
+  });
+
   return (
     <div className="issue-detail-scope flex flex-col gap-5 pb-10">
       {bug.isDeleted ? (
@@ -880,6 +905,11 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             />
           </div>
         </div>
+      </div>
+
+      <div className="signal-detail-strip">
+        <SignalStageTrack stage={signalStage} />
+        <SignalHandoffChain channel={{ stage: signalStage, worker: signalWorker, state: signalState }} />
       </div>
 
       <div className="flex flex-wrap items-start gap-5">

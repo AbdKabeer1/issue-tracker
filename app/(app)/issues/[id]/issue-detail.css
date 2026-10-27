@@ -18,50 +18,200 @@
   }
 }
 
-/* Specimen plate framing for issue detail */
+/* Signal channel framing for issue detail. */
 .issue-detail-scope {
-  background: var(--zk-bg);
-  background-image:
-    radial-gradient(rgba(0,0,0,0.03) 0.5px, transparent 0.5px),
-    radial-gradient(rgba(0,0,0,0.02) 0.5px, transparent 0.5px);
-  background-size: 24px 24px, 48px 48px;
-  background-position: 0 0, 12px 12px;
-  color: var(--zk-text);
-  border: 1px solid var(--zk-border);
-  border-radius: 12px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.6), transparent 30%),
+    #efe7d6;
+  color: #1e2b25;
+  border: 1px solid rgba(30, 43, 37, 0.18);
+  border-radius: 4px;
+  padding: 20px;
   position: relative;
 }
 
 .issue-detail-scope h1 {
-  font-family: var(--font-serif), Georgia, serif;
-  font-weight: 700;
-  border-bottom: 1px solid var(--zk-divider);
-  padding-bottom: 8px;
+  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  border-bottom: 1px solid rgba(30, 43, 37, 0.18);
+  padding-bottom: 10px;
   margin-bottom: 12px;
+  color: #1e2b25;
 }
 
-/* Ruled paper background for long content blocks */
-.issue-detail-scope > section,
+.issue-detail-scope section,
 .issue-detail-scope > div > section {
-  background-image: repeating-linear-gradient(to bottom, transparent, transparent 28px, rgba(0,0,0,0.04) 28px, rgba(0,0,0,0.04) 29px);
+  background: #fbf7ec;
+  border-color: rgba(30, 43, 37, 0.16);
+  border-radius: 4px;
 }
 
-/* Plate header label in monospace */
-.issue-detail-scope [class*="text-sm"] {
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+.issue-detail-scope [class*="rounded-[20px]"] {
+  border-radius: 4px;
 }
 
-/* Ensure ink text contrast */
-.issue-detail-scope {
-  --ink: var(--zk-text);
-}
 .issue-detail-scope a {
-  color: var(--zk-accent);
+  color: #8a5b16;
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+.issue-detail-scope a:hover {
+  color: #1e2b25;
+}
+
+.issue-detail-scope section[aria-label="Human approval required"] {
+  border-color: #ad8551;
+  background: #f7ecd7;
+}
+
+.issue-detail-scope section[aria-label="Human approval required"] button {
+  border-radius: 2px;
+}
+
+/* ---------- stage track + handoff ---------- */
+
+.signal-detail-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(30, 43, 37, 0.18);
+  border-radius: 3px;
+  background: rgba(255, 253, 246, 0.7);
+}
+
+.signal-stage-track {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.signal-stage-track::-webkit-scrollbar {
+  display: none;
+}
+
+.signal-stage-step {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  white-space: nowrap;
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8c9389;
+}
+
+.signal-stage-step[data-passed="true"] {
+  color: #2f7d5b;
+}
+
+.signal-stage-step[data-active="true"] {
+  border-color: #ad8551;
+  background: #f7ecd7;
+  color: #1e2b25;
+  font-weight: 800;
+}
+
+.signal-stage-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: #b4aa97;
+}
+
+.signal-stage-step[data-passed="true"] .signal-stage-dot {
+  background: #3f9d72;
+}
+
+.signal-stage-step[data-active="true"] .signal-stage-dot {
+  background: #c4862b;
+  box-shadow: 0 0 6px #c4862b;
+}
+
+.signal-handoff {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.signal-handoff-chain {
+  display: flex;
+  gap: 4px;
+  white-space: nowrap;
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8c9389;
+}
+
+.signal-handoff-step[data-active="true"] {
+  color: #1e2b25;
+  font-weight: 800;
+}
+
+.signal-handoff-step i {
+  margin-left: 4px;
+  font-style: normal;
+  color: #b4aa97;
+}
+
+.signal-handoff-worker {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  color: #5d665f;
+}
+
+.signal-handoff-worker b {
+  padding: 2px 4px;
+  border: 1px solid rgba(30, 43, 37, 0.18);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.55);
+  color: #3e4b42;
+}
+
+.signal-handoff-worker span {
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7c8378;
+}
+
+/* ---------- signal summon action ---------- */
+
+.issue-detail-scope .agent-summon-pad .stamp-btn {
+  border-radius: 2px;
+  background: linear-gradient(#c39a61, #a87d45) !important;
+  border-color: #5f4728 !important;
+  box-shadow: 0 2px 0 #6b5030 !important;
+  color: #fff9ec !important;
+}
+
+.issue-detail-scope .agent-summon-pad .stamp-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 0 #6b5030 !important;
+}
+
+.issue-detail-scope .agent-summon-pad .stamp-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 #6b5030 !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

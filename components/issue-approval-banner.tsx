@@ -69,27 +69,25 @@ export function IssueApprovalBanner({
   return (
     <section
       aria-label="Human approval required"
-      className="flex flex-col gap-3 rounded-xl border border-zk-warn-bd bg-zk-warn-bg p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"
+      className="flex flex-col gap-3 rounded-[4px] border border-[#ad8551] bg-[#f7ecd7] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"
     >
       <div className="space-y-1">
         <div className="flex items-center gap-2">
-          <span className="text-lg" aria-hidden="true">
-            ⚠️
-          </span>
-          <h2 className="text-sm font-semibold text-zk-warn-fg">
+          <span className="h-2.5 w-2.5 rounded-full bg-[#c4862b]" aria-hidden="true" />
+          <h2 className="text-sm font-bold text-[#8a5b16]">
             Human approval required
           </h2>
         </div>
-        <p className="text-sm text-zk-warn-fg">
+        <p className="text-sm text-[#5d665f]">
           This issue requires workspace approval {stageLabel}.
           {ruleReasons.length ? (
-            <span className="ml-1 text-xs text-zk-warn-fg">
+            <span className="ml-1 text-xs text-[#8a5b16]">
               ({ruleReasons.join(", ")})
             </span>
           ) : null}
         </p>
         {error ? (
-          <p role="alert" className="text-xs font-medium text-zk-bad-fg">
+          <p role="alert" className="text-xs font-medium text-[#923a2e]">
             {error}
           </p>
         ) : null}
@@ -102,7 +100,7 @@ export function IssueApprovalBanner({
               type="button"
               disabled={pending}
               onClick={() => handleDecision("approved")}
-              className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-teal-800 disabled:opacity-50"
+              className="inline-flex min-h-10 items-center justify-center rounded-[2px] border border-[#5f4728] bg-[#ad8551] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.08em] text-[#fff9ec] shadow-[0_2px_0_#6b5030] hover:bg-[#9a7443] disabled:opacity-50"
             >
               {pending ? "Saving…" : "Approve"}
             </button>
@@ -110,13 +108,13 @@ export function IssueApprovalBanner({
               type="button"
               disabled={pending}
               onClick={() => handleDecision("rejected")}
-              className="inline-flex items-center justify-center rounded-lg border border-zk-border bg-zk-surface px-3 py-1.5 text-xs font-semibold text-zk-text2 shadow-xs hover:bg-zk-chip disabled:opacity-50"
+              className="inline-flex min-h-10 items-center justify-center rounded-[2px] border border-[#ad8551] bg-transparent px-3 py-1.5 text-xs font-bold uppercase tracking-[0.08em] text-[#5d665f] hover:bg-[#f1e6cf] disabled:opacity-50"
             >
               {pending ? "Saving…" : "Reject"}
             </button>
           </>
         ) : (
-          <span className="text-xs italic text-zk-warn-fg">
+          <span className="text-xs italic text-[#8a5b16]">
             Waiting for workspace owner or admin decision
           </span>
         )}

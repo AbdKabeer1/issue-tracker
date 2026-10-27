@@ -82,10 +82,10 @@ export function AgentSummonPad({ bugId }: { bugId: string }) {
         aria-expanded={open}
         className="stamp-btn"
         style={{
-          backgroundColor: "#B8432F",
-          color: "#fff",
-          borderColor: "#7a2a1f",
-          boxShadow: "3px 3px 0 #7a2a1f",
+          backgroundColor: "#ad8551",
+          color: "#fff9ec",
+          borderColor: "#5f4728",
+          boxShadow: "0 2px 0 #6b5030",
           fontWeight: 800,
           letterSpacing: "0.05em",
         }}
@@ -164,10 +164,10 @@ export function AgentSummonPad({ bugId }: { bugId: string }) {
                   onClick={handleSend}
                   disabled={!selectedAgentId || brief.trim().length === 0}
                   style={{
-                    backgroundColor: "#B8432F",
-                    color: "#fff",
-                    borderColor: "#7a2a1f",
-                    boxShadow: "3px 3px 0 #7a2a1f",
+                    backgroundColor: "#ad8551",
+                    color: "#fff9ec",
+                    borderColor: "#5f4728",
+                    boxShadow: "0 2px 0 #6b5030",
                   }}
                   className="font-extrabold"
                 >
@@ -182,11 +182,11 @@ export function AgentSummonPad({ bugId }: { bugId: string }) {
       <style jsx global>{`
         .agent-summon-pad .stamp-btn:hover {
           transform: translate(-1px, -1px);
-          box-shadow: 4px 4px 0 #7a2a1f;
+          box-shadow: 0 3px 0 #6b5030;
         }
         .agent-summon-pad .stamp-btn:active {
           transform: translate(1px, 1px);
-          box-shadow: 2px 2px 0 #7a2a1f;
+          box-shadow: 0 1px 0 #6b5030;
         }
       `}</style>
     </div>
