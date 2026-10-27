@@ -167,7 +167,8 @@ describe("account menu role switch", () => {
     renderHeader();
     const header = document.querySelector("header");
     expect(header?.className).not.toContain("backdrop-blur");
-    expect(header?.className).toContain("bg-zk-surface");
+    expect(header?.getAttribute("data-signal-rail")).not.toBeNull();
+    expect(header?.className).toContain("bg-[#1b2a24]");
     expect(document.querySelector("aside")).toBeNull();
     const account = screen.getByRole("button", { name: /account menu/i });
     // Wraps on phones and tablets (no sideways scroll), never squeezed from lg up.
@@ -230,22 +231,22 @@ describe("account menu role switch", () => {
     expect(screen.queryByRole("link", { name: "Workspace" })).toBeNull();
   });
 
-  it("shows the points beside the bell, opening Ranking, and keeps them off the account chip", () => {
-    const { container } = renderHeader({ userId: "ada", points: 128, solvedTasks: 4 });
+  it("shows pending decisions beside the bell, opening the decision queue", () => {
+    const { container } = renderHeader({ userId: "ada", pendingDecisions: 3 });
     const account = screen.getByRole("button", { name: /account menu for ada lovelace/i });
-    expect(account.textContent).not.toContain("128");
-    const points = screen.getByRole("link", { name: /128 pts of 500, 4 solved.*open ranking/i });
-    expect(points.getAttribute("href")).toBe("/workers");
+    expect(account.textContent).not.toContain("decisions");
+    expect(screen.queryByText(/pts/i)).toBeNull();
+    const decisions = screen.getByRole("link", { name: /3 decisions waiting/i });
+    expect(decisions.getAttribute("href")).toBe("/dashboard?view=needs");
     const bell = screen.getByRole("button", { name: /notifications/i });
     const controls = [...container.querySelectorAll("header a, header button")];
-    expect(controls.indexOf(bell)).toBe(controls.indexOf(points) + 1);
+    expect(controls.indexOf(bell)).toBe(controls.indexOf(decisions) + 1);
   });
 
   it("keeps each control's visible text inside its accessible name", () => {
     const { container } = renderHeader({
       userId: "ada",
-      points: 0,
-      solvedTasks: 0,
+      pendingDecisions: 3,
       unreadCount: 3,
       pendingEscalationsCount: 5,
     });
@@ -297,7 +298,7 @@ describe("account menu role switch", () => {
 
   it("orders the account menu: Profile first, Documentation, no Dashboard or Switch workspace (#625)", async () => {
     const user = userEvent.setup();
-    renderHeader({ userId: "ada", points: 128 });
+    renderHeader({ userId: "ada" });
 
     await user.click(screen.getByRole("button", { name: /account menu/i }));
 
@@ -307,9 +308,8 @@ describe("account menu role switch", () => {
     expect(screen.getByRole("link", { name: "Documentation" }).getAttribute("href")).toBe("/docs");
     expect(links).not.toContain("Dashboard");
     expect(links.some((text) => text?.startsWith("Switch workspace"))).toBe(false);
-    // Points are beside the bell, and the menu shows no points or rank.
-    expect(menu.textContent).not.toContain("128 pts");
-    expect(menu.textContent).not.toMatch(/Rank #/);
+    // No points or rank in the account menu.
+    expect(menu.textContent).not.toMatch(/pts|Rank #/);
   });
 });
 

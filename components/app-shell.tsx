@@ -17,9 +17,6 @@ import { currentTenantIdFor } from "@/lib/tenant-context";
 import { tenantsForUser } from "@/lib/tenants";
 import { countPendingEscalations } from "@/lib/agent-questions";
 import { loadOwnAgents } from "@/lib/dashboard-overview";
-import { pointTotals } from "@/lib/points/leaderboard";
-import { getPlatformRewardConfig } from "@/lib/points/platform-rewards";
-import { TARGET_POINTS } from "@/lib/points/rules";
 
 export async function AppShell({
   children,
@@ -75,15 +72,8 @@ export async function AppShell({
   }
 
   let pendingEscalationsCount = 0;
-  let points = 0;
-  let solvedTasks = 0;
+  let pendingDecisions = 0;
   let shellAgents: { id: string; name: string; level: string }[] = [];
-  let targetPoints = TARGET_POINTS;
-  try {
-    targetPoints = (await getPlatformRewardConfig(prisma)).target;
-  } catch (error) {
-    console.error("[layout] platform rewards failed", error);
-  }
   if (tenantId) {
     try {
       pendingEscalationsCount = await countPendingEscalations(user.id, tenantId);
@@ -91,11 +81,11 @@ export async function AppShell({
       console.error("[layout] pending escalations count failed", error);
     }
     try {
-      const totals = await pointTotals(prisma, tenantId, user.id);
-      points = totals.points;
-      solvedTasks = totals.solvedTasks;
+      pendingDecisions = await prisma.issueApproval.count({
+        where: { status: "pending", bug: { tenantId, isDeleted: false } },
+      });
     } catch (error) {
-      console.error("[layout] points failed", error);
+      console.error("[layout] pending decisions count failed", error);
     }
     try {
       const agents = await loadOwnAgents({ userId: user.id, tenantId });
@@ -130,12 +120,10 @@ export async function AppShell({
           isRealAdmin={user.isRealAdmin}
           unreadCount={unreadCount}
           pendingEscalationsCount={pendingEscalationsCount}
+          pendingDecisions={pendingDecisions}
           userId={user.id}
           workspaces={workspaces}
           activeTenantId={activeTenantId}
-          points={points}
-          solvedTasks={solvedTasks}
-          targetPoints={targetPoints}
           agents={shellAgents}
           reportFormUrl={REPORT_FORM_URL}
         />

@@ -18,7 +18,6 @@ import { AGENT_LEVEL_LABELS } from "@/lib/agents/levels";
 import { isSuperAdmin, type AppRole } from "@/lib/roles";
 import { Avatar } from "@/components/avatar";
 import { AccountThemeSelector } from "@/components/theme-toggle";
-import { formatPoints, pointsProgress, TARGET_POINTS } from "@/lib/points/rules";
 import { recentNotificationsAction } from "@/app/actions/notifications";
 import { LocalTime } from "@/components/local-time";
 import { BASE_PATH } from "@/lib/base-path";
@@ -69,19 +68,6 @@ function PlusIcon() {
   );
 }
 
-function TrophyIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-      <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-      <path d="M4 22h16" />
-      <path d="M10 14.7V17c0 .6-.5 1-1 1.2-1.2.5-2 2-2 3.8" />
-      <path d="M14 14.7V17c0 .6.5 1 1 1.2 1.2.5 2 2 2 3.8" />
-      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
-    </svg>
-  );
-}
-
 function BellIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -127,10 +113,10 @@ function TopNavLink({
       aria-current={active ? "page" : undefined}
       // Below lg this is a tab in the bottom strip: icon over a short label.
       className={`relative inline-flex shrink-0 items-center whitespace-nowrap font-medium ${linkFocus} max-lg:min-w-16 max-lg:flex-1 max-lg:flex-col max-lg:gap-0.5 max-lg:rounded-[3px] max-lg:py-1.5 max-lg:text-[11px] lg:h-9 lg:gap-2 lg:rounded-[3px] lg:px-2.5 lg:text-[13px] ${
-        active ? "text-zk-accent lg:bg-zk-chip" : "text-zk-text2 hover:text-zk-text lg:hover:bg-zk-surface"
+        active ? "text-[#e0ad55] lg:bg-white/10" : "text-[#c9d4c9] hover:text-[#efe7d6] lg:hover:bg-white/5"
       }`}
     >
-      <span className={`relative flex items-center justify-center max-lg:h-7 max-lg:w-12 max-lg:rounded-full ${active ? "max-lg:bg-zk-tint" : ""}`}>
+      <span className={`relative flex items-center justify-center max-lg:h-7 max-lg:w-12 max-lg:rounded-full ${active ? "max-lg:bg-white/10" : ""}`}>
         {children}
       </span>
       {label}
@@ -213,7 +199,7 @@ function NotificationsBell({ unreadCount, active }: { unreadCount: number; activ
         aria-label={label}
         title={label}
         // A plain icon, no ring: the bell only needs to be findable, not prominent.
-        className={`relative inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-zk-chip ${linkFocus} ${active ? "text-zk-accent" : "text-zk-text"}`}
+        className={`relative inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/10 ${linkFocus} ${active ? "text-[#e0ad55]" : "text-[#efe7d6]"}`}
       >
         <BellIcon />
         {unreadCount > 0 ? (
@@ -295,9 +281,9 @@ function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: She
         onClick={() => setOpen((value) => !value)}
         title="Agents"
         // Phones: a plain icon, like the bell beside it.
-        className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-3.5 text-[13px] font-medium text-zk-text hover:bg-zk-chip max-sm:h-9 max-sm:w-9 max-sm:border-0 max-sm:bg-transparent max-sm:px-0 ${linkFocus}`}
+        className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-[3px] border border-white/15 bg-white/[0.04] px-3.5 text-[13px] font-medium text-[#efe7d6] hover:bg-white/10 max-sm:h-9 max-sm:w-9 max-sm:border-0 max-sm:bg-transparent max-sm:px-0 ${linkFocus}`}
       >
-        <span className="text-electric-blue max-sm:text-zk-text">
+        <span className="text-[#e0ad55] max-sm:text-[#e0ad55]">
           <AgentIcon />
         </span>
         <span className="max-sm:sr-only">Agents</span>
@@ -358,36 +344,20 @@ function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: She
   );
 }
 
-/** The viewer's points, beside the bell. It is the way into Ranking, which left the nav. */
-function PointsLink({
-  points,
-  solvedTasks,
-  targetPoints = TARGET_POINTS,
-  active,
-}: {
-  points: number;
-  solvedTasks: number;
-  targetPoints?: number;
-  active: boolean;
-}) {
-  const progress = pointsProgress(points, solvedTasks, targetPoints);
+/** Pending human decisions, beside the bell. Opens the Signal Board decision queue. */
+function DecisionsLink({ count, active }: { count: number; active: boolean }) {
   return (
     <Link
-      href="/workers"
+      href="/dashboard?view=needs"
       aria-current={active ? "page" : undefined}
-      title="Ranking"
-      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[3px] px-2.5 text-[12.5px] font-semibold ${linkFocus} ${
-        active
-          ? "text-zk-accent bg-zk-chip"
-          : "text-zk-text2 hover:text-zk-text lg:hover:bg-zk-surface"
+      title="Decision queue"
+      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[3px] border border-[#ad8551]/60 bg-[#ad8551]/12 px-2.5 text-[12.5px] font-semibold text-[#e0ad55] hover:bg-[#ad8551]/20 ${linkFocus} ${
+        active ? "ring-2 ring-[#ad8551]/40" : ""
       }`}
     >
-      <TrophyIcon />
-      <span className="tabular-nums">{formatPoints(points)}</span> pts
-      <span className="sr-only">
-        {" "}
-        of {targetPoints}, {solvedTasks} solved, {progress.pointsPercent}%. Open Ranking
-      </span>
+      <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[#e0ad55]" />
+      <span className="tabular-nums">{count}</span> {count === 1 ? "decision" : "decisions"}
+      <span className="sr-only"> waiting</span>
     </Link>
   );
 }
@@ -400,12 +370,10 @@ export function AppHeader({
   isRealAdmin,
   unreadCount = 0,
   pendingEscalationsCount = 0,
+  pendingDecisions = 0,
   userId,
   workspaces = [],
   activeTenantId = null,
-  points = 0,
-  solvedTasks = 0,
-  targetPoints = TARGET_POINTS,
   agents = [],
   reportFormUrl,
 }: {
@@ -416,13 +384,10 @@ export function AppHeader({
   isRealAdmin?: boolean;
   unreadCount?: number;
   pendingEscalationsCount?: number;
+  pendingDecisions?: number;
   userId?: string | null;
   workspaces?: WorkspaceChoice[];
   activeTenantId?: string | null;
-  points?: number;
-  solvedTasks?: number;
-  /** Platform points goal (hard-coded fallback when unset). */
-  targetPoints?: number;
   agents?: ShellAgent[];
   reportFormUrl?: string;
 }) {
@@ -446,19 +411,19 @@ export function AppHeader({
   return (
     // Sticky only from lg: on phones and tablets the toolbar wraps onto rows,
     // and a header that tall pinned to the top covers the page under it.
-    <header className="relative z-40 border-b border-zk-border bg-zk-surface shadow-[0_1px_3px_rgba(0,0,0,0.04)] lg:sticky lg:top-0">
+    <header data-signal-rail className="relative z-40 border-b border-[#0f1915] bg-[#1b2a24] text-[#efe7d6] shadow-[0_1px_3px_rgba(0,0,0,0.18)] lg:sticky lg:top-0">
       <div className={`${PAGE_CONTAINER_CLASS} flex flex-wrap items-center gap-x-3 gap-y-2 py-3 max-sm:py-2 sm:px-6`}>
         {/* Below lg the nav lives in the bottom strip, leaving one row here.
             The logo is the way to the Dashboard; phones show just its mark. */}
         <div className="flex min-w-0 items-center gap-2">
           <Link href="/dashboard" aria-label="Ziki" className={`flex shrink-0 items-center gap-2 rounded-full ${linkFocus}`}>
             <ZikiMark className="h-7 w-auto text-electric-blue-strong max-sm:h-6" />
-            <span aria-hidden="true" className="pr-1 text-[15px] font-semibold tracking-[-0.02em] text-zk-text max-sm:hidden">
+            <span aria-hidden="true" className="pr-1 text-[15px] font-semibold tracking-[-0.02em] text-[#efe7d6] max-sm:hidden">
               ziki
             </span>
           </Link>
           <span aria-hidden="true" className="h-[18px] w-px shrink-0 bg-zk-border max-sm:hidden" />
-          <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} tone="bar" className="min-w-0 max-sm:max-w-44" />
+          <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} tone="chrome" className="min-w-0 max-sm:max-w-44" />
         </div>
 
         <TopNav pathname={pathname} />
@@ -478,7 +443,7 @@ export function AppHeader({
               aria-expanded={accountOpen}
               aria-controls="account-menu"
               onClick={() => setAccountOpen((open) => !open)}
-              className={`inline-flex h-11 max-w-full items-center gap-2 rounded-[3px] border border-zk-border bg-zk-surface py-[5px] pl-[5px] pr-3 text-zk-text hover:bg-zk-chip ${linkFocus}`}
+              className={`inline-flex h-11 max-w-full items-center gap-2 rounded-[3px] border border-white/15 bg-white/[0.04] py-[5px] pl-[5px] pr-3 text-[#efe7d6] hover:bg-white/10 ${linkFocus}`}
             >
               <span className="sr-only">Account menu for </span>
               <Avatar name={userName} image={userImage} size="md" variant="solid" />
@@ -543,15 +508,13 @@ export function AppHeader({
           </div>
 
           {userId ? (
-            <PointsLink
-              points={points}
-              solvedTasks={solvedTasks}
-              targetPoints={targetPoints}
-              active={isNavItemActive(pathname, "/workers")}
+            <DecisionsLink
+              count={pendingDecisions}
+              active={isNavItemActive(pathname, "/dashboard")}
             />
           ) : null}
 
-          {/* The bell sits last, right after the points. */}
+          {/* The bell sits last, right after the decision count. */}
           <NotificationsBell key={`${userId}:${activeTenantId}:${pathname}`} unreadCount={unreadCount} active={isNavItemActive(pathname, "/notifications")} />
         </div>
       </div>
