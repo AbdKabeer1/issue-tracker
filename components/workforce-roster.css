@@ -1,0 +1,190 @@
+.workforce-roster {
+  --wf-shell: #1b2a24;
+  --wf-board: #efe7d6;
+  --wf-ink: #1e2b25;
+  --wf-muted: #6f766d;
+  --wf-brass: #ad8551;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: calc(100dvh - 73px);
+  padding: 24px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.6), transparent 30%),
+    var(--wf-board);
+  color: var(--wf-ink);
+}
+
+.workforce-roster-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(30, 43, 37, 0.18);
+}
+
+.workforce-eyebrow {
+  margin: 0 0 4px;
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8a5b16;
+}
+
+.workforce-roster h1 {
+  margin: 0;
+  font-size: clamp(26px, 2.6vw, 38px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+}
+
+.workforce-deck {
+  max-width: 620px;
+  margin: 6px 0 0;
+  color: var(--wf-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.workforce-back {
+  flex: none;
+  padding: 8px 10px;
+  border: 1px solid rgba(30, 43, 37, 0.22);
+  border-radius: 2px;
+  color: #5d665f;
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.workforce-back:hover {
+  border-color: var(--wf-brass);
+  color: var(--wf-ink);
+}
+
+.workforce-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.workforce-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid rgba(30, 43, 37, 0.16);
+  border-radius: 3px;
+  background: #fbf7ec;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.workforce-card.workforce-state-offline {
+  border-color: rgba(183, 75, 60, 0.35);
+  background: rgba(183, 75, 60, 0.06);
+}
+
+.workforce-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5d665f;
+}
+
+.workforce-lamp {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+}
+
+.workforce-seen {
+  margin-left: auto;
+  color: #923a2e;
+}
+
+.workforce-card h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.workforce-meta {
+  margin: 0;
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7c8378;
+}
+
+.workforce-work {
+  margin: 4px 0 0;
+  min-height: 2.6em;
+  color: #4f584f;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.workforce-reconnect {
+  width: fit-content;
+  margin-top: 2px;
+  color: #923a2e;
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.workforce-empty {
+  padding: 28px;
+  border: 1px dashed rgba(30, 43, 37, 0.25);
+  border-radius: 3px;
+  text-align: center;
+  color: var(--wf-muted);
+}
+
+.workforce-empty b {
+  display: block;
+  color: var(--wf-ink);
+  font-size: 16px;
+}
+
+.workforce-empty p {
+  margin: 4px 0 8px;
+}
+
+.workforce-empty a {
+  color: #8a5b16;
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .workforce-roster {
+    padding: 16px;
+    min-height: 0;
+  }
+
+  .workforce-roster-head {
+    display: block;
+  }
+
+  .workforce-back {
+    display: inline-block;
+    margin-top: 10px;
+  }
+}

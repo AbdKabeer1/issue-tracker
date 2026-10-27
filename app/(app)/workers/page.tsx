@@ -1,21 +1,26 @@
-import RankingPanel, { type RankingSearchParams } from "./ranking-panel";
+import { requireUser } from "@/lib/auth-helpers";
+import { currentTenantIdFor } from "@/lib/tenant-context";
+import { loadSignalWorkforce } from "@/lib/signal-board";
+import { WorkforceRoster } from "@/components/workforce-roster";
 
-export const metadata = { title: "Ranking" };
+export const metadata = { title: "Workforce" };
 
-/**
- * Ranking: the leaderboard's podium and your standing, then the whole team
- * with points, roles, capacity and agents. It replaces the old Team and
- * Leaderboard tabs (and before them /settings/team and /leaderboard).
- */
-export default async function WorkersPage({
-  searchParams,
-}: {
-  searchParams: Promise<RankingSearchParams & { view?: string }>;
-}) {
-  return (
-    <div className="flex flex-col gap-5">
-      <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-zk-text">Ranking</h1>
-      <RankingPanel searchParams={searchParams} />
-    </div>
-  );
+export default async function WorkersPage() {
+  const user = await requireUser();
+
+  let tenantId: string | null = null;
+  try {
+    tenantId = await currentTenantIdFor(user.id);
+  } catch (error) {
+    console.error("[workforce] tenant resolution failed", error);
+  }
+
+  const workers = tenantId
+    ? await loadSignalWorkforce(tenantId).catch((error) => {
+        console.error("[workforce] roster failed", error);
+        return [];
+      })
+    : [];
+
+  return <WorkforceRoster workers={workers} />;
 }
