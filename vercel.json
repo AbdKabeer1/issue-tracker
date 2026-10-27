@@ -1,14 +1,14 @@
 {
   "framework": "nextjs",
-  "buildCommand": "prisma generate && prisma migrate deploy && next build --webpack",
+  "buildCommand": "prisma generate && next build --webpack",
   "crons": [
     {
       "path": "/api/v1/webhooks/dispatch",
-      "schedule": "* * * * *"
+      "schedule": "0 0 * * *"
     },
     {
       "path": "/api/internal/cron",
-      "schedule": "* * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }

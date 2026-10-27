@@ -10,31 +10,37 @@ Last updated: 2026-10-27
 - Stamp-style .issue-row-status styling added with reduced-motion handling
 - Updated app/(app)/issues/[id]/issue-detail.css with specimen plate framing, cream background, ink text, ruled lines, monospace plate labels
 - Applied Field Guide whimsical redesign to ranking panel (ranking-panel.tsx, ranking-row.tsx, team.css)
-  - Square stamp buttons (rounded-[3px]) replacing rounded-full
-  - Cream paper background, ink text #232019, stamp red #B8432F accent
-  - Ruled paper patterns on tables and panels
-  - Hierarchy by scale and rule, not panel tint
 - Updated app header/top nav to Field Guide ink style
-  - Top nav links use rounded-[3px] stamp buttons instead of rounded-full pills
-  - Account button restyled as square stamp
-  - Points link uses ink accent rather than gradient badge
-  - Agents menu uses stamp-style pills
-- Created components/agent-summon-pad.tsx - human-agent interaction: stamp-style "Summon Agent" button opens Briefing Pad modal with agent selector and ruled brief textarea; sends "[Agent Brief]" comment prefix on issue
+- Created components/agent-summon-pad.tsx - stamp-style "Summon Agent" button opens Briefing Pad modal with agent selector and ruled brief textarea
+- Fixed TypeScript build errors:
+  - ranking-panel.tsx: defined podium medal styles per entry
+  - button.tsx / select.tsx: accept and forward ref props (React 19)
+- Deployed to Vercel production: https://issue-tracker-nu-nine.vercel.app
+- Provisioned Neon Postgres via Vercel Marketplace, ran migrations and demo seed
+- Enabled password sign-in on the preview via AUTH_PASSWORD_LOGIN=true
+- Verified live login + issues list + issue detail + Agent Summon Pad modal
 
 ## In progress
-- 
+- Real persistence for Agent Summon Pad (currently logs and closes; no BugComment created)
 
 ## Blocked
-- Vercel deploy credentials not yet provided; push to fork pending before Vercel can connect
+- None
 
 ## Next
-1. Visual QA of issues list and detail pages for contrast and layout
-2. Verify prefers-reduced-motion behavior  
-3. Confirm no regression in existing tests
-4. Add paper grain, stamp press animation, and hand-stamped chips for additional whimsy
+1. Wire Agent Summon Pad Send to a server action that creates a BugComment with the [Agent Brief] prefix
+2. Visual QA of ranking/collector cards on live preview
+3. Verify prefers-reduced-motion behavior on live preview
+4. Add paper grain, stamp press animation, and hand-stamped chips for additional whimsy if time allows
 
 ## Current state
-- Does it run? Yes, CSS and component changes applied
-- Does it build? Pending build verification
-- What was the last verified test? pnpm test for page.test.ts passed, field-guide-controls.dom.test.tsx passed
-- Known issues: None identified
+- Does it run? Yes — live at https://issue-tracker-nu-nine.vercel.app
+- Does it build? Yes — Vercel production build succeeded
+- Last verified:
+  - `pnpm exec tsc --noEmit` passes
+  - Live login with alice@zendor.dev / 12345678 works
+  - `/issues?status=all` renders the field-guide specimen list
+  - `/issues/1` renders the specimen detail + Summon Agent button
+  - Briefing Pad modal opens and is keyboard-focusable
+- Known issues:
+  - Agent Summon Pad does not persist a comment yet (placeholder)
+  - React minified error #419 appears on some client navigations but pages render

@@ -42,6 +42,30 @@ Record choices that the next agent should not re-litigate without a reason.
 - Revisit if:
   - Design team requests different grain intensity or stamp colors
 
+## 2026-10-27 — Vercel + Neon deployment
+
+- Context: Need a live preview of the field-guide redesign
+- Options considered:
+  - Vercel Hobby with the repo's original build command (prisma migrate deploy + every-minute crons)
+  - Vercel preview-only config without migrations/crons
+  - Provision a managed Postgres through the Vercel Marketplace
+- Chosen:
+  - Vercel production deployment on the Hobby plan
+  - Neon Postgres via Vercel Marketplace (`ziki-preview`)
+  - Build command: `prisma generate && next build --webpack`
+  - Cron schedules changed to daily (`0 0 * * *`)
+  - Migrations and demo seed run manually against the Neon unpooled URL
+- Why:
+  - Hobby rejects `* * * * *` cron expressions
+  - The original build tried to reach local Postgres at `localhost:5433`
+  - Neon gives the preview a real database without touching the production DB
+- Trade-off:
+  - Migrations are no longer automatic during deploy; they must be run in the
+    release step before promoting a build
+- Revisit if:
+  - The project moves to Vercel Pro (restore per-minute crons) or Coolify
+    (restore the Dockerfile/migrate-on-boot flow)
+
 ## Open questions
 - Should Send button actually create BugComment record with [Agent Brief] prefix?
 - Should agent be mentioned via @mention syntax?

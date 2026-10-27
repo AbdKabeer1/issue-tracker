@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ComponentPropsWithRef, ReactNode } from "react";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "danger-secondary";
 
@@ -19,7 +19,7 @@ export function Button({
   className = "",
   variant = "primary",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
+}: ComponentPropsWithRef<"button"> & {
   children: ReactNode;
   variant?: Variant;
 }) {

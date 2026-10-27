@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+.next
+.worktrees
+node_modules
+.git

@@ -299,6 +299,7 @@ export default async function RankingPanel({
             {podium.map((entry, i) => {
               const pct = progressPct(entry.points, targetPoints);
               const met = entry.points >= targetPoints;
+              const medal = PODIUM_MEDALS[i] ?? PODIUM_MEDALS[0];
               return (
                 <div
                   key={entry.userId}
