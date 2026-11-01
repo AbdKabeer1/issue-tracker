@@ -123,7 +123,17 @@ export default async function IssueHistoryPage({ params, searchParams }: Props) 
                   {title ? (
                     <p className="text-sm text-slate-700">
                       <span className="font-medium">Title: </span>
-                      <del className="rounded-sm bg-red-50 px-1 text-red-900">{previous.title}</del>
+                      <del className="rounded-sm bg-red-50 px-1 text-red-900">
+                        {title.removed.map((s, i) =>
+                          s.changed ? (
+                            <span key={i} className="bg-red-200/80">
+                              {s.text}
+                            </span>
+                          ) : (
+                            <span key={i}>{s.text}</span>
+                          ),
+                        )}
+                      </del>
                       <span aria-hidden> → </span>
                       <span className="sr-only"> changed to </span>
                       <ins className="rounded-sm bg-emerald-50 px-1 text-emerald-900 no-underline">
