@@ -15,7 +15,7 @@ import { ClearDuplicateButton, MarkDuplicateButton } from "@/components/duplicat
 import { currentResolution, isFinishedStatus, type StatusChangeActivity } from "@/lib/resolution-note";
 import { statusLabel as resolutionStatusLabel } from "@/lib/labels";
 import { formatIssueNumber } from "@/lib/issue-number";
-import { intakeDetail, openIssueStages, type IssueStage } from "@/lib/issue-stage";
+import { openIssueStages, type IssueStage } from "@/lib/issue-stage";
 import { buildCommentTree } from "@/lib/comments";
 import {
   COMMENT_PARAM,
@@ -40,7 +40,8 @@ import {
   statusLabels,
 } from "@/lib/labels";
 import { ActivityTimeline, type ActivityEntry } from "@/components/activity-timeline";
-import { IssueAgentActivity, type AgentDecision } from "@/components/issue-agent-activity";
+import { StageSummary } from "@/components/issue-stage-summary";
+import type { AgentDecision } from "@/components/issue-agent-activity";
 import { IssueEscalations, type TicketEscalation } from "@/components/issue-escalations";
 import { listBugEscalations } from "@/lib/agent-questions";
 import { IssueBids } from "@/components/issue-bids";
@@ -850,17 +851,6 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                   {bug.title}
                 </h1>
               </div>
-              {intakeStage ? (
-                <p
-                  className={`rounded-lg border px-3 py-2 text-sm ${
-                    intakeStage === "ready"
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                      : "border-amber-200 bg-amber-50 text-amber-950"
-                  }`}
-                >
-                  {intakeDetail(intakeStage, bug.voteCount)}
-                </p>
-              ) : null}
               {agentResolution ? (
                 <AgentResolvedNotice bugId={bug.id} resolution={agentResolution} canReopen={canUpdateStatus} />
               ) : null}
@@ -1155,16 +1145,27 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
         <GoalBudgetSection tenantId={bug.tenantId} projectId={bug.projectId} bugId={bug.id} />
       </Suspense>
 
-      <IssueAgentActivity decisions={agentDecisions} />
+      <StageSummary
+        intakeStage={intakeStage}
+        bug={{
+          status: bug.status,
+          severity: bug.severity,
+          title: bug.title,
+          number: bug.number,
+        }}
+        agentDecisions={agentDecisions.map((d) => ({
+          id: d.id,
+          kind: d.kind,
+          agentName: d.agentName,
+          at: d.at,
+        }))}
+      />
 
       <section
         id="conversation"
         className="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-4 sm:p-6"
       >
         <span id="comments" className="sr-only" aria-hidden="true" />
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Conversation ({comments.visibleCount})
-        </h2>
         {comments.hiddenThreads > 0 ? (
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600 print:hidden">
             <span>
